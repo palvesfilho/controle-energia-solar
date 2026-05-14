@@ -234,15 +234,17 @@ export async function syncInvestorPayablesFromBill(
     const shareCriacao = ip.sharePercent ?? 100;
     const valorKwhCriacao = ip.valorKwhContrato ?? 0;
 
-    const existing = await prisma.investorPayable.findUnique({
+    // Procuramos o payable "natural" deste mês (carriedFromPayableId IS NULL).
+    // Como o composite unique inclui um campo opcional, findUnique tipa o null
+    // como string — usamos findFirst com where regular pra contornar.
+    const existing = await prisma.investorPayable.findFirst({
       where: {
-        investorId_consumerUnitId_anoReferencia_mesReferencia_parcelaIndex: {
-          investorId: ip.investorId,
-          consumerUnitId: bill.consumerUnitId,
-          anoReferencia: bill.anoReferencia,
-          mesReferencia: bill.mesReferencia,
-          parcelaIndex: 0,
-        },
+        investorId: ip.investorId,
+        consumerUnitId: bill.consumerUnitId,
+        anoReferencia: bill.anoReferencia,
+        mesReferencia: bill.mesReferencia,
+        parcelaIndex: 0,
+        carriedFromPayableId: null,
       },
       select: {
         id: true,

@@ -78,7 +78,9 @@ export async function POST(req: NextRequest) {
   const buf = Buffer.from(await file.arrayBuffer());
   const workbook = new ExcelJS.Workbook();
   try {
-    await workbook.xlsx.load(buf);
+    // exceljs declara seu próprio `interface Buffer extends ArrayBuffer` — incompatível
+    // com o Buffer<ArrayBufferLike> do @types/node 22. Cast por unknown pra contornar.
+    await workbook.xlsx.load(buf as unknown as Parameters<typeof workbook.xlsx.load>[0]);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
