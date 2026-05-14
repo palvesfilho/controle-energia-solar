@@ -39,3 +39,24 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/src/generated/prisma
+
+# uploads
+/uploads
+
+# database
+prisma/dev.db
+prisma/dev.db-journal
+/dev.db
+/dev.db-journal
+
+# PDFs de teste/demonstrativos gerados localmente
+/demonstrativo-*.pdf
+/fatura-*.pdf
+
+# arquivos locais diversos
+*.local
+.migration-rge-to-uc.json
+ocr-sample.json
+uploads-zeroed-*.txt
