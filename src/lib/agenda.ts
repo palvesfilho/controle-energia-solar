@@ -1,5 +1,13 @@
 import { prisma } from "./prisma";
 
+/**
+ * Tarefas com `scheduledFor` anterior a esta data não aparecem na agenda.
+ * Permite "esconder" o histórico até o backfill dos dados-origem (pagoEm,
+ * publishedAt etc.) ser feito. Para mostrar tudo, defina como `null` ou
+ * uma data bem antiga (ex.: new Date(2020, 0, 1)).
+ */
+export const AGENDA_MIN_DATE: Date | null = new Date(2026, 3, 1); // 2026-04-01
+
 export type AgendaTaskType =
   | "PAGAR_FATURA"
   | "EMITIR_RELATORIO_MENSAL"
@@ -283,10 +291,15 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
     });
   }
 
-  // Ordena por scheduledFor crescente
-  tasks.sort((a, b) => a.scheduledFor.getTime() - b.scheduledFor.getTime());
+  // Filtra tarefas antes do "marco zero" da agenda (histórico escondido até backfill).
+  const filtered = AGENDA_MIN_DATE
+    ? tasks.filter((t) => t.scheduledFor >= AGENDA_MIN_DATE)
+    : tasks;
 
-  return tasks;
+  // Ordena por scheduledFor crescente
+  filtered.sort((a, b) => a.scheduledFor.getTime() - b.scheduledFor.getTime());
+
+  return filtered;
 }
 
 function monthDay(year: number, monthIndex: number, day: number): Date {
