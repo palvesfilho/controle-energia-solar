@@ -94,7 +94,8 @@ export function AgendaWeekGrid({ inicio, fim, tasks }: AgendaWeekGridProps) {
 
   const [filterType, setFilterType] = useState<AgendaTaskType | "ALL">("ALL");
   const [filterStatus, setFilterStatus] = useState<AgendaTaskStatus | "ALL">("ALL");
-  const [filterMesRef, setFilterMesRef] = useState<string>("ALL"); // "ALL" ou "YYYY-MM"
+  const [filterMes, setFilterMes] = useState<string>("ALL"); // "ALL" ou "1".."12"
+  const [filterAno, setFilterAno] = useState<string>("ALL"); // "ALL" ou "YYYY"
   const [filterUc, setFilterUc] = useState<string>("ALL"); // "ALL" ou consumerUnitId
 
   // Diálogo de ação por tipo de tarefa.
@@ -114,20 +115,29 @@ export function AgendaWeekGrid({ inicio, fim, tasks }: AgendaWeekGridProps) {
   };
 
   // Opções dinâmicas dos dropdowns — derivadas das tarefas visíveis na semana.
-  const mesRefOptions = useMemo(() => {
-    const set = new Map<string, { value: string; label: string }>();
+  const MESES_NOMES = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+  ];
+
+  const mesOptions = useMemo(() => {
+    const set = new Set<number>();
     for (const t of tasks) {
-      if (t.mesReferencia == null || t.anoReferencia == null) continue;
-      const value = `${t.anoReferencia}-${String(t.mesReferencia).padStart(2, "0")}`;
-      if (!set.has(value)) {
-        const monthName = new Date(t.anoReferencia, t.mesReferencia - 1, 1).toLocaleDateString(
-          "pt-BR",
-          { month: "short", year: "numeric" }
-        );
-        set.set(value, { value, label: monthName });
-      }
+      if (t.mesReferencia != null) set.add(t.mesReferencia);
     }
-    return Array.from(set.values()).sort((a, b) => b.value.localeCompare(a.value));
+    return Array.from(set)
+      .sort((a, b) => a - b)
+      .map((m) => ({ value: String(m), label: MESES_NOMES[m - 1] }));
+  }, [tasks]);
+
+  const anoOptions = useMemo(() => {
+    const set = new Set<number>();
+    for (const t of tasks) {
+      if (t.anoReferencia != null) set.add(t.anoReferencia);
+    }
+    return Array.from(set)
+      .sort((a, b) => b - a)
+      .map((y) => ({ value: String(y), label: String(y) }));
   }, [tasks]);
 
   const ucOptions = useMemo(() => {
@@ -145,25 +155,33 @@ export function AgendaWeekGrid({ inicio, fim, tasks }: AgendaWeekGridProps) {
     return tasks.filter((t) => {
       if (filterType !== "ALL" && t.type !== filterType) return false;
       if (filterStatus !== "ALL" && t.status !== filterStatus) return false;
-      if (filterMesRef !== "ALL") {
-        if (t.mesReferencia == null || t.anoReferencia == null) return false;
-        const ref = `${t.anoReferencia}-${String(t.mesReferencia).padStart(2, "0")}`;
-        if (ref !== filterMesRef) return false;
+      if (filterMes !== "ALL") {
+        if (t.mesReferencia == null) return false;
+        if (t.mesReferencia !== Number(filterMes)) return false;
+      }
+      if (filterAno !== "ALL") {
+        if (t.anoReferencia == null) return false;
+        if (t.anoReferencia !== Number(filterAno)) return false;
       }
       if (filterUc !== "ALL") {
         if (t.consumerUnitId !== filterUc) return false;
       }
       return true;
     });
-  }, [tasks, filterType, filterStatus, filterMesRef, filterUc]);
+  }, [tasks, filterType, filterStatus, filterMes, filterAno, filterUc]);
 
   const hasActiveFilters =
-    filterType !== "ALL" || filterStatus !== "ALL" || filterMesRef !== "ALL" || filterUc !== "ALL";
+    filterType !== "ALL" ||
+    filterStatus !== "ALL" ||
+    filterMes !== "ALL" ||
+    filterAno !== "ALL" ||
+    filterUc !== "ALL";
 
   const clearFilters = () => {
     setFilterType("ALL");
     setFilterStatus("ALL");
-    setFilterMesRef("ALL");
+    setFilterMes("ALL");
+    setFilterAno("ALL");
     setFilterUc("ALL");
   };
 
@@ -273,15 +291,28 @@ export function AgendaWeekGrid({ inicio, fim, tasks }: AgendaWeekGridProps) {
             <option value="DONE">Feitas</option>
           </select>
           <select
-            value={filterMesRef}
-            onChange={(e) => setFilterMesRef(e.target.value)}
+            value={filterMes}
+            onChange={(e) => setFilterMes(e.target.value)}
             className="rounded-md border bg-background px-2 py-1 text-sm"
-            disabled={mesRefOptions.length === 0}
+            disabled={mesOptions.length === 0}
           >
-            <option value="ALL">Todos os meses ref.</option>
-            {mesRefOptions.map((o) => (
+            <option value="ALL">Todos os meses</option>
+            {mesOptions.map((o) => (
               <option key={o.value} value={o.value}>
-                Ref. {o.label}
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filterAno}
+            onChange={(e) => setFilterAno(e.target.value)}
+            className="rounded-md border bg-background px-2 py-1 text-sm"
+            disabled={anoOptions.length === 0}
+          >
+            <option value="ALL">Todos os anos</option>
+            {anoOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
               </option>
             ))}
           </select>
