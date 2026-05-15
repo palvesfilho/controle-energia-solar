@@ -60,3 +60,6 @@ prisma/migrations.sqlite.backup/
 .migration-rge-to-uc.json
 ocr-sample.json
 uploads-zeroed-*.txt
+
+# relatórios gerados (contém PII de clientes — não commitar em repo público)
+/infosimples-report-*.md
