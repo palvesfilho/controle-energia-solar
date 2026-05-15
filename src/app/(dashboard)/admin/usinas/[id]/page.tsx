@@ -157,6 +157,7 @@ interface PlantData {
   formatoLeitura: string | null;
   regraInstalacao: string | null;
   dataAssinaturaContrato: string | null;
+  diaPagamentoInvestidor: number;
   active: boolean;
   inversorMarca: string | null;
   inversorModelo: string | null;
@@ -687,6 +688,18 @@ export default function UsinaPage() {
               />
               <p className="mt-1 text-xs text-muted-foreground">
                 Define o início da janela de faturas a descontar no primeiro relatório do investidor.
+              </p>
+            </div>
+            <div>
+              <Field
+                label="Dia de pagamento do investidor"
+                name="diaPagamentoInvestidor"
+                type="number"
+                defaultValue={String(plant.diaPagamentoInvestidor ?? 20)}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Dia do mês (1 a 28) em que esta usina paga o investidor. Usado na Agenda da Semana
+                — o relatório aparece 3 dias antes.
               </p>
             </div>
           </div>

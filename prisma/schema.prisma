@@ -103,6 +103,12 @@ model Plant {
   senhaDistribuidora  String? @map("senha_distribuidora")
   codigoCliente       String? @map("codigo_cliente") // Número de instalação/código do cliente no portal da distribuidora
 
+  // Dia do mês em que o investidor desta usina recebe o repasse. Default 20 pra
+  // todas; gestor pode ajustar por usina na tela de cadastro. Usado pela Agenda
+  // da Semana pra gerar a task PAGAR_INVESTIDOR e EMITIR_RELATORIO_MENSAL
+  // (esta última = pagamento - 3 dias).
+  diaPagamentoInvestidor Int @default(20) @map("dia_pagamento_investidor")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

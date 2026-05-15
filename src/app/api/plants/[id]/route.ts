@@ -94,6 +94,12 @@ export async function PUT(
           ? new Date(body.dataAssinaturaContrato)
           : null,
       }),
+      ...(body.diaPagamentoInvestidor !== undefined && {
+        diaPagamentoInvestidor: Math.min(
+          28,
+          Math.max(1, Number(body.diaPagamentoInvestidor) || 20)
+        ),
+      }),
       ...(body.loginDistribuidora !== undefined && { loginDistribuidora: body.loginDistribuidora || null }),
       ...(body.senhaDistribuidora !== undefined && { senhaDistribuidora: body.senhaDistribuidora || null }),
     },

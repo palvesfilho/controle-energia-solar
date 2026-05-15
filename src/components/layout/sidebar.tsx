@@ -31,6 +31,7 @@ import {
   Coins,
   Scale,
   PieChart,
+  CalendarClock,
 } from "lucide-react";
 import { useState } from "react";
 import { UserRole } from "@/types/next-auth";
@@ -64,6 +65,7 @@ const consumerNavItems: NavEntry[] = [
 
 const adminNavItems: NavEntry[] = [
   { kind: "leaf", title: "Gestora de Energia", href: "/admin", icon: LayoutDashboard },
+  { kind: "leaf", title: "Agenda da Semana", href: "/admin/agenda", icon: CalendarClock },
   {
     kind: "group",
     title: "Investidores",
