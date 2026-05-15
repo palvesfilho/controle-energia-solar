@@ -31,6 +31,10 @@ interface SerializedTask {
   sourceEntityType: string;
   sourceEntityId: string;
   href: string | null;
+  mesReferencia: number | null;
+  anoReferencia: number | null;
+  consumerUnitId: string | null;
+  consumerUnitLabel: string | null;
 }
 
 interface AgendaWeekGridProps {
@@ -90,6 +94,8 @@ export function AgendaWeekGrid({ inicio, fim, tasks }: AgendaWeekGridProps) {
 
   const [filterType, setFilterType] = useState<AgendaTaskType | "ALL">("ALL");
   const [filterStatus, setFilterStatus] = useState<AgendaTaskStatus | "ALL">("ALL");
+  const [filterMesRef, setFilterMesRef] = useState<string>("ALL"); // "ALL" ou "YYYY-MM"
+  const [filterUc, setFilterUc] = useState<string>("ALL"); // "ALL" ou consumerUnitId
 
   // Diálogo de ação por tipo de tarefa.
   const [openDialog, setOpenDialog] = useState<{ type: AgendaTaskType; sourceId: string } | null>(null);
@@ -107,13 +113,59 @@ export function AgendaWeekGrid({ inicio, fim, tasks }: AgendaWeekGridProps) {
     router.refresh();
   };
 
+  // Opções dinâmicas dos dropdowns — derivadas das tarefas visíveis na semana.
+  const mesRefOptions = useMemo(() => {
+    const set = new Map<string, { value: string; label: string }>();
+    for (const t of tasks) {
+      if (t.mesReferencia == null || t.anoReferencia == null) continue;
+      const value = `${t.anoReferencia}-${String(t.mesReferencia).padStart(2, "0")}`;
+      if (!set.has(value)) {
+        const monthName = new Date(t.anoReferencia, t.mesReferencia - 1, 1).toLocaleDateString(
+          "pt-BR",
+          { month: "short", year: "numeric" }
+        );
+        set.set(value, { value, label: monthName });
+      }
+    }
+    return Array.from(set.values()).sort((a, b) => b.value.localeCompare(a.value));
+  }, [tasks]);
+
+  const ucOptions = useMemo(() => {
+    const set = new Map<string, { value: string; label: string }>();
+    for (const t of tasks) {
+      if (!t.consumerUnitId || !t.consumerUnitLabel) continue;
+      if (!set.has(t.consumerUnitId)) {
+        set.set(t.consumerUnitId, { value: t.consumerUnitId, label: t.consumerUnitLabel });
+      }
+    }
+    return Array.from(set.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [tasks]);
+
   const filtered = useMemo(() => {
     return tasks.filter((t) => {
       if (filterType !== "ALL" && t.type !== filterType) return false;
       if (filterStatus !== "ALL" && t.status !== filterStatus) return false;
+      if (filterMesRef !== "ALL") {
+        if (t.mesReferencia == null || t.anoReferencia == null) return false;
+        const ref = `${t.anoReferencia}-${String(t.mesReferencia).padStart(2, "0")}`;
+        if (ref !== filterMesRef) return false;
+      }
+      if (filterUc !== "ALL") {
+        if (t.consumerUnitId !== filterUc) return false;
+      }
       return true;
     });
-  }, [tasks, filterType, filterStatus]);
+  }, [tasks, filterType, filterStatus, filterMesRef, filterUc]);
+
+  const hasActiveFilters =
+    filterType !== "ALL" || filterStatus !== "ALL" || filterMesRef !== "ALL" || filterUc !== "ALL";
+
+  const clearFilters = () => {
+    setFilterType("ALL");
+    setFilterStatus("ALL");
+    setFilterMesRef("ALL");
+    setFilterUc("ALL");
+  };
 
   // Agrupa por dia da semana (0=seg, 6=dom)
   const tasksByDay = useMemo(() => {
@@ -220,6 +272,41 @@ export function AgendaWeekGrid({ inicio, fim, tasks }: AgendaWeekGridProps) {
             <option value="OVERDUE">Atrasadas</option>
             <option value="DONE">Feitas</option>
           </select>
+          <select
+            value={filterMesRef}
+            onChange={(e) => setFilterMesRef(e.target.value)}
+            className="rounded-md border bg-background px-2 py-1 text-sm"
+            disabled={mesRefOptions.length === 0}
+          >
+            <option value="ALL">Todos os meses ref.</option>
+            {mesRefOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                Ref. {o.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filterUc}
+            onChange={(e) => setFilterUc(e.target.value)}
+            className="rounded-md border bg-background px-2 py-1 text-sm max-w-[220px]"
+            disabled={ucOptions.length === 0}
+          >
+            <option value="ALL">Todas as UCs</option>
+            {ucOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+            >
+              Limpar filtros
+            </button>
+          )}
         </div>
       </div>
 

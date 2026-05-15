@@ -28,6 +28,13 @@ export interface AgendaTask {
   sourceEntityType: string;
   sourceEntityId: string;
   href: string | null;
+  // Filtros: mês/ano de referência da tarefa (ciclo de fatura, mês do payable etc.)
+  mesReferencia: number | null; // 1-12
+  anoReferencia: number | null;
+  // Filtros: UC envolvida (nulo para tasks de usina-pura como PAGAR_INVESTIDOR e
+  // EMITIR_RELATORIO_MENSAL). consumerUnitLabel = "codigoUC — nome" pra dropdown.
+  consumerUnitId: string | null;
+  consumerUnitLabel: string | null;
 }
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -89,6 +96,9 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       vencimento: true,
       pagoEm: true,
       valorTotal: true,
+      mesReferencia: true,
+      anoReferencia: true,
+      consumerUnitId: true,
       consumerUnit: { select: { nome: true, codigoUc: true } },
     },
   });
@@ -110,6 +120,12 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       sourceEntityType: "ConsumerBill",
       sourceEntityId: b.id,
       href: "/admin/faturas-energia",
+      mesReferencia: b.mesReferencia,
+      anoReferencia: b.anoReferencia,
+      consumerUnitId: b.consumerUnitId,
+      consumerUnitLabel: b.consumerUnit
+        ? `${b.consumerUnit.codigoUc} — ${b.consumerUnit.nome}`
+        : null,
     });
   }
 
@@ -168,6 +184,10 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       sourceEntityType: "ConsumerBill",
       sourceEntityId: b.id,
       href: "/admin/faturas-energia/gestao-financeira",
+      mesReferencia: b.mesReferencia,
+      anoReferencia: b.anoReferencia,
+      consumerUnitId: b.consumerUnitId,
+      consumerUnitLabel: `${b.consumerUnit.codigoUc} — ${b.consumerUnit.nome}`,
     });
   }
 
@@ -218,6 +238,10 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
         sourceEntityType: "Plant",
         sourceEntityId: p.id,
         href: "/admin/faturamento/fechamentos-investidor",
+        mesReferencia: refMonth,
+        anoReferencia: refYear,
+        consumerUnitId: null,
+        consumerUnitLabel: null,
       });
     }
 
@@ -249,6 +273,10 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
         sourceEntityType: "Plant",
         sourceEntityId: p.id,
         href: `/admin/brasil-solar/relatorios`,
+        mesReferencia: refMonth,
+        anoReferencia: refYear,
+        consumerUnitId: null,
+        consumerUnitLabel: null,
       });
     }
   }
@@ -266,7 +294,12 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
         where: { proximaLeitura: { not: null } },
         orderBy: { syncedAt: "desc" },
         take: 1,
-        select: { id: true, proximaLeitura: true },
+        select: {
+          id: true,
+          proximaLeitura: true,
+          mesReferencia: true,
+          anoReferencia: true,
+        },
       },
     },
   });
@@ -288,6 +321,10 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       sourceEntityType: "ConsumerUnit",
       sourceEntityId: uc.id,
       href: `/admin/unidades-consumidoras`,
+      mesReferencia: latest.mesReferencia,
+      anoReferencia: latest.anoReferencia,
+      consumerUnitId: uc.id,
+      consumerUnitLabel: `${uc.codigoUc} — ${uc.nome}`,
     });
   }
 
