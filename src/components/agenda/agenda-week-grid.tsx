@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
+import { PagarFaturaDialog } from "./pagar-fatura-dialog";
 import {
   ChevronLeft,
   ChevronRight,
@@ -90,6 +90,22 @@ export function AgendaWeekGrid({ inicio, fim, tasks }: AgendaWeekGridProps) {
 
   const [filterType, setFilterType] = useState<AgendaTaskType | "ALL">("ALL");
   const [filterStatus, setFilterStatus] = useState<AgendaTaskStatus | "ALL">("ALL");
+
+  // Diálogo de ação por tipo de tarefa.
+  const [openDialog, setOpenDialog] = useState<{ type: AgendaTaskType; sourceId: string } | null>(null);
+
+  const handleTaskClick = (task: SerializedTask) => {
+    if (task.status === "DONE") return; // já feito, sem ação
+    if (task.type === "PAGAR_FATURA") {
+      setOpenDialog({ type: task.type, sourceId: task.sourceEntityId });
+    } else if (task.href) {
+      router.push(task.href);
+    }
+  };
+
+  const handleDialogSuccess = () => {
+    router.refresh();
+  };
 
   const filtered = useMemo(() => {
     return tasks.filter((t) => {
@@ -235,6 +251,14 @@ export function AgendaWeekGrid({ inicio, fim, tasks }: AgendaWeekGridProps) {
         </Card>
       </div>
 
+      {/* Diálogos de ação por tipo */}
+      <PagarFaturaDialog
+        billId={openDialog?.type === "PAGAR_FATURA" ? openDialog.sourceId : null}
+        open={openDialog?.type === "PAGAR_FATURA"}
+        onOpenChange={(open) => !open && setOpenDialog(null)}
+        onSuccess={handleDialogSuccess}
+      />
+
       {/* Grade Seg→Dom */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-7">
         {days.map((day, idx) => {
@@ -273,7 +297,9 @@ export function AgendaWeekGrid({ inicio, fim, tasks }: AgendaWeekGridProps) {
                     —
                   </div>
                 ) : (
-                  dayTasks.map((task) => <TaskCard key={task.id} task={task} />)
+                  dayTasks.map((task) => (
+                    <TaskCard key={task.id} task={task} onClick={() => handleTaskClick(task)} />
+                  ))
                 )}
               </div>
             </div>
@@ -284,18 +310,22 @@ export function AgendaWeekGrid({ inicio, fim, tasks }: AgendaWeekGridProps) {
   );
 }
 
-function TaskCard({ task }: { task: SerializedTask }) {
+function TaskCard({ task, onClick }: { task: SerializedTask; onClick: () => void }) {
   const TypeIcon = TYPE_META[task.type].icon;
   const tone = TYPE_META[task.type].tone;
   const StatusIcon = STATUS_META[task.status].icon;
   const statusCls = STATUS_META[task.status].cls;
+  const isDone = task.status === "DONE";
 
-  const content = (
-    <div
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={isDone}
       className={cn(
-        "group rounded-md border-l-4 p-2 text-xs transition hover:shadow-sm",
+        "group block w-full rounded-md border-l-4 p-2 text-xs text-left transition",
         tone,
-        task.status === "DONE" && "opacity-60"
+        isDone ? "opacity-60 cursor-default" : "hover:shadow-sm hover:brightness-95 cursor-pointer"
       )}
     >
       <div className="flex items-start gap-1.5">
@@ -304,7 +334,7 @@ function TaskCard({ task }: { task: SerializedTask }) {
           <div
             className={cn(
               "font-medium text-foreground/90 leading-tight",
-              task.status === "DONE" && "line-through"
+              isDone && "line-through"
             )}
           >
             {task.title}
@@ -317,15 +347,6 @@ function TaskCard({ task }: { task: SerializedTask }) {
         </div>
         <StatusIcon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", statusCls)} />
       </div>
-    </div>
+    </button>
   );
-
-  if (task.href) {
-    return (
-      <Link href={task.href} className="block">
-        {content}
-      </Link>
-    );
-  }
-  return content;
 }
