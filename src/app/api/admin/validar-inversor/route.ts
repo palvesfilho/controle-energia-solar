@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
-import { isAdminRole } from "@/lib/roles";
+import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { parseFaturaPdf } from "@/lib/fatura-pdf-parser";
 import { getMonthlyTotal as froniusMonthlyTotal } from "@/lib/fronius";
@@ -15,7 +15,7 @@ const TOLERANCE_PCT = 2;
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.user || !isAdminRole(session.user.role)) {
+  if (!session?.user || !canAccessSection(session.user.role, "brasilSolar")) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 

@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/roles";
+import { canAccessSection } from "@/lib/roles";
 import { LISTA_MATERIAIS_TEMPLATE } from "@/lib/obra-lista-materiais-template";
 
 export const runtime = "nodejs";
@@ -41,7 +41,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !isAdminRole(session.user.role)) {
+  if (!session || !canAccessSection(session.user.role, "obra")) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
   const { id } = await params;
@@ -77,7 +77,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !isAdminRole(session.user.role)) {
+  if (!session || !canAccessSection(session.user.role, "obra")) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
   const { id } = await params;

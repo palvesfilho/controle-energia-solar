@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
-import { isAdminRole } from "@/lib/roles";
+import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getAcaoRequeridaDefault } from "@/lib/alertas-usinas";
 
@@ -11,7 +11,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session?.user || !isAdminRole(session.user.role)) {
+  if (!session?.user || !canAccessSection(session.user.role, "brasilSolar")) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
 
@@ -43,7 +43,7 @@ export async function POST(
 // PUT /api/brasil-solar/[id]/alerts - Atualizar alerta (resolver/ignorar)
 export async function PUT(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.user || !isAdminRole(session.user.role)) {
+  if (!session?.user || !canAccessSection(session.user.role, "brasilSolar")) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
 

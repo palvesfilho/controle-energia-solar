@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/roles";
+import { canAccessSection } from "@/lib/roles";
 
 type Body = {
   nome?: string;
@@ -25,7 +25,7 @@ function toHexColor(v: unknown): string | null {
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session || !isAdminRole(session.user.role)) {
+  if (!session || !canAccessSection(session.user.role, "persEquipes")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -49,7 +49,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || !isAdminRole(session.user.role)) {
+  if (!session || !canAccessSection(session.user.role, "persEquipes")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

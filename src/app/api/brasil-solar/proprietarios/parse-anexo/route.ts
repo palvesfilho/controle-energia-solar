@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
-import { isAdminRole } from "@/lib/roles";
+import { canAccessSection } from "@/lib/roles";
 import { parseAnexoF } from "@/lib/anexo-f-parser";
 
 export const runtime = "nodejs";
@@ -13,7 +13,7 @@ export const maxDuration = 30;
 // pré-preenchimento do cadastro de Proprietário + Planta.
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.user || !isAdminRole(session.user.role)) {
+  if (!session?.user || !canAccessSection(session.user.role, "brasilSolar")) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 

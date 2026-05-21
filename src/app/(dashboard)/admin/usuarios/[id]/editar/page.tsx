@@ -11,6 +11,8 @@ const ROLE_OPTIONS = [
   { value: "ADMIN", label: "Administrador", description: "Acesso total ao sistema, incluindo gestão de usuários" },
   { value: "GESTOR", label: "Gestor", description: "Acesso ao painel administrativo, sem gestão de usuários" },
   { value: "FINANCEIRO", label: "Financeiro", description: "Acesso ao painel com foco em dados financeiros" },
+  { value: "POS_VENDA", label: "Pós-Venda", description: "Acesso a Gestão Brasil Solar e Obra" },
+  { value: "GESTOR_OBRA", label: "Gestor de Obras", description: "Acesso restrito ao módulo Obra" },
   { value: "INVESTOR", label: "Investidor", description: "Acesso ao portal do investidor e relatórios" },
   { value: "CONSUMER", label: "Consumidor", description: "Acesso ao portal do consumidor" },
 ];

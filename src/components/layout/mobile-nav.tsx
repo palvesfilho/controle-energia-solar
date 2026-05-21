@@ -31,9 +31,11 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { UserRole } from "@/types/next-auth";
+import { canAccessSection, type AdminSection } from "@/lib/roles";
 
 interface NavLeaf {
   kind: "leaf";
+  section: AdminSection;
   title: string;
   href: string;
   icon: React.ElementType;
@@ -41,6 +43,7 @@ interface NavLeaf {
 
 interface NavGroup {
   kind: "group";
+  section: AdminSection;
   title: string;
   icon: React.ElementType;
   children: NavLeaf[];
@@ -48,108 +51,127 @@ interface NavGroup {
 
 type NavEntry = NavLeaf | NavGroup;
 
-const investorNavItems: NavEntry[] = [
-  { kind: "leaf", title: "Visão Geral", href: "/painel", icon: LayoutDashboard },
-  { kind: "leaf", title: "Relatórios", href: "/relatorios", icon: FileBarChart },
-  { kind: "leaf", title: "Meu Perfil", href: "/perfil", icon: User },
+const investorNavItems: Array<{ title: string; href: string; icon: React.ElementType }> = [
+  { title: "Visão Geral", href: "/painel", icon: LayoutDashboard },
+  { title: "Relatórios", href: "/relatorios", icon: FileBarChart },
+  { title: "Meu Perfil", href: "/perfil", icon: User },
 ];
 
-const consumerNavItems: NavEntry[] = [
-  { kind: "leaf", title: "Visão Geral", href: "/painel", icon: LayoutDashboard },
-  { kind: "leaf", title: "Meu Perfil", href: "/perfil", icon: User },
+const consumerNavItems: Array<{ title: string; href: string; icon: React.ElementType }> = [
+  { title: "Visão Geral", href: "/painel", icon: LayoutDashboard },
+  { title: "Meu Perfil", href: "/perfil", icon: User },
 ];
 
 const adminNavItems: NavEntry[] = [
-  { kind: "leaf", title: "Gestora de Energia", href: "/admin", icon: LayoutDashboard },
+  { kind: "leaf", section: "dashboard", title: "Gestora de Energia", href: "/admin", icon: LayoutDashboard },
   {
     kind: "group",
+    section: "investidores",
     title: "Investidores",
     icon: Users,
     children: [
-      { kind: "leaf", title: "Cadastro", href: "/admin/investidores", icon: Users },
-      { kind: "leaf", title: "Usinas", href: "/admin/usinas", icon: Building2 },
+      { kind: "leaf", section: "investidores", title: "Cadastro", href: "/admin/investidores", icon: Users },
+      { kind: "leaf", section: "investidores", title: "Usinas", href: "/admin/usinas", icon: Building2 },
     ],
   },
   {
     kind: "group",
+    section: "clientes",
     title: "Clientes",
     icon: UserCheck,
     children: [
-      { kind: "leaf", title: "Consumidores", href: "/admin/consumidores", icon: UserCheck },
-      { kind: "leaf", title: "Unidades Consumidoras", href: "/admin/unidades-consumidoras", icon: Plug },
+      { kind: "leaf", section: "clientes", title: "Consumidores", href: "/admin/consumidores", icon: UserCheck },
+      { kind: "leaf", section: "clientes", title: "Unidades Consumidoras", href: "/admin/unidades-consumidoras", icon: Plug },
     ],
   },
   {
     kind: "group",
+    section: "gestaoCreditos",
     title: "Gestão de Créditos",
     icon: Coins,
     children: [
-      { kind: "leaf", title: "Balanço Mensal", href: "/admin/gestao-creditos/balanco-mensal", icon: Scale },
-      { kind: "leaf", title: "Rateios", href: "/admin/gestao-creditos/rateios", icon: PieChart },
+      { kind: "leaf", section: "gestaoCreditos", title: "Balanço Mensal", href: "/admin/gestao-creditos/balanco-mensal", icon: Scale },
+      { kind: "leaf", section: "gestaoCreditos", title: "Rateios", href: "/admin/gestao-creditos/rateios", icon: PieChart },
     ],
   },
   {
     kind: "group",
+    section: "faturasEnergia",
     title: "Faturas de Energia",
     icon: Receipt,
     children: [
-      { kind: "leaf", title: "Visão Geral", href: "/admin/faturas-energia", icon: Eye },
-      { kind: "leaf", title: "Gestão Financeira", href: "/admin/faturas-energia/gestao-financeira", icon: Wallet },
-      { kind: "leaf", title: "Fechamento Mensal", href: "/admin/faturas-energia/fechamento-mensal", icon: CalendarCheck },
+      { kind: "leaf", section: "faturasEnergia", title: "Visão Geral", href: "/admin/faturas-energia", icon: Eye },
+      { kind: "leaf", section: "faturasEnergia", title: "Gestão Financeira", href: "/admin/faturas-energia/gestao-financeira", icon: Wallet },
+      { kind: "leaf", section: "faturasEnergia", title: "Fechamento Mensal", href: "/admin/faturas-energia/fechamento-mensal", icon: CalendarCheck },
     ],
   },
   {
     kind: "group",
+    section: "faturamento",
     title: "Faturamento",
     icon: Receipt,
     children: [
-      { kind: "leaf", title: "Usinas", href: "/admin/faturamento/usinas", icon: Building2 },
-      { kind: "leaf", title: "Unidades Consumidoras", href: "/admin/faturamento/unidades-consumidoras", icon: Plug },
+      { kind: "leaf", section: "faturamento", title: "Usinas", href: "/admin/faturamento/usinas", icon: Building2 },
+      { kind: "leaf", section: "faturamento", title: "Unidades Consumidoras", href: "/admin/faturamento/unidades-consumidoras", icon: Plug },
     ],
   },
   {
     kind: "group",
+    section: "brasilSolar",
     title: "Gestão Brasil Solar",
     icon: SunMedium,
     children: [
-      { kind: "leaf", title: "Dashboard Mapa", href: "/admin/brasil-solar/mapa", icon: MapPin },
-      { kind: "leaf", title: "Clientes Brasil Solar", href: "/admin/brasil-solar/proprietarios", icon: FolderTree },
-      { kind: "leaf", title: "Plantas Fotovoltaicas", href: "/admin/brasil-solar", icon: SunMedium },
+      { kind: "leaf", section: "brasilSolar", title: "Dashboard Mapa", href: "/admin/brasil-solar/mapa", icon: MapPin },
+      { kind: "leaf", section: "brasilSolar", title: "Clientes Brasil Solar", href: "/admin/brasil-solar/proprietarios", icon: FolderTree },
+      { kind: "leaf", section: "brasilSolar", title: "Plantas Fotovoltaicas", href: "/admin/brasil-solar", icon: SunMedium },
     ],
   },
   {
     kind: "group",
+    section: "obra",
     title: "Obra",
     icon: HardHat,
     children: [
-      { kind: "leaf", title: "Gestão de Obra", href: "/admin/obra/gestao-obra", icon: ClipboardList },
-      { kind: "leaf", title: "Aprovação de Obras", href: "/admin/obra/aprovacao", icon: ClipboardCheck },
-      { kind: "leaf", title: "Calendário de Obras", href: "/admin/obra/calendario", icon: CalendarCheck },
+      { kind: "leaf", section: "obra", title: "Gestão de Obra", href: "/admin/obra/gestao-obra", icon: ClipboardList },
+      { kind: "leaf", section: "obra", title: "Aprovação de Obras", href: "/admin/obra/aprovacao", icon: ClipboardCheck },
+      { kind: "leaf", section: "obra", title: "Calendário de Obras", href: "/admin/obra/calendario", icon: CalendarCheck },
     ],
   },
-  { kind: "leaf", title: "Personalizações", href: "/admin/personalizacoes", icon: Settings2 },
+  { kind: "leaf", section: "personalizacoesHub", title: "Personalizações", href: "/admin/personalizacoes", icon: Settings2 },
 ];
 
 const userManagementItem: NavLeaf = {
   kind: "leaf",
+  section: "usuarios",
   title: "Usuários",
   href: "/admin/usuarios",
   icon: ShieldCheck,
 };
 
-function getNavItems(role: UserRole): NavEntry[] {
-  switch (role) {
-    case "ADMIN":
-      return [...adminNavItems, userManagementItem];
-    case "GESTOR":
-    case "FINANCEIRO":
-      return adminNavItems;
-    case "CONSUMER":
-      return consumerNavItems;
-    case "INVESTOR":
-    default:
-      return investorNavItems;
+function filterAdminNavItems(items: NavEntry[], role: UserRole): NavEntry[] {
+  const out: NavEntry[] = [];
+  for (const item of items) {
+    if (item.kind === "leaf") {
+      if (canAccessSection(role, item.section)) out.push(item);
+    } else {
+      if (!canAccessSection(role, item.section)) continue;
+      const visibleChildren = item.children.filter((c) =>
+        canAccessSection(role, c.section),
+      );
+      if (visibleChildren.length > 0) {
+        out.push({ ...item, children: visibleChildren });
+      }
+    }
   }
+  return out;
+}
+
+function getAdminItems(role: UserRole): NavEntry[] {
+  const base = filterAdminNavItems(adminNavItems, role);
+  if (canAccessSection(role, "usuarios")) {
+    return [...base, userManagementItem];
+  }
+  return base;
 }
 
 function isLeafActive(pathname: string, href: string): boolean {
@@ -164,11 +186,15 @@ function isGroupActive(pathname: string, group: NavGroup): boolean {
 
 export function MobileNav({ role }: { role: UserRole }) {
   const pathname = usePathname();
-  const navItems = getNavItems(role);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   const toggleGroup = (title: string) =>
     setOpenGroups((prev) => ({ ...prev, [title]: !prev[title] }));
+
+  const isInvestor = role === "INVESTOR";
+  const isConsumer = role === "CONSUMER";
+  const simpleItems = isInvestor ? investorNavItems : isConsumer ? consumerNavItems : null;
+  const adminItems = simpleItems ? [] : getAdminItems(role);
 
   return (
     <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
@@ -180,76 +206,95 @@ export function MobileNav({ role }: { role: UserRole }) {
       </div>
 
       <nav className="flex-1 space-y-1 p-3 overflow-y-auto">
-        {navItems.map((item) => {
-          if (item.kind === "leaf") {
-            const isActive = isLeafActive(pathname, item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-sidebar-accent text-sidebar-primary"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                )}
-              >
-                <item.icon className={cn("h-5 w-5", isActive && "text-sidebar-primary")} />
-                <span>{item.title}</span>
-              </Link>
-            );
-          }
-
-          const groupActive = isGroupActive(pathname, item);
-          const isOpen = openGroups[item.title] ?? groupActive;
-
-          return (
-            <div key={item.title} className="space-y-1">
-              <button
-                type="button"
-                onClick={() => toggleGroup(item.title)}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                  groupActive
-                    ? "text-sidebar-primary"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                )}
-              >
-                <item.icon className={cn("h-5 w-5", groupActive && "text-sidebar-primary")} />
-                <span className="flex-1 text-left">{item.title}</span>
-                <ChevronDown
+        {simpleItems
+          ? simpleItems.map((item) => {
+              const isActive = isLeafActive(pathname, item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
                   className={cn(
-                    "h-4 w-4 transition-transform",
-                    isOpen ? "rotate-0" : "-rotate-90"
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-primary"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                   )}
-                />
-              </button>
+                >
+                  <item.icon className={cn("h-5 w-5", isActive && "text-sidebar-primary")} />
+                  <span>{item.title}</span>
+                </Link>
+              );
+            })
+          : adminItems.map((item) => {
+              if (item.kind === "leaf") {
+                const isActive = isLeafActive(pathname, item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                      isActive
+                        ? "bg-sidebar-accent text-sidebar-primary"
+                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                    )}
+                  >
+                    <item.icon className={cn("h-5 w-5", isActive && "text-sidebar-primary")} />
+                    <span>{item.title}</span>
+                  </Link>
+                );
+              }
 
-              {isOpen && (
-                <div className="ml-4 space-y-1 border-l border-sidebar-border pl-2">
-                  {item.children.map((child) => {
-                    const childActive = isLeafActive(pathname, child.href);
-                    return (
-                      <Link
-                        key={child.href}
-                        href={child.href}
-                        className={cn(
-                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-                          childActive
-                            ? "bg-sidebar-accent text-sidebar-primary font-medium"
-                            : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                        )}
-                      >
-                        <child.icon className={cn("h-4 w-4", childActive && "text-sidebar-primary")} />
-                        <span>{child.title}</span>
-                      </Link>
-                    );
-                  })}
+              const groupActive = isGroupActive(pathname, item);
+              const isOpen = openGroups[item.title] ?? groupActive;
+
+              return (
+                <div key={item.title} className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(item.title)}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                      groupActive
+                        ? "text-sidebar-primary"
+                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                    )}
+                  >
+                    <item.icon className={cn("h-5 w-5", groupActive && "text-sidebar-primary")} />
+                    <span className="flex-1 text-left">{item.title}</span>
+                    <ChevronDown
+                      className={cn(
+                        "h-4 w-4 transition-transform",
+                        isOpen ? "rotate-0" : "-rotate-90"
+                      )}
+                    />
+                  </button>
+
+                  {isOpen && (
+                    <div className="ml-4 space-y-1 border-l border-sidebar-border pl-2">
+                      {item.children.map((child) => {
+                        const childActive = isLeafActive(pathname, child.href);
+                        return (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            className={cn(
+                              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                              childActive
+                                ? "bg-sidebar-accent text-sidebar-primary font-medium"
+                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                            )}
+                          >
+                            <child.icon className={cn("h-4 w-4", childActive && "text-sidebar-primary")} />
+                            <span>{child.title}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
       </nav>
     </div>
   );

@@ -22,6 +22,8 @@ const ROLE_LABELS: Record<UserRole, string> = {
   ADMIN: "Administrador",
   GESTOR: "Gestor",
   FINANCEIRO: "Financeiro",
+  POS_VENDA: "Pós-Venda",
+  GESTOR_OBRA: "Gestor de Obras",
   INVESTOR: "Investidor",
   CONSUMER: "Consumidor",
 };
@@ -30,6 +32,8 @@ const PANEL_TITLES: Record<UserRole, string> = {
   ADMIN: "Painel Administrativo",
   GESTOR: "Painel de Gestão",
   FINANCEIRO: "Painel Financeiro",
+  POS_VENDA: "Painel de Pós-Venda",
+  GESTOR_OBRA: "Painel de Obras",
   INVESTOR: "Portal do Investidor",
   CONSUMER: "Portal do Consumidor",
 };

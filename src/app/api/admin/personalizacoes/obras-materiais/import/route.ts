@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/roles";
+import { canAccessSection } from "@/lib/roles";
 import ExcelJS from "exceljs";
 
 type ParsedRow = {
@@ -63,7 +63,7 @@ function toStr(v: unknown): string | null {
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || !isAdminRole(session.user.role)) {
+  if (!session || !canAccessSection(session.user.role, "persObras")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

@@ -10,6 +10,9 @@ import {
   FileText,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-options";
+import { canAccessSection, type AdminSection } from "@/lib/roles";
 
 interface HubItem {
   title: string;
@@ -23,6 +26,7 @@ interface HubItem {
     | "Monitoramento"
     | "Concessionárias";
   accent: string;
+  section: AdminSection;
 }
 
 const items: HubItem[] = [
@@ -34,6 +38,7 @@ const items: HubItem[] = [
     icon: HardHat,
     group: "Obras",
     accent: "from-orange-500 to-amber-600",
+    section: "persObras",
   },
   {
     title: "Equipes de execução",
@@ -43,6 +48,7 @@ const items: HubItem[] = [
     icon: Users,
     group: "Obras",
     accent: "from-blue-500 to-indigo-600",
+    section: "persEquipes",
   },
   {
     title: "Alertas de usinas",
@@ -52,6 +58,7 @@ const items: HubItem[] = [
     icon: ShieldAlert,
     group: "Monitoramento",
     accent: "from-amber-500 to-red-600",
+    section: "persAlertasUsinas",
   },
   {
     title: "Códigos de erro do inversor",
@@ -61,6 +68,7 @@ const items: HubItem[] = [
     icon: Wrench,
     group: "Monitoramento",
     accent: "from-blue-500 to-indigo-700",
+    section: "persCodigosErroView",
   },
   {
     title: "Emails das concessionárias",
@@ -70,6 +78,7 @@ const items: HubItem[] = [
     icon: Mail,
     group: "Concessionárias",
     accent: "from-indigo-500 to-indigo-700",
+    section: "persDistribuidoraEmails",
   },
   {
     title: "Parâmetros do relatório",
@@ -79,6 +88,7 @@ const items: HubItem[] = [
     icon: FileText,
     group: "Financeiro",
     accent: "from-emerald-500 to-teal-700",
+    section: "persRelatorioParametros",
   },
 ];
 
@@ -90,7 +100,11 @@ const GROUPS: Array<HubItem["group"]> = [
   "Concessionárias",
 ];
 
-export default function PersonalizacoesHubPage() {
+export default async function PersonalizacoesHubPage() {
+  const session = await getServerSession(authOptions);
+  const role = session?.user?.role ?? "";
+  const visibleItems = items.filter((it) => canAccessSection(role, it.section));
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center gap-3">
@@ -107,7 +121,7 @@ export default function PersonalizacoesHubPage() {
       </div>
 
       {GROUPS.map((group) => {
-        const groupItems = items.filter((i) => i.group === group);
+        const groupItems = visibleItems.filter((i) => i.group === group);
         if (groupItems.length === 0) return null;
         return (
           <section key={group} className="space-y-3">

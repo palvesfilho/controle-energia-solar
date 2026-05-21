@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/roles";
+import { canAccessSection } from "@/lib/roles";
 import { loadObraCompleta } from "@/lib/obra-load";
 import { ConferenciaObraPDF } from "@/components/obra/conferencia-obra-pdf";
 
@@ -14,7 +14,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !isAdminRole(session.user.role)) {
+  if (!session || !canAccessSection(session.user.role, "obra")) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 

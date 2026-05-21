@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/roles";
+import { canAccessSection } from "@/lib/roles";
 
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || !isAdminRole(session.user.role)) {
+  if (!session || !canAccessSection(session.user.role, "obra")) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 

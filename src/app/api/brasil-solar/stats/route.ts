@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
-import { isAdminRole } from "@/lib/roles";
+import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 
 // GET /api/brasil-solar/stats - Dashboard stats
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session?.user || !isAdminRole(session.user.role)) {
+  if (!session?.user || !canAccessSection(session.user.role, "brasilSolar")) {
     return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
   }
 

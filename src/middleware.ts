@@ -1,29 +1,62 @@
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
+import {
+  canAccessSection,
+  canEnterAdminPanel,
+  getHomeRoute,
+  type AdminSection,
+} from "@/lib/roles";
 
-const ADMIN_ROLES = ["ADMIN", "GESTOR", "FINANCEIRO"];
+// Mais específico primeiro. resolveSection() casa o primeiro prefix que bater.
+const PATH_SECTIONS: Array<[string, AdminSection]> = [
+  ["/admin/usuarios", "usuarios"],
+  ["/admin/agenda", "agenda"],
+  ["/admin/investidores", "investidores"],
+  ["/admin/usinas", "investidores"],
+  ["/admin/consumidores", "clientes"],
+  ["/admin/unidades-consumidoras", "clientes"],
+  ["/admin/gestao-creditos", "gestaoCreditos"],
+  ["/admin/faturas-energia", "faturasEnergia"],
+  ["/admin/faturamento", "faturamento"],
+  ["/admin/brasil-solar", "brasilSolar"],
+  ["/admin/obra", "obra"],
+  ["/admin/personalizacoes/obras", "persObras"],
+  ["/admin/personalizacoes/equipes", "persEquipes"],
+  ["/admin/personalizacoes/codigos-erro-inversor", "persCodigosErroView"],
+  ["/admin/personalizacoes/distribuidora-emails", "persDistribuidoraEmails"],
+  ["/admin/personalizacoes/alertas-usinas", "persAlertasUsinas"],
+  ["/admin/personalizacoes/relatorio-parametros", "persRelatorioParametros"],
+  ["/admin/personalizacoes", "personalizacoesHub"],
+];
+
+function resolveAdminSection(pathname: string): AdminSection | null {
+  if (pathname === "/admin" || pathname === "/admin/") return "dashboard";
+  for (const [prefix, section] of PATH_SECTIONS) {
+    if (pathname === prefix || pathname.startsWith(prefix + "/")) {
+      return section;
+    }
+  }
+  return null;
+}
 
 export default withAuth(
   function middleware(req) {
     const token = req.nextauth.token;
     const pathname = req.nextUrl.pathname;
-    const role = token?.role as string;
+    const role = (token?.role as string) || "";
 
-    // Admin routes - only accessible by ADMIN, GESTOR, FINANCEIRO
     if (pathname.startsWith("/admin")) {
-      if (!ADMIN_ROLES.includes(role)) {
-        return NextResponse.redirect(new URL("/painel", req.url));
+      if (!canEnterAdminPanel(role)) {
+        return NextResponse.redirect(new URL(getHomeRoute(role), req.url));
       }
-
-      // User management - only ADMIN
-      if (pathname.startsWith("/admin/usuarios") && role !== "ADMIN") {
-        return NextResponse.redirect(new URL("/admin", req.url));
+      const section = resolveAdminSection(pathname);
+      if (section && !canAccessSection(role, section)) {
+        return NextResponse.redirect(new URL(getHomeRoute(role), req.url));
       }
     }
 
-    // Investor/Consumer panel - redirect admin roles to admin panel
-    if (pathname.startsWith("/painel") && ADMIN_ROLES.includes(role)) {
-      return NextResponse.redirect(new URL("/admin", req.url));
+    if (pathname.startsWith("/painel") && canEnterAdminPanel(role)) {
+      return NextResponse.redirect(new URL(getHomeRoute(role), req.url));
     }
 
     return NextResponse.next();

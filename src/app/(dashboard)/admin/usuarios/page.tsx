@@ -14,6 +14,8 @@ import {
   DollarSign,
   TrendingUp,
   Zap,
+  Headphones,
+  HardHat,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -30,6 +32,8 @@ const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Administrador",
   GESTOR: "Gestor",
   FINANCEIRO: "Financeiro",
+  POS_VENDA: "Pós-Venda",
+  GESTOR_OBRA: "Gestor de Obras",
   INVESTOR: "Investidor",
   CONSUMER: "Consumidor",
 };
@@ -38,6 +42,8 @@ const ROLE_COLORS: Record<string, string> = {
   ADMIN: "bg-red-500 hover:bg-red-600",
   GESTOR: "bg-blue-500 hover:bg-blue-600",
   FINANCEIRO: "bg-amber-500 hover:bg-amber-600",
+  POS_VENDA: "bg-cyan-500 hover:bg-cyan-600",
+  GESTOR_OBRA: "bg-orange-500 hover:bg-orange-600",
   INVESTOR: "bg-emerald-500 hover:bg-emerald-600",
   CONSUMER: "bg-purple-500 hover:bg-purple-600",
 };
@@ -46,11 +52,21 @@ const ROLE_ICONS: Record<string, React.ElementType> = {
   ADMIN: Shield,
   GESTOR: Briefcase,
   FINANCEIRO: DollarSign,
+  POS_VENDA: Headphones,
+  GESTOR_OBRA: HardHat,
   INVESTOR: TrendingUp,
   CONSUMER: Zap,
 };
 
-const ROLE_OPTIONS = ["ADMIN", "GESTOR", "FINANCEIRO", "INVESTOR", "CONSUMER"];
+const ROLE_OPTIONS = [
+  "ADMIN",
+  "GESTOR",
+  "FINANCEIRO",
+  "POS_VENDA",
+  "GESTOR_OBRA",
+  "INVESTOR",
+  "CONSUMER",
+];
 
 export default function UsuariosPage() {
   const [users, setUsers] = useState<UserData[]>([]);

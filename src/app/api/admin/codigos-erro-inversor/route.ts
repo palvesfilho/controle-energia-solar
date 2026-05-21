@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
-import { isAdminRole } from "@/lib/roles";
+import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import {
   ACOES_REQUERIDAS,
@@ -96,7 +96,7 @@ function validarPayload(body: unknown): CodigoInput | { error: string } {
 // GET /api/admin/codigos-erro-inversor?fabricante=FRONIUS
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.user || !isAdminRole(session.user.role)) {
+  if (!session?.user || !canAccessSection(session.user.role, "persCodigosErroView")) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
@@ -117,7 +117,7 @@ export async function GET(req: NextRequest) {
 // POST /api/admin/codigos-erro-inversor
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.user || !isAdminRole(session.user.role)) {
+  if (!session?.user || !canAccessSection(session.user.role, "persCodigosErroEdit")) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 

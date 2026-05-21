@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole } from "@/lib/roles";
+import { canAccessSection } from "@/lib/roles";
 import { isAtrasada, intervalosSobrepoem, startOfDay } from "@/lib/obra-calendario";
 
 export interface ResumoCalendario {
@@ -34,7 +34,7 @@ export interface ResumoCalendario {
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session || !isAdminRole(session.user.role)) {
+  if (!session || !canAccessSection(session.user.role, "obra")) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
