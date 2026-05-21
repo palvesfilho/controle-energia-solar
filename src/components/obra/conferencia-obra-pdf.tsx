@@ -95,7 +95,7 @@ export function ConferenciaObraPDF({ data }: { data: ConferenciaObraData }) {
             </Text>
           </View>
           <View style={styles.headerRight}>
-            <Text style={styles.brandName}>JECA</Text>
+            <Text style={styles.brandName}>AURA</Text>
             <Text style={styles.brandInfo}>Gestão de Energia Solar</Text>
           </View>
         </View>
@@ -189,7 +189,7 @@ export function ConferenciaObraPDF({ data }: { data: ConferenciaObraData }) {
         </View>
 
         <Text style={styles.footer}>
-          JECA — Conferência de Obra • {data.obra.nome}
+          AURA — Conferência de Obra • {data.obra.nome}
         </Text>
       </Page>
     </Document>

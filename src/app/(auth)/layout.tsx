@@ -44,7 +44,7 @@ export default function AuthLayout({
             >
               <Leaf className="h-6 w-6 text-white" />
             </div>
-            <span className="text-xl font-bold tracking-tight">JECA</span>
+            <span className="text-xl font-bold tracking-tight">AURA</span>
           </div>
         </div>
 
@@ -112,7 +112,7 @@ export default function AuthLayout({
             style={{ backgroundColor: brand.orangeLight }}
           />
           <p className="text-sm text-white/60">
-            JECA - Gestão de Energia Sustentável
+            AURA - Gestão de Energia Sustentável
           </p>
         </div>
       </div>

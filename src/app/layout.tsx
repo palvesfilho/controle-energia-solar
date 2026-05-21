@@ -10,7 +10,7 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "JECA - Gestão de Energia Solar",
+  title: "AURA - Gestão de Energia Solar",
   description: "Portal de acompanhamento de resultados de energia solar para investidores",
 };
 

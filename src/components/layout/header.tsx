@@ -88,7 +88,7 @@ export function Header({ role }: { role: UserRole }) {
           <div className="h-7 w-7 rounded-md bg-gradient-to-br from-green-600 to-emerald-600 flex items-center justify-center text-white">
             <Sparkles className="h-4 w-4" />
           </div>
-          <span className="font-bold text-sm">JECA</span>
+          <span className="font-bold text-sm">AURA</span>
         </div>
       </div>
 

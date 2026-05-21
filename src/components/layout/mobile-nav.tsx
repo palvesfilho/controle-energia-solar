@@ -202,7 +202,7 @@ export function MobileNav({ role }: { role: UserRole }) {
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-green-600 to-emerald-600 text-white">
           <Sparkles className="h-5 w-5" />
         </div>
-        <span className="text-lg font-bold">JECA</span>
+        <span className="text-lg font-bold">AURA</span>
       </div>
 
       <nav className="flex-1 space-y-1 p-3 overflow-y-auto">

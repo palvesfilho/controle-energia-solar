@@ -218,7 +218,7 @@ export function Sidebar({ role }: { role: UserRole }) {
           <Sparkles className="h-5 w-5" />
         </div>
         {!collapsed && (
-          <span className="text-lg font-bold text-sidebar-foreground">JECA</span>
+          <span className="text-lg font-bold text-sidebar-foreground">AURA</span>
         )}
       </div>
 
