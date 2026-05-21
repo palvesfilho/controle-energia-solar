@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
-import { isAdminRole, isFinanceRole } from "@/lib/roles";
+import { canEditPaidBill, isAdminRole, isFinanceRole } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { saveBufferToStorage } from "@/lib/file-storage";
 
@@ -59,10 +59,20 @@ export async function POST(
       anoReferencia: true,
       mesReferencia: true,
       consumerUnitId: true,
+      pagoEm: true,
     },
   });
   if (!bill) {
     return NextResponse.json({ error: "Fatura não encontrada" }, { status: 404 });
+  }
+
+  // Edição de registro já existente: só ADMIN ou GESTOR. FINANCEIRO consegue
+  // marcar a primeira vez, mas não sobrescrever o que já está lá (preserva auditoria).
+  if (bill.pagoEm && !canEditPaidBill(session.user.role)) {
+    return NextResponse.json(
+      { error: "Fatura já tem pagamento registrado. Apenas ADMIN ou GESTOR pode editar." },
+      { status: 403 },
+    );
   }
 
   // Salva comprovante (se enviado).
@@ -79,12 +89,16 @@ export async function POST(
     comprovanteAt = new Date();
   }
 
+  const origemPagamento =
+    session.user.name?.trim() || session.user.email?.trim() || "Sistema";
+
   const updated = await prisma.consumerBill.update({
     where: { id },
     data: {
       contaPaga: true,
       pagoEm,
       bancoPagamento: banco,
+      origemPagamento,
       ...(comprovanteUrl ? { comprovantePagamentoUrl: comprovanteUrl } : {}),
       ...(comprovanteAt ? { comprovantePagamentoAt: comprovanteAt } : {}),
     },
@@ -93,6 +107,7 @@ export async function POST(
       contaPaga: true,
       pagoEm: true,
       bancoPagamento: true,
+      origemPagamento: true,
       comprovantePagamentoUrl: true,
     },
   });

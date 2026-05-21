@@ -13,7 +13,7 @@ model User {
   email        String   @unique
   name         String
   passwordHash String   @map("password_hash")
-  role         String   @default("INVESTOR") // ADMIN | GESTOR | FINANCEIRO | INVESTOR | CONSUMER
+  role         String   @default("INVESTOR") // ADMIN | GESTOR | FINANCEIRO | POS_VENDA | GESTOR_OBRA | INVESTOR | CONSUMER
   active       Boolean  @default(true)
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
@@ -517,6 +517,9 @@ model ConsumerBill {
   bancoPagamento            String?   @map("banco_pagamento") // BANRISUL | C6_BANK | ASAAS
   comprovantePagamentoUrl   String?   @map("comprovante_pagamento_url")
   comprovantePagamentoAt    DateTime? @map("comprovante_pagamento_at")
+  // Origem do registro: "BACKUP LUMI" para importações via CSV;
+  // nome do usuário quando feito pela tela do sistema.
+  origemPagamento           String?   @map("origem_pagamento")
 
   // Dados de consumo
   consumoKwh       Float?    @map("consumo_kwh")

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, ClipboardCopy, Download, Loader2 } from "lucide-react";
+import { Check, ClipboardCopy, Download, Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -19,6 +19,12 @@ const BANCOS = [
   { value: "ASAAS", label: "Asaas" },
 ] as const;
 
+const BANCO_LABEL: Record<string, string> = {
+  C6_BANK: "C6 Bank",
+  BANRISUL: "Banrisul",
+  ASAAS: "Asaas",
+};
+
 const inputClass =
   "text-sm border rounded-lg px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all";
 
@@ -31,6 +37,10 @@ interface FaturaParaPagar {
   codigoBarras: string | null;
   pixCopiaCola: string | null;
   pdfUrl: string | null;
+  pagoEm: string | null;
+  bancoPagamento: string | null;
+  origemPagamento: string | null;
+  comprovantePagamentoUrl: string | null;
   uc: { codigoUc: string; nome: string; distribuidora: string | null } | null;
 }
 
@@ -46,16 +56,25 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString("pt-BR");
 }
 
+function isoToInputDate(iso: string | null): string {
+  if (!iso) return new Date().toISOString().slice(0, 10);
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
+  return d.toISOString().slice(0, 10);
+}
+
 interface PagarFaturaDialogProps {
   billId: string | null;
   open: boolean;
+  canEditPaid: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }
 
-export function PagarFaturaDialog({ billId, open, onOpenChange, onSuccess }: PagarFaturaDialogProps) {
+export function PagarFaturaDialog({ billId, open, canEditPaid, onOpenChange, onSuccess }: PagarFaturaDialogProps) {
   const [fatura, setFatura] = useState<FaturaParaPagar | null>(null);
   const [carregando, setCarregando] = useState(false);
+  const [editMode, setEditMode] = useState(false);
   const [pagoEm, setPagoEm] = useState(() => new Date().toISOString().slice(0, 10));
   const [banco, setBanco] = useState<string>("BANRISUL");
   const [comprovante, setComprovante] = useState<File | null>(null);
@@ -64,22 +83,38 @@ export function PagarFaturaDialog({ billId, open, onOpenChange, onSuccess }: Pag
   useEffect(() => {
     if (!open || !billId) {
       setFatura(null);
+      setEditMode(false);
       return;
     }
     setCarregando(true);
     setFatura(null);
-    setPagoEm(new Date().toISOString().slice(0, 10));
-    setBanco("BANRISUL");
+    setEditMode(false);
     setComprovante(null);
     fetch(`/api/admin/faturas-energia/${billId}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("Falha ao carregar"))))
-      .then((j) => setFatura(j as FaturaParaPagar))
+      .then((j) => {
+        const f = j as FaturaParaPagar;
+        setFatura(f);
+        setPagoEm(isoToInputDate(f.pagoEm));
+        setBanco(f.bancoPagamento ?? "BANRISUL");
+      })
       .catch(() => {
         toast.error("Erro ao carregar fatura");
         onOpenChange(false);
       })
       .finally(() => setCarregando(false));
   }, [billId, open, onOpenChange]);
+
+  const jaPaga = !!fatura?.pagoEm;
+  // 3 modos:
+  //  - register: nunca foi paga → formulário pra registrar (qualquer role com acesso)
+  //  - view: já paga, sem permissão de edição → só mostra
+  //  - edit: já paga, com permissão (ADMIN/GESTOR), depois de clicar "Editar"
+  const mode: "register" | "view" | "edit" = !jaPaga
+    ? "register"
+    : editMode
+      ? "edit"
+      : "view";
 
   const copiar = async (texto: string, label: string) => {
     try {
@@ -104,10 +139,10 @@ export function PagarFaturaDialog({ billId, open, onOpenChange, onSuccess }: Pag
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        toast.error("Erro ao registrar pagamento", { description: err.error });
+        toast.error(mode === "edit" ? "Erro ao atualizar pagamento" : "Erro ao registrar pagamento", { description: err.error });
         return;
       }
-      toast.success("Pagamento registrado");
+      toast.success(mode === "edit" ? "Pagamento atualizado" : "Pagamento registrado");
       onOpenChange(false);
       onSuccess();
     } finally {
@@ -115,12 +150,18 @@ export function PagarFaturaDialog({ billId, open, onOpenChange, onSuccess }: Pag
     }
   };
 
+  const tituloPorModo: Record<typeof mode, string> = {
+    register: "Pagar fatura",
+    view: "Detalhes do pagamento",
+    edit: "Editar pagamento",
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            Pagar fatura
+            {tituloPorModo[mode]}
             {fatura && fatura.mes > 0 ? ` · ${MESES_LABEL[fatura.mes - 1]}/${fatura.ano}` : ""}
           </DialogTitle>
         </DialogHeader>
@@ -130,6 +171,7 @@ export function PagarFaturaDialog({ billId, open, onOpenChange, onSuccess }: Pag
           </div>
         ) : fatura && fatura.uc ? (
           <div className="space-y-3 text-sm">
+            {/* Resumo UC + valor — sempre aparece */}
             <div className="rounded border bg-muted/30 p-3 space-y-1.5">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">UC:</span>
@@ -159,7 +201,54 @@ export function PagarFaturaDialog({ billId, open, onOpenChange, onSuccess }: Pag
               )}
             </div>
 
-            {fatura.codigoBarras && (
+            {/* Bloco "Pagamento registrado" — aparece em view/edit */}
+            {jaPaga && (
+              <div className="rounded border border-emerald-200 bg-emerald-50/50 p-3 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium uppercase tracking-wide text-emerald-800">
+                    Pagamento registrado
+                  </span>
+                  {mode === "view" && canEditPaid && (
+                    <button
+                      type="button"
+                      onClick={() => setEditMode(true)}
+                      className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-white px-2 py-0.5 text-xs text-emerald-800 hover:bg-emerald-100"
+                    >
+                      <Pencil className="h-3 w-3" /> Editar
+                    </button>
+                  )}
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Data:</span>
+                  <span className="font-medium">{formatDate(fatura.pagoEm)}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Banco:</span>
+                  <span className="font-medium">
+                    {fatura.bancoPagamento ? BANCO_LABEL[fatura.bancoPagamento] ?? fatura.bancoPagamento : "-"}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Origem:</span>
+                  <span className="font-medium">{fatura.origemPagamento ?? "-"}</span>
+                </div>
+                {fatura.comprovantePagamentoUrl && (
+                  <div className="pt-0.5">
+                    <a
+                      href={fatura.comprovantePagamentoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-800"
+                    >
+                      <Download className="h-3 w-3" /> Baixar comprovante
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Código de barras / PIX — só em register */}
+            {mode === "register" && fatura.codigoBarras && (
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Código de barras
@@ -182,7 +271,7 @@ export function PagarFaturaDialog({ billId, open, onOpenChange, onSuccess }: Pag
               </div>
             )}
 
-            {fatura.pixCopiaCola && (
+            {mode === "register" && fatura.pixCopiaCola && (
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   PIX Copia e Cola
@@ -206,53 +295,64 @@ export function PagarFaturaDialog({ billId, open, onOpenChange, onSuccess }: Pag
               </div>
             )}
 
-            {!fatura.codigoBarras && !fatura.pixCopiaCola && (
+            {mode === "register" && !fatura.codigoBarras && !fatura.pixCopiaCola && (
               <p className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
                 Sem código de barras nem PIX cadastrado nessa fatura.
               </p>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Data do pagamento
-                </label>
-                <input
-                  type="date"
-                  value={pagoEm}
-                  onChange={(e) => setPagoEm(e.target.value)}
-                  className={`${inputClass} w-full`}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Pago via
-                </label>
-                <select
-                  value={banco}
-                  onChange={(e) => setBanco(e.target.value)}
-                  className={`${inputClass} w-full`}
-                >
-                  {BANCOS.map((b) => (
-                    <option key={b.value} value={b.value}>
-                      {b.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+            {/* Formulário (register ou edit) */}
+            {(mode === "register" || mode === "edit") && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Data do pagamento
+                    </label>
+                    <input
+                      type="date"
+                      value={pagoEm}
+                      onChange={(e) => setPagoEm(e.target.value)}
+                      className={`${inputClass} w-full`}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Pago via
+                    </label>
+                    <select
+                      value={banco}
+                      onChange={(e) => setBanco(e.target.value)}
+                      className={`${inputClass} w-full`}
+                    >
+                      {BANCOS.map((b) => (
+                        <option key={b.value} value={b.value}>
+                          {b.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Comprovante (opcional)
-              </label>
-              <input
-                type="file"
-                accept="application/pdf,image/*"
-                onChange={(e) => setComprovante(e.target.files?.[0] ?? null)}
-                className="block w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-xs file:font-medium hover:file:bg-muted/80"
-              />
-            </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Comprovante {mode === "edit" ? "(substitui o atual se enviado)" : "(opcional)"}
+                  </label>
+                  <input
+                    type="file"
+                    accept="application/pdf,image/*"
+                    onChange={(e) => setComprovante(e.target.files?.[0] ?? null)}
+                    className="block w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-xs file:font-medium hover:file:bg-muted/80"
+                  />
+                </div>
+
+                {mode === "edit" && (
+                  <p className="text-xs text-muted-foreground italic">
+                    A origem será atualizada para o seu nome ao salvar.
+                  </p>
+                )}
+              </>
+            )}
           </div>
         ) : null}
         <DialogFooter>
@@ -262,24 +362,26 @@ export function PagarFaturaDialog({ billId, open, onOpenChange, onSuccess }: Pag
             disabled={saving}
             className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            Cancelar
+            {mode === "view" ? "Fechar" : "Cancelar"}
           </button>
-          <button
-            type="button"
-            onClick={confirmar}
-            disabled={saving || !fatura}
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
-          >
-            {saving ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Salvando...
-              </>
-            ) : (
-              <>
-                <Check className="h-4 w-4" /> Confirmar pagamento
-              </>
-            )}
-          </button>
+          {(mode === "register" || mode === "edit") && (
+            <button
+              type="button"
+              onClick={confirmar}
+              disabled={saving || !fatura}
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Salvando...
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" /> {mode === "edit" ? "Salvar alterações" : "Confirmar pagamento"}
+                </>
+              )}
+            </button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

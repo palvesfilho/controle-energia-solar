@@ -40,6 +40,7 @@ interface SerializedTask {
 interface AgendaWeekGridProps {
   inicio: string;
   fim: string;
+  userRole: string | null;
   tasks: SerializedTask[];
 }
 
@@ -86,11 +87,15 @@ function shiftWeekIso(currentInicio: Date, deltaWeeks: number): string {
   return d.toISOString();
 }
 
-export function AgendaWeekGrid({ inicio, fim, tasks }: AgendaWeekGridProps) {
+const ROLES_PODEM_EDITAR_PAGAMENTO = new Set(["ADMIN", "GESTOR"]);
+
+export function AgendaWeekGrid({ inicio, fim, userRole, tasks }: AgendaWeekGridProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const inicioDate = useMemo(() => new Date(inicio), [inicio]);
   const fimDate = useMemo(() => new Date(fim), [fim]);
+
+  const canEditPaidBill = userRole ? ROLES_PODEM_EDITAR_PAGAMENTO.has(userRole) : false;
 
   const [filterType, setFilterType] = useState<AgendaTaskType | "ALL">("ALL");
   const [filterStatus, setFilterStatus] = useState<AgendaTaskStatus | "ALL">("ALL");
@@ -102,9 +107,11 @@ export function AgendaWeekGrid({ inicio, fim, tasks }: AgendaWeekGridProps) {
   const [openDialog, setOpenDialog] = useState<{ type: AgendaTaskType; sourceId: string } | null>(null);
 
   const handleTaskClick = (task: SerializedTask) => {
-    if (task.status === "DONE") return; // já feito, sem ação
     if (task.type === "PAGAR_FATURA") {
+      // Tasks DONE também abrem o dialog — em modo visualização/edição conforme o role.
       setOpenDialog({ type: task.type, sourceId: task.sourceEntityId });
+    } else if (task.status === "DONE") {
+      return; // outros tipos: feito sai do caminho
     } else if (task.href) {
       router.push(task.href);
     }
@@ -373,6 +380,7 @@ export function AgendaWeekGrid({ inicio, fim, tasks }: AgendaWeekGridProps) {
       <PagarFaturaDialog
         billId={openDialog?.type === "PAGAR_FATURA" ? openDialog.sourceId : null}
         open={openDialog?.type === "PAGAR_FATURA"}
+        canEditPaid={canEditPaidBill}
         onOpenChange={(open) => !open && setOpenDialog(null)}
         onSuccess={handleDialogSuccess}
       />
@@ -434,16 +442,23 @@ function TaskCard({ task, onClick }: { task: SerializedTask; onClick: () => void
   const StatusIcon = STATUS_META[task.status].icon;
   const statusCls = STATUS_META[task.status].cls;
   const isDone = task.status === "DONE";
+  // PAGAR_FATURA permanece clicável quando DONE (abre detalhes). Outros tipos seguem desabilitados.
+  const clickableQuandoDone = task.type === "PAGAR_FATURA";
+  const disabled = isDone && !clickableQuandoDone;
 
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={isDone}
+      disabled={disabled}
       className={cn(
         "group block w-full rounded-md border-l-4 p-2 text-xs text-left transition",
         tone,
-        isDone ? "opacity-60 cursor-default" : "hover:shadow-sm hover:brightness-95 cursor-pointer"
+        disabled
+          ? "opacity-60 cursor-default"
+          : isDone
+            ? "opacity-75 hover:opacity-100 hover:shadow-sm cursor-pointer"
+            : "hover:shadow-sm hover:brightness-95 cursor-pointer"
       )}
     >
       <div className="flex items-start gap-1.5">

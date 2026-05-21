@@ -39,6 +39,8 @@ export async function GET(
       contaPaga: true,
       pagoEm: true,
       bancoPagamento: true,
+      origemPagamento: true,
+      comprovantePagamentoUrl: true,
       consumerUnit: {
         select: { codigoUc: true, nome: true, distribuidora: true },
       },
@@ -75,6 +77,8 @@ export async function GET(
     contaPaga: bill.contaPaga,
     pagoEm: bill.pagoEm?.toISOString() ?? null,
     bancoPagamento: bill.bancoPagamento,
+    origemPagamento: bill.origemPagamento,
+    comprovantePagamentoUrl: bill.comprovantePagamentoUrl,
     uc,
   });
 }

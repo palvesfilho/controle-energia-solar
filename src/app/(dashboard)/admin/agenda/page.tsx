@@ -1,3 +1,5 @@
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-options";
 import { getTasksForWeek, startOfWeekMonday, endOfWeekSunday } from "@/lib/agenda";
 import { AgendaWeekGrid } from "@/components/agenda/agenda-week-grid";
 
@@ -10,6 +12,9 @@ export default async function AgendaPage({ searchParams }: AgendaPageProps) {
   const ref = semana ? new Date(semana) : new Date();
   const inicio = startOfWeekMonday(ref);
   const fim = endOfWeekSunday(ref);
+
+  const session = await getServerSession(authOptions);
+  const userRole = session?.user?.role ?? null;
 
   const tasks = await getTasksForWeek(inicio, fim);
 
@@ -25,6 +30,7 @@ export default async function AgendaPage({ searchParams }: AgendaPageProps) {
       <AgendaWeekGrid
         inicio={inicio.toISOString()}
         fim={fim.toISOString()}
+        userRole={userRole}
         tasks={tasks.map((t) => ({
           ...t,
           scheduledFor: t.scheduledFor.toISOString(),
