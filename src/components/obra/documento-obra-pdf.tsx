@@ -61,7 +61,7 @@ export function DocumentoObraPDF({ data }: { data: DocumentoObraData }) {
             </Text>
           </View>
           <View style={styles.headerRight}>
-            <Text style={styles.brandName}>AURA</Text>
+            <Text style={styles.brandName}>JECA</Text>
             <Text style={styles.brandInfo}>Gestão de Energia Solar</Text>
           </View>
         </View>
@@ -208,7 +208,7 @@ export function DocumentoObraPDF({ data }: { data: DocumentoObraData }) {
         </View>
 
         <Text style={styles.footer}>
-          AURA — Gestão de Energia Solar • Ordem de Serviço {data.numeroOs}
+          JECA — Gestão de Energia Solar • Ordem de Serviço {data.numeroOs}
         </Text>
       </Page>
     </Document>
