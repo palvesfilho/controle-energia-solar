@@ -1,10 +1,10 @@
 import { prisma } from "./prisma";
 
 /**
- * Tarefas com `scheduledFor` anterior a esta data não aparecem na agenda.
- * Permite "esconder" o histórico até o backfill dos dados-origem (pagoEm,
- * publishedAt etc.) ser feito. Para mostrar tudo, defina como `null` ou
- * uma data bem antiga (ex.: new Date(2020, 0, 1)).
+ * Tarefas PENDING/OVERDUE com `scheduledFor` anterior a esta data não
+ * aparecem na agenda — evita poluir o histórico com pendências legadas.
+ * DONE passa pelo cutoff (útil pra auditar o backup do Lumi nas semanas
+ * antigas). Para mostrar tudo, defina como `null`.
  */
 export const AGENDA_MIN_DATE: Date | null = new Date(2026, 3, 1); // 2026-04-01
 
@@ -13,7 +13,15 @@ export type AgendaTaskType =
   | "EMITIR_RELATORIO_MENSAL"
   | "COBRAR_CLIENTE_DESCONTO"
   | "PAGAR_INVESTIDOR"
-  | "INFORMAR_LEITURA_RGE";
+  | "INFORMAR_LEITURA_RGE"
+  | "CONFERIR_PAGAMENTO_RGE";
+
+/**
+ * Dias após o pagamento interno (pagoEm) sem confirmação da concessionária
+ * antes da tarefa CONFERIR_PAGAMENTO_RGE aparecer. RGE costuma atualizar em
+ * 5-7 dias úteis; 10 dias é folga suficiente pra evitar falso-positivo.
+ */
+const DIAS_ATE_CONFERIR_RGE = 10;
 
 export type AgendaTaskStatus = "PENDING" | "DONE" | "OVERDUE";
 
@@ -281,7 +289,66 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
     }
   }
 
-  // ─── 5) INFORMAR_LEITURA_RGE ──────────────────────────────────────────
+  // ─── 5) CONFERIR_PAGAMENTO_RGE ────────────────────────────────────────
+  // 10 dias após pagoEm. Source: ConsumerBill com pagoEm preenchido mas
+  // contaPaga ainda false (concessionária não confirmou). Pareia com a
+  // dupla checagem da Gestão Financeira (interno × Infosimples).
+  // Some sozinha quando o próximo sync trouxer contaPaga=true (vira DONE).
+  const billsForConferRge = await prisma.consumerBill.findMany({
+    where: {
+      pagoEm: {
+        gte: addDays(windowStart, -DIAS_ATE_CONFERIR_RGE),
+        lte: addDays(windowEnd, -DIAS_ATE_CONFERIR_RGE),
+      },
+    },
+    select: {
+      id: true,
+      pagoEm: true,
+      contaPaga: true,
+      mesReferencia: true,
+      anoReferencia: true,
+      consumerUnitId: true,
+      consumerUnit: { select: { nome: true, codigoUc: true } },
+      plant: { select: { name: true, unidadeConsumidora: true } },
+    },
+  });
+
+  for (const b of billsForConferRge) {
+    if (!b.pagoEm) continue;
+    const scheduled = addDays(b.pagoEm, DIAS_ATE_CONFERIR_RGE);
+    if (!isWithin(scheduled, windowStart, windowEnd)) continue;
+    const isDone = b.contaPaga;
+    const isOverdue = !isDone && scheduled < today;
+    const nomeRef =
+      b.consumerUnit?.nome ??
+      b.consumerUnit?.codigoUc ??
+      b.plant?.name ??
+      b.plant?.unidadeConsumidora ??
+      "";
+    const labelUc = b.consumerUnit
+      ? `${b.consumerUnit.codigoUc} — ${b.consumerUnit.nome}`
+      : b.plant
+        ? `${b.plant.unidadeConsumidora ?? "—"} — ${b.plant.name} (usina)`
+        : null;
+    tasks.push({
+      id: `CONFERIR_RGE-${b.id}`,
+      type: "CONFERIR_PAGAMENTO_RGE",
+      title: `Conferir pagamento na RGE — ${nomeRef}`.trim(),
+      subtitle: `Pago em ${b.pagoEm.toLocaleDateString("pt-BR")} · Ref. ${String(b.mesReferencia).padStart(2, "0")}/${b.anoReferencia}`,
+      scheduledFor: scheduled,
+      dueDate: null,
+      status: isDone ? "DONE" : isOverdue ? "OVERDUE" : "PENDING",
+      sourceEntityType: "ConsumerBill",
+      sourceEntityId: b.id,
+      href: "/admin/faturas-energia/gestao-financeira",
+      mesReferencia: b.mesReferencia,
+      anoReferencia: b.anoReferencia,
+      consumerUnitId: b.consumerUnitId,
+      consumerUnitLabel: labelUc,
+    });
+  }
+
+  // ─── 6) INFORMAR_LEITURA_RGE ──────────────────────────────────────────
   // 1 dia antes de ConsumerBill.proximaLeitura (do bill mais recente de cada UC).
   // Sem status auto-derivável — sempre PENDING ou OVERDUE.
   const ucsComLeitura = await prisma.consumerUnit.findMany({
@@ -328,9 +395,10 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
     });
   }
 
-  // Filtra tarefas antes do "marco zero" da agenda (histórico escondido até backfill).
+  // Antes do "marco zero" só aparecem DONE — esconde pendências/atrasos legados
+  // mas preserva o histórico de tarefas concluídas (ex.: faturas do backup Lumi).
   const filtered = AGENDA_MIN_DATE
-    ? tasks.filter((t) => t.scheduledFor >= AGENDA_MIN_DATE)
+    ? tasks.filter((t) => t.scheduledFor >= AGENDA_MIN_DATE || t.status === "DONE")
     : tasks;
 
   // Ordena por scheduledFor crescente
@@ -364,4 +432,5 @@ export const TASK_TYPE_LABEL: Record<AgendaTaskType, string> = {
   COBRAR_CLIENTE_DESCONTO: "Cobrar cliente",
   PAGAR_INVESTIDOR: "Pagar investidor",
   INFORMAR_LEITURA_RGE: "Informar leitura RGE",
+  CONFERIR_PAGAMENTO_RGE: "Conferir pagamento RGE",
 };

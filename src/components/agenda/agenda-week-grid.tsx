@@ -11,6 +11,7 @@ import {
   Wallet,
   Users,
   Gauge,
+  ShieldCheck,
   CheckCircle2,
   AlertCircle,
   Circle,
@@ -37,11 +38,17 @@ interface SerializedTask {
   consumerUnitLabel: string | null;
 }
 
+interface UcOption {
+  id: string;
+  label: string;
+}
+
 interface AgendaWeekGridProps {
   inicio: string;
   fim: string;
   userRole: string | null;
   tasks: SerializedTask[];
+  allUcs: UcOption[];
 }
 
 const DIA_LABEL = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
@@ -68,6 +75,10 @@ const TYPE_META: Record<AgendaTaskType, { icon: React.ElementType; tone: string 
     icon: Gauge,
     tone: "border-l-rose-500 bg-rose-50 dark:bg-rose-950/30",
   },
+  CONFERIR_PAGAMENTO_RGE: {
+    icon: ShieldCheck,
+    tone: "border-l-purple-500 bg-purple-50 dark:bg-purple-950/30",
+  },
 };
 
 const STATUS_META: Record<AgendaTaskStatus, { icon: React.ElementType; cls: string; label: string }> = {
@@ -89,7 +100,7 @@ function shiftWeekIso(currentInicio: Date, deltaWeeks: number): string {
 
 const ROLES_PODEM_EDITAR_PAGAMENTO = new Set(["ADMIN", "GESTOR"]);
 
-export function AgendaWeekGrid({ inicio, fim, userRole, tasks }: AgendaWeekGridProps) {
+export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaWeekGridProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const inicioDate = useMemo(() => new Date(inicio), [inicio]);
@@ -148,15 +159,10 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks }: AgendaWeekGridP
   }, [tasks]);
 
   const ucOptions = useMemo(() => {
-    const set = new Map<string, { value: string; label: string }>();
-    for (const t of tasks) {
-      if (!t.consumerUnitId || !t.consumerUnitLabel) continue;
-      if (!set.has(t.consumerUnitId)) {
-        set.set(t.consumerUnitId, { value: t.consumerUnitId, label: t.consumerUnitLabel });
-      }
-    }
-    return Array.from(set.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [tasks]);
+    return allUcs
+      .map((u) => ({ value: u.id, label: u.label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [allUcs]);
 
   const filtered = useMemo(() => {
     return tasks.filter((t) => {
