@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { canAccessSection } from "@/lib/roles";
+import { parseDateOnly } from "@/lib/obra-calendario";
 
 export async function GET(
   _req: NextRequest,
@@ -59,16 +60,16 @@ export async function PUT(
       ...(body.local !== undefined && { local: body.local || null }),
       ...(body.status !== undefined && { status: body.status }),
       ...(body.dataInicioPrevista !== undefined && {
-        dataInicioPrevista: body.dataInicioPrevista ? new Date(body.dataInicioPrevista) : null,
+        dataInicioPrevista: parseDateOnly(body.dataInicioPrevista),
       }),
       ...(body.dataFimPrevista !== undefined && {
-        dataFimPrevista: body.dataFimPrevista ? new Date(body.dataFimPrevista) : null,
+        dataFimPrevista: parseDateOnly(body.dataFimPrevista),
       }),
       ...(body.dataInicioReal !== undefined && {
-        dataInicioReal: body.dataInicioReal ? new Date(body.dataInicioReal) : null,
+        dataInicioReal: parseDateOnly(body.dataInicioReal),
       }),
       ...(body.dataFimReal !== undefined && {
-        dataFimReal: body.dataFimReal ? new Date(body.dataFimReal) : null,
+        dataFimReal: parseDateOnly(body.dataFimReal),
       }),
       ...(body.progresso !== undefined && { progresso: Number(body.progresso) }),
       ...(body.plantId !== undefined && { plantId: body.plantId || null }),

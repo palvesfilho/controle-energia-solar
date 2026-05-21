@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { getTasksForWeek, startOfWeekMonday, endOfWeekSunday } from "@/lib/agenda";
 import { AgendaWeekGrid } from "@/components/agenda/agenda-week-grid";
+import { prisma } from "@/lib/prisma";
 
 interface AgendaPageProps {
   searchParams: Promise<{ semana?: string }>;
@@ -16,7 +17,14 @@ export default async function AgendaPage({ searchParams }: AgendaPageProps) {
   const session = await getServerSession(authOptions);
   const userRole = session?.user?.role ?? null;
 
-  const tasks = await getTasksForWeek(inicio, fim);
+  const [tasks, ucs] = await Promise.all([
+    getTasksForWeek(inicio, fim),
+    prisma.consumerUnit.findMany({
+      where: { active: true },
+      select: { id: true, codigoUc: true, nome: true },
+      orderBy: [{ codigoUc: "asc" }],
+    }),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -35,6 +43,10 @@ export default async function AgendaPage({ searchParams }: AgendaPageProps) {
           ...t,
           scheduledFor: t.scheduledFor.toISOString(),
           dueDate: t.dueDate?.toISOString() ?? null,
+        }))}
+        allUcs={ucs.map((u) => ({
+          id: u.id,
+          label: `${u.codigoUc}${u.nome ? ` — ${u.nome}` : ""}`,
         }))}
       />
     </div>

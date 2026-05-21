@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { canAccessSection } from "@/lib/roles";
+import { parseDateOnly } from "@/lib/obra-calendario";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -60,8 +61,8 @@ export async function POST(req: NextRequest) {
       cliente: body.cliente || null,
       local: body.local || null,
       status: body.status || "PLANEJAMENTO",
-      dataInicioPrevista: body.dataInicioPrevista ? new Date(body.dataInicioPrevista) : null,
-      dataFimPrevista: body.dataFimPrevista ? new Date(body.dataFimPrevista) : null,
+      dataInicioPrevista: parseDateOnly(body.dataInicioPrevista),
+      dataFimPrevista: parseDateOnly(body.dataFimPrevista),
       plantId: body.plantId || null,
       brasilSolarClientId: body.brasilSolarClientId || null,
       observacoes: body.observacoes || null,

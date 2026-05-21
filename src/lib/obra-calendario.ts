@@ -61,6 +61,20 @@ export function startOfDay(d: Date): Date {
   return x;
 }
 
+// Aceita "YYYY-MM-DD" ou ISO completo. Para strings sem hora, ancora em
+// 12:00 UTC do dia escolhido — assim a data se mantém igual em qualquer
+// fuso (US ao Japão), evitando o clássico bug de "-1 dia" causado por
+// `new Date("YYYY-MM-DD")` parsear como UTC midnight.
+export function parseDateOnly(v: string | null | undefined): Date | null {
+  if (!v) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v.trim());
+  if (m) {
+    return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0, 0));
+  }
+  const d = new Date(v);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
 // FullCalendar usa end *exclusivo*. Nosso dataFimPrevista é inclusivo
 // (último dia da obra), então somamos 1 dia para o calendário exibir
 // o bloco até o fim daquele dia.

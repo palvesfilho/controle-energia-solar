@@ -58,6 +58,7 @@ import {
   type ObraPrioridade,
   type ObraStatus,
 } from "@/lib/obra-calendario";
+import { parseObraMeta, serializeObraObservacoes } from "@/lib/obra-meta";
 
 const STATUS_OPTIONS: ObraStatus[] = [
   "PLANEJAMENTO",
@@ -91,18 +92,20 @@ function emptyFiltros(): FiltrosState {
   };
 }
 
+// Datas das obras são armazenadas como "dia do calendário" (sem hora útil) —
+// usamos a porção UTC para que o que aparece no input/UI seja sempre o dia que
+// o usuário digitou, independente do fuso do navegador.
 function formatDateBR(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("pt-BR");
+  const ymd = iso.slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!m) return new Date(iso).toLocaleDateString("pt-BR");
+  return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
 function toDateInput(iso: string | null): string {
   if (!iso) return "";
-  const d = new Date(iso);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return iso.slice(0, 10);
 }
 
 export function CalendarioClient({
@@ -125,6 +128,10 @@ export function CalendarioClient({
     dataInicio: string;
     dataFim: string;
     observacoes: string;
+    // Snapshot do `observacoes` original — usado pra preservar o tag
+    // `#OBRA_META` (proprietario, potência, inversor) na hora de salvar,
+    // sem que ele apareça no textarea.
+    observacoesOriginal: string;
   } | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -182,13 +189,15 @@ export function CalendarioClient({
   function abrirObra(r: CalendarioObraRow) {
     setObraSelecionada(r);
     setEditando(false);
+    const { rest } = parseObraMeta(r.observacoes);
     setFormEdit({
       status: r.status,
       prioridade: r.prioridade,
       equipeId: r.equipeId ?? "",
       dataInicio: toDateInput(r.dataInicioPrevista),
       dataFim: toDateInput(r.dataFimPrevista),
-      observacoes: r.observacoes ?? "",
+      observacoes: rest,
+      observacoesOriginal: r.observacoes ?? "",
     });
   }
 
@@ -202,6 +211,10 @@ export function CalendarioClient({
     if (!obraSelecionada || !formEdit) return;
     setSaving(true);
     try {
+      // Reanexa o tag `#OBRA_META` original ao texto editado pra preservar
+      // proprietário/potência/inversor que ficam escondidos do usuário.
+      const { meta } = parseObraMeta(formEdit.observacoesOriginal);
+      const observacoesPersist = serializeObraObservacoes(meta, formEdit.observacoes);
       const res = await fetch(
         `/api/admin/obra/${obraSelecionada.id}/datas`,
         {
@@ -213,7 +226,7 @@ export function CalendarioClient({
             equipeId: formEdit.equipeId || null,
             dataInicioPrevista: formEdit.dataInicio || null,
             dataFimPrevista: formEdit.dataFim || null,
-            observacoes: formEdit.observacoes,
+            observacoes: observacoesPersist,
           }),
         }
       );
@@ -244,20 +257,23 @@ export function CalendarioClient({
     revert: () => void
   ) {
     const inicio = new Date(start);
-    inicio.setHours(0, 0, 0, 0);
     // FullCalendar entrega end exclusivo; revertemos 1 dia para obter o
     // último dia inclusivo que nossa API espera.
     const fim = new Date(endExclusive);
     fim.setDate(fim.getDate() - 1);
-    fim.setHours(0, 0, 0, 0);
+
+    // Envia YYYY-MM-DD (dia local) — server normaliza pra UTC noon. Evita
+    // qualquer ambiguidade de fuso ao serializar via .toISOString().
+    const toYmd = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
     try {
       const res = await fetch(`/api/admin/obra/${id}/datas`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          dataInicioPrevista: inicio.toISOString(),
-          dataFimPrevista: fim.toISOString(),
+          dataInicioPrevista: toYmd(inicio),
+          dataFimPrevista: toYmd(fim),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -656,7 +672,7 @@ export function CalendarioClient({
         open={obraSelecionada !== null}
         onOpenChange={(v) => !v && fecharModal()}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           {obraSelecionada && formEdit && (
             <>
               <DialogHeader>
@@ -811,6 +827,7 @@ export function CalendarioClient({
                         })
                       }
                       rows={3}
+                      className="max-h-48 resize-y break-words"
                     />
                   </div>
                 </div>
@@ -832,16 +849,20 @@ export function CalendarioClient({
                     label="Fim previsto"
                     value={formatDateBR(obraSelecionada.dataFimPrevista)}
                   />
-                  {obraSelecionada.observacoes ? (
-                    <div className="md:col-span-2">
-                      <div className="text-xs font-medium text-muted-foreground">
-                        Observações
+                  {(() => {
+                    const restView = parseObraMeta(obraSelecionada.observacoes).rest.trim();
+                    if (!restView) return null;
+                    return (
+                      <div className="md:col-span-2 min-w-0">
+                        <div className="text-xs font-medium text-muted-foreground">
+                          Observações
+                        </div>
+                        <div className="whitespace-pre-wrap break-words text-sm">
+                          {restView}
+                        </div>
                       </div>
-                      <div className="whitespace-pre-wrap text-sm">
-                        {obraSelecionada.observacoes}
-                      </div>
-                    </div>
-                  ) : null}
+                    );
+                  })()}
                 </div>
               )}
 

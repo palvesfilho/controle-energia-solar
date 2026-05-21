@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { canAccessSection } from "@/lib/roles";
-import { buscarConflitosEquipe, startOfDay } from "@/lib/obra-calendario";
+import { buscarConflitosEquipe, parseDateOnly } from "@/lib/obra-calendario";
 
 interface Body {
   dataInicioPrevista?: string | null;
@@ -12,14 +12,6 @@ interface Body {
   status?: string | null;
   observacoes?: string | null;
   equipeId?: string | null;
-}
-
-// Aceita ISO com ou sem hora; normaliza para início do dia em UTC-consistent.
-function parseDate(v: string | null | undefined): Date | null {
-  if (!v) return null;
-  const d = new Date(v);
-  if (!Number.isFinite(d.getTime())) return null;
-  return startOfDay(d);
 }
 
 export async function PATCH(
@@ -41,11 +33,11 @@ export async function PATCH(
 
   const dataInicio =
     body.dataInicioPrevista !== undefined
-      ? parseDate(body.dataInicioPrevista)
+      ? parseDateOnly(body.dataInicioPrevista)
       : atual.dataInicioPrevista;
   const dataFim =
     body.dataFimPrevista !== undefined
-      ? parseDate(body.dataFimPrevista)
+      ? parseDateOnly(body.dataFimPrevista)
       : atual.dataFimPrevista;
   const equipeId =
     body.equipeId !== undefined ? body.equipeId || null : atual.equipeId;
