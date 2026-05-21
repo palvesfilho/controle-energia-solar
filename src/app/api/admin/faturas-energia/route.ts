@@ -11,7 +11,8 @@ export interface FaturaCell {
   billId: string | null;
   valorTotal: number | null;
   vencimento: string | null; // ISO date
-  contaPaga: boolean;
+  contaPaga: boolean; // espelha o status na concessionária (vem do sync Infosimples)
+  pagoEm: string | null; // ISO date — registro interno de pagamento
 }
 
 export interface FaturasEnergiaRow {
@@ -59,6 +60,7 @@ export async function GET(req: NextRequest) {
         valorTotal: true,
         vencimento: true,
         contaPaga: true,
+        pagoEm: true,
       },
     }),
     listExistingKeys("bills"),
@@ -75,12 +77,13 @@ export async function GET(req: NextRequest) {
   }
 
   function toCell(bill: typeof bills[number] | undefined): FaturaCell {
-    if (!bill) return { status: "missing", pdfUrl: null, billId: null, valorTotal: null, vencimento: null, contaPaga: false };
+    if (!bill) return { status: "missing", pdfUrl: null, billId: null, valorTotal: null, vencimento: null, contaPaga: false, pagoEm: null };
     const base = {
       billId: bill.id,
       valorTotal: bill.valorTotal ?? null,
       vencimento: bill.vencimento?.toISOString() ?? null,
       contaPaga: bill.contaPaga,
+      pagoEm: bill.pagoEm?.toISOString() ?? null,
     };
     if (!bill.pdfUrl) return { ...base, status: "error", pdfUrl: null };
     const key = relativePathToKey(bill.pdfUrl);

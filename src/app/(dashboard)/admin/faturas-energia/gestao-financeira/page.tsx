@@ -2,12 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Check,
+  Building2,
+  CheckCheck,
   ClipboardCopy,
+  Clock4,
   CreditCard,
   Download,
   Loader2,
   Minus,
+  Check,
   X,
   Wallet,
 } from "lucide-react";
@@ -27,11 +30,22 @@ const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Se
 const selectClass =
   "text-sm border rounded-lg px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all";
 
-type Pagamento = "paga" | "aberta" | "missing";
+// 5 estados de pagamento:
+//  - conferida  → pago interno + RGE confirmou (✅)
+//  - so-interno → pago interno, RGE ainda não confirmou (🟦 — aguardando concessionária)
+//  - so-rge     → RGE diz pago, sem registro interno (🟩 — anomalia, investigar)
+//  - aberta     → nem nós pagamos, nem RGE confirmou (🔴)
+//  - missing    → fatura não sincronizada (⬜)
+type Pagamento = "conferida" | "so-interno" | "so-rge" | "aberta" | "missing";
 
 function getPagamento(cell: FaturaCell | undefined): Pagamento {
   if (!cell || cell.status === "missing") return "missing";
-  return cell.contaPaga ? "paga" : "aberta";
+  const interno = !!cell.pagoEm;
+  const rge = cell.contaPaga;
+  if (interno && rge) return "conferida";
+  if (interno && !rge) return "so-interno";
+  if (!interno && rge) return "so-rge";
+  return "aberta";
 }
 
 function formatBRL(v: number | null): string {
@@ -46,28 +60,59 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString("pt-BR");
 }
 
+function buildCellTooltip(cell: FaturaCell, pag: Pagamento): string {
+  const base = `${formatBRL(cell.valorTotal)} • Venc: ${formatDate(cell.vencimento)}`;
+  if (pag === "conferida") {
+    return `Conferido — pago em ${formatDate(cell.pagoEm)} e confirmado pela concessionária • ${base}`;
+  }
+  if (pag === "so-interno") {
+    return `Pago em ${formatDate(cell.pagoEm)} (registro interno) — aguardando confirmação da concessionária • ${base}`;
+  }
+  if (pag === "so-rge") {
+    return `Concessionária registra como pago, mas sem registro interno — verificar • ${base}`;
+  }
+  return `Em aberto • ${base}`;
+}
+
 function CellIcon({ cell }: { cell: FaturaCell | undefined }) {
   const pag = getPagamento(cell);
-  const tooltip = cell && cell.status !== "missing"
-    ? `${pag === "paga" ? "Paga" : "Em aberto"} • ${formatBRL(cell.valorTotal)} • Venc: ${formatDate(cell.vencimento)}`
-    : "Sem fatura sincronizada";
+  const tooltip =
+    cell && cell.status !== "missing"
+      ? buildCellTooltip(cell, pag)
+      : "Sem fatura sincronizada";
 
-  if (pag === "paga") {
+  const wrap = "inline-flex h-7 w-7 items-center justify-center rounded-md";
+
+  if (pag === "conferida") {
     return (
-      <span title={tooltip} className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-        <Check className="h-3.5 w-3.5" />
+      <span title={tooltip} className={`${wrap} bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300`}>
+        <CheckCheck className="h-3.5 w-3.5" />
+      </span>
+    );
+  }
+  if (pag === "so-interno") {
+    return (
+      <span title={tooltip} className={`${wrap} bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300`}>
+        <Clock4 className="h-3.5 w-3.5" />
+      </span>
+    );
+  }
+  if (pag === "so-rge") {
+    return (
+      <span title={tooltip} className={`${wrap} bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300`}>
+        <Building2 className="h-3.5 w-3.5" />
       </span>
     );
   }
   if (pag === "aberta") {
     return (
-      <span title={tooltip} className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+      <span title={tooltip} className={`${wrap} bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300`}>
         <X className="h-3.5 w-3.5" />
       </span>
     );
   }
   return (
-    <span title={tooltip} className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground">
+    <span title={tooltip} className={`${wrap} bg-muted text-muted-foreground`}>
       <Minus className="h-3.5 w-3.5" />
     </span>
   );
@@ -211,7 +256,7 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
       }
       if (pagarApenasAbertas) {
         const temAberta = Object.values(r.meses).some(
-          (c) => c.status !== "missing" && !c.contaPaga,
+          (c) => c.status !== "missing" && !c.pagoEm,
         );
         if (!temAberta) return false;
       }
@@ -251,17 +296,42 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
   }, [rows, search, origemFilter, apenasAtivas]);
 
   const totals = useMemo(() => {
-    let paga = 0, aberta = 0, miss = 0, valorPaga = 0, valorAberta = 0;
+    let conferida = 0,
+      aguardando = 0,
+      anomalia = 0,
+      aberta = 0,
+      miss = 0,
+      valorConferida = 0,
+      valorAguardando = 0,
+      valorAberta = 0;
     for (const r of filtered) {
       for (let m = 1; m <= 12; m++) {
         const c = r.meses[m];
         const p = getPagamento(c);
-        if (p === "paga") { paga++; valorPaga += c?.valorTotal ?? 0; }
-        else if (p === "aberta") { aberta++; valorAberta += c?.valorTotal ?? 0; }
-        else miss++;
+        if (p === "conferida") {
+          conferida++;
+          valorConferida += c?.valorTotal ?? 0;
+        } else if (p === "so-interno") {
+          aguardando++;
+          valorAguardando += c?.valorTotal ?? 0;
+        } else if (p === "so-rge") {
+          anomalia++;
+        } else if (p === "aberta") {
+          aberta++;
+          valorAberta += c?.valorTotal ?? 0;
+        } else miss++;
       }
     }
-    return { paga, aberta, miss, valorPaga, valorAberta };
+    return {
+      conferida,
+      aguardando,
+      anomalia,
+      aberta,
+      miss,
+      valorConferida,
+      valorAguardando,
+      valorAberta,
+    };
   }, [filtered]);
 
   return (
@@ -274,7 +344,7 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
           <div>
             <h1 className="text-2xl font-bold">Faturas de Energia — Gestão Financeira</h1>
             <p className="text-sm text-muted-foreground">
-              Status de pagamento das faturas por UC e mês (dados da Infosimples).
+              Dupla checagem: registro interno de pagamento × confirmação da concessionária (Infosimples).
             </p>
           </div>
         </div>
@@ -335,20 +405,38 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Card>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Pagas
+              <CheckCheck className="h-3.5 w-3.5 text-emerald-600" /> Conferidas
             </div>
-            <div className="mt-1 text-2xl font-bold">{totals.paga}</div>
-            <div className="text-xs text-muted-foreground">{formatBRL(totals.valorPaga)}</div>
+            <div className="mt-1 text-2xl font-bold">{totals.conferida}</div>
+            <div className="text-xs text-muted-foreground">{formatBRL(totals.valorConferida)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
-              <span className="h-2.5 w-2.5 rounded-full bg-red-500" /> Em aberto
+              <Clock4 className="h-3.5 w-3.5 text-sky-600" /> Aguardando RGE
+            </div>
+            <div className="mt-1 text-2xl font-bold">{totals.aguardando}</div>
+            <div className="text-xs text-muted-foreground">{formatBRL(totals.valorAguardando)}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+              <Building2 className="h-3.5 w-3.5 text-amber-600" /> RGE sem registro
+            </div>
+            <div className="mt-1 text-2xl font-bold">{totals.anomalia}</div>
+            <div className="text-xs text-muted-foreground">verificar</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+              <X className="h-3.5 w-3.5 text-red-600" /> Em aberto
             </div>
             <div className="mt-1 text-2xl font-bold">{totals.aberta}</div>
             <div className="text-xs text-muted-foreground">{formatBRL(totals.valorAberta)}</div>
@@ -357,7 +445,7 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
         <Card>
           <CardContent className="p-3">
             <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
-              <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/40" /> Sem dado
+              <Minus className="h-3.5 w-3.5 text-muted-foreground/60" /> Sem dado
             </div>
             <div className="mt-1 text-2xl font-bold">{totals.miss}</div>
             <div className="text-xs text-muted-foreground">não sincronizado</div>
@@ -382,6 +470,39 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
       {!loading && !error && (
         <Card>
           <CardContent className="p-3">
+            <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+              <span className="font-medium uppercase tracking-wide">Legenda:</span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-emerald-100 text-emerald-700">
+                  <CheckCheck className="h-3 w-3" />
+                </span>
+                Conferida (interno + RGE)
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-sky-100 text-sky-700">
+                  <Clock4 className="h-3 w-3" />
+                </span>
+                Pago, aguardando RGE
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-amber-100 text-amber-700">
+                  <Building2 className="h-3 w-3" />
+                </span>
+                RGE sem registro interno
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-red-100 text-red-700">
+                  <X className="h-3 w-3" />
+                </span>
+                Em aberto
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-muted text-muted-foreground">
+                  <Minus className="h-3 w-3" />
+                </span>
+                Sem fatura
+              </span>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -451,7 +572,7 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
                   onChange={(e) => setPagarApenasAbertas(e.target.checked)}
                   className="accent-primary"
                 />
-                Apenas UCs com fatura em aberto
+                Apenas UCs com fatura sem pagamento interno
               </label>
               <span className="text-xs text-muted-foreground">
                 Clique em <X className="inline h-3.5 w-3.5 text-red-700 mx-0.5" /> pra pagar.
@@ -504,11 +625,11 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
                         </td>
                         {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
                           const cell = r.meses[m];
-                          const isAberta =
-                            !!cell && cell.status !== "missing" && !cell.contaPaga;
+                          const podePagar =
+                            !!cell && cell.status !== "missing" && !cell.pagoEm;
                           return (
                             <td key={m} className="px-1 py-1 text-center">
-                              {isAberta && cell.billId ? (
+                              {podePagar && cell.billId ? (
                                 <button
                                   type="button"
                                   onClick={() => abrirPagamentoCell(cell.billId!)}

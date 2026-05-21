@@ -17,8 +17,10 @@ export const runtime = "nodejs";
  *  - banco: BANRISUL | C6_BANK | ASAAS
  *  - comprovante: File (opcional — quando fornecido, salva em /uploads/comprovantes-fatura/)
  *
- * Marca a ConsumerBill como paga (contaPaga=true), seta pagoEm, banco e
- * comprovante.
+ * Registra o pagamento interno (pagoEm + banco + comprovante).
+ * NÃO toca em contaPaga — esse campo espelha o que a concessionária diz
+ * (vem só do sync Infosimples). Divergência entre pagoEm preenchido e
+ * contaPaga=false é o sinal de que a RGE ainda não compensou.
  */
 export async function POST(
   req: NextRequest,
@@ -95,7 +97,6 @@ export async function POST(
   const updated = await prisma.consumerBill.update({
     where: { id },
     data: {
-      contaPaga: true,
       pagoEm,
       bancoPagamento: banco,
       origemPagamento,
