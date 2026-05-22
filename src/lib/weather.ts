@@ -162,18 +162,35 @@ export async function buscarPrevisao(
 }
 
 // Extrai um "local" de busca a partir do campo livre `local` da obra.
-// O usuário às vezes coloca endereço completo ("Rua X, 123 - Centro, Caxias do Sul/RS").
-// Pegamos a última parte separada por vírgula/hífen, que costuma ser a cidade.
+// Formatos que aparecem na base:
+//   - "AV. BRASIL, 2133 - MEDIANEIRA, CACHOEIRA DO SUL, RS"   (cidade, UF no fim)
+//   - "Rua X, 123 - Centro, Caxias do Sul/RS"
+//   - "Caxias do Sul - RS"
+// Estratégia: se o último segmento separado por vírgula for uma UF (2 letras
+// maiúsculas), usar penúltimo segmento como cidade + UF como estado.
 export function extrairCidadeDeTextoLivre(localFree: string): string | null {
   const s = localFree.trim();
   if (!s) return null;
-  // Tenta pegar trecho "Cidade/UF" ou "Cidade - UF"
+
+  // Quebra por vírgula e tira espaços.
+  const parts = s.split(",").map((p) => p.trim()).filter(Boolean);
+
+  // Caso A: ..., CIDADE, UF
+  if (parts.length >= 2) {
+    const last = parts[parts.length - 1];
+    if (/^[A-Z]{2}$/.test(last)) {
+      const cidade = parts[parts.length - 2];
+      return `${cidade}, ${last}`;
+    }
+  }
+
+  // Caso B: "Cidade/UF" ou "Cidade - UF" no texto inteiro.
   const ufMatch = s.match(/([A-Za-zÀ-ÿ\s.'-]{2,})\s*[/-]\s*([A-Z]{2})\b/);
   if (ufMatch) {
     return `${ufMatch[1].trim()}, ${ufMatch[2]}`;
   }
-  // Fallback: pega último segmento separado por vírgula
-  const parts = s.split(",").map((p) => p.trim()).filter(Boolean);
+
+  // Fallback: último segmento por vírgula.
   if (parts.length > 0) return parts[parts.length - 1];
   return s;
 }
