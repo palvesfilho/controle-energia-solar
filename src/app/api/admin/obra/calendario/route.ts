@@ -10,6 +10,7 @@ import {
   isAtrasada,
   toFullCalendarEnd,
 } from "@/lib/obra-calendario";
+import { extrairCidadeDeTextoLivre, geocodeCidade } from "@/lib/weather";
 
 export interface CalendarioObraRow {
   id: string;
@@ -29,6 +30,11 @@ export interface CalendarioObraRow {
   // Datas prontas para FullCalendar (ISO, end exclusivo)
   fcStart: string | null;
   fcEnd: string | null;
+  // Coordenadas resolvidas pra busca de previsão do tempo. Vem do
+  // proprietário (BrasilSolarClient) ou de geocoding da cidade.
+  weatherLat: number | null;
+  weatherLon: number | null;
+  weatherLabel: string | null;
 }
 
 export async function GET(req: NextRequest) {
@@ -68,29 +74,85 @@ export async function GET(req: NextRequest) {
       include: { equipe: { select: { id: true, nome: true } } },
     });
 
-    const rows: CalendarioObraRow[] = obras.map((o) => {
-      const atrasada = isAtrasada(o.status, o.dataFimPrevista);
-      return {
-        id: o.id,
-        nome: o.nome,
-        cliente: o.cliente,
-        local: o.local,
-        responsavel: o.responsavel,
-        equipeId: o.equipeId,
-        equipeNome: o.equipe?.nome ?? null,
-        status: o.status as ObraStatus,
-        prioridade: (o.prioridade as ObraPrioridade) ?? "MEDIA",
-        progresso: o.progresso,
-        dataInicioPrevista: o.dataInicioPrevista?.toISOString() ?? null,
-        dataFimPrevista: o.dataFimPrevista?.toISOString() ?? null,
-        observacoes: o.observacoes,
-        atrasada,
-        fcStart: o.dataInicioPrevista?.toISOString() ?? null,
-        fcEnd: o.dataFimPrevista
-          ? toFullCalendarEnd(o.dataFimPrevista).toISOString()
-          : null,
-      };
-    });
+    // Resolve lat/long do proprietário (quando vinculado) em uma query.
+    const proprietarioIds = Array.from(
+      new Set(
+        obras
+          .map((o) => o.brasilSolarProprietarioId)
+          .filter((v): v is string => Boolean(v))
+      )
+    );
+    const proprietarios = proprietarioIds.length
+      ? await prisma.brasilSolarClient.findMany({
+          where: { id: { in: proprietarioIds } },
+          select: {
+            id: true,
+            latitude: true,
+            longitude: true,
+            cidade: true,
+            uf: true,
+          },
+        })
+      : [];
+    const propById = new Map(proprietarios.map((p) => [p.id, p]));
+
+    // Geocoda cidades faltantes em paralelo (cache em memória dentro de
+    // lib/weather.ts, então repetir não custa).
+    const rows: CalendarioObraRow[] = await Promise.all(
+      obras.map(async (o) => {
+        const atrasada = isAtrasada(o.status, o.dataFimPrevista);
+
+        let weatherLat: number | null = null;
+        let weatherLon: number | null = null;
+        let weatherLabel: string | null = null;
+
+        const prop = o.brasilSolarProprietarioId
+          ? propById.get(o.brasilSolarProprietarioId)
+          : null;
+        if (prop?.latitude != null && prop?.longitude != null) {
+          weatherLat = prop.latitude;
+          weatherLon = prop.longitude;
+          weatherLabel = [prop.cidade, prop.uf].filter(Boolean).join("/") || null;
+        } else {
+          // Fallback: cidade do proprietário (sem lat/long) ou texto livre da obra.
+          const candidato =
+            (prop?.cidade ? `${prop.cidade}${prop.uf ? `, ${prop.uf}` : ""}` : null) ??
+            (o.local ? extrairCidadeDeTextoLivre(o.local) : null);
+          if (candidato) {
+            const geo = await geocodeCidade(candidato);
+            if (geo) {
+              weatherLat = geo.latitude;
+              weatherLon = geo.longitude;
+              weatherLabel = geo.name;
+            }
+          }
+        }
+
+        return {
+          id: o.id,
+          nome: o.nome,
+          cliente: o.cliente,
+          local: o.local,
+          responsavel: o.responsavel,
+          equipeId: o.equipeId,
+          equipeNome: o.equipe?.nome ?? null,
+          status: o.status as ObraStatus,
+          prioridade: (o.prioridade as ObraPrioridade) ?? "MEDIA",
+          progresso: o.progresso,
+          dataInicioPrevista: o.dataInicioPrevista?.toISOString() ?? null,
+          dataFimPrevista: o.dataFimPrevista?.toISOString() ?? null,
+          observacoes: o.observacoes,
+          atrasada,
+          fcStart: o.dataInicioPrevista?.toISOString() ?? null,
+          fcEnd: o.dataFimPrevista
+            ? toFullCalendarEnd(o.dataFimPrevista).toISOString()
+            : null,
+          weatherLat,
+          weatherLon,
+          weatherLabel,
+        };
+      })
+    );
 
     return NextResponse.json({ rows });
   } catch (err) {
