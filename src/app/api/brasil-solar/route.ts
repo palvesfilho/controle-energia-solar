@@ -29,11 +29,12 @@ export async function GET(req: NextRequest) {
 
   if (search) {
     where.OR = [
-      { nome: { contains: search } },
-      { cpfCnpj: { contains: search } },
-      { email: { contains: search } },
-      { codigoUc: { contains: search } },
-      { cidade: { contains: search } },
+      { nome: { contains: search, mode: "insensitive" } },
+      { cpfCnpj: { contains: search, mode: "insensitive" } },
+      { email: { contains: search, mode: "insensitive" } },
+      { codigoUc: { contains: search, mode: "insensitive" } },
+      { cidade: { contains: search, mode: "insensitive" } },
+      { proprietario: { nome: { contains: search, mode: "insensitive" } } },
     ];
   }
 

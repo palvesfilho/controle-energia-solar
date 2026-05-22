@@ -37,10 +37,11 @@ export async function GET(req: NextRequest) {
 
   if (search) {
     const filters = [
-      { nome: { contains: search } },
-      { cpfCnpj: { contains: search } },
-      { codigoUc: { contains: search } },
-      { cidade: { contains: search } },
+      { nome: { contains: search, mode: "insensitive" } },
+      { cpfCnpj: { contains: search, mode: "insensitive" } },
+      { codigoUc: { contains: search, mode: "insensitive" } },
+      { cidade: { contains: search, mode: "insensitive" } },
+      { proprietario: { nome: { contains: search, mode: "insensitive" } } },
     ];
     if (Array.isArray(where.OR)) {
       where.AND = [{ OR: where.OR }, { OR: filters }];
