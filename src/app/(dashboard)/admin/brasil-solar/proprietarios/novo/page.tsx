@@ -18,7 +18,25 @@ interface FormData {
   cidade: string;
   uf: string;
   observacoes: string;
+  tipoTelhado: string;
+  tipoTelhadoOutro: string;
+  dataPagamento: string;
+  prazoContratoDias: string;
 }
+
+export const TIPO_TELHADO_OPTIONS: { value: string; label: string }[] = [
+  { value: "FIBROCIMENTO", label: "Fibrocimento" },
+  { value: "CERAMICO", label: "Cerâmico" },
+  { value: "LAJE", label: "Laje" },
+  { value: "CARPORT", label: "Carport" },
+  { value: "USINA_DE_SOLO", label: "Usina de Solo" },
+  { value: "CALHETAO_FIBROCIMENTO", label: "Calhetão Fibrocimento" },
+  { value: "CALHETAO_METALICO", label: "Calhetão Metálico" },
+  { value: "MISTO", label: "Misto" },
+];
+
+const TIPOS_COM_ESTRUTURA = new Set(["CARPORT", "USINA_DE_SOLO"]);
+const PRAZO_MIN_CARPORT_SOLO = 19; // 3 dias de estrutura + 15 dias de lag + 1 dia mínimo de instalação
 
 // Dados técnicos da planta extraídos do Anexo F, guardados para pré-preencher
 // a tela "Novo Cliente" após a criação do proprietário.
@@ -54,6 +72,8 @@ export default function NovoProprietarioPage() {
   const [form, setForm] = useState<FormData>({
     nome: "", cpfCnpj: "", email: "", telefone: "",
     endereco: "", cidade: "", uf: "", observacoes: "",
+    tipoTelhado: "", tipoTelhadoOutro: "",
+    dataPagamento: "", prazoContratoDias: "",
   });
 
   function set(field: keyof FormData, value: string) {
@@ -77,6 +97,7 @@ export default function NovoProprietarioPage() {
       const { data } = await res.json();
 
       setForm((prev) => ({
+        ...prev,
         nome: data.nome ?? prev.nome,
         cpfCnpj: data.cpfCnpj ?? prev.cpfCnpj,
         email: data.email ?? prev.email,
@@ -84,7 +105,6 @@ export default function NovoProprietarioPage() {
         endereco: data.endereco ?? prev.endereco,
         cidade: data.cidade ?? prev.cidade,
         uf: data.uf ?? prev.uf,
-        observacoes: prev.observacoes,
       }));
 
       setPlantaPrefill({
@@ -124,10 +144,37 @@ export default function NovoProprietarioPage() {
       toast.error("Telefone inválido. Use (XX)XXXXX-XXXX");
       return;
     }
+    if (!form.tipoTelhado) {
+      toast.error("Selecione o tipo de telhado");
+      return;
+    }
+    if (form.tipoTelhado === "MISTO" && !form.tipoTelhadoOutro.trim()) {
+      toast.error("Descreva o tipo de telhado misto");
+      return;
+    }
+    if (!form.dataPagamento) {
+      toast.error("Informe a data de pagamento");
+      return;
+    }
+    const prazo = parseInt(form.prazoContratoDias, 10);
+    if (!Number.isFinite(prazo) || prazo <= 0) {
+      toast.error("Informe o prazo do contrato em dias (maior que zero)");
+      return;
+    }
+    if (TIPOS_COM_ESTRUTURA.has(form.tipoTelhado) && prazo < PRAZO_MIN_CARPORT_SOLO) {
+      toast.error(
+        `Para CARPORT/USINA DE SOLO o prazo precisa ser de no mínimo ${PRAZO_MIN_CARPORT_SOLO} dias (3d estrutura + 15d intervalo + instalação)`
+      );
+      return;
+    }
 
     setSaving(true);
     try {
-      const payload: Record<string, unknown> = { ...form };
+      const payload: Record<string, unknown> = {
+        ...form,
+        prazoContratoDias: prazo,
+        tipoTelhadoOutro: form.tipoTelhado === "MISTO" ? form.tipoTelhadoOutro.trim() : null,
+      };
       if (plantaPrefill && Object.values(plantaPrefill).some((v) => v !== undefined)) {
         payload.planta = plantaPrefill;
       }
@@ -217,10 +264,85 @@ export default function NovoProprietarioPage() {
         </CardContent>
       </Card>
 
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} className="space-y-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Dados do Proprietario</CardTitle>
+            <CardTitle className="text-sm">Dados do Contrato</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label className="text-sm font-medium">Tipo de telhado *</label>
+                <select
+                  value={form.tipoTelhado}
+                  onChange={(e) => set("tipoTelhado", e.target.value)}
+                  className="w-full mt-1 px-3 py-2 text-sm border rounded-lg bg-background"
+                  required
+                >
+                  <option value="">Selecionar...</option>
+                  {TIPO_TELHADO_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {form.tipoTelhado === "MISTO" && (
+                <div className="md:col-span-2">
+                  <label className="text-sm font-medium">
+                    Descreva os tipos de telhado *
+                  </label>
+                  <input
+                    type="text"
+                    value={form.tipoTelhadoOutro}
+                    onChange={(e) => set("tipoTelhadoOutro", e.target.value)}
+                    className="w-full mt-1 px-3 py-2 text-sm border rounded-lg"
+                    placeholder="Ex.: cerâmico + fibrocimento na lateral"
+                    required
+                  />
+                </div>
+              )}
+              <div>
+                <label className="text-sm font-medium">Data de pagamento *</label>
+                <input
+                  type="date"
+                  value={form.dataPagamento}
+                  onChange={(e) => set("dataPagamento", e.target.value)}
+                  className="w-full mt-1 px-3 py-2 text-sm border rounded-lg"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">
+                  Prazo do contrato (dias) *
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={form.prazoContratoDias}
+                  onChange={(e) => set("prazoContratoDias", e.target.value)}
+                  className="w-full mt-1 px-3 py-2 text-sm border rounded-lg"
+                  placeholder="Ex.: 60"
+                  required
+                />
+              </div>
+            </div>
+            {TIPOS_COM_ESTRUTURA.has(form.tipoTelhado) && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+                <strong>Cronograma automático:</strong> ao salvar, serão criadas duas
+                tarefas para esta obra — (1) execução da estrutura de fixação de{" "}
+                {form.tipoTelhado === "CARPORT" ? "carport" : "usina de solo"} (3 dias) e
+                (2) instalação do sistema fotovoltaico, no mínimo 15 dias após o término
+                da estrutura.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Dados do Proprietário</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -923,6 +923,17 @@ model BrasilSolarProprietario {
   numeroFases        String? @map("numero_fases")
   tipoAtendimento    String? @map("tipo_atendimento")
 
+  // Dados de gestão do contrato/obra. Coletados na criação do proprietário
+  // (obrigatórios via API; nullable no banco apenas para tolerar registros
+  // anteriores à migração).
+  // tipoTelhado: FIBROCIMENTO | CERAMICO | LAJE | CARPORT | USINA_DE_SOLO |
+  //              CALHETAO_FIBROCIMENTO | CALHETAO_METALICO | MISTO
+  // tipoTelhadoOutro: descrição livre quando tipoTelhado = MISTO
+  tipoTelhado       String?   @map("tipo_telhado")
+  tipoTelhadoOutro  String?   @map("tipo_telhado_outro")
+  dataPagamento     DateTime? @map("data_pagamento")
+  prazoContratoDias Int?      @map("prazo_contrato_dias")
+
   observacoes String?
 
   active    Boolean  @default(true)
