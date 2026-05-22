@@ -24,6 +24,7 @@ import {
   HardHat,
   ClipboardCheck,
   ClipboardList,
+  PackageCheck,
   Settings2,
   Coins,
   Scale,
@@ -133,6 +134,7 @@ const adminNavItems: NavEntry[] = [
     icon: HardHat,
     children: [
       { kind: "leaf", section: "obra", title: "Gestão de Obra", href: "/admin/obra/gestao-obra", icon: ClipboardList },
+      { kind: "leaf", section: "obra", title: "Obras Finalizadas", href: "/admin/obra/finalizadas", icon: PackageCheck },
       { kind: "leaf", section: "obra", title: "Aprovação de Obras", href: "/admin/obra/aprovacao", icon: ClipboardCheck },
       { kind: "leaf", section: "obra", title: "Calendário de Obras", href: "/admin/obra/calendario", icon: CalendarCheck },
     ],

@@ -42,14 +42,19 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const incluirFinalizadas = searchParams.get("finalizadas") === "true";
+  const apenasFinalizadas = searchParams.get("apenasFinalizadas") === "true";
+
+  const statusFilter = apenasFinalizadas
+    ? { status: { in: ["CONCLUIDA", "CANCELADA"] as ObraStatus[] } }
+    : incluirFinalizadas
+      ? {}
+      : { status: { notIn: ["CONCLUIDA", "CANCELADA"] as ObraStatus[] } };
 
   try {
     const obras = await prisma.obra.findMany({
       where: {
         active: true,
-        ...(incluirFinalizadas
-          ? {}
-          : { status: { notIn: ["CONCLUIDA", "CANCELADA"] } }),
+        ...statusFilter,
       },
       orderBy: [{ status: "asc" }, { createdAt: "desc" }],
       include: { listaMaterial: { select: { pdfGeradoEm: true } } },

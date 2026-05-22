@@ -134,23 +134,19 @@ export default function GestaoObraPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | ObraStatus>("all");
   const [search, setSearch] = useState("");
-  const [showFinalizadas, setShowFinalizadas] = useState(false);
   const [finalizandoId, setFinalizandoId] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
     setError(null);
-    const url = showFinalizadas
-      ? "/api/admin/obra/gestao-obra?finalizadas=true"
-      : "/api/admin/obra/gestao-obra";
-    fetch(url)
+    fetch("/api/admin/obra/gestao-obra")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("Falha ao carregar"))))
       .then((data) => setRows(data.rows ?? []))
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [showFinalizadas]);
+  useEffect(load, []);
 
   async function handleFinalizar(row: GestaoObraRow) {
     if (!confirm(`Marcar a obra "${row.nome}" como concluída?`)) return;
@@ -258,12 +254,6 @@ export default function GestaoObraPage() {
                 <option value="PLANEJAMENTO">Planejamento</option>
                 <option value="EM_EXECUCAO">Em execução</option>
                 <option value="PAUSADA">Pausada</option>
-                {showFinalizadas && (
-                  <>
-                    <option value="CONCLUIDA">Concluída</option>
-                    <option value="CANCELADA">Cancelada</option>
-                  </>
-                )}
               </select>
             </div>
             <div className="space-y-1.5 flex-1 min-w-[220px]">
@@ -280,14 +270,13 @@ export default function GestaoObraPage() {
                 />
               </div>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={showFinalizadas}
-                onChange={(e) => setShowFinalizadas(e.target.checked)}
-              />
-              Incluir finalizadas
-            </label>
+            <Link
+              href="/admin/obra/finalizadas"
+              className="h-9 inline-flex items-center gap-1 px-3 text-sm font-medium border rounded-lg hover:bg-muted/50 transition-colors"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Ver finalizadas
+            </Link>
             <button
               type="button"
               onClick={load}
