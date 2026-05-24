@@ -33,6 +33,8 @@ import {
   Scale,
   PieChart,
   CalendarClock,
+  TrendingUp,
+  BarChart3,
 } from "lucide-react";
 import { useState } from "react";
 import { UserRole } from "@/types/next-auth";
@@ -120,6 +122,7 @@ const adminNavItems: NavEntry[] = [
       { kind: "leaf", section: "faturamento", title: "Usinas", href: "/admin/faturamento/usinas", icon: Building2 },
       { kind: "leaf", section: "faturamento", title: "Unidades Consumidoras", href: "/admin/faturamento/unidades-consumidoras", icon: Plug },
       { kind: "leaf", section: "faturamento", title: "Fechamento Investidores", href: "/admin/faturamento/fechamentos-investidor", icon: CalendarCheck },
+      { kind: "leaf", section: "faturamento", title: "Fechamento Financeiro", href: "/admin/faturamento/fechamento-financeiro", icon: TrendingUp },
     ],
   },
   {
@@ -140,6 +143,7 @@ const adminNavItems: NavEntry[] = [
     title: "Obra",
     icon: HardHat,
     children: [
+      { kind: "leaf", section: "obra", title: "Indicadores", href: "/admin/obra/indicadores", icon: BarChart3 },
       { kind: "leaf", section: "obra", title: "Gestão de Obra", href: "/admin/obra/gestao-obra", icon: ClipboardList },
       { kind: "leaf", section: "obra", title: "Obras Finalizadas", href: "/admin/obra/finalizadas", icon: PackageCheck },
       { kind: "leaf", section: "obra", title: "Aprovação de Obras", href: "/admin/obra/aprovacao", icon: ClipboardCheck },

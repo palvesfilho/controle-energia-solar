@@ -25,29 +25,29 @@ model User {
 }
 
 model Investor {
-  id              String    @id @default(cuid())
-  userId          String    @unique @map("user_id")
-  phone           String?
-  document        String?   // Legacy - usar cpf/cnpj
-  cpf             String?
-  dataNascimento  DateTime? @map("data_nascimento")
-  endereco        String?
-  numero          String?
-  complemento     String?
-  cep             String?
-  bairro          String?
-  cidade          String?
-  nomeEmpresa         String?   @map("nome_empresa")
-  cnpj                String?
-  enderecoEmpresa     String?   @map("endereco_empresa")
-  numeroEmpresa       String?   @map("numero_empresa")
-  complementoEmpresa  String?   @map("complemento_empresa")
-  cepEmpresa          String?   @map("cep_empresa")
-  bairroEmpresa       String?   @map("bairro_empresa")
-  cidadeEmpresa       String?   @map("cidade_empresa")
-  chavePix            String?   @map("chave_pix")
+  id                 String    @id @default(cuid())
+  userId             String    @unique @map("user_id")
+  phone              String?
+  document           String? // Legacy - usar cpf/cnpj
+  cpf                String?
+  dataNascimento     DateTime? @map("data_nascimento")
+  endereco           String?
+  numero             String?
+  complemento        String?
+  cep                String?
+  bairro             String?
+  cidade             String?
+  nomeEmpresa        String?   @map("nome_empresa")
+  cnpj               String?
+  enderecoEmpresa    String?   @map("endereco_empresa")
+  numeroEmpresa      String?   @map("numero_empresa")
+  complementoEmpresa String?   @map("complemento_empresa")
+  cepEmpresa         String?   @map("cep_empresa")
+  bairroEmpresa      String?   @map("bairro_empresa")
+  cidadeEmpresa      String?   @map("cidade_empresa")
+  chavePix           String?   @map("chave_pix")
   // Emails adicionais (sócios, financeiro etc.). JSON-encoded array de strings.
-  additionalEmails    String?   @map("additional_emails")
+  additionalEmails   String?   @map("additional_emails")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -77,8 +77,8 @@ model Plant {
   active             Boolean @default(true)
 
   // Dados do Inversor
-  inversorMarca      String? @map("inversor_marca")
-  inversorModelo     String? @map("inversor_modelo")
+  inversorMarca  String? @map("inversor_marca")
+  inversorModelo String? @map("inversor_modelo")
 
   // Monitoramento
   monitoramentoPlataforma String? @map("monitoramento_plataforma")
@@ -87,21 +87,21 @@ model Plant {
   monitoramentoUrl        String? @map("monitoramento_url")
 
   // Novos campos da planilha
-  fonte               String? // SOLAR, EOLICA, etc
-  numeroUsina         String? @map("numero_usina")
-  potenciaInstalada   Float?  @map("potencia_instalada")
-  grupo               String? // A, B, etc
-  cpfCnpj             String? @map("cpf_cnpj")
-  distribuidora       String? // RGE, CPFL_PAULISTA, CPFL_PIRATININGA
-  acesso              String? // Ok, Pendente, etc
-  statusContrato      String? @map("status_contrato")
+  fonte                  String? // SOLAR, EOLICA, etc
+  numeroUsina            String?   @map("numero_usina")
+  potenciaInstalada      Float?    @map("potencia_instalada")
+  grupo                  String? // A, B, etc
+  cpfCnpj                String?   @map("cpf_cnpj")
+  distribuidora          String? // RGE, CPFL_PAULISTA, CPFL_PIRATININGA
+  acesso                 String? // Ok, Pendente, etc
+  statusContrato         String?   @map("status_contrato")
   // Data em que o contrato com o investidor foi assinado (não necessariamente
   // quando a usina começou a injetar). Usada como início da janela de faturas
   // a descontar no primeiro relatório do investidor.
   dataAssinaturaContrato DateTime? @map("data_assinatura_contrato")
-  loginDistribuidora  String? @map("login_distribuidora")
-  senhaDistribuidora  String? @map("senha_distribuidora")
-  codigoCliente       String? @map("codigo_cliente") // Número de instalação/código do cliente no portal da distribuidora
+  loginDistribuidora     String?   @map("login_distribuidora")
+  senhaDistribuidora     String?   @map("senha_distribuidora")
+  codigoCliente          String?   @map("codigo_cliente") // Número de instalação/código do cliente no portal da distribuidora
 
   // Dia do mês em que o investidor desta usina recebe o repasse. Default 20 pra
   // todas; gestor pode ajustar por usina na tela de cadastro. Usado pela Agenda
@@ -112,21 +112,21 @@ model Plant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  investors          InvestorPlant[]
-  consumers          ConsumerPlant[]
-  reports            MonthlyReport[]
-  monthlyData        PlantMonthly[]
-  consumerData       ConsumerMonthly[]
-  consumerBills      ConsumerBill[]
-  consumerUnits      ConsumerUnit[]
-  billings           PlantBilling[]
-  cpflCredential     CpflCredential?
+  investors         InvestorPlant[]
+  consumers         ConsumerPlant[]
+  reports           MonthlyReport[]
+  monthlyData       PlantMonthly[]
+  consumerData      ConsumerMonthly[]
+  consumerBills     ConsumerBill[]
+  consumerUnits     ConsumerUnit[]
+  billings          PlantBilling[]
+  cpflCredential    CpflCredential?
   // 1:N — uma Plant pode ter várias usinas monitoradas (inversores) injetando
   // na mesma fatura da concessionária.
-  monitoringClients  BrasilSolarClient[] @relation("PlantMonitoring")
-  rateioVersions     RateioVersion[]
-  documents          PlantDocument[]
-  investorPayables   InvestorPayable[]
+  monitoringClients BrasilSolarClient[] @relation("PlantMonitoring")
+  rateioVersions    RateioVersion[]
+  documents         PlantDocument[]
+  investorPayables  InvestorPayable[]
 
   @@map("plants")
 }
@@ -134,7 +134,7 @@ model Plant {
 model PlantDocument {
   id           String   @id @default(cuid())
   plantId      String   @map("plant_id")
-  type         String   // CNH_RG | PROCURACAO | CONTRATO_SOCIAL | CARTAO_CNPJ
+  type         String // CNH_RG | PROCURACAO | CONTRATO_SOCIAL | CARTAO_CNPJ
   url          String
   fileName     String   @map("file_name")
   size         Int?
@@ -161,21 +161,21 @@ model PlantBilling {
   status String @default("PENDENTE")
 
   // Valores
-  valorTotal       Float?  @map("valor_total")
-  observacoes      String?
+  valorTotal  Float?  @map("valor_total")
+  observacoes String?
 
   // Relatório gerado pelo sistema (PDF / planilha)
-  relatorioGeradoUrl  String?   @map("relatorio_gerado_url")
-  relatorioGeradoAt   DateTime? @map("relatorio_gerado_at")
-  relatorioGeradoBy   String?   @map("relatorio_gerado_by")
+  relatorioGeradoUrl String?   @map("relatorio_gerado_url")
+  relatorioGeradoAt  DateTime? @map("relatorio_gerado_at")
+  relatorioGeradoBy  String?   @map("relatorio_gerado_by")
 
   // Documentos enviados pelo dono da usina
-  notaFiscalUrl       String?   @map("nota_fiscal_url")
-  notaFiscalAt        DateTime? @map("nota_fiscal_at")
-  reciboTerraUrl      String?   @map("recibo_terra_url")
-  reciboTerraAt       DateTime? @map("recibo_terra_at")
-  reciboAluguelUrl    String?   @map("recibo_aluguel_url")
-  reciboAluguelAt     DateTime? @map("recibo_aluguel_at")
+  notaFiscalUrl    String?   @map("nota_fiscal_url")
+  notaFiscalAt     DateTime? @map("nota_fiscal_at")
+  reciboTerraUrl   String?   @map("recibo_terra_url")
+  reciboTerraAt    DateTime? @map("recibo_terra_at")
+  reciboAluguelUrl String?   @map("recibo_aluguel_url")
+  reciboAluguelAt  DateTime? @map("recibo_aluguel_at")
 
   // Comprovante de pagamento (financeiro)
   comprovantePagamentoUrl String?   @map("comprovante_pagamento_url")
@@ -209,8 +209,8 @@ model InvestorPlant {
   investorId         String @map("investor_id")
   plantId            String @map("plant_id")
   sharePercent       Float? @map("share_percent")
-  valorKwhContrato   Float? @map("valor_kwh_contrato")    // R$/kWh pago ao investidor
-  gestaoFixaContrato Float? @map("gestao_fixa_contrato")  // R$ gestao fixa mensal
+  valorKwhContrato   Float? @map("valor_kwh_contrato") // R$/kWh pago ao investidor
+  gestaoFixaContrato Float? @map("gestao_fixa_contrato") // R$ gestao fixa mensal
 
   investor Investor @relation(fields: [investorId], references: [id], onDelete: Cascade)
   plant    Plant    @relation(fields: [plantId], references: [id], onDelete: Cascade)
@@ -220,9 +220,9 @@ model InvestorPlant {
 }
 
 model MonthlyReport {
-  id              String @id @default(cuid())
-  plantId         String @map("plant_id")
-  investorId      String @map("investor_id")
+  id              String  @id @default(cuid())
+  plantId         String  @map("plant_id")
+  investorId      String  @map("investor_id")
   ano             Int
   mes             Int
   numeroRelatorio String? @map("numero_relatorio")
@@ -261,11 +261,11 @@ model MonthlyReport {
   snapshotJson String? @map("snapshot_json")
 
   // Metadata
-  uploadId    String?   @map("upload_id")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  publishedAt DateTime? @map("published_at")
-  publishedByUserId String? @map("published_by_user_id")
+  uploadId          String?   @map("upload_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  publishedAt       DateTime? @map("published_at")
+  publishedByUserId String?   @map("published_by_user_id")
 
   plant    Plant    @relation(fields: [plantId], references: [id])
   investor Investor @relation(fields: [investorId], references: [id])
@@ -282,11 +282,11 @@ model PlantMonthly {
   ano     Int
   mes     Int
 
-  geracaoTotal   Float? @map("geracao_total")      // kWh total gerado pela usina
-  injecaoTotal   Float? @map("injecao_total")       // kWh injetado na rede
-  autoConsumo    Float? @map("auto_consumo")        // kWh autoconsumo
-  disponibilidade Float? @map("disponibilidade")    // % de disponibilidade
-  observacoes    String?
+  geracaoTotal    Float?  @map("geracao_total") // kWh total gerado pela usina
+  injecaoTotal    Float?  @map("injecao_total") // kWh injetado na rede
+  autoConsumo     Float?  @map("auto_consumo") // kWh autoconsumo
+  disponibilidade Float?  @map("disponibilidade") // % de disponibilidade
+  observacoes     String?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -304,11 +304,11 @@ model ConsumerMonthly {
   ano        Int
   mes        Int
 
-  consumoTotal       Float? @map("consumo_total")        // kWh consumo total do consumidor
-  creditosRecebidos  Float? @map("creditos_recebidos")    // kWh creditos alocados
-  creditosUtilizados Float? @map("creditos_utilizados")   // kWh creditos efetivamente usados
-  saldoCreditos      Float? @map("saldo_creditos")        // kWh saldo de creditos
-  economiaGerada     Float? @map("economia_gerada")       // R$ economia no periodo
+  consumoTotal       Float?  @map("consumo_total") // kWh consumo total do consumidor
+  creditosRecebidos  Float?  @map("creditos_recebidos") // kWh creditos alocados
+  creditosUtilizados Float?  @map("creditos_utilizados") // kWh creditos efetivamente usados
+  saldoCreditos      Float?  @map("saldo_creditos") // kWh saldo de creditos
+  economiaGerada     Float?  @map("economia_gerada") // R$ economia no periodo
   observacoes        String?
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -326,36 +326,36 @@ model Consumer {
   name               String
   email              String?
   phone              String?
-  document           String?  // CPF ou CNPJ
+  document           String? // CPF ou CNPJ
   endereco           String?
   unidadeConsumidora String? @map("unidade_consumidora")
   active             Boolean @default(true)
 
   // Novos campos da planilha
-  cpfCnpj            String? @map("cpf_cnpj")
-  loginPortal        String? @map("login_portal")
-  emailsRecebimento  String? @map("emails_recebimento") // separados por ;
-  dataCadastro       DateTime? @map("data_cadastro")
+  cpfCnpj           String?   @map("cpf_cnpj")
+  loginPortal       String?   @map("login_portal")
+  emailsRecebimento String?   @map("emails_recebimento") // separados por ;
+  dataCadastro      DateTime? @map("data_cadastro")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  plants         ConsumerPlant[]
-  monthly        ConsumerMonthly[]
-  consumerUnits  ConsumerUnit[]
+  plants        ConsumerPlant[]
+  monthly       ConsumerMonthly[]
+  consumerUnits ConsumerUnit[]
 
   @@map("consumers")
 }
 
 model ConsumerUnit {
-  id         String @id @default(cuid())
+  id         String  @id @default(cuid())
   consumerId String? @map("consumer_id")
   plantId    String? @map("plant_id")
 
   // Identificação
-  nome       String
-  codigoUc   String  @unique @map("codigo_uc")
-  cpfCnpj    String? @map("cpf_cnpj")
+  nome     String
+  codigoUc String  @unique @map("codigo_uc")
+  cpfCnpj  String? @map("cpf_cnpj")
 
   // Distribuidora e classificação
   distribuidora String?
@@ -374,14 +374,14 @@ model ConsumerUnit {
   cidade      String?
 
   // Comercial
-  consultor          String?
-  comissao           String?
-  metodoPagamento    String? @map("metodo_pagamento")
-  regraRemuneracao   String? @map("regra_remuneracao")
-  percentCompensado  Float?  @map("percent_compensado")
-  percentBandeira    Float?  @map("percent_bandeira")
-  regraVencimento    String? @map("regra_vencimento")
-  valorVencimento    Float?  @map("valor_vencimento")
+  consultor         String?
+  comissao          String?
+  metodoPagamento   String? @map("metodo_pagamento")
+  regraRemuneracao  String? @map("regra_remuneracao")
+  percentCompensado Float?  @map("percent_compensado")
+  percentBandeira   Float?  @map("percent_bandeira")
+  regraVencimento   String? @map("regra_vencimento")
+  valorVencimento   Float?  @map("valor_vencimento")
 
   // Contrato
   statusContrato      String? @map("status_contrato")
@@ -398,22 +398,22 @@ model ConsumerUnit {
   temGeracaoPropria Boolean @default(false) @map("tem_geracao_propria")
 
   // Grupo A — cadastro contratual da UC (coexiste com `modalidade` que é GD, não tarifária)
-  modalidadeTarifaria      String? @map("modalidade_tarifaria")        // "Verde"|"Azul"|"Convencional"|"Branca"
+  modalidadeTarifaria      String? @map("modalidade_tarifaria") // "Verde"|"Azul"|"Convencional"|"Branca"
   tensaoNominalContratadaV Float?  @map("tensao_nominal_contratada_v")
-  demandaContratadaKw      Float?  @map("demanda_contratada_kw")       // Verde/Conv: única; Azul: FPonta
+  demandaContratadaKw      Float?  @map("demanda_contratada_kw") // Verde/Conv: única; Azul: FPonta
   demandaContratadaPontaKw Float?  @map("demanda_contratada_ponta_kw") // só Azul
-  geracaoContratadaKw      Float?  @map("geracao_contratada_kw")       // GD Grupo A (kW de geração contratada)
+  geracaoContratadaKw      Float?  @map("geracao_contratada_kw") // GD Grupo A (kW de geração contratada)
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  consumer Consumer? @relation(fields: [consumerId], references: [id], onDelete: SetNull)
-  plant    Plant?    @relation(fields: [plantId], references: [id], onDelete: SetNull)
-  billings ConsumerUnitBilling[]
-  bills    ConsumerBill[]
-  cpflCredential CpflCredential?
-  rateioItems RateioItem[]
+  consumer         Consumer?             @relation(fields: [consumerId], references: [id], onDelete: SetNull)
+  plant            Plant?                @relation(fields: [plantId], references: [id], onDelete: SetNull)
+  billings         ConsumerUnitBilling[]
+  bills            ConsumerBill[]
+  cpflCredential   CpflCredential?
+  rateioItems      RateioItem[]
   investorPayables InvestorPayable[]
 
   @@index([consumerId])
@@ -430,10 +430,10 @@ model ConsumerUnitBilling {
   mes Int
 
   // Valores apurados
-  valorFatura       Float?  @map("valor_fatura")        // R$ total da fatura de energia
-  valorCompensado   Float?  @map("valor_compensado")    // R$ compensado pela usina
-  valorEconomia     Float?  @map("valor_economia")      // R$ economia gerada
-  valorCobranca     Float?  @map("valor_cobranca")      // R$ a cobrar do consumidor
+  valorFatura     Float? @map("valor_fatura") // R$ total da fatura de energia
+  valorCompensado Float? @map("valor_compensado") // R$ compensado pela usina
+  valorEconomia   Float? @map("valor_economia") // R$ economia gerada
+  valorCobranca   Float? @map("valor_cobranca") // R$ a cobrar do consumidor
 
   dataVencimento DateTime? @map("data_vencimento")
   observacoes    String?
@@ -448,31 +448,31 @@ model ConsumerUnitBilling {
   installments String? @map("installments")
 
   // Fatura de energia anexada (PDF distribuidora)
-  faturaUrl String? @map("fatura_url")
+  faturaUrl String?   @map("fatura_url")
   faturaAt  DateTime? @map("fatura_at")
 
   // Preferências de envio escolhidas pelo operador (persistidas mesmo sem disparar)
-  notificarEmail    Boolean @default(true)  @map("notificar_email")
+  notificarEmail    Boolean @default(true) @map("notificar_email")
   notificarWhatsapp Boolean @default(false) @map("notificar_whatsapp")
 
   // Integração Asaas
-  asaasChargeId  String?   @map("asaas_charge_id")
-  asaasInvoiceUrl String?  @map("asaas_invoice_url")
-  asaasStatus     String?  @map("asaas_status")
+  asaasChargeId   String?   @map("asaas_charge_id")
+  asaasInvoiceUrl String?   @map("asaas_invoice_url")
+  asaasStatus     String?   @map("asaas_status")
   asaasSyncedAt   DateTime? @map("asaas_synced_at")
 
   // Pagamento confirmado
-  pagoEm DateTime? @map("pago_em")
+  pagoEm         DateTime? @map("pago_em")
   // Canal do pagamento — preenchido em pagamento manual (PIX direto, dinheiro, etc.)
   // ou marcado como BOLETO_ASAAS pelo webhook quando vem via Asaas.
   // Valores: PIX_DIRETO | DINHEIRO | TRANSFERENCIA | OUTRO | BOLETO_ASAAS
-  formaPagamento String? @map("forma_pagamento")
-  pagamentoNota  String? @map("pagamento_nota")
+  formaPagamento String?   @map("forma_pagamento")
+  pagamentoNota  String?   @map("pagamento_nota")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  consumerUnit ConsumerUnit @relation(fields: [consumerUnitId], references: [id], onDelete: Cascade)
+  consumerUnit     ConsumerUnit      @relation(fields: [consumerUnitId], references: [id], onDelete: Cascade)
   investorPayables InvestorPayable[]
 
   @@unique([consumerUnitId, ano, mes])
@@ -484,8 +484,8 @@ model ConsumerPlant {
   id              String @id @default(cuid())
   consumerId      String @map("consumer_id")
   plantId         String @map("plant_id")
-  cotaPercent     Float? @map("cota_percent")       // % dos creditos alocados ao consumidor
-  descontoPercent Float? @map("desconto_percent")   // % de desconto sobre a tarifa
+  cotaPercent     Float? @map("cota_percent") // % dos creditos alocados ao consumidor
+  descontoPercent Float? @map("desconto_percent") // % de desconto sobre a tarifa
 
   consumer Consumer @relation(fields: [consumerId], references: [id], onDelete: Cascade)
   plant    Plant    @relation(fields: [plantId], references: [id], onDelete: Cascade)
@@ -500,58 +500,58 @@ model ConsumerBill {
   plantId        String? @map("plant_id")
 
   // Referencia da fatura
-  mesReferencia   Int    @map("mes_referencia")
-  anoReferencia   Int    @map("ano_referencia")
-  instalacao      String?  // Numero da instalacao na concessionaria
+  mesReferencia Int     @map("mes_referencia")
+  anoReferencia Int     @map("ano_referencia")
+  instalacao    String? // Numero da instalacao na concessionaria
 
   // Valores da fatura
-  valorTotal       Float?  @map("valor_total")
-  vencimento       DateTime?
-  contaPaga        Boolean @default(false) @map("conta_paga")
-  codigoBarras     String? @map("codigo_barras")
-  pixCopiaCola     String? @map("pix_copia_cola")
+  valorTotal   Float?    @map("valor_total")
+  vencimento   DateTime?
+  contaPaga    Boolean   @default(false) @map("conta_paga")
+  codigoBarras String?   @map("codigo_barras")
+  pixCopiaCola String?   @map("pix_copia_cola")
 
   // Pagamento da fatura para a distribuidora (registrado pelo financeiro
   // via tela "Pagar Faturas"). Independe do contaPaga (que vem do parser).
-  pagoEm                    DateTime? @map("pago_em")
-  bancoPagamento            String?   @map("banco_pagamento") // BANRISUL | C6_BANK | ASAAS
-  comprovantePagamentoUrl   String?   @map("comprovante_pagamento_url")
-  comprovantePagamentoAt    DateTime? @map("comprovante_pagamento_at")
+  pagoEm                  DateTime? @map("pago_em")
+  bancoPagamento          String?   @map("banco_pagamento") // BANRISUL | C6_BANK | ASAAS
+  comprovantePagamentoUrl String?   @map("comprovante_pagamento_url")
+  comprovantePagamentoAt  DateTime? @map("comprovante_pagamento_at")
   // Origem do registro: "BACKUP LUMI" para importações via CSV;
   // nome do usuário quando feito pela tela do sistema.
-  origemPagamento           String?   @map("origem_pagamento")
+  origemPagamento         String?   @map("origem_pagamento")
 
   // Dados de consumo
-  consumoKwh       Float?    @map("consumo_kwh")
-  leituraAnterior  Float?    @map("leitura_anterior")
-  leituraAtual     Float?    @map("leitura_atual")
-  diasFaturamento  Int?      @map("dias_faturamento")
-  proximaLeitura   DateTime? @map("proxima_leitura")   // Próxima leitura — referência pra agendar sync
+  consumoKwh          Float?    @map("consumo_kwh")
+  leituraAnterior     Float?    @map("leitura_anterior")
+  leituraAtual        Float?    @map("leitura_atual")
+  diasFaturamento     Int?      @map("dias_faturamento")
+  proximaLeitura      DateTime? @map("proxima_leitura") // Próxima leitura — referência pra agendar sync
   // Janela do ciclo de leitura (não coincide com mês calendário). Usado pra validar inversor x medidor.
   dataLeituraAnterior DateTime? @map("data_leitura_anterior")
   dataLeituraAtual    DateTime? @map("data_leitura_atual")
 
   // Consumo faturado (mes atual) - TE e TUSD com quantidade e valor
-  consumoTeKwh      Float? @map("consumo_te_kwh")
-  consumoTeValor    Float? @map("consumo_te_valor")
-  consumoTusdKwh    Float? @map("consumo_tusd_kwh")
-  consumoTusdValor  Float? @map("consumo_tusd_valor")
+  consumoTeKwh     Float? @map("consumo_te_kwh")
+  consumoTeValor   Float? @map("consumo_te_valor")
+  consumoTusdKwh   Float? @map("consumo_tusd_kwh")
+  consumoTusdValor Float? @map("consumo_tusd_valor")
 
   // Creditos de energia (GD)
-  energiaInjetada    Float?  @map("energia_injetada")
-  energiaCompensada  Float?  @map("energia_compensada")
-  saldoCreditos      Float?  @map("saldo_creditos")
+  energiaInjetada   Float? @map("energia_injetada")
+  energiaCompensada Float? @map("energia_compensada")
+  saldoCreditos     Float? @map("saldo_creditos")
 
   // Energia ativa injetada oUC (compensada no mes, total agregado)
-  injetadaOucTeKwh     Float? @map("injetada_ouc_te_kwh")
-  injetadaOucTeValor   Float? @map("injetada_ouc_te_valor")
-  injetadaOucTusdKwh   Float? @map("injetada_ouc_tusd_kwh")
-  injetadaOucTusdValor Float? @map("injetada_ouc_tusd_valor")
+  injetadaOucTeKwh     Float?  @map("injetada_ouc_te_kwh")
+  injetadaOucTeValor   Float?  @map("injetada_ouc_te_valor")
+  injetadaOucTusdKwh   Float?  @map("injetada_ouc_tusd_kwh")
+  injetadaOucTusdValor Float?  @map("injetada_ouc_tusd_valor")
   // Detalhamento por mes de origem: [{ mesOrigem, teKwh, teValor, tusdKwh, tusdValor }]
   injetadaDetalhes     String? @map("injetada_detalhes")
 
   // Historico de consumo (13 meses) vindos da fatura: [{ mesAno, consumoKwh, dias }]
-  historicoConsumo  String? @map("historico_consumo")
+  historicoConsumo String? @map("historico_consumo")
 
   // Saldo de energia (GD) detalhado
   saldoInstalacaoKwh     Float? @map("saldo_instalacao_kwh")
@@ -582,14 +582,14 @@ model ConsumerBill {
   // Todos opcionais. Grupo B preenche null em tudo. Validado contra UC 4003710227 (OBA Verde-A4).
 
   // Consumo por posto
-  consumoPontaKwh         Float? @map("consumo_ponta_kwh")
-  consumoForaPontaKwh     Float? @map("consumo_fora_ponta_kwh")
-  consumoTePontaKwh       Float? @map("consumo_te_ponta_kwh")
-  consumoTePontaValor     Float? @map("consumo_te_ponta_valor")
-  consumoTeForaPontaKwh   Float? @map("consumo_te_fora_ponta_kwh")
-  consumoTeForaPontaValor Float? @map("consumo_te_fora_ponta_valor")
-  consumoTusdPontaKwh     Float? @map("consumo_tusd_ponta_kwh")
-  consumoTusdPontaValor   Float? @map("consumo_tusd_ponta_valor")
+  consumoPontaKwh           Float? @map("consumo_ponta_kwh")
+  consumoForaPontaKwh       Float? @map("consumo_fora_ponta_kwh")
+  consumoTePontaKwh         Float? @map("consumo_te_ponta_kwh")
+  consumoTePontaValor       Float? @map("consumo_te_ponta_valor")
+  consumoTeForaPontaKwh     Float? @map("consumo_te_fora_ponta_kwh")
+  consumoTeForaPontaValor   Float? @map("consumo_te_fora_ponta_valor")
+  consumoTusdPontaKwh       Float? @map("consumo_tusd_ponta_kwh")
+  consumoTusdPontaValor     Float? @map("consumo_tusd_ponta_valor")
   consumoTusdForaPontaKwh   Float? @map("consumo_tusd_fora_ponta_kwh")
   consumoTusdForaPontaValor Float? @map("consumo_tusd_fora_ponta_valor")
 
@@ -606,12 +606,12 @@ model ConsumerBill {
   bandeiraCreditoForaPontaValor Float? @map("bandeira_credito_fora_ponta_valor")
 
   // Demanda (medida + ultrapassagem)
-  demandaMedidaKw            Float? @map("demanda_medida_kw")
-  demandaMedidaPontaKw       Float? @map("demanda_medida_ponta_kw") // só Azul
-  demandaTusdValor           Float? @map("demanda_tusd_valor")
-  tarifaDemanda              Float? @map("tarifa_demanda")
-  demandaUltrapassagemKw     Float? @map("demanda_ultrapassagem_kw")
-  demandaUltrapassagemValor  Float? @map("demanda_ultrapassagem_valor")
+  demandaMedidaKw           Float? @map("demanda_medida_kw")
+  demandaMedidaPontaKw      Float? @map("demanda_medida_ponta_kw") // só Azul
+  demandaTusdValor          Float? @map("demanda_tusd_valor")
+  tarifaDemanda             Float? @map("tarifa_demanda")
+  demandaUltrapassagemKw    Float? @map("demanda_ultrapassagem_kw")
+  demandaUltrapassagemValor Float? @map("demanda_ultrapassagem_valor")
 
   // TUSD-G (uso da rede pela geração — UC com mini/microGD em Grupo A)
   tusdGeracaoKw     Float? @map("tusd_geracao_kw")
@@ -619,10 +619,10 @@ model ConsumerBill {
   tarifaTusdGeracao Float? @map("tarifa_tusd_geracao")
 
   // Compensação Lei 14.300 por posto (TUSD+TE somados)
-  injetadaPontaKwh        Float? @map("injetada_ponta_kwh")
-  injetadaPontaValor      Float? @map("injetada_ponta_valor")     // negativo (crédito)
-  injetadaForaPontaKwh    Float? @map("injetada_fora_ponta_kwh")
-  injetadaForaPontaValor  Float? @map("injetada_fora_ponta_valor") // negativo (crédito)
+  injetadaPontaKwh       Float? @map("injetada_ponta_kwh")
+  injetadaPontaValor     Float? @map("injetada_ponta_valor") // negativo (crédito)
+  injetadaForaPontaKwh   Float? @map("injetada_fora_ponta_kwh")
+  injetadaForaPontaValor Float? @map("injetada_fora_ponta_valor") // negativo (crédito)
 
   // Saldo de créditos por posto (Grupo A)
   saldoPontaKwh     Float? @map("saldo_ponta_kwh")
@@ -639,10 +639,10 @@ model ConsumerBill {
   leiturasMedidorJson String? @map("leituras_medidor_json")
 
   // Tarifas
-  tarifaTE     Float?  @map("tarifa_te")     // Tarifa Energia (ANEEL)
-  tarifaTUSD   Float?  @map("tarifa_tusd")   // Tarifa Uso Sistema Distribuicao
+  tarifaTE          Float?  @map("tarifa_te") // Tarifa Energia (ANEEL)
+  tarifaTUSD        Float?  @map("tarifa_tusd") // Tarifa Uso Sistema Distribuicao
   bandeiraTarifaria String? @map("bandeira_tarifaria")
-  bandeiraValor     Float?  @map("bandeira_valor")   // Soma R$ de todas as linhas de bandeira da fatura
+  bandeiraValor     Float?  @map("bandeira_valor") // Soma R$ de todas as linhas de bandeira da fatura
 
   // Consumo instantâneo: energia gerada pela usina e consumida na hora, sem
   // passar pela rede (não compensada). Só faz sentido para UC geradora em
@@ -658,34 +658,34 @@ model ConsumerBill {
   geracaoInversorOrigem String? @map("geracao_inversor_origem") // "AUTO" | "MANUAL"
 
   // Impostos
-  icms    Float?
-  pis     Float?
-  cofins  Float?
+  icms   Float?
+  pis    Float?
+  cofins Float?
 
   // Encargos e ajustes
-  jurosMora             Float? @map("juros_mora")
-  multaAtraso           Float? @map("multa_atraso")
-  atualizacaoMonetaria  Float? @map("atualizacao_monetaria")
-  iluminacaoPublicaCip  Float? @map("iluminacao_publica_cip")
-  ajusteSaldoCredito    Float? @map("ajuste_saldo_credito")
+  jurosMora            Float? @map("juros_mora")
+  multaAtraso          Float? @map("multa_atraso")
+  atualizacaoMonetaria Float? @map("atualizacao_monetaria")
+  iluminacaoPublicaCip Float? @map("iluminacao_publica_cip")
+  ajusteSaldoCredito   Float? @map("ajuste_saldo_credito")
 
   // Metadados da sincronizacao
-  fonteConsulta  String?  @map("fonte_consulta")   // "INFOSIMPLES" | "MANUAL" | "CPFL_PORTAL"
-  pdfUrl         String?  @map("pdf_url")
-  rawJson        String?  @map("raw_json")          // Resposta completa da API
-  syncedAt       DateTime @default(now()) @map("synced_at")
+  fonteConsulta String?  @map("fonte_consulta") // "INFOSIMPLES" | "MANUAL" | "CPFL_PORTAL"
+  pdfUrl        String?  @map("pdf_url")
+  rawJson       String?  @map("raw_json") // Resposta completa da API
+  syncedAt      DateTime @default(now()) @map("synced_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  consumerUnit ConsumerUnit? @relation(fields: [consumerUnitId], references: [id], onDelete: Cascade)
-  plant        Plant?        @relation(fields: [plantId], references: [id])
+  consumerUnit           ConsumerUnit?     @relation(fields: [consumerUnitId], references: [id], onDelete: Cascade)
+  plant                  Plant?            @relation(fields: [plantId], references: [id])
   // Payables criados a partir desta fatura (lado do consumidor — quem teve a compensação)
-  investorPayables InvestorPayable[]                @relation("PayablesFromConsumerBill")
+  investorPayables       InvestorPayable[] @relation("PayablesFromConsumerBill")
   // Payables originados pela leitura desta fatura (lado da usina — quem injetou os créditos
   // que foram dispachados nessa janela). É a chave do "mês de geração" usado como
   // competência do relatório do investidor.
-  payablesOriginatedHere InvestorPayable[]          @relation("PayablesOriginatedByPlantBill")
+  payablesOriginatedHere InvestorPayable[] @relation("PayablesOriginatedByPlantBill")
 
   @@unique([consumerUnitId, anoReferencia, mesReferencia])
   @@index([consumerUnitId, anoReferencia])
@@ -698,14 +698,14 @@ model CpflCredential {
   consumerUnitId String? @unique @map("consumer_unit_id")
   plantId        String? @unique @map("plant_id")
 
-  emailCpfl     String  @map("email_cpfl")     // Login no portal CPFL
-  senhaCpfl     String  @map("senha_cpfl")     // Senha no portal CPFL (criptografada)
-  instalacao    String                          // Numero da instalacao
-  distribuidora String  @default("RGE")        // RGE | CPFL_PAULISTA | CPFL_PIRATININGA
+  emailCpfl     String @map("email_cpfl") // Login no portal CPFL
+  senhaCpfl     String @map("senha_cpfl") // Senha no portal CPFL (criptografada)
+  instalacao    String // Numero da instalacao
+  distribuidora String @default("RGE") // RGE | CPFL_PAULISTA | CPFL_PIRATININGA
 
-  ultimaSync   DateTime? @map("ultima_sync")
-  statusSync   String?   @map("status_sync")   // "SUCCESS" | "ERROR" | "PENDING"
-  erroSync     String?   @map("erro_sync")
+  ultimaSync DateTime? @map("ultima_sync")
+  statusSync String?   @map("status_sync") // "SUCCESS" | "ERROR" | "PENDING"
+  erroSync   String?   @map("erro_sync")
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")
@@ -757,15 +757,15 @@ model BrasilSolarClient {
   longitude Float?
 
   // Dados da instalacao
-  potenciaInstalada   Float?    @map("potencia_instalada")    // kWp
-  dataInstalacao      DateTime? @map("data_instalacao")
-  modulosMarca        String?   @map("modulos_marca")
-  modulosModelo       String?   @map("modulos_modelo")
-  modulosQuantidade   Int?      @map("modulos_quantidade")
-  inversorMarca       String?   @map("inversor_marca")
-  inversorModelo      String?   @map("inversor_modelo")
-  inversorQuantidade  Int?      @map("inversor_quantidade")
-  inversorPotencia    Float?    @map("inversor_potencia")     // kW
+  potenciaInstalada  Float?    @map("potencia_instalada") // kWp
+  dataInstalacao     DateTime? @map("data_instalacao")
+  modulosMarca       String?   @map("modulos_marca")
+  modulosModelo      String?   @map("modulos_modelo")
+  modulosQuantidade  Int?      @map("modulos_quantidade")
+  inversorMarca      String?   @map("inversor_marca")
+  inversorModelo     String?   @map("inversor_modelo")
+  inversorQuantidade Int?      @map("inversor_quantidade")
+  inversorPotencia   Float?    @map("inversor_potencia") // kW
 
   // Plataforma de monitoramento
   plataformaMonitoramento String? @map("plataforma_monitoramento") // GROWATT, SOLIS, FRONIUS, HUAWEI, CANADIAN, ABB, DEYE, HOYMILES, SUNGROW, SOFAR, SOLAREDGE
@@ -779,7 +779,7 @@ model BrasilSolarClient {
   codigoUc       String? @map("codigo_uc")
 
   // Contrato
-  statusContrato String? @map("status_contrato") // ATIVO, SUSPENSO, CANCELADO, GARANTIA
+  statusContrato String?   @map("status_contrato") // ATIVO, SUSPENSO, CANCELADO, GARANTIA
   dataContrato   DateTime? @map("data_contrato")
   consultor      String?
   garantiaAte    DateTime? @map("garantia_ate")
@@ -790,21 +790,21 @@ model BrasilSolarClient {
   // Geracao esperada (para calcular performance ratio)
   geracaoMediaEsperada Float? @map("geracao_media_esperada") // kWh/mes esperado
   geracaoAnualEsperada Float? @map("geracao_anual_esperada") // kWh/ano esperado
-  geracaoContrato      Float? @map("geracao_contrato")       // kWh conforme contrato
+  geracaoContrato      Float? @map("geracao_contrato") // kWh conforme contrato
 
   // Status atual (desnormalizado para queries rapidas em 2700+ registros)
-  statusMonitoramento String   @default("SEM_DADOS") @map("status_monitoramento") // ONLINE, OFFLINE, ALERTA, SEM_DADOS
-  ultimaGeracao       Float?   @map("ultima_geracao")       // kWh ultimo dia
+  statusMonitoramento String    @default("SEM_DADOS") @map("status_monitoramento") // ONLINE, OFFLINE, ALERTA, SEM_DADOS
+  ultimaGeracao       Float?    @map("ultima_geracao") // kWh ultimo dia
   ultimaLeitura       DateTime? @map("ultima_leitura")
-  geracaoMesAtual     Float?   @map("geracao_mes_atual")    // kWh acumulado mes
-  performanceRatio    Float?   @map("performance_ratio")    // % real vs esperado
+  geracaoMesAtual     Float?    @map("geracao_mes_atual") // kWh acumulado mes
+  performanceRatio    Float?    @map("performance_ratio") // % real vs esperado
 
   // Métricas instantâneas coletadas pelo sync/metrics (Fase 2.1)
-  tensaoRede          Float?    @map("tensao_rede")           // V - tensão AC medida (fase mais alta quando trifásico)
-  tensaoNominalRede   Float?    @map("tensao_nominal_rede")   // V - nominal (127/220); inferida pela medida quando null
-  frequenciaRede      Float?    @map("frequencia_rede")       // Hz - frequência AC medida
-  temperaturaInversor Float?    @map("temperatura_inversor")  // °C - temperatura interna do inversor
-  ultimaMetricaEm     DateTime? @map("ultima_metrica_em")     // timestamp da última coleta de métricas instantâneas
+  tensaoRede          Float?    @map("tensao_rede") // V - tensão AC medida (fase mais alta quando trifásico)
+  tensaoNominalRede   Float?    @map("tensao_nominal_rede") // V - nominal (127/220); inferida pela medida quando null
+  frequenciaRede      Float?    @map("frequencia_rede") // Hz - frequência AC medida
+  temperaturaInversor Float?    @map("temperatura_inversor") // °C - temperatura interna do inversor
+  ultimaMetricaEm     DateTime? @map("ultima_metrica_em") // timestamp da última coleta de métricas instantâneas
 
   // Observacoes internas
   observacoesInternas String? @map("observacoes_internas")
@@ -814,8 +814,8 @@ model BrasilSolarClient {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relacoes
-  monitoringLogs MonitoringLog[]
-  alerts         MonitoringAlert[]
+  monitoringLogs  MonitoringLog[]
+  alerts          MonitoringAlert[]
   inverterSamples InverterSample[]
   monitoringPlans BrasilSolarMonitoringPlan[]
 
@@ -953,13 +953,13 @@ model MonitoringLog {
   id       String @id @default(cuid())
   clientId String @map("client_id")
 
-  data            DateTime              // Data da leitura
-  geracaoDiaria   Float  @map("geracao_diaria")    // kWh gerado no dia
-  geracaoEsperada Float? @map("geracao_esperada")   // kWh esperado no dia
-  picoMaximo      Float? @map("pico_maximo")         // kW pico do dia
-  horasSol        Float? @map("horas_sol")           // Horas de sol equivalente
-  irradiacao      Float?                             // kWh/m2 irradiacao solar
-  temperatura     Float?                             // Temperatura media inversores
+  data            DateTime // Data da leitura
+  geracaoDiaria   Float    @map("geracao_diaria") // kWh gerado no dia
+  geracaoEsperada Float?   @map("geracao_esperada") // kWh esperado no dia
+  picoMaximo      Float?   @map("pico_maximo") // kW pico do dia
+  horasSol        Float?   @map("horas_sol") // Horas de sol equivalente
+  irradiacao      Float? // kWh/m2 irradiacao solar
+  temperatura     Float? // Temperatura media inversores
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -976,10 +976,10 @@ model MonitoringAlert {
   clientId String @map("client_id")
 
   // Tipo e severidade
-  tipo        String // OFFLINE, BAIXA_GERACAO, ERRO_INVERSOR, CONSUMO_ELEVADO, FATURA_IRREGULAR, MANUTENCAO
-  severidade  String @default("MEDIA") // BAIXA, MEDIA, ALTA, CRITICA
-  titulo      String
-  descricao   String?
+  tipo       String // OFFLINE, BAIXA_GERACAO, ERRO_INVERSOR, CONSUMO_ELEVADO, FATURA_IRREGULAR, MANUTENCAO
+  severidade String  @default("MEDIA") // BAIXA, MEDIA, ALTA, CRITICA
+  titulo     String
+  descricao  String?
 
   // Status do alerta
   status String @default("ABERTO") // ABERTO, EM_ANDAMENTO, RESOLVIDO, IGNORADO
@@ -1046,7 +1046,7 @@ model AlertaThreshold {
 // Cada código tem N ações sugeridas em ordem (ver InverterErrorAction).
 // Editável em /admin/personalizacoes/codigos-erro-inversor.
 model InverterErrorCode {
-  id         String @id @default(cuid())
+  id         String  @id @default(cuid())
   fabricante String // FRONIUS | SOLAREDGE | SUNGROW | HUAWEI
   codigo     String // ex.: "103", "0x3A", "STATE_103"
   titulo     String
@@ -1111,8 +1111,8 @@ model Obra {
   progresso Float @default(0)
 
   // Vínculo opcional com Plant (usina) ou BrasilSolarClient
-  plantId           String? @map("plant_id")
-  brasilSolarClientId String? @map("brasil_solar_client_id")
+  plantId                   String? @map("plant_id")
+  brasilSolarClientId       String? @map("brasil_solar_client_id")
   brasilSolarProprietarioId String? @map("brasil_solar_proprietario_id")
 
   // Equipe de execução designada (opcional). Validação de sobreposição
@@ -1151,10 +1151,10 @@ model Obra {
 // (Rede Brasil Solar) na primeira abertura; persiste edições do usuário e
 // mantém referência ao último PDF gerado.
 model ObraListaMaterial {
-  id                  String    @id @default(cuid())
-  obraId              String    @unique @map("obra_id")
+  id                  String  @id @default(cuid())
+  obraId              String  @unique @map("obra_id")
   responsavel         String?
-  numeroSerieInversor String?   @map("numero_serie_inversor")
+  numeroSerieInversor String? @map("numero_serie_inversor")
   observacoes         String?
 
   // Último PDF gerado a partir desta lista
@@ -1200,9 +1200,9 @@ model ObraTarefa {
   ordem     Int     @default(0)
 
   // Planejamento
-  dataInicioPlan DateTime  @map("data_inicio_plan")
-  dataFimPlan    DateTime  @map("data_fim_plan")
-  duracaoDias    Int       @map("duracao_dias")   // duração em dias úteis
+  dataInicioPlan DateTime @map("data_inicio_plan")
+  dataFimPlan    DateTime @map("data_fim_plan")
+  duracaoDias    Int      @map("duracao_dias") // duração em dias úteis
 
   // Execução real
   dataInicioReal DateTime? @map("data_inicio_real")
@@ -1221,9 +1221,9 @@ model ObraTarefa {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  obra             Obra                 @relation(fields: [obraId], references: [id], onDelete: Cascade)
-  dependencias     TarefaDependencia[]  @relation("TarefaSucessora")    // esta tarefa depende de quais
-  dependentes      TarefaDependencia[]  @relation("TarefaPredecessora") // quem depende desta tarefa
+  obra         Obra                @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  dependencias TarefaDependencia[] @relation("TarefaSucessora") // esta tarefa depende de quais
+  dependentes  TarefaDependencia[] @relation("TarefaPredecessora") // quem depende desta tarefa
 
   @@index([obraId])
   @@index([obraId, ordem])
@@ -1231,9 +1231,9 @@ model ObraTarefa {
 }
 
 model TarefaDependencia {
-  id           String @id @default(cuid())
-  tarefaId     String @map("tarefa_id")      // tarefa sucessora (depende de)
-  dependeDeId  String @map("depende_de_id")  // tarefa predecessora
+  id          String @id @default(cuid())
+  tarefaId    String @map("tarefa_id") // tarefa sucessora (depende de)
+  dependeDeId String @map("depende_de_id") // tarefa predecessora
 
   // Tipo de dependência:
   // FS = Finish-to-Start (padrão): predecessora precisa terminar antes da sucessora começar
@@ -1247,8 +1247,8 @@ model TarefaDependencia {
 
   createdAt DateTime @default(now()) @map("created_at")
 
-  tarefa      ObraTarefa @relation("TarefaSucessora",    fields: [tarefaId],    references: [id], onDelete: Cascade)
-  dependeDe   ObraTarefa @relation("TarefaPredecessora", fields: [dependeDeId], references: [id], onDelete: Cascade)
+  tarefa    ObraTarefa @relation("TarefaSucessora", fields: [tarefaId], references: [id], onDelete: Cascade)
+  dependeDe ObraTarefa @relation("TarefaPredecessora", fields: [dependeDeId], references: [id], onDelete: Cascade)
 
   @@unique([tarefaId, dependeDeId])
   @@index([tarefaId])
@@ -1270,7 +1270,7 @@ model EquipeExecucao {
   active              Boolean @default(true)
 
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt       @map("updated_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   obras Obra[]
 
@@ -1279,22 +1279,22 @@ model EquipeExecucao {
 }
 
 model ObraMaterialPadrao {
-  id                 String  @id @default(cuid())
-  potenciaW          Int     @unique @map("potencia_w")
-  disjuntorA         Int?    @map("disjuntor_a")
-  caboMm2            Float?  @map("cabo_mm2")
-  cdPosicoes         String? @map("cd_posicoes")
-  dpsQtd             Int?    @map("dps_qtd")
-  barramento         String?
-  canaleta           String?
-  caixaPassagem      String? @map("caixa_passagem")
-  placaRge           Int?    @map("placa_rge")
-  placaPisarModulos  Int?    @map("placa_pisar_modulos")
-  placaGerador       Int?    @map("placa_gerador")
-  observacoes        String?
+  id                String  @id @default(cuid())
+  potenciaW         Int     @unique @map("potencia_w")
+  disjuntorA        Int?    @map("disjuntor_a")
+  caboMm2           Float?  @map("cabo_mm2")
+  cdPosicoes        String? @map("cd_posicoes")
+  dpsQtd            Int?    @map("dps_qtd")
+  barramento        String?
+  canaleta          String?
+  caixaPassagem     String? @map("caixa_passagem")
+  placaRge          Int?    @map("placa_rge")
+  placaPisarModulos Int?    @map("placa_pisar_modulos")
+  placaGerador      Int?    @map("placa_gerador")
+  observacoes       String?
 
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt       @map("updated_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([potenciaW])
   @@map("obra_materiais_padrao")
@@ -1306,10 +1306,10 @@ model ObraMaterialPadrao {
 // ============================================================
 model DistribuidoraEmail {
   id              String  @id @default(cuid())
-  distribuidora   String  @unique               // ex: RGE, CPFL_PAULISTA, CEEE_EQUATORIAL
-  emailDestino    String  @map("email_destino")    // setor de GD da concessionária
-  emailRemetente  String  @map("email_remetente")  // de qual conta o sistema dispara
-  emailCc         String? @map("email_cc")         // múltiplos separados por ;
+  distribuidora   String  @unique // ex: RGE, CPFL_PAULISTA, CEEE_EQUATORIAL
+  emailDestino    String  @map("email_destino") // setor de GD da concessionária
+  emailRemetente  String  @map("email_remetente") // de qual conta o sistema dispara
+  emailCc         String? @map("email_cc") // múltiplos separados por ;
   nomeResponsavel String? @map("nome_responsavel") // responsável nosso pelo envio
   observacoes     String?
   active          Boolean @default(true)
@@ -1328,22 +1328,22 @@ model DistribuidoraEmail {
 // aceitar (daí o antigo vira SUBSTITUIDO e o novo vira VIGENTE). Se for
 // rejeitado, vira REJEITADO e o anterior permanece valendo.
 model RateioVersion {
-  id              String    @id @default(cuid())
-  plantId         String    @map("plant_id")
-  status          String    @default("PENDENTE_ACEITE") // VIGENTE | PENDENTE_ACEITE | REJEITADO | SUBSTITUIDO
-  observacao      String?
+  id               String    @id @default(cuid())
+  plantId          String    @map("plant_id")
+  status           String    @default("PENDENTE_ACEITE") // VIGENTE | PENDENTE_ACEITE | REJEITADO | SUBSTITUIDO
+  observacao       String?
   // Primeiro mês de referência em que este rateio passa a valer (compara com ConsumerBill.mesReferencia/anoReferencia).
   // Permite criar rateios retroativos e agendar entrada em vigor no futuro.
   vigenteAPartirDe DateTime  @default(now()) @map("vigente_a_partir_de")
-  criadoEm        DateTime  @default(now()) @map("criado_em")
-  enviadoEm       DateTime? @map("enviado_em")          // enviado à concessionária
-  aceitoEm        DateTime? @map("aceito_em")
-  rejeitadoEm     DateTime? @map("rejeitado_em")
-  substituidoEm   DateTime? @map("substituido_em")
-  criadoPorUserId String?   @map("criado_por_user_id")
+  criadoEm         DateTime  @default(now()) @map("criado_em")
+  enviadoEm        DateTime? @map("enviado_em") // enviado à concessionária
+  aceitoEm         DateTime? @map("aceito_em")
+  rejeitadoEm      DateTime? @map("rejeitado_em")
+  substituidoEm    DateTime? @map("substituido_em")
+  criadoPorUserId  String?   @map("criado_por_user_id")
 
-  plant Plant        @relation(fields: [plantId], references: [id], onDelete: Cascade)
-  items RateioItem[]
+  plant            Plant             @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  items            RateioItem[]
   investorPayables InvestorPayable[]
 
   @@index([plantId, status])
@@ -1354,7 +1354,7 @@ model RateioItem {
   id             String @id @default(cuid())
   versionId      String @map("version_id")
   consumerUnitId String @map("consumer_unit_id")
-  percentual     Float  // 0..100 — soma dos itens da versão deve ser 100
+  percentual     Float // 0..100 — soma dos itens da versão deve ser 100
 
   version      RateioVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
   consumerUnit ConsumerUnit  @relation(fields: [consumerUnitId], references: [id], onDelete: Cascade)
@@ -1389,25 +1389,25 @@ model InvestorPayable {
   rateioVersionId  String? @map("rateio_version_id")
 
   // Valores (base = calculado, ajuste = intervenção manual, líquido = final)
-  kwhCompensadoBase   Float   @map("kwh_compensado_base")
-  kwhCompensadoAjuste Float   @default(0) @map("kwh_compensado_ajuste")
-  valorBruto          Float   @map("valor_bruto")
-  valorAjuste         Float   @default(0) @map("valor_ajuste")
+  kwhCompensadoBase       Float   @map("kwh_compensado_base")
+  kwhCompensadoAjuste     Float   @default(0) @map("kwh_compensado_ajuste")
+  valorBruto              Float   @map("valor_bruto")
+  valorAjuste             Float   @default(0) @map("valor_ajuste")
   // Soma das aplicações de InvestorDebit nesta payable. Reduz o valorLiquido.
   // Mantido como coluna persistida (não calculado) pra simplificar queries/settlements.
-  valorAbatidoDebito  Float   @default(0) @map("valor_abatido_debito")
+  valorAbatidoDebito      Float   @default(0) @map("valor_abatido_debito")
   // Quanto da compensação foi descartada por ultrapassar o cap acumulado
   // da injeção da usina (créditos legados não remuneráveis ao investidor).
   // > 0 dispara alerta na UI.
-  kwhCreditoLegadoAbatido Float @default(0) @map("kwh_credito_legado_abatido")
-  valorLiquido        Float   @map("valor_liquido")
-  motivoAjuste        String? @map("motivo_ajuste")
+  kwhCreditoLegadoAbatido Float   @default(0) @map("kwh_credito_legado_abatido")
+  valorLiquido            Float   @map("valor_liquido")
+  motivoAjuste            String? @map("motivo_ajuste")
 
   // Valor EFETIVAMENTE transferido ao investidor (pode diferir de valorLiquido
   // em caso de pagamento manual fora do fluxo normal). Quando preenchido e
   // diferente de valorLiquido, a diferença gera InvestorDebit automaticamente.
-  valorRealPago        Float?  @map("valor_real_pago")
-  motivoValorRealPago  String? @map("motivo_valor_real_pago")
+  valorRealPago       Float?  @map("valor_real_pago")
+  motivoValorRealPago String? @map("motivo_valor_real_pago")
 
   // AGUARDANDO_COMPENSACAO | AGUARDANDO_PAGAMENTO | DISPONIVEL | PAGO | EM_COBRANCA_JUDICIAL
   status String @default("AGUARDANDO_COMPENSACAO")
@@ -1443,18 +1443,18 @@ model InvestorPayable {
   // preservar o rótulo "saldo de [mês de origem]" através de múltiplos saltos.
   carriedFromPayableId String? @map("carried_from_payable_id")
 
-  investor            Investor             @relation(fields: [investorId], references: [id], onDelete: Cascade)
-  plant               Plant                @relation(fields: [plantId], references: [id])
-  consumerUnit        ConsumerUnit         @relation(fields: [consumerUnitId], references: [id])
-  consumerBill        ConsumerBill?        @relation("PayablesFromConsumerBill", fields: [consumerBillId], references: [id])
-  originatedByPlantBill ConsumerBill?      @relation("PayablesOriginatedByPlantBill", fields: [originatedByPlantBillId], references: [id])
-  consumerUnitBilling ConsumerUnitBilling? @relation(fields: [consumerUnitBillingId], references: [id])
-  investorSettlement  InvestorSettlement?  @relation(fields: [investorSettlementId], references: [id])
-  rateioVersion       RateioVersion?       @relation(fields: [rateioVersionId], references: [id])
-  debitApplications   InvestorDebitApplication[]
-  debitosOriginados   InvestorDebit[]           @relation("PayableOrigemDebito")
-  carriedFromPayable  InvestorPayable?           @relation("PayableSaldoCarregado", fields: [carriedFromPayableId], references: [id])
-  saldosCarregados    InvestorPayable[]          @relation("PayableSaldoCarregado")
+  investor              Investor                   @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  plant                 Plant                      @relation(fields: [plantId], references: [id])
+  consumerUnit          ConsumerUnit               @relation(fields: [consumerUnitId], references: [id])
+  consumerBill          ConsumerBill?              @relation("PayablesFromConsumerBill", fields: [consumerBillId], references: [id])
+  originatedByPlantBill ConsumerBill?              @relation("PayablesOriginatedByPlantBill", fields: [originatedByPlantBillId], references: [id])
+  consumerUnitBilling   ConsumerUnitBilling?       @relation(fields: [consumerUnitBillingId], references: [id])
+  investorSettlement    InvestorSettlement?        @relation(fields: [investorSettlementId], references: [id])
+  rateioVersion         RateioVersion?             @relation(fields: [rateioVersionId], references: [id])
+  debitApplications     InvestorDebitApplication[]
+  debitosOriginados     InvestorDebit[]            @relation("PayableOrigemDebito")
+  carriedFromPayable    InvestorPayable?           @relation("PayableSaldoCarregado", fields: [carriedFromPayableId], references: [id])
+  saldosCarregados      InvestorPayable[]          @relation("PayableSaldoCarregado")
 
   // Permite múltiplas linhas no mesmo (inv, uc, ano, mes, parcela) desde que
   // venham de origens diferentes — natural (carriedFromPayableId NULL) + uma
@@ -1473,25 +1473,25 @@ model InvestorPayable {
 // valorRestante começa = valorOriginal e é decrementado a cada aplicação
 // em uma InvestorPayable até chegar a 0 (status = QUITADO).
 model InvestorDebit {
-  id             String   @id @default(cuid())
-  investorId     String   @map("investor_id")
-  valorOriginal  Float    @map("valor_original")
-  valorRestante  Float    @map("valor_restante")
-  motivo         String?
+  id              String    @id @default(cuid())
+  investorId      String    @map("investor_id")
+  valorOriginal   Float     @map("valor_original")
+  valorRestante   Float     @map("valor_restante")
+  motivo          String?
   // Payable que originou o débito (quando foi criado automaticamente por
   // markInvestorPayableAsPaid ao detectar valorRealPago > valorLiquido).
   // NULL = débito registrado manualmente.
-  payableOrigemId String? @map("payable_origem_id")
+  payableOrigemId String?   @map("payable_origem_id")
   // ABERTO | QUITADO | CANCELADO
-  status         String   @default("ABERTO")
-  criadoEm       DateTime @default(now()) @map("criado_em")
-  quitadoEm      DateTime? @map("quitado_em")
-  canceladoEm    DateTime? @map("cancelado_em")
-  criadoPorUserId String? @map("criado_por_user_id")
+  status          String    @default("ABERTO")
+  criadoEm        DateTime  @default(now()) @map("criado_em")
+  quitadoEm       DateTime? @map("quitado_em")
+  canceladoEm     DateTime? @map("cancelado_em")
+  criadoPorUserId String?   @map("criado_por_user_id")
 
-  investor     Investor                   @relation(fields: [investorId], references: [id], onDelete: Cascade)
-  applications InvestorDebitApplication[]
-  payableOrigem InvestorPayable?          @relation("PayableOrigemDebito", fields: [payableOrigemId], references: [id])
+  investor      Investor                   @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  applications  InvestorDebitApplication[]
+  payableOrigem InvestorPayable?           @relation("PayableOrigemDebito", fields: [payableOrigemId], references: [id])
 
   @@index([investorId, status])
   @@index([payableOrigemId])
@@ -1564,4 +1564,67 @@ model InvestorSettlement {
   @@unique([investorId, anoFechamento, mesFechamento])
   @@index([status, anoFechamento, mesFechamento])
   @@map("investor_settlements")
+}
+
+// ============================================================
+// FECHAMENTO FINANCEIRO — config
+// ============================================================
+// Alíquota de imposto vigente a partir de um mês. O cálculo do fechamento
+// busca a TaxRate cuja vigenciaInicio é <= primeiro dia do mês referente.
+model TaxRate {
+  id             String   @id @default(cuid())
+  // Primeiro dia do mês a partir do qual a alíquota passa a valer.
+  vigenciaInicio DateTime @map("vigencia_inicio")
+  // Percentual sobre receita bruta (0..100). Ex.: 6.0 = 6%.
+  percentual     Float
+  observacao     String?
+  criadoEm       DateTime @default(now()) @map("criado_em")
+  atualizadoEm   DateTime @updatedAt @map("atualizado_em")
+
+  @@unique([vigenciaInicio])
+  @@map("tax_rates")
+}
+
+// Catálogo de rubricas de custos fixos (Click Sign, Contador, Folha, etc.).
+// Cada rubrica tem um valor padrão que é proposto a cada novo mês;
+// o gestor confirma/edita o valor efetivo na entrada do mês.
+model RecurringCost {
+  id           String   @id @default(cuid())
+  nome         String
+  // Categoria livre (texto) — agrupa no relatório. Ex.: "Folha", "Software", "Infra".
+  categoria    String?
+  valorPadrao  Float    @default(0) @map("valor_padrao")
+  ativo        Boolean  @default(true)
+  ordem        Int      @default(0)
+  observacao   String?
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  entries RecurringCostEntry[]
+
+  @@unique([nome])
+  @@index([ativo, ordem])
+  @@map("recurring_costs")
+}
+
+// Valor efetivo de uma rubrica em um mês específico. Criado/atualizado quando
+// o gestor confirma o valor durante o fechamento. Se não existir entry, o
+// fechamento usa valorPadrao da RecurringCost.
+model RecurringCostEntry {
+  id                  String   @id @default(cuid())
+  recurringCostId     String   @map("recurring_cost_id")
+  ano                 Int
+  mes                 Int
+  valor               Float
+  // Snapshot do valorPadrao no momento da confirmação (auditoria).
+  valorPadraoNoMes    Float?   @map("valor_padrao_no_mes")
+  confirmadoEm        DateTime @default(now()) @map("confirmado_em")
+  confirmadoPorUserId String?  @map("confirmado_por_user_id")
+  observacao          String?
+
+  recurringCost RecurringCost @relation(fields: [recurringCostId], references: [id], onDelete: Cascade)
+
+  @@unique([recurringCostId, ano, mes])
+  @@index([ano, mes])
+  @@map("recurring_cost_entries")
 }
