@@ -2,6 +2,10 @@
 // Geocodifica cidade e busca previsão de até 16 dias. Cache em memória
 // no servidor pra não bater a API a cada requisição.
 
+// Cidade-sede da empresa — fonte única da previsão exibida no Calendário de Obras.
+// Sobrescrevível via env `WEATHER_BASE_CITY` (formato "Cidade, UF").
+export const WEATHER_BASE_CITY = process.env.WEATHER_BASE_CITY ?? "Santa Maria, RS";
+
 export interface GeocodeResult {
   latitude: number;
   longitude: number;
@@ -68,6 +72,27 @@ function forecastCacheKey(lat: number, lon: number): string {
   return `${lat.toFixed(2)},${lon.toFixed(2)}`;
 }
 
+// Nome completo do estado por UF (Open-Meteo devolve em `admin1`).
+const UF_TO_ADMIN1: Record<string, string> = {
+  AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas",
+  BA: "Bahia", CE: "Ceará", DF: "Distrito Federal", ES: "Espírito Santo",
+  GO: "Goiás", MA: "Maranhão", MT: "Mato Grosso", MS: "Mato Grosso do Sul",
+  MG: "Minas Gerais", PA: "Pará", PB: "Paraíba", PR: "Paraná",
+  PE: "Pernambuco", PI: "Piauí", RJ: "Rio de Janeiro", RN: "Rio Grande do Norte",
+  RS: "Rio Grande do Sul", RO: "Rondônia", RR: "Roraima", SC: "Santa Catarina",
+  SP: "São Paulo", SE: "Sergipe", TO: "Tocantins",
+};
+
+// Aceita "Cidade", "Cidade, UF", "Cidade/UF", "Cidade-UF" e separa as duas partes.
+function splitCidadeUf(query: string): { cidade: string; uf: string | null } {
+  const s = query.trim();
+  const m = s.match(/^(.+?)\s*[,/\-]\s*([A-Z]{2})\s*$/);
+  if (m && UF_TO_ADMIN1[m[2]]) {
+    return { cidade: m[1].trim(), uf: m[2] };
+  }
+  return { cidade: s, uf: null };
+}
+
 export async function geocodeCidade(query: string): Promise<GeocodeResult | null> {
   const trimmed = query.trim();
   if (!trimmed) return null;
@@ -78,7 +103,10 @@ export async function geocodeCidade(query: string): Promise<GeocodeResult | null
     return cached.value;
   }
 
-  const url = `${GEOCODE_URL}?name=${encodeURIComponent(trimmed)}&count=1&language=pt&format=json`;
+  // Open-Meteo geocoding NÃO aceita ", UF" no parâmetro `name` — devolve 0 resultados.
+  // Separamos cidade da UF, mandamos só a cidade, e desambiguamos pelo `admin1`.
+  const { cidade, uf } = splitCidadeUf(trimmed);
+  const url = `${GEOCODE_URL}?name=${encodeURIComponent(cidade)}&count=10&language=pt&format=json`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) {
@@ -91,17 +119,24 @@ export async function geocodeCidade(query: string): Promise<GeocodeResult | null
         longitude: number;
         name: string;
         country?: string;
+        country_code?: string;
         admin1?: string;
       }>;
     };
-    const first = data.results?.[0];
-    const value: GeocodeResult | null = first
+    const results = data.results ?? [];
+    const brOnly = results.filter((r) => r.country_code === "BR");
+    const targetAdmin1 = uf ? UF_TO_ADMIN1[uf] : null;
+    const byUf = targetAdmin1
+      ? brOnly.find((r) => (r.admin1 ?? "").toLowerCase() === targetAdmin1.toLowerCase())
+      : null;
+    const pick = byUf ?? brOnly[0] ?? results[0] ?? null;
+    const value: GeocodeResult | null = pick
       ? {
-          latitude: first.latitude,
-          longitude: first.longitude,
-          name: first.name,
-          country: first.country ?? null,
-          admin1: first.admin1 ?? null,
+          latitude: pick.latitude,
+          longitude: pick.longitude,
+          name: pick.name,
+          country: pick.country ?? null,
+          admin1: pick.admin1 ?? null,
         }
       : null;
     geocodeCache.set(key, { value, fetchedAt: Date.now() });

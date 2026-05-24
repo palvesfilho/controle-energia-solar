@@ -28,17 +28,28 @@ export const PRIORIDADE_LABEL: Record<ObraPrioridade, string> = {
   URGENTE: "Urgente",
 };
 
-export const STATUS_COLOR: Record<ObraStatus, { bg: string; border: string; text: string }> = {
-  PLANEJAMENTO: { bg: "#e2e8f0", border: "#64748b", text: "#1e293b" },
-  EM_EXECUCAO: { bg: "#d1fae5", border: "#059669", text: "#064e3b" },
-  PAUSADA: { bg: "#fef3c7", border: "#d97706", text: "#78350f" },
-  CONCLUIDA: { bg: "#dbeafe", border: "#2563eb", text: "#1e3a8a" },
-  CANCELADA: { bg: "#f1f5f9", border: "#94a3b8", text: "#475569" },
+// Card neutro pra TODAS as obras — status e prioridade comunicam pelo texto
+// e pela barra lateral, não pelo fundo. Reduz poluição visual quando o mês
+// tem várias obras.
+export const CARD_BG = "#ffffff";
+export const CARD_BORDER = "#e2e8f0";
+export const CARD_TEXT = "#0f172a";
+
+// Barra colorida à esquerda do card = STATUS. Cor sólida pra dar leitura
+// rápida; override por vermelho quando a obra está atrasada.
+export const STATUS_BAR_COLOR: Record<ObraStatus, string> = {
+  PLANEJAMENTO: "#64748b", // cinza
+  EM_EXECUCAO: "#059669",  // verde
+  PAUSADA: "#d97706",      // amarelo
+  CONCLUIDA: "#2563eb",    // azul
+  CANCELADA: "#cbd5e1",    // cinza claro
 };
 
-export const ATRASADA_COLOR = { bg: "#fee2e2", border: "#dc2626", text: "#7f1d1d" };
+export const ATRASADA_BAR_COLOR = "#dc2626"; // vermelho (substitui a barra de status)
 
-export const PRIORIDADE_STRIPE: Record<ObraPrioridade, string> = {
+// Pontinho ao lado do título = PRIORIDADE. Sem barra vertical pra não
+// concorrer com a barra de status.
+export const PRIORIDADE_DOT_COLOR: Record<ObraPrioridade, string> = {
   BAIXA: "#94a3b8",
   MEDIA: "#38bdf8",
   ALTA: "#f59e0b",

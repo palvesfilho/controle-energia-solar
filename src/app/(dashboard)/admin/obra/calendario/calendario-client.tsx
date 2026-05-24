@@ -54,8 +54,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
-import type { CalendarioObraRow } from "@/app/api/admin/obra/calendario/route";
+import type {
+  CalendarioObraResponse,
+  CalendarioObraRow,
+} from "@/app/api/admin/obra/calendario/route";
 import type { ResumoCalendario } from "@/app/api/admin/obra/calendario/resumo/route";
 import type {
   ForecastDay,
@@ -63,10 +72,13 @@ import type {
 } from "@/app/api/weather/forecast/route";
 import type { WeatherKind } from "@/lib/weather";
 import {
-  ATRASADA_COLOR,
+  ATRASADA_BAR_COLOR,
+  CARD_BG,
+  CARD_BORDER,
+  CARD_TEXT,
+  PRIORIDADE_DOT_COLOR,
   PRIORIDADE_LABEL,
-  PRIORIDADE_STRIPE,
-  STATUS_COLOR,
+  STATUS_BAR_COLOR,
   STATUS_LABEL,
   type ObraPrioridade,
   type ObraStatus,
@@ -120,20 +132,6 @@ function toDateInput(iso: string | null): string {
   if (!iso) return "";
   return iso.slice(0, 10);
 }
-
-// "Severidade" para escolher 1 ícone quando o dia tem várias obras em
-// locais diferentes — mostramos o tempo mais "notável" (tempestade > chuva
-// > etc.) pra equipe ficar ciente do pior cenário daquele dia.
-const WEATHER_SEVERITY: Record<WeatherKind, number> = {
-  storm: 6,
-  snow: 5,
-  rain: 4,
-  fog: 3,
-  cloud: 2,
-  "cloud-partial": 1,
-  sun: 0,
-  unknown: -1,
-};
 
 const WEATHER_LABEL: Record<WeatherKind, string> = {
   sun: "Sol",
@@ -190,20 +188,27 @@ function ymdLocal(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function ymdRangeInclusive(startIso: string, endIso: string): string[] {
-  const out: string[] = [];
-  const start = new Date(startIso.slice(0, 10) + "T12:00:00Z");
-  const end = new Date(endIso.slice(0, 10) + "T12:00:00Z");
-  // endIso vem do `fcEnd` (exclusivo) — voltamos 1 dia pra obter inclusivo.
-  end.setUTCDate(end.getUTCDate() - 1);
-  const cur = new Date(start);
-  while (cur.getTime() <= end.getTime()) {
-    out.push(
-      `${cur.getUTCFullYear()}-${String(cur.getUTCMonth() + 1).padStart(2, "0")}-${String(cur.getUTCDate()).padStart(2, "0")}`
-    );
-    cur.setUTCDate(cur.getUTCDate() + 1);
-  }
-  return out;
+function fmtData(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
+function diffDiasInclusivo(startIso: string | null, endIso: string | null): number | null {
+  if (!startIso || !endIso) return null;
+  const a = new Date(startIso.slice(0, 10) + "T12:00:00Z").getTime();
+  const b = new Date(endIso.slice(0, 10) + "T12:00:00Z").getTime();
+  return Math.round((b - a) / 86_400_000) + 1;
+}
+
+function diasDeAtraso(fimIso: string | null): number {
+  if (!fimIso) return 0;
+  const fim = new Date(fimIso.slice(0, 10) + "T12:00:00Z").getTime();
+  const hoje = new Date();
+  const hojeUtc = Date.UTC(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 12, 0, 0, 0);
+  return Math.max(0, Math.round((hojeUtc - fim) / 86_400_000));
 }
 
 export function CalendarioClient({
@@ -213,6 +218,10 @@ export function CalendarioClient({
 }) {
   const calendarRef = useRef<FullCalendar | null>(null);
   const [rows, setRows] = useState<CalendarioObraRow[]>([]);
+  // Ponto-base da previsão do tempo (sede da empresa, vindo do endpoint).
+  const [weatherBase, setWeatherBase] = useState<
+    CalendarioObraResponse["weatherBase"]
+  >(null);
   const [resumo, setResumo] = useState<ResumoCalendario | null>(null);
   const [loading, setLoading] = useState(true);
   const [filtros, setFiltros] = useState<FiltrosState>(emptyFiltros());
@@ -233,8 +242,7 @@ export function CalendarioClient({
   } | null>(null);
   const [saving, setSaving] = useState(false);
   // Forecast por dia: YYYY-MM-DD → { kind, label, tMax, tMin, prob }.
-  // Quando o dia tem várias obras em locais distintos, o ícone reflete o
-  // tempo mais severo (ver WEATHER_SEVERITY).
+  // Origem única = sede da empresa (ver weatherBase / WEATHER_BASE_CITY).
   const [weatherByDay, setWeatherByDay] = useState<
     Map<string, { kind: WeatherKind; label: string; day: ForecastDay }>
   >(new Map());
@@ -257,9 +265,10 @@ export function CalendarioClient({
       ]);
       if (!listRes.ok) throw new Error("Falha ao carregar obras");
       if (!resumoRes.ok) throw new Error("Falha ao carregar resumo");
-      const list = (await listRes.json()) as { rows: CalendarioObraRow[] };
+      const list = (await listRes.json()) as CalendarioObraResponse;
       const res = (await resumoRes.json()) as ResumoCalendario;
       setRows(list.rows);
+      setWeatherBase(list.weatherBase);
       setResumo(res);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao carregar");
@@ -272,69 +281,34 @@ export function CalendarioClient({
     load();
   }, [load]);
 
-  // Busca previsão por (lat,lon) único e cruza com as obras de cada dia.
+  // Previsão exibida no calendário vem da SEDE DA EMPRESA (ponto único,
+  // resolvido server-side em /api/admin/obra/calendario). Aparece em todos
+  // os dias da janela Open-Meteo (D+0..D+15), independente de ter obra.
   useEffect(() => {
-    const ativos = rows.filter(
-      (r) => r.weatherLat != null && r.weatherLon != null && r.fcStart && r.fcEnd
-    );
-    if (ativos.length === 0) {
+    if (!weatherBase) {
       setWeatherByDay(new Map());
       return;
     }
-    const pontosUnicos = new Map<string, { lat: number; lon: number }>();
-    for (const r of ativos) {
-      const key = `${r.weatherLat!.toFixed(2)},${r.weatherLon!.toFixed(2)}`;
-      if (!pontosUnicos.has(key)) {
-        pontosUnicos.set(key, { lat: r.weatherLat!, lon: r.weatherLon! });
-      }
-    }
-    const points = Array.from(pontosUnicos.entries()).map(([key, p]) => ({
-      key,
-      lat: p.lat,
-      lon: p.lon,
-    }));
-
+    const key = `${weatherBase.lat.toFixed(2)},${weatherBase.lon.toFixed(2)}`;
     let cancelado = false;
     (async () => {
       try {
         const res = await fetch("/api/weather/forecast", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ points }),
+          body: JSON.stringify({ points: [{ key, lat: weatherBase.lat, lon: weatherBase.lon }] }),
         });
         if (!res.ok) return;
         const data = (await res.json()) as ForecastResponse;
         if (cancelado) return;
 
-        // Indexa forecast por (pointKey, date).
-        const byPointDay = new Map<string, ForecastDay>();
-        for (const [pointKey, days] of Object.entries(data.forecasts)) {
-          for (const d of days) {
-            byPointDay.set(`${pointKey}|${d.date}`, d);
-          }
-        }
-
-        // Para cada dia visitado por uma obra, escolhe o forecast mais severo
-        // entre as obras que cobrem aquele dia.
         const acc = new Map<
           string,
           { kind: WeatherKind; label: string; day: ForecastDay }
         >();
-        for (const r of ativos) {
-          const key = `${r.weatherLat!.toFixed(2)},${r.weatherLon!.toFixed(2)}`;
-          const dias = ymdRangeInclusive(r.fcStart!, r.fcEnd!);
-          for (const ymd of dias) {
-            const fc = byPointDay.get(`${key}|${ymd}`);
-            if (!fc) continue;
-            const cur = acc.get(ymd);
-            if (!cur || WEATHER_SEVERITY[fc.kind] > WEATHER_SEVERITY[cur.kind]) {
-              acc.set(ymd, {
-                kind: fc.kind,
-                label: r.weatherLabel ?? "",
-                day: fc,
-              });
-            }
-          }
+        const days = data.forecasts[key] ?? [];
+        for (const d of days) {
+          acc.set(d.date, { kind: d.kind, label: weatherBase.label, day: d });
         }
         setWeatherByDay(acc);
       } catch {
@@ -345,24 +319,23 @@ export function CalendarioClient({
     return () => {
       cancelado = true;
     };
-  }, [rows]);
+  }, [weatherBase]);
 
   const events: EventInput[] = useMemo(() => {
     return rows
       .filter((r) => r.fcStart && r.fcEnd)
-      .map((r) => {
-        const palette = r.atrasada ? ATRASADA_COLOR : STATUS_COLOR[r.status];
-        return {
-          id: r.id,
-          title: r.nome,
-          start: r.fcStart!,
-          end: r.fcEnd!,
-          backgroundColor: palette.bg,
-          borderColor: palette.border,
-          textColor: palette.text,
-          extendedProps: { row: r },
-        };
-      });
+      .map((r) => ({
+        id: r.id,
+        title: r.nome,
+        start: r.fcStart!,
+        end: r.fcEnd!,
+        // Card neutro — leitura visual vem da barra esquerda (status) e dos
+        // badges de texto (equipe + status) renderizados em renderEventContent.
+        backgroundColor: CARD_BG,
+        borderColor: CARD_BORDER,
+        textColor: CARD_TEXT,
+        extendedProps: { row: r },
+      }));
   }, [rows]);
 
   function abrirObra(r: CalendarioObraRow) {
@@ -499,20 +472,99 @@ export function CalendarioClient({
 
   function renderEventContent(arg: EventContentArg) {
     const row = arg.event.extendedProps.row as CalendarioObraRow | undefined;
-    const stripe = row ? PRIORIDADE_STRIPE[row.prioridade] : "#94a3b8";
-    return (
-      <div className="flex h-full w-full items-center gap-1 overflow-hidden px-1">
+    const barColor = row
+      ? row.atrasada
+        ? ATRASADA_BAR_COLOR
+        : STATUS_BAR_COLOR[row.status]
+      : "#cbd5e1";
+    const dotColor = row ? PRIORIDADE_DOT_COLOR[row.prioridade] : "#94a3b8";
+    const statusLabel = row ? STATUS_LABEL[row.status] : "";
+    const prioridadeLabel = row ? PRIORIDADE_LABEL[row.prioridade] : "-";
+    const equipeLabel = row?.equipeNome ?? "Sem equipe";
+    const dias = row ? diffDiasInclusivo(row.fcStart, row.fcEnd) : null;
+    const atraso = row?.atrasada ? diasDeAtraso(row.dataFimPrevista) : 0;
+    const obsResumida =
+      row?.observacoes && row.observacoes.trim()
+        ? row.observacoes.trim().length > 120
+          ? `${row.observacoes.trim().slice(0, 120)}…`
+          : row.observacoes.trim()
+        : null;
+
+    const cardInner = (
+      <>
         <span
-          className="h-full w-1 shrink-0 rounded-sm"
-          style={{ backgroundColor: stripe }}
+          className="w-1.5 shrink-0 rounded-sm"
+          style={{ backgroundColor: barColor }}
         />
-        <span className="min-w-0 flex-1 truncate text-[11px] font-medium">
-          {arg.event.title}
-        </span>
-        {row?.atrasada && (
-          <AlertTriangle className="h-3 w-3 shrink-0 text-red-700" />
-        )}
-      </div>
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 py-0.5 pr-1">
+          <div className="flex items-center gap-1">
+            <span
+              className="h-1.5 w-1.5 shrink-0 rounded-full"
+              style={{ backgroundColor: dotColor }}
+            />
+            <span className="min-w-0 flex-1 truncate text-[11px] font-semibold">
+              {arg.event.title}
+            </span>
+            {row?.atrasada && (
+              <AlertTriangle className="h-3 w-3 shrink-0 text-red-600" />
+            )}
+          </div>
+          <div className="flex min-w-0 items-center gap-1 text-[10px] text-slate-600">
+            <span className="truncate">👥 {equipeLabel}</span>
+            <span className="opacity-60">·</span>
+            <span
+              className="shrink-0 rounded px-1 font-medium"
+              style={{ color: barColor, backgroundColor: `${barColor}1a` }}
+            >
+              {row?.atrasada ? "Atrasada" : statusLabel}
+            </span>
+          </div>
+        </div>
+      </>
+    );
+
+    const cardClasses =
+      "flex h-full w-full cursor-pointer items-stretch gap-1.5 overflow-hidden";
+
+    if (!row) {
+      return <div className={cardClasses}>{cardInner}</div>;
+    }
+
+    return (
+      <Tooltip>
+        <TooltipTrigger render={<div className={cardClasses} />}>
+          {cardInner}
+        </TooltipTrigger>
+        <TooltipContent
+          side="top"
+          align="start"
+          className="max-w-sm whitespace-normal break-words p-3 text-[12px] leading-relaxed"
+        >
+          <div className="space-y-1">
+            <div className="text-sm font-semibold">{row.nome}</div>
+            {row.responsavel && <div>👤 {row.responsavel}</div>}
+            {row.cliente && <div>🏢 {row.cliente}</div>}
+            {row.local && <div>📍 {row.local}</div>}
+            {(row.fcStart || row.fcEnd) && (
+              <div>
+                📅 {fmtData(row.fcStart)} → {fmtData(row.dataFimPrevista)}
+                {dias != null && ` · ${dias} ${dias === 1 ? "dia" : "dias"}`}
+              </div>
+            )}
+            <div>
+              👥 {equipeLabel} · 🚩 {prioridadeLabel} · 📊 {Math.round(row.progresso)}%
+            </div>
+            {row.atrasada && atraso > 0 && (
+              <div className="font-medium text-red-300">
+                ⚠ Atrasada há {atraso} {atraso === 1 ? "dia" : "dias"}
+              </div>
+            )}
+            {obsResumida && (
+              <div className="italic opacity-80">📝 “{obsResumida}”</div>
+            )}
+          </div>
+        </TooltipContent>
+      </Tooltip>
     );
   }
 
@@ -547,6 +599,7 @@ export function CalendarioClient({
   }
 
   return (
+    <TooltipProvider delay={250}>
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -802,6 +855,11 @@ export function CalendarioClient({
       <Card>
         <CardContent className="p-3">
           <div className="fc-solar">
+            <style>{`
+              .fc-solar .fc-daygrid-event { min-height: 36px; align-items: stretch; }
+              .fc-solar .fc-event-main { padding: 0 !important; }
+              .fc-solar .fc-event { border-radius: 4px; }
+            `}</style>
             <FullCalendar
               ref={(el) => {
                 calendarRef.current = el;
@@ -841,35 +899,29 @@ export function CalendarioClient({
 
           {/* Legenda */}
           <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-            <span className="font-medium">Status:</span>
+            <span className="font-medium">Barra (status):</span>
             {STATUS_OPTIONS.map((s) => (
               <span key={s} className="inline-flex items-center gap-1">
                 <span
-                  className="inline-block h-3 w-3 rounded-sm"
-                  style={{
-                    backgroundColor: STATUS_COLOR[s].bg,
-                    border: `1px solid ${STATUS_COLOR[s].border}`,
-                  }}
+                  className="inline-block h-3 w-1 rounded-sm"
+                  style={{ backgroundColor: STATUS_BAR_COLOR[s] }}
                 />
                 {STATUS_LABEL[s]}
               </span>
             ))}
             <span className="inline-flex items-center gap-1">
               <span
-                className="inline-block h-3 w-3 rounded-sm"
-                style={{
-                  backgroundColor: ATRASADA_COLOR.bg,
-                  border: `1px solid ${ATRASADA_COLOR.border}`,
-                }}
+                className="inline-block h-3 w-1 rounded-sm"
+                style={{ backgroundColor: ATRASADA_BAR_COLOR }}
               />
               Atrasada
             </span>
-            <span className="ml-3 font-medium">Prioridade:</span>
+            <span className="ml-3 font-medium">Ponto (prioridade):</span>
             {PRIORIDADE_OPTIONS.map((p) => (
               <span key={p} className="inline-flex items-center gap-1">
                 <span
-                  className="inline-block h-3 w-1 rounded-sm"
-                  style={{ backgroundColor: PRIORIDADE_STRIPE[p] }}
+                  className="inline-block h-2 w-2 rounded-full"
+                  style={{ backgroundColor: PRIORIDADE_DOT_COLOR[p] }}
                 />
                 {PRIORIDADE_LABEL[p]}
               </span>
@@ -1152,6 +1204,7 @@ export function CalendarioClient({
         }
       `}</style>
     </div>
+    </TooltipProvider>
   );
 }
 
