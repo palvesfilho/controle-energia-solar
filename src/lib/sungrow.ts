@@ -639,7 +639,7 @@ export async function getDailyGeneration(
       if (kwh > 0) {
         out.push({
           day,
-          date: new Date(year, month - 1, day, 12, 0, 0),
+          date: new Date(Date.UTC(year, month - 1, day, 12, 0, 0)),
           energyKwh: kwh,
           ongridKwh: null,
           useKwh: null,

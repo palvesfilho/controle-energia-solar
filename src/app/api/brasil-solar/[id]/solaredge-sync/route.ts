@@ -67,7 +67,7 @@ export async function POST(
         const dailyData = await getDailyGeneration(siteId, year, month);
 
         for (const day of dailyData) {
-          const date = new Date(year, month - 1, day.day, 12, 0, 0);
+          const date = new Date(Date.UTC(year, month - 1, day.day, 12, 0, 0));
 
           await prisma.monitoringLog.upsert({
             where: {

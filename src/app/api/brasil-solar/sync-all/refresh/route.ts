@@ -152,7 +152,7 @@ async function processPlatform(
       const status = statusMap.get(client.monitoramentoPlantId);
 
       for (const day of daily) {
-        const date = new Date(year, month - 1, day.day, 12, 0, 0);
+        const date = new Date(Date.UTC(year, month - 1, day.day, 12, 0, 0));
         await prisma.monitoringLog.upsert({
           where: { clientId_data: { clientId: client.id, data: date } },
           update: {

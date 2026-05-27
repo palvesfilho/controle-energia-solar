@@ -18,7 +18,7 @@ export async function POST(
   const body = await req.json();
 
   const data = new Date(body.data);
-  data.setHours(12, 0, 0, 0); // Normalizar para meio-dia
+  data.setUTCHours(12, 0, 0, 0); // Normalizar para meio-dia UTC (fixa o dia independente do TZ do processo)
 
   const log = await prisma.monitoringLog.upsert({
     where: {

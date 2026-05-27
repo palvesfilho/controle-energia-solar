@@ -30,7 +30,7 @@ async function main() {
     const daily = await getDailyGeneration(OTHAVIO_PSID, year, month);
     console.log(`  ${year}-${String(month).padStart(2, "0")}: ${daily.length} dias em ${((Date.now() - t0)/1000).toFixed(1)}s`);
     for (const d of daily) {
-      const date = new Date(year, month - 1, d.day, 12, 0, 0);
+      const date = new Date(Date.UTC(year, month - 1, d.day, 12, 0, 0));
       await prisma.monitoringLog.upsert({
         where: { clientId_data: { clientId: client.id, data: date } },
         update: { geracaoDiaria: d.energyKwh, irradiacao: d.radiation },
