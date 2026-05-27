@@ -35,7 +35,7 @@ function formatDate(dateStr: string) {
 }
 
 const MESES_FULL = [
-  "Janeiro", "Fevereiro", "Marco", "Abril", "Maio", "Junho",
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
@@ -134,7 +134,7 @@ export function GenerationChart({
           <div className="flex items-center gap-2">
             <Select value={selectedMonth} onValueChange={(v) => v && setSelectedMonth(v)}>
               <SelectTrigger className="w-[130px] h-8 text-sm">
-                <SelectValue />
+                <SelectValue>{MESES_FULL[Number(selectedMonth) - 1]}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {(monthsForYear.length > 0 ? monthsForYear : Array.from({ length: 12 }, (_, i) => i + 1)).map((m) => (

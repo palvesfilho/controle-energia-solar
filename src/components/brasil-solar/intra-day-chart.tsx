@@ -101,13 +101,32 @@ export function IntraDayChart({ clientId }: { clientId: string }) {
   }, [clientId, date, fetchData]);
 
   // Une os samples de todos os inversores num único array por timestamp pra plotar.
+  // Converte energia acumulada (kWh) → potência média do intervalo (kW),
+  // calculando a diferença entre amostras consecutivas (×2 porque o passo é 30min).
+  // Sem isso, a curva fica plana no total do dia após o pôr-do-sol.
   const chartData = useMemo(() => {
     if (!data || data.inverters.length === 0) return [];
     const byTime = new Map<string, Record<string, string | number | null>>();
     for (const inv of data.inverters) {
-      for (const s of inv.samples) {
+      const sorted = [...inv.samples].sort((a, b) =>
+        a.timeStampUtc.localeCompare(b.timeStampUtc),
+      );
+      let prev: number | null = null;
+      for (const s of sorted) {
+        const cur = s.kwhAcumulado;
+        let kw: number | null = null;
+        if (cur != null) {
+          if (prev != null) {
+            const deltaKwh = cur - prev;
+            // delta < 0 = reset do contador diário (00h UTC) → trata como 0
+            kw = deltaKwh > 0 ? deltaKwh * 2 : 0;
+          } else {
+            kw = 0;
+          }
+          prev = cur;
+        }
         const row = byTime.get(s.hhmmBrt) ?? { hhmm: s.hhmmBrt };
-        row[inv.psKey] = s.kwhAcumulado;
+        row[inv.psKey] = kw;
         byTime.set(s.hhmmBrt, row);
       }
     }
@@ -170,11 +189,11 @@ export function IntraDayChart({ clientId }: { clientId: string }) {
               <XAxis dataKey="hhmm" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
               <YAxis
                 tick={{ fontSize: 11 }}
-                label={{ value: "kWh", angle: -90, position: "insideLeft", style: { fontSize: 11 } }}
+                label={{ value: "kW", angle: -90, position: "insideLeft", style: { fontSize: 11 } }}
               />
               <Tooltip
                 contentStyle={{ fontSize: 12 }}
-                formatter={(value) => `${formatNumber(Number(value))} kWh`}
+                formatter={(value) => `${formatNumber(Number(value))} kW`}
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {data!.inverters.map((inv, i) => (
