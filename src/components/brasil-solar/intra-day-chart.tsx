@@ -102,28 +102,43 @@ export function IntraDayChart({ clientId }: { clientId: string }) {
 
   // Une os samples de todos os inversores num único array por timestamp pra plotar.
   // Converte energia acumulada (kWh) → potência média do intervalo (kW),
-  // calculando a diferença entre amostras consecutivas (×2 porque o passo é 30min).
-  // Sem isso, a curva fica plana no total do dia após o pôr-do-sol.
+  // calculando ΔkWh / Δh entre amostras consecutivas. Funciona pra qualquer
+  // resolução (5min, 30min, etc.). Sem isso, a curva fica plana no total do
+  // dia após o pôr-do-sol porque o acumulado não cai.
   const chartData = useMemo(() => {
     if (!data || data.inverters.length === 0) return [];
     const byTime = new Map<string, Record<string, string | number | null>>();
+    // Parse "YYYYMMDDHHmmss" UTC em ms — Sungrow não devolve formato ISO.
+    const tsToMs = (ts: string): number => {
+      const y = Number(ts.substring(0, 4));
+      const mo = Number(ts.substring(4, 6));
+      const d = Number(ts.substring(6, 8));
+      const h = Number(ts.substring(8, 10));
+      const mi = Number(ts.substring(10, 12));
+      const se = Number(ts.substring(12, 14) || "0");
+      return Date.UTC(y, mo - 1, d, h, mi, se);
+    };
     for (const inv of data.inverters) {
       const sorted = [...inv.samples].sort((a, b) =>
         a.timeStampUtc.localeCompare(b.timeStampUtc),
       );
-      let prev: number | null = null;
+      let prevKwh: number | null = null;
+      let prevTs: number | null = null;
       for (const s of sorted) {
         const cur = s.kwhAcumulado;
+        const curTs = tsToMs(s.timeStampUtc);
         let kw: number | null = null;
         if (cur != null) {
-          if (prev != null) {
-            const deltaKwh = cur - prev;
+          if (prevKwh != null && prevTs != null) {
+            const deltaKwh = cur - prevKwh;
+            const deltaH = (curTs - prevTs) / 3600000;
             // delta < 0 = reset do contador diário (00h UTC) → trata como 0
-            kw = deltaKwh > 0 ? deltaKwh * 2 : 0;
+            kw = deltaKwh > 0 && deltaH > 0 ? deltaKwh / deltaH : 0;
           } else {
             kw = 0;
           }
-          prev = cur;
+          prevKwh = cur;
+          prevTs = curTs;
         }
         const row = byTime.get(s.hhmmBrt) ?? { hhmm: s.hhmmBrt };
         row[inv.psKey] = kw;

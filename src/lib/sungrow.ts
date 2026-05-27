@@ -553,14 +553,6 @@ async function collectInverterDay(
     .sort((a, b) => a.timeStamp.localeCompare(b.timeStamp));
 }
 
-/** Filtra samples a cada 30 min (timestamps :00 e :30) — 32 amostras esperadas. */
-function subsample30Min(samples: MinuteDataSample[]): MinuteDataSample[] {
-  return samples.filter((s) => {
-    const mm = s.timeStamp.substring(10, 12);
-    return mm === "00" || mm === "30";
-  });
-}
-
 /** Último p1 não-nulo do dia = energia diária total (Wh) → kWh. */
 function dailyKwhFromSamples(samples: MinuteDataSample[]): number {
   for (let i = samples.length - 1; i >= 0; i--) {
@@ -571,8 +563,9 @@ function dailyKwhFromSamples(samples: MinuteDataSample[]): number {
 }
 
 /**
- * Curva intra-dia de cada inversor (32 samples a cada 30 min, 5h–21h BRT).
- * Use pra exibir gráfico de geração no app. Não faz agregação por planta.
+ * Curva intra-dia de cada inversor (~180 samples a cada 5 min, 5h–20h BRT).
+ * A API da Sungrow já entrega 5min de resolução — antes filtrávamos pra 30min,
+ * o que jogava fora 5/6 dos pontos e deixava a curva escalonada.
  */
 export async function getDailySamples(
   psId: string,
@@ -588,7 +581,7 @@ export async function getDailySamples(
       batch.map(async (inv) => ({
         psKey: inv.psKey,
         deviceName: inv.name,
-        samples: subsample30Min(await collectInverterDay(inv.psKey, year, month, day)),
+        samples: await collectInverterDay(inv.psKey, year, month, day),
       })),
     );
     out.push(...results);
