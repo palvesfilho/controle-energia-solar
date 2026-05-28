@@ -167,7 +167,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
           consumerId: true,
           plantId: true,
           billings: {
-            select: { id: true, asaasChargeId: true, ano: true, mes: true },
+            select: { id: true, asaasChargeId: true, ano: true, mes: true, valorCobranca: true },
           },
         },
       },
@@ -200,7 +200,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       anoReferencia: b.anoReferencia,
       consumerUnitId: b.consumerUnitId,
       consumerUnitLabel: `${b.consumerUnit.codigoUc} — ${b.consumerUnit.nome}`,
-      valor: null,
+      valor: billing?.valorCobranca ?? null,
     });
   }
 
