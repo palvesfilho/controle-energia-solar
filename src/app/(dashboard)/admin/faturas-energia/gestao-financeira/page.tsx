@@ -141,7 +141,7 @@ interface FaturaParaPagar {
 
 const BANCOS = [
   { value: "C6_BANK", label: "C6 Bank" },
-  { value: "BANRISUL", label: "Banrisul" },
+  { value: "C6_BANK", label: "Banrisul" },
   { value: "ASAAS", label: "Asaas" },
 ] as const;
 
@@ -164,7 +164,7 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
   const [pagPagoEm, setPagPagoEm] = useState(() =>
     new Date().toISOString().slice(0, 10),
   );
-  const [pagBanco, setPagBanco] = useState<string>("BANRISUL");
+  const [pagBanco, setPagBanco] = useState<string>("C6_BANK");
   const [pagComprovante, setPagComprovante] = useState<File | null>(null);
   const [pagSaving, setPagSaving] = useState(false);
 
@@ -184,7 +184,7 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
       uc: null,
     });
     setPagPagoEm(new Date().toISOString().slice(0, 10));
-    setPagBanco("BANRISUL");
+    setPagBanco("C6_BANK");
     setPagComprovante(null);
     try {
       const r = await fetch(`/api/admin/faturas-energia/${billId}`);

@@ -15,7 +15,7 @@ const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Se
 
 const BANCOS = [
   { value: "C6_BANK", label: "C6 Bank" },
-  { value: "BANRISUL", label: "Banrisul" },
+  { value: "C6_BANK", label: "Banrisul" },
   { value: "ASAAS", label: "Asaas" },
 ] as const;
 
@@ -76,7 +76,7 @@ export function PagarFaturaDialog({ billId, open, canEditPaid, onOpenChange, onS
   const [carregando, setCarregando] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [pagoEm, setPagoEm] = useState(() => new Date().toISOString().slice(0, 10));
-  const [banco, setBanco] = useState<string>("BANRISUL");
+  const [banco, setBanco] = useState<string>("C6_BANK");
   const [comprovante, setComprovante] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -96,7 +96,7 @@ export function PagarFaturaDialog({ billId, open, canEditPaid, onOpenChange, onS
         const f = j as FaturaParaPagar;
         setFatura(f);
         setPagoEm(isoToInputDate(f.pagoEm));
-        setBanco(f.bancoPagamento ?? "BANRISUL");
+        setBanco(f.bancoPagamento ?? "C6_BANK");
       })
       .catch(() => {
         toast.error("Erro ao carregar fatura");
