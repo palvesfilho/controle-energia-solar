@@ -43,6 +43,9 @@ export interface AgendaTask {
   // EMITIR_RELATORIO_MENSAL). consumerUnitLabel = "codigoUC — nome" pra dropdown.
   consumerUnitId: string | null;
   consumerUnitLabel: string | null;
+  // Valor monetário associado à tarefa, quando aplicável (R$). Hoje só
+  // preenchido em PAGAR_FATURA — usado pra somar "a pagar" no header do dia.
+  valor: number | null;
 }
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -134,6 +137,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       consumerUnitLabel: b.consumerUnit
         ? `${b.consumerUnit.codigoUc} — ${b.consumerUnit.nome}`
         : null,
+      valor: b.valorTotal ?? null,
     });
   }
 
@@ -196,6 +200,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       anoReferencia: b.anoReferencia,
       consumerUnitId: b.consumerUnitId,
       consumerUnitLabel: `${b.consumerUnit.codigoUc} — ${b.consumerUnit.nome}`,
+      valor: null,
     });
   }
 
@@ -250,6 +255,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
         anoReferencia: refYear,
         consumerUnitId: null,
         consumerUnitLabel: null,
+        valor: null,
       });
     }
 
@@ -285,6 +291,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
         anoReferencia: refYear,
         consumerUnitId: null,
         consumerUnitLabel: null,
+        valor: null,
       });
     }
   }
@@ -345,6 +352,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       anoReferencia: b.anoReferencia,
       consumerUnitId: b.consumerUnitId,
       consumerUnitLabel: labelUc,
+      valor: null,
     });
   }
 
@@ -392,6 +400,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       anoReferencia: latest.anoReferencia,
       consumerUnitId: uc.id,
       consumerUnitLabel: `${uc.codigoUc} — ${uc.nome}`,
+      valor: null,
     });
   }
 

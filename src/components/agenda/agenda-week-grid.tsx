@@ -36,6 +36,7 @@ interface SerializedTask {
   anoReferencia: number | null;
   consumerUnitId: string | null;
   consumerUnitLabel: string | null;
+  valor: number | null;
 }
 
 interface UcOption {
@@ -53,6 +54,12 @@ interface AgendaWeekGridProps {
 
 const DIA_LABEL = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
 const DIA_LABEL_SHORT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+
+const BRL = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+  maximumFractionDigits: 2,
+});
 
 const TYPE_META: Record<AgendaTaskType, { icon: React.ElementType; tone: string }> = {
   PAGAR_FATURA: {
@@ -209,6 +216,17 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
     }
     return byDay;
   }, [filtered]);
+
+  // Soma de valores a pagar em aberto (PAGAR_FATURA, status != DONE) por dia.
+  const valorAPagarByDay = useMemo(() => {
+    return tasksByDay.map((dayTasks) =>
+      dayTasks.reduce((acc, t) => {
+        if (t.type !== "PAGAR_FATURA") return acc;
+        if (t.status === "DONE") return acc;
+        return acc + (t.valor ?? 0);
+      }, 0)
+    );
+  }, [tasksByDay]);
 
   const days = useMemo(() => {
     const result: Date[] = [];
@@ -396,6 +414,7 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
         {days.map((day, idx) => {
           const isToday = day.getTime() === today.getTime();
           const dayTasks = tasksByDay[idx];
+          const valorAPagar = valorAPagarByDay[idx];
           return (
             <div
               key={idx}
@@ -421,6 +440,15 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
                     {day.toLocaleDateString("pt-BR", { month: "short" })}
                   </span>
                 </div>
+                {valorAPagar > 0 && (
+                  <div
+                    className="mt-1 text-[11px] font-medium text-rose-600 dark:text-rose-400"
+                    title="Soma das faturas em aberto programadas para este dia"
+                  >
+                    {BRL.format(valorAPagar)}{" "}
+                    <span className="font-normal text-muted-foreground">a pagar</span>
+                  </div>
+                )}
               </div>
 
               <div className="flex-1 space-y-2 p-2 min-h-[80px]">
