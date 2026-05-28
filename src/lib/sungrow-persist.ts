@@ -51,13 +51,14 @@ export async function persistDailySamples(
       if (!dt) continue;
       await prisma.inverterSample.upsert({
         where: { psKey_timeStamp: { psKey: inv.psKey, timeStamp: dt } },
-        update: { p1Wh: sample.p1, p2Wh: sample.p2 },
+        update: { p1Wh: sample.p1, p2Wh: sample.p2, pAcW: sample.pAcW },
         create: {
           clientId,
           psKey: inv.psKey,
           timeStamp: dt,
           p1Wh: sample.p1,
           p2Wh: sample.p2,
+          pAcW: sample.pAcW,
         },
       });
       upserted++;
@@ -97,7 +98,7 @@ export async function readDailySamples(
     const list = grouped.get(r.psKey) ?? [];
     const ts = r.timeStamp;
     const stamp = `${ts.getUTCFullYear()}${String(ts.getUTCMonth() + 1).padStart(2, "0")}${String(ts.getUTCDate()).padStart(2, "0")}${String(ts.getUTCHours()).padStart(2, "0")}${String(ts.getUTCMinutes()).padStart(2, "0")}00`;
-    list.push({ timeStamp: stamp, p1: r.p1Wh, p2: r.p2Wh });
+    list.push({ timeStamp: stamp, p1: r.p1Wh, p2: r.p2Wh, pAcW: r.pAcW });
     grouped.set(r.psKey, list);
   }
   return Array.from(grouped.entries()).map(([psKey, samples]) => ({ psKey, samples }));

@@ -296,11 +296,14 @@ export interface DailyGeneration {
  * Sample bruto do `getDevicePointMinuteDataList` (a cada 5 min).
  * `p1` = energia diária acumulada em **Wh** (zera 00h UTC).
  * `p2` = energia lifetime acumulada em **Wh** (não zera).
+ * `pAcW` = potência AC ativa em **Watts** no instante (soma p14+p24).
+ *   Vira null quando inversor está desligado (sinal limpo de geração).
  */
 export interface MinuteDataSample {
   timeStamp: string; // "YYYYMMDDHHmmss" em UTC
   p1: number | null;
   p2: number | null;
+  pAcW: number | null;
 }
 
 /** Curva intra-dia subamostrada a cada 30 min (32 samples cobrindo 5h–21h BRT). */
@@ -476,7 +479,7 @@ interface MinuteDataResponse {
   result_data: Record<string, Array<Record<string, string>>> | null;
 }
 
-const SAMPLE_POINTS = "p1,p2";
+const SAMPLE_POINTS = "p1,p2,p14,p24";
 /** Janelas UTC de 3h cobrindo 8h–00h (= 5h–21h BRT, dia útil de geração). */
 const DAY_SLICES_UTC: Array<readonly [number, number]> = [
   [8, 11], [11, 14], [14, 17], [17, 20], [20, 23], [23, 24],
@@ -537,10 +540,15 @@ async function collectInverterDay(
       );
       const list = data.result_data?.[psKey] ?? [];
       for (const s of list) {
+        const p14 = s.p14 != null ? Number(s.p14) : null;
+        const p24 = s.p24 != null ? Number(s.p24) : null;
+        const hasAnyAc = (p14 != null && Number.isFinite(p14)) || (p24 != null && Number.isFinite(p24));
+        const pAcW = hasAnyAc ? (Number.isFinite(p14!) ? p14! : 0) + (Number.isFinite(p24!) ? p24! : 0) : null;
         all.push({
           timeStamp: String(s.time_stamp ?? ""),
           p1: s.p1 != null ? Number(s.p1) : null,
           p2: s.p2 != null ? Number(s.p2) : null,
+          pAcW,
         });
       }
     } catch {

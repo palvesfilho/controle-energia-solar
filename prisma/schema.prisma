@@ -882,8 +882,11 @@ model InverterSample {
   clientId  String   @map("client_id")
   psKey     String   @map("ps_key") // identificador do inversor no Sungrow
   timeStamp DateTime @map("time_stamp") // UTC
-  p1Wh      Float?   @map("p1_wh")
-  p2Wh      Float?   @map("p2_wh")
+  p1Wh      Float?   @map("p1_wh") // energia diária acumulada (Wh) — zera 00h UTC
+  p2Wh      Float?   @map("p2_wh") // energia lifetime acumulada (Wh)
+  // Potência AC ativa em Watts no instante (soma p14+p24 do payload Sungrow).
+  // Sinal limpo de geração — vira null quando inversor desliga.
+  pAcW      Float?   @map("p_ac_w")
   createdAt DateTime @default(now()) @map("created_at")
 
   client BrasilSolarClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
