@@ -111,6 +111,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       anoReferencia: true,
       consumerUnitId: true,
       consumerUnit: { select: { nome: true, codigoUc: true } },
+      plant: { select: { name: true, unidadeConsumidora: true } },
     },
   });
 
@@ -120,10 +121,21 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
     if (!isWithin(scheduled, windowStart, windowEnd)) continue;
     const isDone = !!b.pagoEm;
     const isOverdue = !isDone && b.vencimento < today;
+    const nomeRef =
+      b.consumerUnit?.nome ??
+      b.consumerUnit?.codigoUc ??
+      b.plant?.name ??
+      b.plant?.unidadeConsumidora ??
+      "";
+    const labelUc = b.consumerUnit
+      ? `${b.consumerUnit.codigoUc} — ${b.consumerUnit.nome}`
+      : b.plant
+        ? `${b.plant.unidadeConsumidora ?? "—"} — ${b.plant.name} (usina)`
+        : null;
     tasks.push({
       id: `PAGAR_FATURA-${b.id}`,
       type: "PAGAR_FATURA",
-      title: `Pagar fatura ${b.consumerUnit?.nome ?? b.consumerUnit?.codigoUc ?? ""}`.trim(),
+      title: `Pagar fatura ${nomeRef}`.trim(),
       subtitle: b.valorTotal ? `R$ ${b.valorTotal.toFixed(2).replace(".", ",")} · vence ${b.vencimento.toLocaleDateString("pt-BR")}` : `Vence ${b.vencimento.toLocaleDateString("pt-BR")}`,
       scheduledFor: scheduled,
       dueDate: b.vencimento,
@@ -134,9 +146,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       mesReferencia: b.mesReferencia,
       anoReferencia: b.anoReferencia,
       consumerUnitId: b.consumerUnitId,
-      consumerUnitLabel: b.consumerUnit
-        ? `${b.consumerUnit.codigoUc} — ${b.consumerUnit.nome}`
-        : null,
+      consumerUnitLabel: labelUc,
       valor: b.valorTotal ?? null,
     });
   }
