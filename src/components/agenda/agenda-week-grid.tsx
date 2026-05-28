@@ -440,15 +440,28 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
                     {day.toLocaleDateString("pt-BR", { month: "short" })}
                   </span>
                 </div>
-                {valorAPagar > 0 && (
-                  <div
-                    className="mt-1 text-[11px] font-medium text-rose-600 dark:text-rose-400"
-                    title="Soma das faturas em aberto programadas para este dia"
-                  >
-                    {BRL.format(valorAPagar)}{" "}
-                    <span className="font-normal text-muted-foreground">a pagar</span>
-                  </div>
-                )}
+                <div
+                  className={cn(
+                    "mt-1 text-[11px] font-medium",
+                    valorAPagar > 0
+                      ? "text-rose-600 dark:text-rose-400"
+                      : "text-muted-foreground/40"
+                  )}
+                  title={
+                    valorAPagar > 0
+                      ? "Soma das faturas em aberto programadas para este dia"
+                      : "Sem faturas a pagar neste dia"
+                  }
+                >
+                  {valorAPagar > 0 ? (
+                    <>
+                      {BRL.format(valorAPagar)}{" "}
+                      <span className="font-normal text-muted-foreground">a pagar</span>
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </div>
               </div>
 
               <div className="flex-1 space-y-2 p-2 min-h-[80px]">
