@@ -191,6 +191,14 @@ export interface ParsedFaturaPdf {
     tarifaTUSD: number | null;
     bandeiraTarifaria: string | null;
     bandeiraValor: number | null;
+    // Bandeiras por cor — cobrança (positivo)
+    bandeiraAmarelaValor: number | null;
+    bandeiraVermelhaValor: number | null;
+    bandeiraVermelha2Valor: number | null;
+    // Créditos de bandeira por cor — descontos (negativo, vêm com "-" na fatura)
+    bandeiraAmarelaCreditoValor: number | null;
+    bandeiraVermelhaCreditoValor: number | null;
+    bandeiraVermelha2CreditoValor: number | null;
 
     icms: number | null;
     pis: number | null;
@@ -384,6 +392,12 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
   let tarifaTE: number | null = null, tarifaTUSD: number | null = null;
   let bandeiraTarifaria: string | null = null;
   let bandeiraValor: number | null = null;
+  let bandeiraAmarelaValor: number | null = null;
+  let bandeiraVermelhaValor: number | null = null;
+  let bandeiraVermelha2Valor: number | null = null;
+  let bandeiraAmarelaCreditoValor: number | null = null;
+  let bandeiraVermelhaCreditoValor: number | null = null;
+  let bandeiraVermelha2CreditoValor: number | null = null;
 
   const injByOrigem = new Map<string, InjetadaDetalhe>();
   let injTeKwh = 0, injTeValor = 0, injTusdKwh = 0, injTusdValor = 0;
@@ -394,17 +408,60 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
     const isInj = d.includes("energ") && d.includes("inj");
     const isTusd = d.includes("tusd");
     const isTe = !isTusd && (d.includes(" te ") || d.endsWith(" te") || d.includes("- te") || d.includes("-te"));
-    const isBandeira = d.includes("bandeira");
+    // Linha de bandeira cobrada ("Adicional de Bandeira X") ou de crédito
+    // ("Cred Adc Band X" — note "band" abreviado no PDF). Ambas seguem o mesmo
+    // formato de colunas; o sinal do valor (negativo no crédito) vem de fábrica.
+    const isCreditoBandeira =
+      (d.includes("cred") || d.includes("credito")) && d.includes("band");
+    const isBandeira = d.includes("bandeira") || isCreditoBandeira;
     const isDisp = d.includes("disp") && d.includes("energ") && !isInj;
     const isConsumo = !isDisp && d.startsWith("consumo") && !isInj;
 
     if (isBandeira) {
-      if (d.includes("vermelha 2")) bandeiraTarifaria = "Vermelha 2";
-      else if (d.includes("vermelha")) bandeiraTarifaria = "Vermelha 1";
-      else if (d.includes("amarela")) bandeiraTarifaria = "Amarela";
-      else if (d.includes("verde")) bandeiraTarifaria = "Verde";
-      if (lc.valorTotal != null) {
-        bandeiraValor = (bandeiraValor ?? 0) + lc.valorTotal;
+      // Detecta cor — vale tanto pra cobrança quanto pra crédito.
+      let cor: "amarela" | "vermelha" | "vermelha2" | "verde" | null = null;
+      if (d.includes("vermelha 2") || d.includes("vermelha2") || d.includes("vermelha p2")) {
+        cor = "vermelha2";
+      } else if (d.includes("vermelha")) {
+        cor = "vermelha";
+      } else if (d.includes("amarela")) {
+        cor = "amarela";
+      } else if (d.includes("verde")) {
+        cor = "verde";
+      }
+      // Só registra a cor predominante quando for cobrança — créditos podem
+      // referenciar mês passado e não definem a cor do mês atual.
+      if (!isCreditoBandeira) {
+        if (cor === "vermelha2") bandeiraTarifaria = "Vermelha 2";
+        else if (cor === "vermelha") bandeiraTarifaria = "Vermelha 1";
+        else if (cor === "amarela") bandeiraTarifaria = "Amarela";
+        else if (cor === "verde") bandeiraTarifaria = "Verde";
+      }
+      // O valor monetário da bandeira (cobrança ou crédito) fica na PRIMEIRA
+      // coluna após "kWh" (lc.qtd), não na 4ª (lc.valorTotal) — estrutura RGE:
+      // "Adicional de Bandeira X MES/AA kWh <VALOR> <repete> <tarifa> ..."
+      // Crédito vem com "-" no final do valor; parseNumBR já entrega negativo.
+      if (lc.qtd != null) {
+        if (isCreditoBandeira) {
+          if (cor === "amarela") {
+            bandeiraAmarelaCreditoValor = (bandeiraAmarelaCreditoValor ?? 0) + lc.qtd;
+          } else if (cor === "vermelha") {
+            bandeiraVermelhaCreditoValor = (bandeiraVermelhaCreditoValor ?? 0) + lc.qtd;
+          } else if (cor === "vermelha2") {
+            bandeiraVermelha2CreditoValor = (bandeiraVermelha2CreditoValor ?? 0) + lc.qtd;
+          }
+        } else {
+          if (cor === "amarela") {
+            bandeiraAmarelaValor = (bandeiraAmarelaValor ?? 0) + lc.qtd;
+          } else if (cor === "vermelha") {
+            bandeiraVermelhaValor = (bandeiraVermelhaValor ?? 0) + lc.qtd;
+          } else if (cor === "vermelha2") {
+            bandeiraVermelha2Valor = (bandeiraVermelha2Valor ?? 0) + lc.qtd;
+          }
+          // bandeiraValor genérico continua sendo a soma das cobranças (não
+          // dos créditos) — preserva compatibilidade com o uso atual.
+          bandeiraValor = (bandeiraValor ?? 0) + lc.qtd;
+        }
       }
       continue;
     }
@@ -502,20 +559,24 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
   let jurosMora: number | null = null, multaAtraso: number | null = null;
   let atualizacaoMonetaria: number | null = null, iluminacaoPublicaCip: number | null = null;
   let ajusteSaldoCredito: number | null = null;
+  // Pega o PRIMEIRO valor monetário BRL (com vírgula decimal) da linha.
+  // A linha tem códigos de barras no final (ex: "573 31") que são inteiros sem
+  // vírgula — então restringir a regex pra "X,YY" evita capturar esses lixos.
+  // O valor real do encargo aparece logo após a descrição, antes do código.
+  const REGEX_BRL = /-?\d{1,3}(?:\.\d{3})*,\d{2}-?/;
   for (const line of lines) {
     const d = normDesc(line);
-    // pega último número da linha como valor
-    const nums = line.match(/-?[\d.]+(?:,\d+)?-?/g) ?? [];
-    const ultimo = nums.length > 0 ? parseNumBR(nums[nums.length - 1]) : null;
-    if (ultimo == null) continue;
-    if (jurosMora == null && d.includes("juros") && d.includes("mora")) jurosMora = ultimo;
-    else if (multaAtraso == null && d.includes("multa") && d.includes("atraso")) multaAtraso = ultimo;
+    const match = line.match(REGEX_BRL);
+    const valor = match ? parseNumBR(match[0]) : null;
+    if (valor == null) continue;
+    if (jurosMora == null && d.includes("juros") && d.includes("mora")) jurosMora = valor;
+    else if (multaAtraso == null && d.includes("multa") && d.includes("atraso")) multaAtraso = valor;
     else if (atualizacaoMonetaria == null && d.includes("atualizacao") && d.includes("monetaria"))
-      atualizacaoMonetaria = ultimo;
+      atualizacaoMonetaria = valor;
     else if (iluminacaoPublicaCip == null && (d.includes("custeio ip") || d.includes("cip mar") || (d.includes("ilumin") && d.includes("public"))))
-      iluminacaoPublicaCip = ultimo;
+      iluminacaoPublicaCip = valor;
     else if (ajusteSaldoCredito == null && d.includes("ajuste") && d.includes("saldo"))
-      ajusteSaldoCredito = ultimo;
+      ajusteSaldoCredito = valor;
   }
 
   // === Saldo da instalação + participação + saldo a expirar ===
@@ -662,6 +723,12 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
       tarifaTUSD,
       bandeiraTarifaria,
       bandeiraValor,
+      bandeiraAmarelaValor,
+      bandeiraVermelhaValor,
+      bandeiraVermelha2Valor,
+      bandeiraAmarelaCreditoValor,
+      bandeiraVermelhaCreditoValor,
+      bandeiraVermelha2CreditoValor,
 
       icms, pis, cofins,
 

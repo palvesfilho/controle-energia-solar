@@ -512,6 +512,11 @@ model ConsumerBill {
 
   // Valores da fatura
   valorTotal   Float?    @map("valor_total")
+  // Valor recalculado pelo nosso parser a partir dos itens da fatura — exclui
+  // ajustes que não são do mês (juros/multa de débito antigo, refaturamento,
+  // recuperação de consumo, etc.). É essa a base usada pra cobrar o cliente.
+  // Mantém valorTotal original pra auditoria contra a fatura impressa.
+  valorTotalCalculado Float? @map("valor_total_calculado")
   vencimento   DateTime?
   contaPaga    Boolean   @default(false) @map("conta_paga")
   codigoBarras String?   @map("codigo_barras")
@@ -649,6 +654,17 @@ model ConsumerBill {
   tarifaTUSD        Float?  @map("tarifa_tusd") // Tarifa Uso Sistema Distribuicao
   bandeiraTarifaria String? @map("bandeira_tarifaria")
   bandeiraValor     Float?  @map("bandeira_valor") // Soma R$ de todas as linhas de bandeira da fatura
+  // Adicional de Bandeira por cor — preenchido na linha "Adicional de Bandeira X".
+  // Valor positivo (cobrança). Soma desses 3 = bandeiraValor (em Grupo B sem posto).
+  bandeiraAmarelaValor    Float? @map("bandeira_amarela_valor")
+  bandeiraVermelhaValor   Float? @map("bandeira_vermelha_valor")
+  bandeiraVermelha2Valor  Float? @map("bandeira_vermelha2_valor")
+  // Crédito de Adicional de Bandeira por cor — preenchido na linha "Cred Adc Band X".
+  // Valor NEGATIVO (vem com "-" na fatura, ex.: "4,34-"). Não entra na soma da fatura;
+  // virará desconto pro cliente em etapa futura (mesma lógica do ajusteSaldoCredito).
+  bandeiraAmarelaCreditoValor    Float? @map("bandeira_amarela_credito_valor")
+  bandeiraVermelhaCreditoValor   Float? @map("bandeira_vermelha_credito_valor")
+  bandeiraVermelha2CreditoValor  Float? @map("bandeira_vermelha2_credito_valor")
 
   // Consumo instantâneo: energia gerada pela usina e consumida na hora, sem
   // passar pela rede (não compensada). Só faz sentido para UC geradora em
