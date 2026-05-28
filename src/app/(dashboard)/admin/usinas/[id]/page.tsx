@@ -158,6 +158,7 @@ interface PlantData {
   regraInstalacao: string | null;
   dataAssinaturaContrato: string | null;
   diaPagamentoInvestidor: number;
+  pagadorFaturaEnergia: string;
   active: boolean;
   inversorMarca: string | null;
   inversorModelo: string | null;
@@ -700,6 +701,22 @@ export default function UsinaPage() {
               <p className="mt-1 text-xs text-muted-foreground">
                 Dia do mês (1 a 28) em que esta usina paga o investidor. Usado na Agenda da Semana
                 — o relatório aparece 3 dias antes.
+              </p>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="text-xs font-medium text-muted-foreground">
+                Quem paga a fatura de energia?
+              </label>
+              <select
+                name="pagadorFaturaEnergia"
+                defaultValue={plant.pagadorFaturaEnergia ?? "GESTORA"}
+                className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+              >
+                <option value="GESTORA">Gestora de Energia</option>
+                <option value="INVESTIDORES">Investidores (pagam direto)</option>
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Quando o investidor paga, a fatura aparece só pra controle — não entra na rotina de pagamento da gestora.
               </p>
             </div>
           </div>

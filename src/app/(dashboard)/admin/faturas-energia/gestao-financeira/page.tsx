@@ -127,6 +127,17 @@ function OrigemBadge({ origem }: { origem: FaturasEnergiaRow["origem"] }) {
   return <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs ${it.cls}`}>{it.label}</span>;
 }
 
+function InvestidorPagaBadge() {
+  return (
+    <span
+      className="inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
+      title="A fatura desta usina é paga pelo investidor — aqui só pra controle"
+    >
+      Investidor paga
+    </span>
+  );
+}
+
 interface FaturaParaPagar {
   id: string;
   ano: number;
@@ -522,7 +533,12 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
                   {filtered.map((r) => (
                     <tr key={r.ucId} className={`border-b last:border-0 hover:bg-muted/30 transition-colors ${r.active ? "" : "opacity-60"}`}>
                       <td className="sticky left-0 z-10 bg-background px-3 py-2 font-mono text-xs">{r.codigoUc}</td>
-                      <td className="px-3 py-2">{r.nome}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <span>{r.nome}</span>
+                          {r.pagaInvestidor && <InvestidorPagaBadge />}
+                        </div>
+                      </td>
                       <td className="px-3 py-2">
                         <OrigemBadge origem={r.origem} />
                       </td>
@@ -619,14 +635,21 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
                         <td className="sticky left-0 z-10 bg-background px-3 py-2 font-mono text-xs">
                           {r.codigoUc}
                         </td>
-                        <td className="px-3 py-2">{r.nome}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <span>{r.nome}</span>
+                            {r.pagaInvestidor && <InvestidorPagaBadge />}
+                          </div>
+                        </td>
                         <td className="px-3 py-2 text-muted-foreground">
                           {r.distribuidora ?? "-"}
                         </td>
                         {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => {
                           const cell = r.meses[m];
+                          // Faturas de usina onde investidor paga: aparecem só
+                          // pra controle — não viram botão clicável de pagamento.
                           const podePagar =
-                            !!cell && cell.status !== "missing" && !cell.pagoEm;
+                            !!cell && cell.status !== "missing" && !cell.pagoEm && !r.pagaInvestidor;
                           return (
                             <td key={m} className="px-1 py-1 text-center">
                               {podePagar && cell.billId ? (

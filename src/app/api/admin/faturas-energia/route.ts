@@ -24,6 +24,9 @@ export interface FaturasEnergiaRow {
   proprietario: string;
   active: boolean;
   meses: Record<number, FaturaCell>;
+  // true quando origem=usina e Plant.pagadorFaturaEnergia=INVESTIDORES:
+  // gestora não paga a fatura, a linha aparece só pra controle.
+  pagaInvestidor: boolean;
 }
 
 export async function GET(req: NextRequest) {
@@ -108,6 +111,7 @@ export async function GET(req: NextRequest) {
     proprietario: uc.consumer?.name ?? uc.plant?.name ?? "-",
     active: uc.active,
     meses: buildMeses((m) => ucBillIndex.get(`${uc.id}:${m}`)),
+    pagaInvestidor: false,
   }));
 
   const rowsUsinas: FaturasEnergiaRow[] = plants.map((p) => ({
@@ -119,6 +123,7 @@ export async function GET(req: NextRequest) {
     proprietario: p.investors[0]?.investor?.user?.name ?? "Sem investidor",
     active: p.active,
     meses: buildMeses((m) => usinaBillIndex.get(`${p.id}:${m}`)),
+    pagaInvestidor: p.pagadorFaturaEnergia === "INVESTIDORES",
   }));
 
   return NextResponse.json({ ano, rows: [...rowsClientes, ...rowsUsinas] });

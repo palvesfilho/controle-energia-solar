@@ -71,6 +71,8 @@ export async function POST(req: NextRequest) {
         : null,
       loginDistribuidora: body.loginDistribuidora || null,
       senhaDistribuidora: body.senhaDistribuidora || null,
+      pagadorFaturaEnergia:
+        body.pagadorFaturaEnergia === "INVESTIDORES" ? "INVESTIDORES" : "GESTORA",
     },
   });
 

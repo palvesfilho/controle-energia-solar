@@ -102,6 +102,10 @@ export async function PUT(
       }),
       ...(body.loginDistribuidora !== undefined && { loginDistribuidora: body.loginDistribuidora || null }),
       ...(body.senhaDistribuidora !== undefined && { senhaDistribuidora: body.senhaDistribuidora || null }),
+      ...(body.pagadorFaturaEnergia !== undefined && {
+        pagadorFaturaEnergia:
+          body.pagadorFaturaEnergia === "INVESTIDORES" ? "INVESTIDORES" : "GESTORA",
+      }),
     },
   });
 

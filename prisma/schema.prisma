@@ -109,6 +109,12 @@ model Plant {
   // (esta última = pagamento - 3 dias).
   diaPagamentoInvestidor Int @default(20) @map("dia_pagamento_investidor")
 
+  // Quem paga a fatura de energia da usina pra distribuidora:
+  // - GESTORA: a gestora paga e depois cobra/desconta dos investidores (fluxo padrão)
+  // - INVESTIDORES: cada investidor paga direto, gestora só acompanha pra controle
+  // Afeta soma "a pagar" da agenda e badge na Gestão Financeira.
+  pagadorFaturaEnergia String @default("GESTORA") @map("pagador_fatura_energia")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

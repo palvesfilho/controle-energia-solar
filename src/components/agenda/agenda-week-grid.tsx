@@ -37,6 +37,7 @@ interface SerializedTask {
   consumerUnitId: string | null;
   consumerUnitLabel: string | null;
   valor: number | null;
+  pagaInvestidor: boolean;
 }
 
 interface UcOption {
@@ -218,11 +219,14 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
   }, [filtered]);
 
   // Soma de valores a pagar em aberto (PAGAR_FATURA, status != DONE) por dia.
+  // Faturas de usinas onde o investidor paga direto são puladas — aparecem
+  // na agenda só pra controle, não saem do caixa da gestora.
   const valorAPagarByDay = useMemo(() => {
     return tasksByDay.map((dayTasks) =>
       dayTasks.reduce((acc, t) => {
         if (t.type !== "PAGAR_FATURA") return acc;
         if (t.status === "DONE") return acc;
+        if (t.pagaInvestidor) return acc;
         return acc + (t.valor ?? 0);
       }, 0)
     );
@@ -556,6 +560,11 @@ function TaskCard({ task, onClick }: { task: SerializedTask; onClick: () => void
           {task.subtitle && (
             <div className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2">
               {task.subtitle}
+            </div>
+          )}
+          {task.pagaInvestidor && (
+            <div className="mt-1 inline-flex items-center rounded-sm bg-violet-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+              Investidor paga
             </div>
           )}
         </div>

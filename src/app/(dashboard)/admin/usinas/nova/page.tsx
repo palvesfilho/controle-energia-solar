@@ -314,6 +314,22 @@ export default function NovaUsinaPage() {
                     type="date"
                     className="sm:col-span-2"
                   />
+                  <div className="sm:col-span-2">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Quem paga a fatura de energia?
+                    </label>
+                    <select
+                      name="pagadorFaturaEnergia"
+                      defaultValue="GESTORA"
+                      className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                    >
+                      <option value="GESTORA">Gestora de Energia</option>
+                      <option value="INVESTIDORES">Investidores (pagam direto)</option>
+                    </select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Quando o investidor paga, a fatura aparece só pra controle — não entra na rotina de pagamento da gestora.
+                    </p>
+                  </div>
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
                   Define o início da janela de faturas a descontar no primeiro relatório do investidor.

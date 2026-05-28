@@ -46,6 +46,10 @@ export interface AgendaTask {
   // Valor monetário associado à tarefa, quando aplicável (R$). Hoje só
   // preenchido em PAGAR_FATURA — usado pra somar "a pagar" no header do dia.
   valor: number | null;
+  // PAGAR_FATURA de usina onde "INVESTIDORES" pagam direto: a fatura aparece
+  // pra controle mas não é responsabilidade da gestora. Não soma no caixa
+  // do dia; renderizada com badge "Investidor paga".
+  pagaInvestidor: boolean;
 }
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -111,7 +115,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       anoReferencia: true,
       consumerUnitId: true,
       consumerUnit: { select: { nome: true, codigoUc: true } },
-      plant: { select: { name: true, unidadeConsumidora: true } },
+      plant: { select: { name: true, unidadeConsumidora: true, pagadorFaturaEnergia: true } },
     },
   });
 
@@ -132,6 +136,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       : b.plant
         ? `${b.plant.unidadeConsumidora ?? "—"} — ${b.plant.name} (usina)`
         : null;
+    const pagaInvestidor = b.plant?.pagadorFaturaEnergia === "INVESTIDORES";
     tasks.push({
       id: `PAGAR_FATURA-${b.id}`,
       type: "PAGAR_FATURA",
@@ -148,6 +153,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       consumerUnitId: b.consumerUnitId,
       consumerUnitLabel: labelUc,
       valor: b.valorTotal ?? null,
+      pagaInvestidor,
     });
   }
 
@@ -211,6 +217,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       consumerUnitId: b.consumerUnitId,
       consumerUnitLabel: `${b.consumerUnit.codigoUc} — ${b.consumerUnit.nome}`,
       valor: billing?.valorCobranca ?? null,
+      pagaInvestidor: false,
     });
   }
 
@@ -266,6 +273,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
         consumerUnitId: null,
         consumerUnitLabel: null,
         valor: null,
+        pagaInvestidor: false,
       });
     }
 
@@ -302,6 +310,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
         consumerUnitId: null,
         consumerUnitLabel: null,
         valor: null,
+        pagaInvestidor: false,
       });
     }
   }
@@ -363,6 +372,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       consumerUnitId: b.consumerUnitId,
       consumerUnitLabel: labelUc,
       valor: null,
+      pagaInvestidor: false,
     });
   }
 
@@ -411,6 +421,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       consumerUnitId: uc.id,
       consumerUnitLabel: `${uc.codigoUc} — ${uc.nome}`,
       valor: null,
+      pagaInvestidor: false,
     });
   }
 
