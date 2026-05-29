@@ -72,6 +72,22 @@ export async function PUT(req: NextRequest, ctx: RouteCtx) {
   }
 
   const body = await req.json();
+
+  // Campos que afetam o conteúdo do demonstrativo — qualquer mudança desses
+  // reseta a validação (operador precisa revalidar antes de "Realizar
+  // Cobrança"). Status e preferências de notificação não resetam.
+  const camposQueResetamValidacao = [
+    "valorFatura",
+    "valorCompensado",
+    "valorEconomia",
+    "valorCobranca",
+    "dataVencimento",
+    "observacoes",
+  ];
+  const tocouCampoValidacao = camposQueResetamValidacao.some(
+    (k) => body[k] !== undefined,
+  );
+
   const updated = await prisma.consumerUnitBilling.update({
     where: { id },
     data: {
@@ -97,6 +113,12 @@ export async function PUT(req: NextRequest, ctx: RouteCtx) {
       ...(body.status !== undefined && { status: body.status }),
       ...(body.notificarEmail !== undefined && { notificarEmail: !!body.notificarEmail }),
       ...(body.notificarWhatsapp !== undefined && { notificarWhatsapp: !!body.notificarWhatsapp }),
+      // Reset validation se qualquer campo do demonstrativo mudou — mas só
+      // antes da cobrança ser emitida; depois fica congelado.
+      ...(tocouCampoValidacao && !billing.asaasChargeId && {
+        demonstrativoValidadoEm: null,
+        demonstrativoValidadoPor: null,
+      }),
     },
   });
   return NextResponse.json(updated);

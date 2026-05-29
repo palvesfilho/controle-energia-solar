@@ -256,6 +256,11 @@ export async function populateBillingFromBill(
     valorCobranca,
     valorEconomia,
     dataVencimento,
+    // Reset da validação do demonstrativo se os valores foram recalculados.
+    // Quando a cobrança já foi emitida (asaasChargeId), o branch acima já saiu
+    // com skipped — não chegamos aqui. Logo, é seguro zerar.
+    demonstrativoValidadoEm: null,
+    demonstrativoValidadoPor: null,
   };
 
   const billing = existing
