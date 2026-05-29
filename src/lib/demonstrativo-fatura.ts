@@ -79,24 +79,18 @@ function mesLabelHistorico(mes: number, ano: number): string {
 }
 
 /**
- * Histórico ATÉ 12 meses (mais antigo → mais recente) terminando em (mesRef/anoRef).
- * Meses anteriores ao primeiro registro de fatura são omitidos — gráfico não
- * mostra barras zeradas quando o cliente é novo na base.
+ * Histórico dos 12 meses (mais antigo → mais recente) terminando em
+ * (mesRef/anoRef). Sempre 12 entradas — meses sem fatura aparecem com
+ * consumo 0 (linha em branco no gráfico).
  */
 function gerar12Meses(
   bills: { mesReferencia: number; anoReferencia: number; consumoKwh: number | null }[],
   mesRef: number,
   anoRef: number,
 ): { m: string; consumo: number }[] {
-  if (bills.length === 0) return [];
   const map = new Map(
     bills.map((b) => [`${b.anoReferencia}-${b.mesReferencia}`, b.consumoKwh ?? 0]),
   );
-  // Acha o código (ano*100+mes) do primeiro mês com fatura — pra não mostrar
-  // meses anteriores a ele com 0.
-  const codigo = (a: number, m: number) => a * 100 + m;
-  const primeiroCodigo = Math.min(...bills.map((b) => codigo(b.anoReferencia, b.mesReferencia)));
-
   const out: { m: string; consumo: number }[] = [];
   for (let i = 11; i >= 0; i--) {
     let m = mesRef - i;
@@ -105,7 +99,6 @@ function gerar12Meses(
       m += 12;
       a -= 1;
     }
-    if (codigo(a, m) < primeiroCodigo) continue;
     const consumo = map.get(`${a}-${m}`) ?? 0;
     out.push({ m: mesLabelHistorico(m, a), consumo: Math.round(consumo) });
   }
