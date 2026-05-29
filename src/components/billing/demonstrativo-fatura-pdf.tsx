@@ -285,10 +285,18 @@ function BarChart({ data }: { data: { m: string; consumo: number }[] }) {
   const padR = 42;
   const padT = 14;
   const padB = 6;
-  const rowH = 12;
-  const gap = 2;
+  // Altura dinâmica: barras crescem pra ocupar o card mesmo quando há poucas
+  // amostras (cliente novo na base) — gráfico nunca fica "perdido" num quadro
+  // vazio. Alvo: ~180 unidades de viewBox (matching split-col left).
+  const INNER_ALVO = 180;
+  const n = Math.max(1, data.length);
+  const gap = n > 8 ? 2 : n > 4 ? 4 : 6;
+  const rowH = Math.max(14, Math.min(40, (INNER_ALVO - (n - 1) * gap) / n));
+  // Espessura da barra: cresce com rowH até um limite (não fica "cobra
+  // gorda" quando há poucos meses).
+  const barH = Math.max(6, Math.min(16, rowH * 0.5));
   const innerW = W - padL - padR;
-  const innerH = data.length * rowH + (data.length - 1) * gap;
+  const innerH = n * rowH + (n - 1) * gap;
   const H = padT + innerH + padB;
 
   const maxV = Math.max(...data.map((d) => d.consumo), 1);
@@ -329,9 +337,9 @@ function BarChart({ data }: { data: { m: string; consumo: number }[] }) {
             </SvgText>
             <Rect
               x={padL}
-              y={by + 2}
+              y={by + (rowH - barH) / 2}
               width={bw}
-              height={rowH - 4}
+              height={barH}
               fill={isLast ? C.orange2 : C.orange}
               rx={1.5}
             />
