@@ -184,8 +184,10 @@ export default function NovaUsinaPage() {
     if (selectedMarca) data.inversorMarca = selectedMarca;
     if (selectedModelo) data.inversorModelo = selectedModelo;
     if (selectedPlataforma) data.monitoramentoPlataforma = selectedPlataforma;
-    // checkbox de form vem como "on" — converte pra boolean explícito
-    data.usinaDeInvestidor = formData.get("usinaDeInvestidor") === "on";
+    // Toda usina nova entra como "usina de investidor" — é o fluxo padrão
+    // da Gestora. Quem quiser uma plant só pra Brasil Solar desmarca depois
+    // editando a usina (ou via campo direto pela API).
+    data.usinaDeInvestidor = true;
 
     const res = await fetch("/api/plants", {
       method: "POST",
@@ -316,21 +318,6 @@ export default function NovaUsinaPage() {
                     type="date"
                     className="sm:col-span-2"
                   />
-                  <div className="sm:col-span-2 flex items-start gap-2 rounded-md border bg-muted/30 p-3">
-                    <input
-                      type="checkbox"
-                      name="usinaDeInvestidor"
-                      id="usinaDeInvestidor"
-                      defaultChecked={false}
-                      className="mt-0.5"
-                    />
-                    <label htmlFor="usinaDeInvestidor" className="text-sm cursor-pointer flex-1">
-                      <span className="font-medium">Usina de investidor</span>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Marque se esta usina entra no fluxo da Gestora de Energia (Clientes / Faturas / Faturamento). Usinas sem essa marcação ficam apenas na área Rede Brasil Solar.
-                      </p>
-                    </label>
-                  </div>
                   <div className="sm:col-span-2">
                     <label className="text-xs font-medium text-muted-foreground">
                       Quem paga a fatura de energia?

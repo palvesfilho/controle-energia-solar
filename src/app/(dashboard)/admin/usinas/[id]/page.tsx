@@ -333,8 +333,6 @@ export default function UsinaPage() {
     data.formatoLeitura = selectedFormatoLeitura;
     data.enquadramento = selectedEnquadramento;
     data.concessionaria = selectedConcessionaria;
-    // checkbox não enviado se desmarcado — força boolean explícito
-    data.usinaDeInvestidor = fd.get("usinaDeInvestidor") === "on";
 
     const res = await fetch(`/api/plants/${plantId}`, {
       method: "PUT",
@@ -705,21 +703,6 @@ export default function UsinaPage() {
                 Dia do mês (1 a 28) em que esta usina paga o investidor. Usado na Agenda da Semana
                 — o relatório aparece 3 dias antes.
               </p>
-            </div>
-            <div className="sm:col-span-2 flex items-start gap-2 rounded-md border bg-muted/30 p-3">
-              <input
-                type="checkbox"
-                name="usinaDeInvestidor"
-                id="usinaDeInvestidor"
-                defaultChecked={plant.usinaDeInvestidor}
-                className="mt-0.5"
-              />
-              <label htmlFor="usinaDeInvestidor" className="text-sm cursor-pointer flex-1">
-                <span className="font-medium">Usina de investidor</span>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Marque se esta usina entra no fluxo da Gestora de Energia (Clientes / Faturas / Faturamento). Usinas sem essa marcação ficam apenas na área Rede Brasil Solar.
-                </p>
-              </label>
             </div>
             <div className="sm:col-span-2">
               <label className="text-xs font-medium text-muted-foreground">

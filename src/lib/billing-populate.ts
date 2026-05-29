@@ -73,6 +73,10 @@ export async function populateBillingFromBill(
       injetadaOucTeValor: true,
       injetadaOucTusdValor: true,
       bandeiraValor: true,
+      bandeiraAmarelaCreditoValor: true,
+      bandeiraVermelhaCreditoValor: true,
+      bandeiraVermelha2CreditoValor: true,
+      ajusteSaldoCredito: true,
       consumoInstantaneoKwh: true,
       geracaoInversorKwh: true,
       geracaoInversorOrigem: true,
@@ -167,7 +171,11 @@ export async function populateBillingFromBill(
     {
       injetadaOucTeValor: bill.injetadaOucTeValor,
       injetadaOucTusdValor: bill.injetadaOucTusdValor,
-      bandeiraValor: bill.bandeiraValor,
+      bandeiraAmarelaCreditoValor: bill.bandeiraAmarelaCreditoValor,
+      bandeiraVermelhaCreditoValor: bill.bandeiraVermelhaCreditoValor,
+      bandeiraVermelha2CreditoValor: bill.bandeiraVermelha2CreditoValor,
+      ajusteSaldoCredito: bill.ajusteSaldoCredito,
+      valorTotal: bill.valorTotal,
       consumoInstantaneoKwh,
       tarifaTE: bill.tarifaTE,
       tarifaTUSD: bill.tarifaTUSD,
@@ -180,19 +188,33 @@ export async function populateBillingFromBill(
     },
   );
 
-  // Em UC geradora DESCONTADO, o total compensado inclui o valor do consumo
-  // instantâneo (energia gerada e consumida no local, que também "deixa de
-  // ser paga" à concessionária).
-  const compensadoTradicional = calc.detalhamento.energiaCompensadaValor;
-  const compensadoInstantaneo = calc.detalhamento.consumoInstantaneoValor;
-  const valorCompensado =
-    compensadoTradicional == null && compensadoInstantaneo == null
-      ? null
-      : (compensadoTradicional ?? 0) + (compensadoInstantaneo ?? 0);
+  // Total compensado pro cliente — soma de tudo que reduz a conta da RGE:
+  //   - energia compensada (TE + TUSD)
+  //   - ajuste de saldo de crédito
+  //   - crédito de bandeira (amarela / vermelha 1 / vermelha 2)
+  //   - consumo instantâneo (só UC geradora em DESCONTADO)
+  const componentesCompensado = [
+    calc.detalhamento.energiaCompensadaValor,
+    calc.detalhamento.ajusteSaldoValor,
+    calc.detalhamento.bandeiraCreditoValor,
+    calc.detalhamento.consumoInstantaneoValor,
+  ];
+  const valorCompensado = componentesCompensado.some((v) => v != null)
+    ? componentesCompensado.reduce<number>((acc, v) => acc + (v ?? 0), 0)
+    : null;
+
   const valorCobranca = calc.valorCobrado;
+
+  // Economia do cliente: o que deixou de pagar vs. cenário "sem solar".
+  // - Em PERCENTUAL_SOBRE_COMPENSADO: cliente paga RGE direto + nosso %, então
+  //   economia = compensado − nossa cobrança.
+  // - Em FAT_UNICA: cobrança inclui valorTotal RGE, então economia =
+  //   compensado − (cobrança − valorTotal RGE) = compensado + valorTotal − cobrança.
+  //   Equivalente: economia = compensado − nossa parte (excluindo passthrough).
+  const valorTotalRGE = calc.detalhamento.valorTotalRGE;
   const valorEconomia =
     valorCompensado != null && valorCobranca != null
-      ? valorCompensado - valorCobranca
+      ? valorCompensado - (valorCobranca - (valorTotalRGE ?? 0))
       : null;
 
   const dataVencimento = computarVencimento(
