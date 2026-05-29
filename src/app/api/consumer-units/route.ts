@@ -24,6 +24,18 @@ export async function GET(req: NextRequest) {
   if (status) where.statusContrato = status;
   if (codigoUc) where.codigoUc = codigoUc;
 
+  // Esconde UCs que representam usinas sem investidor (são da área Brasil
+  // Solar, não devem aparecer em Clientes). UCs com cliente físico vinculado
+  // (consumerId) ou sem plant continuam visíveis. Override com ?showAll=1.
+  const showAll = searchParams.get("showAll") === "1";
+  if (!showAll) {
+    where.OR = [
+      { plantId: null },
+      { consumerId: { not: null } },
+      { plant: { usinaDeInvestidor: true } },
+    ];
+  }
+
   const units = await prisma.consumerUnit.findMany({
     where,
     include: {

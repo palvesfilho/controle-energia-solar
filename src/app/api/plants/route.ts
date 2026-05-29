@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
       senhaDistribuidora: body.senhaDistribuidora || null,
       pagadorFaturaEnergia:
         body.pagadorFaturaEnergia === "INVESTIDORES" ? "INVESTIDORES" : "GESTORA",
+      usinaDeInvestidor: body.usinaDeInvestidor === true,
     },
   });
 

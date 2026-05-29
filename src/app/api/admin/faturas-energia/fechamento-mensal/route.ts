@@ -21,7 +21,7 @@ export interface FechamentoMensalRow {
   contaPaga: boolean;
   pdfUrl: string | null;
 
-  // Valor calculado pela regra de remuneração da UC (DESC_COMPENSADA_BANDEIRAS etc.)
+  // Valor calculado pela regra de remuneração da UC (FAT_UNICA_COMPENSADA_BANDEIRAS etc.)
   valorCobrado: number | null;
   regraRemuneracao: string | null;
   cobrancaProblemas: string[];
@@ -54,6 +54,8 @@ export async function GET(req: NextRequest) {
       orderBy: [{ active: "desc" }, { nome: "asc" }],
     }),
     prisma.plant.findMany({
+      // Gestora — só plantas marcadas como "Usina de Investidor"
+      where: { usinaDeInvestidor: true },
       include: {
         investors: {
           include: { investor: { include: { user: { select: { name: true } } } } },

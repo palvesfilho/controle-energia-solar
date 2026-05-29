@@ -42,6 +42,10 @@ export async function GET(req: NextRequest) {
       orderBy: [{ active: "desc" }, { nome: "asc" }],
     }),
     prisma.plant.findMany({
+      // Telas da Gestora de Energia (Faturas / Gestão Financeira) só mostram
+      // usinas marcadas como "Usina de Investidor". Usinas projetadas só pra
+      // clientes Rede Brasil Solar (sem flag) ficam na área /admin/brasil-solar.
+      where: { usinaDeInvestidor: true },
       include: {
         investors: {
           include: {

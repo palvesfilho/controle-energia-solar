@@ -115,6 +115,12 @@ model Plant {
   // Afeta soma "a pagar" da agenda e badge na Gestão Financeira.
   pagadorFaturaEnergia String @default("GESTORA") @map("pagador_fatura_energia")
 
+  // True quando a usina tem investidor vinculado e entra no fluxo da Gestora
+  // de Energia (Clientes / Faturas / Faturamento). False = usina projetada
+  // só pra cliente Rede Brasil Solar, fica oculta das listas da Gestora —
+  // mas continua aparecendo nas telas /admin/brasil-solar.
+  usinaDeInvestidor Boolean @default(false) @map("usina_de_investidor")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

@@ -18,7 +18,8 @@ export async function GET() {
 
   const [plants, payables] = await Promise.all([
     prisma.plant.findMany({
-      where: { active: true },
+      // Gestora — só plantas com "Usina de Investidor" marcado
+      where: { active: true, usinaDeInvestidor: true },
       select: {
         id: true,
         name: true,

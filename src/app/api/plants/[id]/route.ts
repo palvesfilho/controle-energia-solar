@@ -106,6 +106,9 @@ export async function PUT(
         pagadorFaturaEnergia:
           body.pagadorFaturaEnergia === "INVESTIDORES" ? "INVESTIDORES" : "GESTORA",
       }),
+      ...(body.usinaDeInvestidor !== undefined && {
+        usinaDeInvestidor: body.usinaDeInvestidor === true || body.usinaDeInvestidor === "true",
+      }),
     },
   });
 

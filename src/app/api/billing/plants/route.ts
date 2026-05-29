@@ -47,7 +47,9 @@ export async function GET(req: NextRequest) {
 
   const [plants, billings, ucGeradoraBills] = await Promise.all([
     prisma.plant.findMany({
-      where: { active: true },
+      // Gestora de Energia — só plantas marcadas como "Usina de Investidor".
+      // Plantas projetadas só pra clientes RBS ficam fora desta lista.
+      where: { active: true, usinaDeInvestidor: true },
       orderBy: { name: "asc" },
       select: {
         id: true,
