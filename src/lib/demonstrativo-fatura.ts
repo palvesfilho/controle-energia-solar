@@ -79,19 +79,25 @@ function mesLabelHistorico(mes: number, ano: number): string {
 }
 
 /**
- * Calcula histórico dos últimos 12 meses (mais antigo → mais recente) terminando
- * em (mesRef/anoRef). Meses sem fatura aparecem com consumo 0.
+ * Histórico ATÉ 12 meses (mais antigo → mais recente) terminando em (mesRef/anoRef).
+ * Meses anteriores ao primeiro registro de fatura são omitidos — gráfico não
+ * mostra barras zeradas quando o cliente é novo na base.
  */
 function gerar12Meses(
   bills: { mesReferencia: number; anoReferencia: number; consumoKwh: number | null }[],
   mesRef: number,
   anoRef: number,
 ): { m: string; consumo: number }[] {
+  if (bills.length === 0) return [];
   const map = new Map(
     bills.map((b) => [`${b.anoReferencia}-${b.mesReferencia}`, b.consumoKwh ?? 0]),
   );
+  // Acha o código (ano*100+mes) do primeiro mês com fatura — pra não mostrar
+  // meses anteriores a ele com 0.
+  const codigo = (a: number, m: number) => a * 100 + m;
+  const primeiroCodigo = Math.min(...bills.map((b) => codigo(b.anoReferencia, b.mesReferencia)));
+
   const out: { m: string; consumo: number }[] = [];
-  // últimos 12 incluindo o mês de referência
   for (let i = 11; i >= 0; i--) {
     let m = mesRef - i;
     let a = anoRef;
@@ -99,6 +105,7 @@ function gerar12Meses(
       m += 12;
       a -= 1;
     }
+    if (codigo(a, m) < primeiroCodigo) continue;
     const consumo = map.get(`${a}-${m}`) ?? 0;
     out.push({ m: mesLabelHistorico(m, a), consumo: Math.round(consumo) });
   }
@@ -228,9 +235,17 @@ export async function loadDemonstrativoFaturaData(
     codigoBarrasPlaceholder: assocPlaceholder,
   });
 
-  const endereco = [uc.logradouro, uc.numero, uc.complemento, uc.cidade]
-    .filter(Boolean)
-    .join(" · ") || null;
+  // Endereço: monta da UC (logradouro/numero/cidade/cep) ou cai no Consumer
+  // como fallback se a UC não tem.
+  const enderecoUcParts = [
+    [uc.logradouro, uc.numero].filter(Boolean).join(", "),
+    uc.complemento,
+    uc.cidade,
+    uc.cep ? `CEP ${uc.cep}` : null,
+  ].filter(Boolean);
+  const enderecoUc = enderecoUcParts.length > 0 ? enderecoUcParts.join(" · ") : null;
+  const enderecoConsumer = consumer?.endereco?.trim() || null;
+  const endereco = enderecoUc ?? enderecoConsumer;
 
   return {
     cliente: {

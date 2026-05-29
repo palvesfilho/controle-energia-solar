@@ -71,15 +71,19 @@ const s = StyleSheet.create({
     flexDirection: "column",
   },
 
-  // Barra superior degradê (simulada com retângulo teal)
-  topStripe: {
+  // Barra superior degradê (3 segmentos horizontais com fade — abordagem
+  // sem SVG, evita problemas de viewBox no @react-pdf/renderer).
+  topStripeWrap: {
+    flexDirection: "row",
     height: 8,
     marginLeft: -PAGE_PAD_H,
     marginRight: -PAGE_PAD_H,
     marginTop: -PAGE_PAD_T,
     marginBottom: 10,
-    backgroundColor: C.teal800,
   },
+  topStripeSeg1: { flex: 0.4, backgroundColor: C.teal800 },
+  topStripeSeg2: { flex: 0.3, backgroundColor: C.teal500 },
+  topStripeSeg3: { flex: 0.3, backgroundColor: C.orange },
 
   // Topbar
   topbar: {
@@ -123,7 +127,7 @@ const s = StyleSheet.create({
     marginBottom: 10,
   },
   stripcell: { flex: 1, paddingHorizontal: 8 },
-  stripcellBorder: { borderLeftWidth: 1, borderLeftColor: C.line2 },
+  stripcellBorder: { borderLeftWidth: 1, borderLeftColor: "#CBD5E1" },
   striplbl: { fontSize: 6.5, color: C.muted, fontFamily: "Helvetica-Bold", marginBottom: 2, letterSpacing: 0.8 },
   stripval: { fontSize: 8.5, color: C.ink, fontFamily: "Helvetica-Bold" },
   pill: {
@@ -161,8 +165,8 @@ const s = StyleSheet.create({
     minHeight: 55,
     justifyContent: "space-between",
   },
-  cardLbl: { fontSize: 6.5, fontFamily: "Helvetica-Bold", letterSpacing: 0.5 },
-  cardVal: { fontSize: 13, fontFamily: "Helvetica-Bold", marginTop: 3 },
+  cardLbl: { fontSize: 6, fontFamily: "Helvetica-Bold", letterSpacing: 0.3, lineHeight: 1.15 },
+  cardVal: { fontSize: 13, fontFamily: "Helvetica-Bold", marginTop: 4 },
   cardSub: { fontSize: 6.5, marginTop: 2, opacity: 0.85 },
 
   // Split (energia + chart)
@@ -390,7 +394,11 @@ export function DemonstrativoFaturaPdf({ data }: { data: DemonstrativoFaturaData
   return (
     <Document>
       <Page size="A4" style={s.page}>
-        <View style={s.topStripe} />
+        <View style={s.topStripeWrap}>
+          <View style={s.topStripeSeg1} />
+          <View style={s.topStripeSeg2} />
+          <View style={s.topStripeSeg3} />
+        </View>
 
         {/* TOPBAR */}
         <View style={s.topbar}>
@@ -469,7 +477,7 @@ export function DemonstrativoFaturaPdf({ data }: { data: DemonstrativoFaturaData
             </View>
           </View>
           <View style={[s.card, { backgroundColor: C.teal800 }]}>
-            <Text style={[s.cardLbl, { color: "rgba(255,255,255,0.78)" }]}>CUSTO DE ENERGIA C/ DESCONTO</Text>
+            <Text style={[s.cardLbl, { color: "rgba(255,255,255,0.78)" }]}>CUSTO COM DESCONTO</Text>
             <View>
               <Text style={[s.cardVal, { color: C.white }]}>
                 {fmtBRL(data.resumoDoMes.custoEnergiaComDesconto.valor)}
