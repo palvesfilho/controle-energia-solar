@@ -33,6 +33,7 @@ export interface UCFormData {
   valorVencimento: string;
   statusContrato: string;
   vigenciaCompensacao: string;
+  dataInicioContrato: string; // YYYY-MM-DD
   loginDistribuidora: string;
   senhaDistribuidora: string;
   temGeracaoPropria: boolean;
@@ -64,6 +65,7 @@ export const EMPTY_UC_FORM: UCFormData = {
   valorVencimento: "",
   statusContrato: "Ativo",
   vigenciaCompensacao: "",
+  dataInicioContrato: "",
   loginDistribuidora: "",
   senhaDistribuidora: "",
   temGeracaoPropria: false,
@@ -287,7 +289,7 @@ export function UCForm({
               onChange={(e) => update("consumoMedio", e.target.value)}
             />
           </div>
-          <div className="space-y-2 md:col-span-2">
+          <div className="space-y-2">
             <Label htmlFor="vigenciaCompensacao">Vigência de Compensação</Label>
             <Input
               id="vigenciaCompensacao"
@@ -295,6 +297,18 @@ export function UCForm({
               onChange={(e) => update("vigenciaCompensacao", e.target.value)}
               placeholder="MM/AAAA"
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="dataInicioContrato">Início do Contrato</Label>
+            <Input
+              id="dataInicioContrato"
+              type="date"
+              value={form.dataInicioContrato}
+              onChange={(e) => update("dataInicioContrato", e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Marco zero pra cálculo de economia/crédito acumulado.
+            </p>
           </div>
           <div className="md:col-span-3">
             <label className="flex items-start gap-2 rounded-lg border bg-muted/20 p-3 cursor-pointer hover:bg-muted/30 transition-colors">

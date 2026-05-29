@@ -100,6 +100,7 @@ export async function POST(req: NextRequest) {
       valorVencimento: body.valorVencimento ? Number(body.valorVencimento) : null,
       statusContrato: body.statusContrato || null,
       vigenciaCompensacao: body.vigenciaCompensacao || null,
+      dataInicioContrato: body.dataInicioContrato ? new Date(body.dataInicioContrato) : null,
       loginDistribuidora: body.loginDistribuidora || null,
       senhaDistribuidora: body.senhaDistribuidora || null,
       temGeracaoPropria: !!body.temGeracaoPropria,

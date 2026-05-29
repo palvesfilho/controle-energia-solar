@@ -66,6 +66,9 @@ export default function EditarUCPage() {
           valorVencimento: uc.valorVencimento?.toString() ?? "",
           statusContrato: uc.statusContrato ?? "Ativo",
           vigenciaCompensacao: uc.vigenciaCompensacao ?? "",
+          dataInicioContrato: uc.dataInicioContrato
+            ? new Date(uc.dataInicioContrato).toISOString().slice(0, 10)
+            : "",
           loginDistribuidora: uc.loginDistribuidora ?? "",
           senhaDistribuidora: uc.senhaDistribuidora ?? "",
           temGeracaoPropria: !!uc.temGeracaoPropria,

@@ -95,6 +95,7 @@ export async function PUT(
       }),
       ...(body.statusContrato !== undefined && { statusContrato: body.statusContrato || null }),
       ...(body.vigenciaCompensacao !== undefined && { vigenciaCompensacao: body.vigenciaCompensacao || null }),
+      ...(body.dataInicioContrato !== undefined && { dataInicioContrato: body.dataInicioContrato ? new Date(body.dataInicioContrato) : null }),
       ...(body.loginDistribuidora !== undefined && { loginDistribuidora: body.loginDistribuidora || null }),
       ...(body.senhaDistribuidora !== undefined && { senhaDistribuidora: body.senhaDistribuidora || null }),
       ...(body.temGeracaoPropria !== undefined && { temGeracaoPropria: !!body.temGeracaoPropria }),

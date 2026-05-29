@@ -396,8 +396,12 @@ model ConsumerUnit {
   valorVencimento   Float?  @map("valor_vencimento")
 
   // Contrato
-  statusContrato      String? @map("status_contrato")
-  vigenciaCompensacao String? @map("vigencia_compensacao")
+  statusContrato      String?   @map("status_contrato")
+  vigenciaCompensacao String?   @map("vigencia_compensacao")
+  // Data de início do contrato — marco zero pra cálculo de economia/crédito
+  // acumulado. Quando vazio, o sistema usa o mês mais antigo com fatura como
+  // fallback.
+  dataInicioContrato  DateTime? @map("data_inicio_contrato")
 
   // Acesso à distribuidora
   loginDistribuidora String? @map("login_distribuidora")
@@ -462,6 +466,19 @@ model ConsumerUnitBilling {
   // Fatura de energia anexada (PDF distribuidora)
   faturaUrl String?   @map("fatura_url")
   faturaAt  DateTime? @map("fatura_at")
+
+  // Demonstrativo de cobrança (PDF gerado pelo sistema, anexado ao email do
+  // cliente). Caminho no R2/storage; emitido junto com a cobrança Asaas.
+  demonstrativoUrl       String?   @map("demonstrativo_url")
+  demonstrativoGeradoEm  DateTime? @map("demonstrativo_gerado_em")
+  // Validação do demonstrativo (FULL_ADMIN_TRIO) — só após validação o
+  // botão "Realizar Cobrança" libera. Edição de valores reseta pra null.
+  demonstrativoValidadoEm  DateTime? @map("demonstrativo_validado_em")
+  demonstrativoValidadoPor String?   @map("demonstrativo_validado_por")
+
+  // Envio do demonstrativo por email (Resend)
+  emailEnviadoEm     DateTime? @map("email_enviado_em")
+  emailErro          String?   @map("email_erro")
 
   // Preferências de envio escolhidas pelo operador (persistidas mesmo sem disparar)
   notificarEmail    Boolean @default(true) @map("notificar_email")
