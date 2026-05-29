@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
-import { UCForm, UCFormData, EMPTY_UC_FORM } from "@/components/consumer-units/uc-form";
+import { UCForm, UCFormData, EMPTY_UC_FORM, percentDbToInput } from "@/components/consumer-units/uc-form";
 import { UcCredentialsForm } from "@/components/consumer-units/uc-credentials-form";
 import { UcBills } from "@/components/consumer-units/uc-bills";
 import { Separator } from "@/components/ui/separator";
@@ -60,8 +60,8 @@ export default function EditarUCPage() {
           comissao: uc.comissao ?? "",
           metodoPagamento: uc.metodoPagamento ?? "",
           regraRemuneracao: uc.regraRemuneracao ?? "",
-          percentCompensado: uc.percentCompensado?.toString() ?? "",
-          percentBandeira: uc.percentBandeira?.toString() ?? "",
+          percentCompensado: percentDbToInput(uc.percentCompensado),
+          percentBandeira: percentDbToInput(uc.percentBandeira),
           regraVencimento: uc.regraVencimento ?? "",
           valorVencimento: uc.valorVencimento?.toString() ?? "",
           statusContrato: uc.statusContrato ?? "Ativo",

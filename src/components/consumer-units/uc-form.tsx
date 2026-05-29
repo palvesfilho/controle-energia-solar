@@ -80,8 +80,9 @@ export const METODOS_PAGAMENTO: { value: string; label: string }[] = [
 ];
 
 export const REGRAS_REMUNERACAO: { value: string; label: string }[] = [
+  { value: "FAT_UNICA_COMPENSADA_BANDEIRAS", label: "Fatura Única Compensada Bandeiras" },
+  { value: "PERCENTUAL_SOBRE_COMPENSADO", label: "Percentual Sobre Compensado" },
   { value: "DESC_COMPENSADA", label: "Desconto sobre Energia Compensada" },
-  { value: "DESC_COMPENSADA_BANDEIRAS", label: "Desconto sobre Energia Compensada + Bandeiras" },
   { value: "DESC_FATURA_COMPENSADA_DOMMO", label: "Desconto sobre Fatura Compensada DOMMO" },
 ];
 
@@ -89,6 +90,22 @@ export const REGRAS_VENCIMENTO: { value: string; label: string }[] = [
   { value: "DIA_FIXO_MES", label: "Dia fixo do mês" },
   { value: "TRES_DIAS_ANTES_VENC", label: "3 dias antes do vencimento da fatura" },
 ];
+
+// Percentuais são exibidos como inteiro (80 = 80%) e armazenados como decimal (0.80).
+// A conversão acontece nas bordas: ao carregar do banco (percentDbToInput) e ao
+// enviar pra API (percentInputToDb).
+export const percentDbToInput = (v: number | null | undefined): string => {
+  if (v == null) return "";
+  // Arredonda em 2 casas para evitar lixo de float (ex.: 0.8 * 100 = 80.00000001).
+  return String(Number((v * 100).toFixed(2)));
+};
+
+export const percentInputToDb = (v: string): string => {
+  if (v === "") return "";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "";
+  return String(Number((n / 100).toFixed(4)));
+};
 
 interface Props {
   initialData?: Partial<UCFormData>;
@@ -132,7 +149,11 @@ export function UCForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSubmit(form);
+    await onSubmit({
+      ...form,
+      percentCompensado: percentInputToDb(form.percentCompensado),
+      percentBandeira: percentInputToDb(form.percentBandeira),
+    });
   };
 
   return (
@@ -401,26 +422,42 @@ export function UCForm({
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="percentCompensado">Desconto de Contrato</Label>
-            <Input
-              id="percentCompensado"
-              type="number"
-              step="0.01"
-              value={form.percentCompensado}
-              onChange={(e) => update("percentCompensado", e.target.value)}
-              placeholder="0.80"
-            />
+            <Label htmlFor="percentCompensado">Desconto de Contrato (%)</Label>
+            <div className="relative">
+              <Input
+                id="percentCompensado"
+                type="number"
+                step="0.01"
+                min={0}
+                max={100}
+                value={form.percentCompensado}
+                onChange={(e) => update("percentCompensado", e.target.value)}
+                placeholder="80"
+                className="pr-7"
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
+                %
+              </span>
+            </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="percentBandeira">Desconto de Contrato sobre Bandeira</Label>
-            <Input
-              id="percentBandeira"
-              type="number"
-              step="0.01"
-              value={form.percentBandeira}
-              onChange={(e) => update("percentBandeira", e.target.value)}
-              placeholder="0.80"
-            />
+            <Label htmlFor="percentBandeira">Desconto de Contrato sobre Bandeira (%)</Label>
+            <div className="relative">
+              <Input
+                id="percentBandeira"
+                type="number"
+                step="0.01"
+                min={0}
+                max={100}
+                value={form.percentBandeira}
+                onChange={(e) => update("percentBandeira", e.target.value)}
+                placeholder="80"
+                className="pr-7"
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">
+                %
+              </span>
+            </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="regraVencimento">Regra de Vencimento</Label>
