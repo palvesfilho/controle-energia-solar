@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { isAdminRole } from "@/lib/roles";
-import { loadDemonstrativoData } from "@/lib/demonstrativo";
-import { DemonstrativoPDF } from "@/components/billing/demonstrativo-pdf";
+import { loadDemonstrativoFaturaData } from "@/lib/demonstrativo-fatura";
+import { DemonstrativoFaturaPdf } from "@/components/billing/demonstrativo-fatura-pdf";
 import { renderToBuffer } from "@react-pdf/renderer";
 
 export const runtime = "nodejs";
@@ -19,14 +19,15 @@ export async function GET(_req: NextRequest, ctx: RouteCtx) {
   }
 
   const { id } = await ctx.params;
-  const data = await loadDemonstrativoData(id);
+  const data = await loadDemonstrativoFaturaData(id);
   if (!data) {
     return NextResponse.json({ error: "Cobrança não encontrada" }, { status: 404 });
   }
 
-  const pdfBuffer = await renderToBuffer(DemonstrativoPDF({ data }));
+  const pdfBuffer = await renderToBuffer(DemonstrativoFaturaPdf({ data }));
 
-  const filename = `demonstrativo-${data.codigoUc}-${data.mesLabel.replace("/", "-")}.pdf`;
+  const safeMesRef = data.fatura.mesReferencia.replace("/", "-");
+  const filename = `demonstrativo-${data.cliente.unidadeConsumidora}-${safeMesRef}.pdf`;
   return new NextResponse(new Uint8Array(pdfBuffer), {
     status: 200,
     headers: {
