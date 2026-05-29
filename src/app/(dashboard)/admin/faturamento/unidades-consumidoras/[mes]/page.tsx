@@ -34,6 +34,11 @@ interface Row {
     asaasChargeId?: string | null;
     asaasInvoiceUrl?: string | null;
     pagoEm?: string | null;
+    demonstrativoValidadoEm?: string | null;
+    demonstrativoValidadoPor?: string | null;
+    demonstrativoUrl?: string | null;
+    emailEnviadoEm?: string | null;
+    emailErro?: string | null;
   } | null;
   status: string;
   faturaDistribuidoraDisponivel: boolean;
@@ -108,6 +113,8 @@ export default function FaturamentoUCMesPage() {
     useState<"UNDEFINED" | "BOLETO" | "PIX" | "CREDIT_CARD">("BOLETO");
   const [cobrancaSaving, setCobrancaSaving] = useState<"save" | "send" | null>(null);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
+  const [previewModal, setPreviewModal] = useState<{ billingId: string; codigoUc: string; nome: string } | null>(null);
+  const [validatingId, setValidatingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!parsed) {
@@ -221,6 +228,27 @@ export default function FaturamentoUCMesPage() {
     }
   };
 
+  const handleToggleValidacao = async (billingId: string, jaValidado: boolean) => {
+    setValidatingId(billingId);
+    try {
+      const res = await fetch(
+        `/api/admin/faturamento/unidades-consumidoras/${billingId}/validar-demonstrativo`,
+        { method: jaValidado ? "DELETE" : "POST" },
+      );
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(jaValidado ? "Erro ao invalidar" : "Erro ao validar", {
+          description: d.error,
+        });
+        return;
+      }
+      toast.success(jaValidado ? "Validação removida" : "Demonstrativo validado");
+      await refreshRows();
+    } finally {
+      setValidatingId(null);
+    }
+  };
+
   const refreshRows = async () => {
     if (!parsed) return;
     const r2 = await fetch(
@@ -293,26 +321,43 @@ export default function FaturamentoUCMesPage() {
           valor,
         }));
       }
-      const res = await fetch(
-        `/api/billing/consumer-units/${cobrancaModal.billingId}/asaas`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            billingType: cobrancaBillingType,
-            dataVencimento: cobrancaModal.dataVencimento || null,
-            notificarEmail: cobrancaModal.notificarEmail,
-            notificarWhatsapp: cobrancaModal.notificarWhatsapp,
-            installments,
-          }),
-        },
-      );
+      // Single-charge (sem parcelamento): novo pipeline com PDF + Resend.
+      // Parcelado: mantém o endpoint legado (suporte a installments ainda
+      // não foi portado pro novo fluxo).
+      const isInstallments = !!installments && installments.length > 1;
+      const endpoint = isInstallments
+        ? `/api/billing/consumer-units/${cobrancaModal.billingId}/asaas`
+        : `/api/admin/faturamento/unidades-consumidoras/${cobrancaModal.billingId}/emitir-cobranca`;
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          isInstallments
+            ? {
+                billingType: cobrancaBillingType,
+                dataVencimento: cobrancaModal.dataVencimento || null,
+                notificarEmail: cobrancaModal.notificarEmail,
+                notificarWhatsapp: cobrancaModal.notificarWhatsapp,
+                installments,
+              }
+            : {
+                billingType: cobrancaBillingType,
+                dataVencimento: cobrancaModal.dataVencimento || null,
+              },
+        ),
+      });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error("Erro ao enviar", { description: d.detail || d.error });
+        toast.error("Erro ao enviar", { description: d.detail || d.error || d.skipped });
         return;
       }
-      toast.success("Cobrança enviada ao Asaas");
+      if (!isInstallments && d.emailErro) {
+        toast.warning("Cobrança enviada, mas email falhou", { description: d.emailErro });
+      } else if (!isInstallments && d.emailEnviado) {
+        toast.success("Cobrança enviada e email entregue ao cliente");
+      } else {
+        toast.success("Cobrança enviada ao Asaas");
+      }
       await refreshRows();
       setCobrancaModal(null);
     } finally {
@@ -549,23 +594,59 @@ export default function FaturamentoUCMesPage() {
                           <div className="flex items-center justify-center gap-1">
                             {r.billing ? (
                               <>
-                                <Link
-                                  href={`/admin/faturamento/unidades-consumidoras/${mesParam}/${r.billing.id}`}
+                                {/* 1. VISUALIZAR COBRANÇA — abre modal com rascunho do PDF */}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setPreviewModal({
+                                      billingId: r.billing!.id,
+                                      codigoUc: r.consumerUnit.codigoUc,
+                                      nome: r.consumerUnit.nome,
+                                    })
+                                  }
+                                  title="Pré-visualizar PDF da cobrança que será enviada ao cliente"
                                   className="inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-muted transition-colors text-xs"
                                 >
                                   <FileText className="h-3.5 w-3.5" />
-                                  Ajustar Cobrança
-                                </Link>
-                                <a
-                                  href={`/api/admin/faturamento/unidades-consumidoras/${r.billing.id}/demonstrativo`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  title="Visualizar Demonstrativo de Economia"
-                                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors text-xs"
+                                  Visualizar Cobrança
+                                </button>
+                                {/* 2. EDITAR DEMONSTRATIVO — vai pra página de edição */}
+                                <Link
+                                  href={`/admin/faturamento/unidades-consumidoras/${mesParam}/${r.billing.id}`}
+                                  title="Editar valores e datas do demonstrativo"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors text-xs"
                                 >
                                   <FileBarChart2 className="h-3.5 w-3.5" />
-                                  Visualizar Demonstrativo
-                                </a>
+                                  Editar Demonstrativo
+                                </Link>
+                                {/* 3. VALIDAR DEMONSTRATIVO — toggle (só antes de emitir) */}
+                                {!r.billing.asaasChargeId && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleToggleValidacao(
+                                        r.billing!.id,
+                                        !!r.billing!.demonstrativoValidadoEm,
+                                      )
+                                    }
+                                    disabled={validatingId === r.billing.id}
+                                    title={
+                                      r.billing.demonstrativoValidadoEm
+                                        ? "Clique pra remover a validação (edição libera novamente)"
+                                        : "Confirme que o demonstrativo está pronto antes de emitir a cobrança"
+                                    }
+                                    className={`inline-flex items-center gap-1 px-2 py-1 rounded transition-colors text-xs font-medium disabled:opacity-50 ${
+                                      r.billing.demonstrativoValidadoEm
+                                        ? "text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40"
+                                        : "text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-900/40"
+                                    }`}
+                                  >
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    {r.billing.demonstrativoValidadoEm
+                                      ? "Demonstrativo Validado"
+                                      : "Validar Demonstrativo"}
+                                  </button>
+                                )}
                                 {(() => {
                                   // Estado 4: Cobrança paga via Asaas → "Cobrança Finalizada" (verde sólido + tooltip)
                                   if (r.status === "PAGO") {
@@ -633,12 +714,23 @@ export default function FaturamentoUCMesPage() {
                                     );
                                   }
                                   // Estado 1 (default): Pendente → "Realizar Cobrança" (verde, relatório pronto)
+                                  // Bloqueado quando o demonstrativo ainda não foi validado.
+                                  const validado = !!r.billing!.demonstrativoValidadoEm;
                                   return (
                                     <button
                                       type="button"
-                                      onClick={() => openCobrancaModal(r)}
-                                      title="Realizar cobrança"
-                                      className="inline-flex items-center gap-1 px-2 py-1 rounded text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors text-xs font-medium"
+                                      onClick={() => validado && openCobrancaModal(r)}
+                                      disabled={!validado}
+                                      title={
+                                        validado
+                                          ? "Realizar cobrança no Asaas e enviar PDF por email"
+                                          : "Valide o demonstrativo primeiro pra habilitar"
+                                      }
+                                      className={`inline-flex items-center gap-1 px-2 py-1 rounded transition-colors text-xs font-medium ${
+                                        validado
+                                          ? "text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                                          : "text-slate-400 cursor-not-allowed"
+                                      }`}
                                     >
                                       <Receipt className="h-3.5 w-3.5" />
                                       Realizar Cobrança
@@ -931,6 +1023,51 @@ export default function FaturamentoUCMesPage() {
                 {cobrancaSaving === "send" ? "Enviando..." : "Salvar e Enviar"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* PREVIEW MODAL — rascunho do PDF do demonstrativo */}
+      {previewModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3"
+          onClick={() => setPreviewModal(null)}
+        >
+          <div
+            className="bg-background rounded-lg shadow-xl w-full max-w-3xl h-[88vh] border flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-2.5 border-b">
+              <div>
+                <h2 className="text-sm font-semibold">Rascunho da Cobrança</h2>
+                <p className="text-xs text-muted-foreground">
+                  UC {previewModal.codigoUc} — {previewModal.nome}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={`/api/admin/faturamento/unidades-consumidoras/${previewModal.billingId}/demonstrativo`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs px-2.5 py-1 rounded border hover:bg-muted transition-colors"
+                  title="Abrir em nova aba"
+                >
+                  Abrir em nova aba
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewModal(null)}
+                  className="p-1 rounded hover:bg-muted"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <iframe
+              src={`/api/admin/faturamento/unidades-consumidoras/${previewModal.billingId}/demonstrativo`}
+              className="flex-1 w-full border-0 rounded-b-lg"
+              title="Demonstrativo da cobrança"
+            />
           </div>
         </div>
       )}
