@@ -329,9 +329,8 @@ function BarChart({ data }: { data: { m: string; consumo: number }[] }) {
               x={padL - 4}
               y={by + rowH / 2 + 2.5}
               textAnchor="end"
-              fontSize={6.5}
               fill={isLast ? C.ink : C.ink2}
-              fontFamily={isLast ? "Helvetica-Bold" : "Helvetica"}
+              style={{ fontSize: 6.5, fontFamily: isLast ? "Helvetica-Bold" : "Helvetica" }}
             >
               {d.m}
             </SvgText>
@@ -347,9 +346,8 @@ function BarChart({ data }: { data: { m: string; consumo: number }[] }) {
               x={x(d.consumo) + 3}
               y={by + rowH / 2 + 2.5}
               textAnchor="start"
-              fontSize={6.5}
               fill={isLast ? C.orange2 : C.ink2}
-              fontFamily={isLast ? "Helvetica-Bold" : "Helvetica"}
+              style={{ fontSize: 6.5, fontFamily: isLast ? "Helvetica-Bold" : "Helvetica" }}
             >
               {d.consumo.toLocaleString("pt-BR")}
             </SvgText>
@@ -380,7 +378,7 @@ function BoletoBox({ b }: { b: DemonstrativoFaturaBoleto }) {
       <Text style={s.boletoMeta}>
         Vencimento <Text style={s.boletoMetaStrong}>{b.vencimento}</Text> · {b.observacao}
       </Text>
-      <View style={[s.barcodeArea, !isAssoc && s.barcodeAreaRge]}>
+      <View style={!isAssoc ? [s.barcodeArea, s.barcodeAreaRge] : s.barcodeArea}>
         {b.codigoBarrasPng ? (
           // eslint-disable-next-line jsx-a11y/alt-text
           <Image src={b.codigoBarrasPng} style={s.barcodePng} />
