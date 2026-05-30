@@ -1,4 +1,9 @@
 import { prisma } from "@/lib/prisma";
+import {
+  carregarContextoSugestoes,
+  gerarSugestoesParaAcao,
+  type Sugestao,
+} from "@/lib/sugestoes-acoes";
 
 // Severidade visual: info (informativo, não bloqueia), atencao (precisa
 // olhar essa semana), critico (perda de receita iminente).
@@ -25,6 +30,8 @@ export interface AcaoRecomendada {
   consumerUnitCodigo?: string;
   metricaValor?: number;
   metricaLabel?: string;
+  // Sugestões in-memory por ação — geradas a cada compute (não persistidas).
+  sugestoes?: Sugestao[];
 }
 
 export interface TopPlantSlice {
@@ -621,7 +628,24 @@ export async function computeAnaliseCreditos(
 
   // Consumo anômalo: UC com consumo do mês ≥50% acima/abaixo da média
   // dos últimos 5 meses fechados. Ignora UC com consumo desprezível.
+  // Suprime UCs com ConsumoBaseline ativo cobrindo mes/ano de referência.
+  const baselinesAtivas = ucs.length
+    ? await prisma.consumoBaseline.findMany({
+        where: {
+          consumerUnitId: { in: ucs.map((u) => u.id) },
+          OR: [
+            { validoAteAno: { gt: ano } },
+            { validoAteAno: ano, validoAteMes: { gte: mes } },
+          ],
+        },
+        select: { consumerUnitId: true },
+      })
+    : [];
+  const ucsComBaselineAtiva = new Set(
+    baselinesAtivas.map((b) => b.consumerUnitId),
+  );
   for (const uc of ucs) {
+    if (ucsComBaselineAtiva.has(uc.id)) continue;
     const billAtual = billPorUcDoMes.get(uc.id);
     if (!billAtual || !billAtual.consumoKwh) continue;
     if (billAtual.consumoKwh < THRESHOLDS.consumoMinimoKwh) continue;
@@ -807,6 +831,21 @@ export async function computeAnaliseCreditos(
     if (a.prazoDias !== b.prazoDias) return a.prazoDias - b.prazoDias;
     return (b.metricaValor ?? 0) - (a.metricaValor ?? 0);
   });
+
+  // 11) Sugestões — depois do sort pra cada ação ter contexto enriquecido.
+  // vencendoPorPlant é Map<plantId, {kwh, ucs}> — passamos só kwh pra
+  // contexto.
+  const vencendoKwhPorPlant = new Map<string, number>();
+  for (const [pid, v] of vencendoPorPlant) {
+    vencendoKwhPorPlant.set(pid, v.kwh);
+  }
+  const ctxSugestoes = await carregarContextoSugestoes(
+    plantIds,
+    vencendoKwhPorPlant,
+  );
+  for (const a of acoes) {
+    a.sugestoes = gerarSugestoesParaAcao(a, ctxSugestoes);
+  }
 
   return {
     cards: {

@@ -22,6 +22,7 @@ import {
   Minus,
   PlugZap,
   RefreshCw,
+  Lightbulb,
   Timer,
   Undo2,
   Upload,
@@ -39,6 +40,7 @@ import type {
   TrendValue,
 } from "@/lib/analise-creditos";
 import type { AcaoPersistida } from "@/lib/acoes-persistencia";
+import type { Sugestao } from "@/lib/sugestoes-acoes";
 
 type AcaoAny = AcaoRecomendada | AcaoPersistida;
 function isPersistida(a: AcaoAny): a is AcaoPersistida {
@@ -973,6 +975,7 @@ export default function AnaliseCreditosPage() {
                         users={users}
                         saving={isPersistida(a) && savingId === a.id}
                         onUpdate={updateAcao}
+                        onReload={load}
                       />
                     ))}
                   </div>
@@ -1002,6 +1005,7 @@ function AcaoCardComp({
   users,
   saving,
   onUpdate,
+  onReload,
 }: {
   acao: AcaoAny;
   users: UserAtribuivel[];
@@ -1014,6 +1018,7 @@ function AcaoCardComp({
       observacaoResolucao?: string | null;
     },
   ) => void;
+  onReload: () => void;
 }) {
   const persistida = isPersistida(acao) ? acao : null;
   const status: StatusAcao = persistida?.status ?? "ABERTA";
@@ -1085,6 +1090,13 @@ function AcaoCardComp({
             </div>
           )}
         </div>
+
+        {acao.sugestoes && acao.sugestoes.length > 0 && status === "ABERTA" && (
+          <SugestoesBloco
+            sugestoes={acao.sugestoes}
+            onAfterAction={onReload}
+          />
+        )}
 
         {persistida && (
           <div className="mt-2 pt-2 border-t border-dashed flex flex-wrap items-center gap-2">
@@ -1169,6 +1181,123 @@ function AcaoCardComp({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function SugestoesBloco({
+  sugestoes,
+  onAfterAction,
+}: {
+  sugestoes: Sugestao[];
+  onAfterAction: () => void;
+}) {
+  const [running, setRunning] = useState<number | null>(null);
+
+  const exec = async (idx: number, s: Sugestao) => {
+    if (!s.action) return;
+    let body: Record<string, unknown> | undefined = s.action.body
+      ? { ...s.action.body }
+      : undefined;
+    if (s.action.promptObservacao) {
+      const obs = window.prompt(
+        `${s.label}\n\nObservação (opcional):`,
+        "",
+      );
+      if (obs === null) return; // cancel
+      const obsTrim = obs.trim();
+      if (obsTrim) {
+        body = body ?? {};
+        // Para baselines o campo é "observacao"; pra acoes é "observacaoResolucao".
+        // Detectamos pelo path da URL.
+        if (s.action.url.includes("/baselines")) {
+          body.observacao = obsTrim;
+        } else {
+          body.observacaoResolucao = `[SUGESTÃO ${s.tipo}] ${obsTrim}`;
+        }
+      }
+    }
+    if (s.action.confirm && !window.confirm(s.action.confirm)) return;
+
+    setRunning(idx);
+    try {
+      const res = await fetch(s.action.url, {
+        method: s.action.method,
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.error || `HTTP ${res.status}`);
+      }
+      if (s.action.successMessage) {
+        // Avoid blocking — usa console; toast pode vir depois.
+        console.info("[sugestão]", s.action.successMessage);
+      }
+      onAfterAction();
+    } catch (err) {
+      window.alert(`Falha: ${(err as Error).message}`);
+    } finally {
+      setRunning(null);
+    }
+  };
+
+  const toneCls: Record<NonNullable<Sugestao["tone"]>, string> = {
+    primary:
+      "bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100",
+    info: "bg-blue-50 border-blue-200 text-blue-800 hover:bg-blue-100",
+    warn: "bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100",
+    neutral: "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100",
+  };
+
+  return (
+    <div className="mt-2 pt-2 border-t border-dashed">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">
+        <Lightbulb className="h-3 w-3" />
+        Sugestões
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {sugestoes.map((s, idx) => {
+          const cls = toneCls[s.tone ?? "neutral"];
+          const inner = (
+            <>
+              <span className="font-medium">{s.label}</span>
+              {running === idx && (
+                <Loader2 className="h-3 w-3 animate-spin ml-1" />
+              )}
+            </>
+          );
+          if (s.href) {
+            return (
+              <Link
+                key={idx}
+                href={s.href}
+                title={s.descricao}
+                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors ${cls}`}
+              >
+                {inner}
+                <ChevronRight className="h-3 w-3" />
+              </Link>
+            );
+          }
+          return (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => exec(idx, s)}
+              disabled={running !== null}
+              title={s.descricao}
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors disabled:opacity-50 ${cls}`}
+            >
+              {inner}
+            </button>
+          );
+        })}
+      </div>
+      {/* Tooltip alternativa: mostra a descrição da primeira sugestão como guia */}
+      <div className="text-[10px] text-muted-foreground mt-1 italic">
+        Passe o mouse pra ver o que cada uma faz.
+      </div>
+    </div>
   );
 }
 

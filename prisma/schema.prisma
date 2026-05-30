@@ -435,6 +435,7 @@ model ConsumerUnit {
   rateioItems      RateioItem[]
   investorPayables InvestorPayable[]
   acoesRecomendadas AcaoRecomendada[]
+  consumoBaselines ConsumoBaseline[]
 
   @@index([consumerId])
   @@index([plantId])
@@ -1770,4 +1771,35 @@ model AnaliseCreditosSnapshot {
   @@unique([mesReferencia, anoReferencia, escopoTipo, escopoId])
   @@index([anoReferencia, mesReferencia])
   @@map("analise_creditos_snapshot")
+}
+
+// Baseline de consumo: marca uma UC como "consumo esperadamente diferente
+// da média" por uma janela de meses. A Análise de Créditos suprime ações
+// CONSUMO_ANOMALO dessa UC enquanto o baseline estiver ativo.
+//
+// Casos típicos: UC sazonal (verão/inverno), inquilino novo, atividade
+// comercial parada, troca de equipamento. Operador marca pra parar de
+// receber o mesmo alerta toda análise sem perder a possibilidade de
+// reinvestigar depois que o baseline expirar.
+model ConsumoBaseline {
+  id String @id @default(cuid())
+
+  consumerUnitId String @map("consumer_unit_id")
+
+  // SAZONAL | DESOCUPADA | ATIVIDADE_BAIXA | CONFIRMADO_PELO_CLIENTE | OUTRO
+  motivo     String
+  observacao String? @db.Text
+
+  // Janela de validade. Quando o mês de referência ultrapassa, baseline
+  // expira automaticamente (não é deletado — fica como histórico).
+  validoAteMes Int @map("valido_ate_mes")
+  validoAteAno Int @map("valido_ate_ano")
+
+  criadoEm        DateTime @default(now()) @map("criado_em")
+  criadoPorUserId String?  @map("criado_por_user_id")
+
+  consumerUnit ConsumerUnit @relation(fields: [consumerUnitId], references: [id], onDelete: Cascade)
+
+  @@index([consumerUnitId, validoAteAno, validoAteMes])
+  @@map("consumo_baseline")
 }
