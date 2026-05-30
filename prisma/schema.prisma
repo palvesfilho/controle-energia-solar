@@ -20,6 +20,8 @@ model User {
 
   investor Investor?
   uploads  Upload[]
+  acoesResponsavel AcaoRecomendada[] @relation("AcaoResponsavel")
+  acoesResolvidas  AcaoRecomendada[] @relation("AcaoResolvidaPor")
 
   @@map("users")
 }
@@ -139,6 +141,7 @@ model Plant {
   rateioVersions    RateioVersion[]
   documents         PlantDocument[]
   investorPayables  InvestorPayable[]
+  acoesRecomendadas AcaoRecomendada[]
 
   @@map("plants")
 }
@@ -431,6 +434,7 @@ model ConsumerUnit {
   cpflCredential   CpflCredential?
   rateioItems      RateioItem[]
   investorPayables InvestorPayable[]
+  acoesRecomendadas AcaoRecomendada[]
 
   @@index([consumerId])
   @@index([plantId])
@@ -1675,4 +1679,95 @@ model RecurringCostEntry {
   @@unique([recurringCostId, ano, mes])
   @@index([ano, mes])
   @@map("recurring_cost_entries")
+}
+
+// Ação recomendada persistida — gerada pela Análise de Créditos.
+// Dedup entre runs via `fingerprint` (hash determinístico de tipo+escopo+mês).
+// Status existe pra fechar o ciclo operacional: o operador marca FEITA ou
+// DISPENSADA; a próxima run da análise NÃO recria a mesma ação se ela já
+// está nesses estados (ainda dentro da janela de validade).
+model AcaoRecomendada {
+  id String @id @default(cuid())
+
+  // Hash determinístico: SHA1(tipo + plantId + consumerUnitId + mesRef + anoRef).
+  // Permite que rodadas seguidas da análise upsertem a mesma ação sem duplicar.
+  fingerprint String @unique
+
+  tipo       String // AcaoTipo (CREDITOS_VENCENDO_30D, USINA_SUBPERFORMANDO, ...)
+  severidade String // info | atencao | critico
+  titulo     String
+  descricao  String  @db.Text
+  prazoDias  Int     @map("prazo_dias") // 30 | 60 | 90 — janela do SLA
+
+  plantId            String? @map("plant_id")
+  consumerUnitId     String? @map("consumer_unit_id")
+  metricaValor       Float?  @map("metrica_valor")
+  metricaLabel       String? @map("metrica_label")
+
+  // Mês de referência em que a ação foi vista pela primeira vez. Usado pra
+  // saber se a ação ainda é desse ciclo ou virou histórico de outro.
+  mesReferencia Int @map("mes_referencia")
+  anoReferencia Int @map("ano_referencia")
+
+  // ABERTA | FEITA | DISPENSADA | AUTO_FECHADA (sumiu naturalmente da análise)
+  status String @default("ABERTA")
+
+  // Prazo calculado na criação (criadaEm + prazoDias). Usado pra ordenar
+  // por urgência e calcular "atrasada".
+  prazoEm DateTime @map("prazo_em")
+
+  responsavelUserId    String? @map("responsavel_user_id")
+  observacaoResolucao  String? @map("observacao_resolucao") @db.Text
+  resolvidaEm          DateTime? @map("resolvida_em")
+  resolvidaPorUserId   String?   @map("resolvida_por_user_id")
+
+  criadaEm    DateTime @default(now()) @map("criada_em")
+  atualizadaEm DateTime @updatedAt @map("atualizada_em")
+  // Última vez que a análise viu essa ação ainda válida. Quando uma ação
+  // ABERTA não é revista por N dias, vira AUTO_FECHADA.
+  vistaEm     DateTime @default(now()) @map("vista_em")
+
+  plant        Plant?        @relation(fields: [plantId], references: [id], onDelete: SetNull)
+  consumerUnit ConsumerUnit? @relation(fields: [consumerUnitId], references: [id], onDelete: SetNull)
+  responsavel  User?         @relation("AcaoResponsavel", fields: [responsavelUserId], references: [id], onDelete: SetNull)
+  resolvidaPor User?         @relation("AcaoResolvidaPor", fields: [resolvidaPorUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, prazoEm])
+  @@index([plantId, status])
+  @@index([consumerUnitId, status])
+  @@index([anoReferencia, mesReferencia])
+  @@map("acao_recomendada")
+}
+
+// Snapshot do payload da Análise de Créditos pra um (mes, ano, escopo).
+// Gerado quando o mês fica completo (todas as UCs com fatura cadastrada).
+// Source-of-truth pra históricos comparáveis, emails mensais e tendências
+// que envolvem +6 meses (fora da janela do compute on-the-fly).
+model AnaliseCreditosSnapshot {
+  id String @id @default(cuid())
+
+  mesReferencia Int @map("mes_referencia")
+  anoReferencia Int @map("ano_referencia")
+
+  // FULL = portfólio inteiro; PLANT = uma usina; INVESTOR = um investidor.
+  // escopoId é null pra FULL.
+  escopoTipo String @map("escopo_tipo")
+  escopoId   String? @map("escopo_id")
+
+  completo Boolean @default(false)
+
+  // JSON completo do AnaliseCreditosResult na hora do snapshot.
+  // Imutável — recompute futuro NÃO sobrescreve o snapshot histórico.
+  payloadJson String @map("payload_json") @db.Text
+
+  emailEnviado    Boolean   @default(false) @map("email_enviado")
+  emailEnviadoEm  DateTime? @map("email_enviado_em")
+  emailDestinatarios String? @map("email_destinatarios") // CSV de emails
+
+  geradoEm        DateTime @default(now()) @map("gerado_em")
+  geradoPorUserId String?  @map("gerado_por_user_id") // null = automático (script/cron)
+
+  @@unique([mesReferencia, anoReferencia, escopoTipo, escopoId])
+  @@index([anoReferencia, mesReferencia])
+  @@map("analise_creditos_snapshot")
 }

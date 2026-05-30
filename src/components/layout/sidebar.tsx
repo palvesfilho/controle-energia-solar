@@ -32,6 +32,7 @@ import {
   Coins,
   Scale,
   PieChart,
+  Activity,
   CalendarClock,
   TrendingUp,
   BarChart3,
@@ -98,6 +99,7 @@ const adminNavItems: NavEntry[] = [
     title: "Gestão de Créditos",
     icon: Coins,
     children: [
+      { kind: "leaf", section: "gestaoCreditos", title: "Análise", href: "/admin/gestao-creditos/analise", icon: Activity },
       { kind: "leaf", section: "gestaoCreditos", title: "Balanço Mensal", href: "/admin/gestao-creditos/balanco-mensal", icon: Scale },
       { kind: "leaf", section: "gestaoCreditos", title: "Rateios", href: "/admin/gestao-creditos/rateios", icon: PieChart },
     ],
