@@ -605,7 +605,7 @@ export default function FaturamentoUCMesPage() {
                                     })
                                   }
                                   title="Pré-visualizar PDF da cobrança que será enviada ao cliente"
-                                  className="inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-muted transition-colors text-xs"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors text-xs font-medium"
                                 >
                                   <FileText className="h-3.5 w-3.5" />
                                   Visualizar Cobrança
@@ -614,7 +614,7 @@ export default function FaturamentoUCMesPage() {
                                 <Link
                                   href={`/admin/faturamento/unidades-consumidoras/${mesParam}/${r.billing.id}`}
                                   title="Editar valores e datas do demonstrativo"
-                                  className="inline-flex items-center gap-1 px-2 py-1 rounded text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors text-xs"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-900/40 transition-colors text-xs font-medium"
                                 >
                                   <FileBarChart2 className="h-3.5 w-3.5" />
                                   Editar Demonstrativo
@@ -635,11 +635,7 @@ export default function FaturamentoUCMesPage() {
                                         ? "Clique pra remover a validação (edição libera novamente)"
                                         : "Confirme que o demonstrativo está pronto antes de emitir a cobrança"
                                     }
-                                    className={`inline-flex items-center gap-1 px-2 py-1 rounded transition-colors text-xs font-medium disabled:opacity-50 ${
-                                      r.billing.demonstrativoValidadoEm
-                                        ? "text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40"
-                                        : "text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-900/40"
-                                    }`}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:hover:bg-emerald-900/40 transition-colors text-xs font-medium disabled:opacity-50"
                                   >
                                     <CheckCircle2 className="h-3.5 w-3.5" />
                                     {r.billing.demonstrativoValidadoEm
@@ -728,8 +724,8 @@ export default function FaturamentoUCMesPage() {
                                       }
                                       className={`inline-flex items-center gap-1 px-2 py-1 rounded transition-colors text-xs font-medium ${
                                         validado
-                                          ? "text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                                          : "text-slate-400 cursor-not-allowed"
+                                          ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                                          : "bg-slate-100 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:text-slate-500"
                                       }`}
                                     >
                                       <Receipt className="h-3.5 w-3.5" />

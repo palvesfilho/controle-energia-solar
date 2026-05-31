@@ -108,6 +108,9 @@ async function syncOne(
       // usina) e não "bill de UC que faz rateio com essa usina". Por isso não
       // copiamos ConsumerUnit.plantId para cá: essa sync é sempre de UC de
       // cliente (filtro consumerUnitId: { not: null } no POST).
+      // Preserva pdfUrl existente quando persistPdf devolveu null. Senão,
+      // sync flaky da Infosimples zera o vínculo mesmo com PDF no R2.
+      const { pdfUrl: nextPdfUrl, ...billDataNoPdf } = billData;
       const upserted = await prisma.consumerBill.upsert({
         where: {
           consumerUnitId_anoReferencia_mesReferencia: {
@@ -117,12 +120,14 @@ async function syncOne(
           },
         },
         update: {
-          ...billData,
+          ...billDataNoPdf,
+          ...(nextPdfUrl ? { pdfUrl: nextPdfUrl } : {}),
           syncedAt: new Date(),
         },
         create: {
           consumerUnitId,
-          ...billData,
+          ...billDataNoPdf,
+          pdfUrl: nextPdfUrl ?? null,
           syncedAt: new Date(),
         },
       });

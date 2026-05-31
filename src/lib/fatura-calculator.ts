@@ -50,7 +50,6 @@ export interface FaturaCalcInput {
   jurosMora: number | null;
   multaAtraso: number | null;
   atualizacaoMonetaria: number | null;
-  multasOutros: number | null;
 }
 
 export interface FaturaCalcResult {
@@ -89,7 +88,6 @@ export function calcularValorTotalFatura(
     "jurosMora",
     "multaAtraso",
     "atualizacaoMonetaria",
-    "multasOutros",
   ];
 
   for (const campo of campos) {

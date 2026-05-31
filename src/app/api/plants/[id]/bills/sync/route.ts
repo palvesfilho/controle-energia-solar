@@ -121,17 +121,25 @@ export async function POST(
         },
       });
 
+      // Preserva pdfUrl existente quando o persist devolveu null (Infosimples
+      // sem URL ou fetch falhou). Senão re-sync flaky zera o vínculo.
+      const { pdfUrl: nextPdfUrl, ...billDataNoPdf } = billData;
       if (existing) {
         await prisma.consumerBill.update({
           where: { id: existing.id },
-          data: { ...billData, syncedAt: new Date() },
+          data: {
+            ...billDataNoPdf,
+            ...(nextPdfUrl ? { pdfUrl: nextPdfUrl } : {}),
+            syncedAt: new Date(),
+          },
         });
       } else {
         await prisma.consumerBill.create({
           data: {
             plantId: id,
             consumerUnitId: null,
-            ...billData,
+            ...billDataNoPdf,
+            pdfUrl: nextPdfUrl ?? null,
             syncedAt: new Date(),
           },
         });

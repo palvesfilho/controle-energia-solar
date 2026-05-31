@@ -118,6 +118,10 @@ export async function POST(
         );
       }
 
+      // Preserva pdfUrl existente quando Infosimples não devolveu sourceUrl
+      // ou o fetch falhou. Senão, cada re-sync flaky zeraria o vínculo
+      // mesmo com o arquivo já no R2.
+      const { pdfUrl: nextPdfUrl, ...billDataNoPdf } = billData;
       const upserted = await prisma.consumerBill.upsert({
         where: {
           consumerUnitId_anoReferencia_mesReferencia: {
@@ -127,14 +131,16 @@ export async function POST(
           },
         },
         update: {
-          ...billData,
+          ...billDataNoPdf,
+          ...(nextPdfUrl ? { pdfUrl: nextPdfUrl } : {}),
           plantId: unit?.plantId || null,
           syncedAt: new Date(),
         },
         create: {
           consumerUnitId: id,
           plantId: unit?.plantId || null,
-          ...billData,
+          ...billDataNoPdf,
+          pdfUrl: nextPdfUrl ?? null,
           syncedAt: new Date(),
         },
       });

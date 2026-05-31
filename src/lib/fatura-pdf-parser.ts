@@ -556,6 +556,11 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
   }
 
   // === Encargos ===
+  // Faturas atrasadas trazem múltiplas linhas do mesmo tipo (uma por fatura
+  // em aberto), então acumulamos por soma — não pegamos só a primeira.
+  // Ex.: Walter Beltrame 04/26 tinha 2× "Juros de Mora JAN/26" (R$ 29,96 +
+  // R$ 15,00); somar é o correto.
+  // CIP é única por fatura, mas usar a mesma soma é seguro (sempre 1 linha).
   let jurosMora: number | null = null, multaAtraso: number | null = null;
   let atualizacaoMonetaria: number | null = null, iluminacaoPublicaCip: number | null = null;
   let ajusteSaldoCredito: number | null = null;
@@ -569,14 +574,14 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
     const match = line.match(REGEX_BRL);
     const valor = match ? parseNumBR(match[0]) : null;
     if (valor == null) continue;
-    if (jurosMora == null && d.includes("juros") && d.includes("mora")) jurosMora = valor;
-    else if (multaAtraso == null && d.includes("multa") && d.includes("atraso")) multaAtraso = valor;
-    else if (atualizacaoMonetaria == null && d.includes("atualizacao") && d.includes("monetaria"))
-      atualizacaoMonetaria = valor;
-    else if (iluminacaoPublicaCip == null && (d.includes("custeio ip") || d.includes("cip mar") || (d.includes("ilumin") && d.includes("public"))))
-      iluminacaoPublicaCip = valor;
-    else if (ajusteSaldoCredito == null && d.includes("ajuste") && d.includes("saldo"))
-      ajusteSaldoCredito = valor;
+    if (d.includes("juros") && d.includes("mora")) jurosMora = (jurosMora ?? 0) + valor;
+    else if (d.includes("multa") && d.includes("atraso")) multaAtraso = (multaAtraso ?? 0) + valor;
+    else if (d.includes("atualizacao") && d.includes("monetaria"))
+      atualizacaoMonetaria = (atualizacaoMonetaria ?? 0) + valor;
+    else if (d.includes("custeio ip") || d.includes("cip mar") || (d.includes("ilumin") && d.includes("public")))
+      iluminacaoPublicaCip = (iluminacaoPublicaCip ?? 0) + valor;
+    else if (d.includes("ajuste") && d.includes("saldo"))
+      ajusteSaldoCredito = (ajusteSaldoCredito ?? 0) + valor;
   }
 
   // === Saldo da instalação + participação + saldo a expirar ===

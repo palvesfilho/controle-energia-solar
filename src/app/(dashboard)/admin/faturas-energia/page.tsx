@@ -27,16 +27,20 @@ function CellIcon({ cell }: { cell: FaturaCell }) {
   if (cell.status === "error") {
     return (
       <span
-        title="Falha no download da fatura"
+        title="Fatura registrada com PDF, mas o arquivo não foi encontrado no storage"
         className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
       >
         <X className="h-3.5 w-3.5" />
       </span>
     );
   }
+  const tooltip =
+    cell.status === "no_pdf"
+      ? "Fatura registrada sem PDF anexado (backup histórico ou sync incompleto)"
+      : "Não sincronizado";
   return (
     <span
-      title="Não sincronizado"
+      title={tooltip}
       className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground"
     >
       <Minus className="h-3.5 w-3.5" />
@@ -156,17 +160,18 @@ export default function FaturasEnergiaVisaoGeralPage() {
   }, [rows, search, origemFilter, apenasAtivas]);
 
   const totals = useMemo(() => {
-    let ok = 0, err = 0, miss = 0;
+    let ok = 0, err = 0, noPdf = 0, miss = 0;
     for (const r of filtered) {
       for (let m = 1; m <= 12; m++) {
         const c = r.meses[m];
         if (!c) continue;
         if (c.status === "ok") ok++;
         else if (c.status === "error") err++;
+        else if (c.status === "no_pdf") noPdf++;
         else miss++;
       }
     }
-    return { ok, err, miss };
+    return { ok, err, noPdf, miss };
   }, [filtered]);
 
   return (
@@ -253,10 +258,14 @@ export default function FaturasEnergiaVisaoGeralPage() {
             </div>
             <div className="flex items-center gap-1.5">
               <span className="inline-block h-3 w-3 rounded-sm bg-red-500" />
-              Falha no download ({totals.err})
+              Arquivo perdido ({totals.err})
             </div>
             <div className="flex items-center gap-1.5">
               <span className="inline-block h-3 w-3 rounded-sm bg-muted-foreground/40" />
+              Sem PDF ({totals.noPdf})
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block h-3 w-3 rounded-sm bg-muted-foreground/20" />
               Não sincronizado ({totals.miss})
             </div>
             <div className="ml-auto">{filtered.length} UC(s)</div>

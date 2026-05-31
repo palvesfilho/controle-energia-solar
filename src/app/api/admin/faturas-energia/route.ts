@@ -3,7 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { listExistingKeys } from "@/lib/file-storage";
 import { relativePathToKey } from "@/lib/r2-storage";
 
-export type FaturaCellStatus = "ok" | "error" | "missing";
+// "ok": bill com pdfUrl e arquivo presente no storage → ícone verde
+// "error": bill com pdfUrl mas arquivo NÃO encontrado → ícone vermelho (anomalia real)
+// "no_pdf": bill registrado mas sem pdfUrl (ex.: importação BACKUP LUMI, sync sem download) → ícone cinza
+// "missing": não há bill cadastrada pra esse UC×mês → ícone cinza
+export type FaturaCellStatus = "ok" | "error" | "no_pdf" | "missing";
 
 export interface FaturaCell {
   status: FaturaCellStatus;
@@ -92,7 +96,7 @@ export async function GET(req: NextRequest) {
       contaPaga: bill.contaPaga,
       pagoEm: bill.pagoEm?.toISOString() ?? null,
     };
-    if (!bill.pdfUrl) return { ...base, status: "error", pdfUrl: null };
+    if (!bill.pdfUrl) return { ...base, status: "no_pdf", pdfUrl: null };
     const key = relativePathToKey(bill.pdfUrl);
     const fileExists = existingKeys.has(key);
     return fileExists
