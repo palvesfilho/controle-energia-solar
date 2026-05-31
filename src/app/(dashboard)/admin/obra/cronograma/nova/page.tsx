@@ -1,20 +1,39 @@
 import Link from "next/link";
 import { ChevronLeft, CalendarRange } from "lucide-react";
 import { ObraForm, type ObraFormValues } from "@/components/obras/obra-form";
+import { prisma } from "@/lib/prisma";
+import { formatDateOnly, proximoDiaUtil } from "@/lib/obra-calendario";
 
-const INITIAL_VALUES: ObraFormValues = {
-  nome: "",
-  descricao: "",
-  responsavel: "",
-  cliente: "",
-  local: "",
-  status: "PLANEJAMENTO",
-  dataInicioPrevista: "",
-  dataFimPrevista: "",
-  observacoes: "",
-};
+// Sugere início = próximo dia útil após o fim previsto da obra mais
+// futura já cadastrada. Ignora canceladas e inativas — o operador
+// pode sobrescrever no form.
+async function sugerirDataInicio(): Promise<string> {
+  const ultima = await prisma.obra.findFirst({
+    where: {
+      active: true,
+      status: { not: "CANCELADA" },
+      dataFimPrevista: { not: null },
+    },
+    orderBy: { dataFimPrevista: "desc" },
+    select: { dataFimPrevista: true },
+  });
+  if (!ultima?.dataFimPrevista) return "";
+  return formatDateOnly(proximoDiaUtil(ultima.dataFimPrevista));
+}
 
-export default function NovaObraPage() {
+export default async function NovaObraPage() {
+  const dataInicioSugerida = await sugerirDataInicio();
+  const initialValues: ObraFormValues = {
+    nome: "",
+    descricao: "",
+    responsavel: "",
+    cliente: "",
+    local: "",
+    status: "PLANEJAMENTO",
+    dataInicioPrevista: dataInicioSugerida,
+    dataFimPrevista: "",
+    observacoes: "",
+  };
   return (
     <div className="space-y-6 p-6">
       <div>
@@ -39,7 +58,7 @@ export default function NovaObraPage() {
         </div>
       </div>
 
-      <ObraForm mode="create" initialValues={INITIAL_VALUES} />
+      <ObraForm mode="create" initialValues={initialValues} />
     </div>
   );
 }

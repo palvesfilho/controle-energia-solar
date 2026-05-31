@@ -86,6 +86,27 @@ export function parseDateOnly(v: string | null | undefined): Date | null {
   return Number.isFinite(d.getTime()) ? d : null;
 }
 
+// Próximo dia útil (seg–sex) após `date`. Trabalha em UTC e ancora em
+// 12:00 pra alinhar com `parseDateOnly` e evitar deslize de fuso. Não
+// considera feriados — só fim de semana.
+export function proximoDiaUtil(date: Date): Date {
+  const next = new Date(date);
+  next.setUTCHours(12, 0, 0, 0);
+  do {
+    next.setUTCDate(next.getUTCDate() + 1);
+  } while (next.getUTCDay() === 0 || next.getUTCDay() === 6);
+  return next;
+}
+
+// Formata Date como "YYYY-MM-DD" usando componentes UTC — pareado com
+// `parseDateOnly` pra não perder o dia em fusos negativos.
+export function formatDateOnly(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 // FullCalendar usa end *exclusivo*. Nosso dataFimPrevista é inclusivo
 // (último dia da obra), então somamos 1 dia para o calendário exibir
 // o bloco até o fim daquele dia.
