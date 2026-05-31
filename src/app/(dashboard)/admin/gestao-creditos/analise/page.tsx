@@ -17,6 +17,7 @@ import {
   FileWarning,
   Filter,
   Gauge,
+  History,
   Hourglass,
   Loader2,
   Minus,
@@ -29,6 +30,16 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip as RcTooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatBRL, formatKWh } from "@/lib/formatters";
 import type {
@@ -302,6 +313,7 @@ export default function AnaliseCreditosPage() {
   const [showSaude, setShowSaude] = useState(true);
   const [users, setUsers] = useState<UserAtribuivel[]>([]);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [view, setView] = useState<"atual" | "historico">("atual");
 
   useEffect(() => {
     fetch("/api/plants")
@@ -499,6 +511,19 @@ export default function AnaliseCreditosPage() {
     URL.revokeObjectURL(url);
   };
 
+  if (view === "historico") {
+    return (
+      <HistoricoView
+        onVoltar={() => setView("atual")}
+        onSelectMes={(m, a) => {
+          setMes(m);
+          setAno(a);
+          setView("atual");
+        }}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -581,6 +606,15 @@ export default function AnaliseCreditosPage() {
               <RefreshCw className="h-4 w-4" />
             )}
             Atualizar
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("historico")}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium hover:bg-muted/50 transition-colors"
+            title="Ver histórico mês a mês"
+          >
+            <History className="h-4 w-4" />
+            Histórico
           </button>
         </div>
       </div>
@@ -1192,6 +1226,7 @@ function SugestoesBloco({
   onAfterAction: () => void;
 }) {
   const [running, setRunning] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
 
   const exec = async (idx: number, s: Sugestao) => {
     if (!s.action) return;
@@ -1258,6 +1293,7 @@ function SugestoesBloco({
       <div className="flex flex-wrap gap-1.5">
         {sugestoes.map((s, idx) => {
           const cls = toneCls[s.tone ?? "neutral"];
+          const hasSim = !!s.simulacao;
           const inner = (
             <>
               <span className="font-medium">{s.label}</span>
@@ -1268,15 +1304,31 @@ function SugestoesBloco({
           );
           if (s.href) {
             return (
-              <Link
-                key={idx}
-                href={s.href}
-                title={s.descricao}
-                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors ${cls}`}
-              >
-                {inner}
-                <ChevronRight className="h-3 w-3" />
-              </Link>
+              <span key={idx} className="inline-flex">
+                <Link
+                  href={s.href}
+                  title={s.descricao}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-colors ${cls} ${hasSim ? "rounded-r-none" : ""}`}
+                >
+                  {inner}
+                  <ChevronRight className="h-3 w-3" />
+                </Link>
+                {hasSim && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setExpanded(expanded === idx ? null : idx);
+                    }}
+                    title="Ver simulação inline"
+                    className={`inline-flex items-center rounded-full rounded-l-none border border-l-0 px-1.5 py-1 text-[11px] transition-colors ${cls}`}
+                  >
+                    <ChevronDown
+                      className={`h-3 w-3 transition-transform ${expanded === idx ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                )}
+              </span>
             );
           }
           return (
@@ -1297,6 +1349,107 @@ function SugestoesBloco({
       <div className="text-[10px] text-muted-foreground mt-1 italic">
         Passe o mouse pra ver o que cada uma faz.
       </div>
+      {expanded !== null && sugestoes[expanded]?.simulacao && (
+        <SimulacaoBloco sim={sugestoes[expanded].simulacao!} />
+      )}
+    </div>
+  );
+}
+
+function SimulacaoBloco({
+  sim,
+}: {
+  sim: NonNullable<Sugestao["simulacao"]>;
+}) {
+  const fmt = (n: number) => Math.round(n).toLocaleString("pt-BR");
+  return (
+    <div className="mt-2 rounded-md border bg-muted/30 p-2">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+        Simulação · cota estimada baseada em {fmt(sim.geracaoEstimadaKwh)} kWh
+        rateados no mês
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div>
+          <div className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wide mb-1">
+            UCs com cota sobrando ({sim.ucsSobrando.length})
+          </div>
+          {sim.ucsSobrando.length === 0 ? (
+            <div className="text-[10px] text-muted-foreground italic">
+              Nenhuma com folga significativa
+            </div>
+          ) : (
+            <table className="w-full text-[11px]">
+              <thead className="text-muted-foreground">
+                <tr>
+                  <th className="text-left font-normal">UC</th>
+                  <th className="text-right font-normal">%</th>
+                  <th className="text-right font-normal">Cota→Cons.</th>
+                  <th className="text-right font-normal">Sobra</th>
+                </tr>
+              </thead>
+              <tbody className="tabular-nums">
+                {sim.ucsSobrando.map((u) => (
+                  <tr key={u.consumerUnitId}>
+                    <td className="text-left truncate max-w-[120px]" title={u.nome}>
+                      {u.codigoUc}
+                    </td>
+                    <td className="text-right">{u.percentualAtual.toFixed(0)}%</td>
+                    <td className="text-right">
+                      {fmt(u.cotaEstimadaKwh)} → {fmt(u.consumoKwh)}
+                    </td>
+                    <td className="text-right text-emerald-700 font-medium">
+                      +{fmt(u.cotaEstimadaKwh - u.consumoKwh)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div>
+          <div className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide mb-1">
+            UCs no limite ({sim.ucsNoLimite.length})
+          </div>
+          {sim.ucsNoLimite.length === 0 ? (
+            <div className="text-[10px] text-muted-foreground italic">
+              Nenhuma consumindo no teto da cota
+            </div>
+          ) : (
+            <table className="w-full text-[11px]">
+              <thead className="text-muted-foreground">
+                <tr>
+                  <th className="text-left font-normal">UC</th>
+                  <th className="text-right font-normal">%</th>
+                  <th className="text-right font-normal">Cota→Cons.</th>
+                  <th className="text-right font-normal">Uso</th>
+                </tr>
+              </thead>
+              <tbody className="tabular-nums">
+                {sim.ucsNoLimite.map((u) => (
+                  <tr key={u.consumerUnitId}>
+                    <td className="text-left truncate max-w-[120px]" title={u.nome}>
+                      {u.codigoUc}
+                    </td>
+                    <td className="text-right">{u.percentualAtual.toFixed(0)}%</td>
+                    <td className="text-right">
+                      {fmt(u.cotaEstimadaKwh)} → {fmt(u.consumoKwh)}
+                    </td>
+                    <td className="text-right text-amber-700 font-medium">
+                      {(u.margemPct * 100).toFixed(0)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+      {sim.ucsSobrando.length > 0 && sim.ucsNoLimite.length > 0 && (
+        <div className="mt-2 pt-2 border-t text-[11px] text-muted-foreground">
+          💡 Realocar % das UCs à esquerda pras da direita reduz desperdício.
+          Use a tela de rateios pra ajustar (clica no botão acima).
+        </div>
+      )}
     </div>
   );
 }
@@ -1420,6 +1573,296 @@ function BannerCompletude({
             </tbody>
           </table>
         </div>
+      )}
+    </div>
+  );
+}
+
+interface SnapshotLite {
+  id: string;
+  mesReferencia: number;
+  anoReferencia: number;
+  escopoTipo: string;
+  escopoId: string | null;
+  completo: boolean;
+  emailEnviado: boolean;
+  geradoEm: string;
+  resumo: {
+    saldoKwh: number;
+    vencendo30dKwh: number;
+    eficienciaPct: number | null;
+    acoesCriticas: number;
+  };
+}
+
+function HistoricoView({
+  onVoltar,
+  onSelectMes,
+}: {
+  onVoltar: () => void;
+  onSelectMes: (mes: number, ano: number) => void;
+}) {
+  const [items, setItems] = useState<SnapshotLite[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch("/api/admin/gestao-creditos/snapshots")
+      .then((r) =>
+        r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)),
+      )
+      .then((d: { items: SnapshotLite[] }) => setItems(d.items ?? []))
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Histórico vem mais recente primeiro do endpoint; pro gráfico,
+  // queremos ordem cronológica crescente.
+  const chartData = useMemo(() => {
+    return [...items]
+      .reverse()
+      .map((s) => ({
+        label: `${String(s.mesReferencia).padStart(2, "0")}/${String(s.anoReferencia).slice(-2)}`,
+        mes: s.mesReferencia,
+        ano: s.anoReferencia,
+        saldo: Math.round(s.resumo.saldoKwh),
+        vencendo: Math.round(s.resumo.vencendo30dKwh),
+        eficiencia:
+          s.resumo.eficienciaPct != null
+            ? Math.round(s.resumo.eficienciaPct * 100)
+            : null,
+        completo: s.completo,
+      }));
+  }, [items]);
+
+  return (
+    <div className="space-y-6 p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-slate-500 to-slate-700 text-white">
+            <History className="h-6 w-6" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">Histórico</h1>
+            <p className="text-sm text-muted-foreground">
+              Snapshots mensais da carteira (gerados quando o mês fica
+              completo).
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onVoltar}
+          className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium hover:bg-muted/50 transition-colors"
+        >
+          <ChevronRight className="h-4 w-4 rotate-180" />
+          Voltar à análise
+        </button>
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          Falha ao carregar histórico: {error}
+        </div>
+      )}
+
+      {loading && (
+        <div className="rounded-lg border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+          <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
+          Carregando…
+        </div>
+      )}
+
+      {!loading && items.length === 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800">
+          <FileWarning className="mx-auto mb-2 h-6 w-6" />
+          Nenhum snapshot encontrado ainda. Rode{" "}
+          <code className="bg-amber-100 px-1.5 py-0.5 rounded text-[11px]">
+            npm run analise:mensal -- --force
+          </code>{" "}
+          em local pra popular ou aguarde o cron mensal.
+        </div>
+      )}
+
+      {!loading && chartData.length > 0 && (
+        <>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground mb-2">
+                  <Battery className="h-3.5 w-3.5" />
+                  Saldo × A vencer (kWh)
+                </div>
+                <div className="h-56">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={chartData}
+                      margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <RcTooltip
+                        contentStyle={{ fontSize: 12 }}
+                        formatter={(v) =>
+                          `${Number(v).toLocaleString("pt-BR")} kWh`
+                        }
+                      />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Line
+                        type="monotone"
+                        dataKey="saldo"
+                        name="Saldo"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        dot={{ r: 3 }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="vencendo"
+                        name="A vencer"
+                        stroke="#f59e0b"
+                        strokeWidth={2}
+                        dot={{ r: 3 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground mb-2">
+                  <Zap className="h-3.5 w-3.5" />
+                  Eficiência média (%)
+                </div>
+                <div className="h-56">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={chartData}
+                      margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} domain={[0, 100]} />
+                      <RcTooltip
+                        contentStyle={{ fontSize: 12 }}
+                        formatter={(v) => `${Number(v)}%`}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="eficiencia"
+                        name="PR"
+                        stroke="#3b82f6"
+                        strokeWidth={2}
+                        dot={{ r: 3 }}
+                        connectNulls
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="rounded-lg border overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-muted/40 text-muted-foreground uppercase tracking-wide">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">Mês</th>
+                    <th className="px-3 py-2 text-center font-medium">
+                      Estado
+                    </th>
+                    <th className="px-3 py-2 text-right font-medium">Saldo</th>
+                    <th className="px-3 py-2 text-right font-medium">
+                      A vencer 30d
+                    </th>
+                    <th className="px-3 py-2 text-right font-medium">PR 90d</th>
+                    <th className="px-3 py-2 text-right font-medium">
+                      Críticas
+                    </th>
+                    <th className="px-3 py-2 text-center font-medium">Email</th>
+                    <th className="px-3 py-2 text-center font-medium">Ação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((s) => (
+                    <tr
+                      key={s.id}
+                      className="border-t hover:bg-muted/30 transition-colors"
+                    >
+                      <td className="px-3 py-2 font-medium">
+                        {String(s.mesReferencia).padStart(2, "0")}/{s.anoReferencia}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {s.completo ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] text-emerald-800">
+                            <CheckCircle2 className="h-2.5 w-2.5" />
+                            Completo
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
+                            <FileWarning className="h-2.5 w-2.5" />
+                            Parcial
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {formatKWh(s.resumo.saldoKwh)}
+                      </td>
+                      <td
+                        className={`px-3 py-2 text-right tabular-nums ${s.resumo.vencendo30dKwh >= 500 ? "text-red-600 font-medium" : s.resumo.vencendo30dKwh > 0 ? "text-amber-700" : ""}`}
+                      >
+                        {formatKWh(s.resumo.vencendo30dKwh)}
+                      </td>
+                      <td
+                        className={`px-3 py-2 text-right tabular-nums ${
+                          s.resumo.eficienciaPct == null
+                            ? "text-muted-foreground"
+                            : s.resumo.eficienciaPct < 0.7
+                              ? "text-red-600 font-medium"
+                              : s.resumo.eficienciaPct < 0.8
+                                ? "text-amber-700"
+                                : "text-emerald-700"
+                        }`}
+                      >
+                        {s.resumo.eficienciaPct == null
+                          ? "—"
+                          : `${(s.resumo.eficienciaPct * 100).toFixed(0)}%`}
+                      </td>
+                      <td
+                        className={`px-3 py-2 text-right tabular-nums ${s.resumo.acoesCriticas > 0 ? "font-medium text-red-600" : "text-muted-foreground"}`}
+                      >
+                        {s.resumo.acoesCriticas}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {s.emailEnviado ? (
+                          <Check className="inline h-3.5 w-3.5 text-emerald-600" />
+                        ) : (
+                          <Minus className="inline h-3.5 w-3.5 text-muted-foreground" />
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onSelectMes(s.mesReferencia, s.anoReferencia)
+                          }
+                          className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                        >
+                          Abrir
+                          <ChevronRight className="h-3 w-3" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

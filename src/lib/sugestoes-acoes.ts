@@ -26,6 +26,26 @@ export interface SugestaoAction {
   successMessage?: string;
 }
 
+// Simulação inline de rebalanceamento de rateio — mostra qual UC está
+// sobrando crédito vs qual está no limite, e quanto cada uma sobra/falta.
+// Operador olha e decide a movimentação na tela de rateios.
+export interface UcRateioDado {
+  consumerUnitId: string;
+  codigoUc: string;
+  nome: string;
+  percentualAtual: number; // 0..100
+  cotaEstimadaKwh: number; // cota mensal estimada do rateio
+  consumoKwh: number; // consumo da UC no mês
+  margemPct: number; // consumo/cota — 1 = no limite; <1 = sobrando; >1 = passou
+}
+
+export interface SimulacaoRebalanceamento {
+  plantId: string;
+  geracaoEstimadaKwh: number; // base do cálculo (sum consumoUcs do rateio)
+  ucsSobrando: UcRateioDado[]; // ordenado por sobra desc
+  ucsNoLimite: UcRateioDado[]; // ordenado por margem desc (mais apertado primeiro)
+}
+
 export interface Sugestao {
   tipo: SugestaoTipo;
   label: string;
@@ -33,6 +53,8 @@ export interface Sugestao {
   tone?: SugestaoTone;
   href?: string;
   action?: SugestaoAction;
+  // Quando presente, UI renderiza uma mini-tabela inline com as UCs
+  simulacao?: SimulacaoRebalanceamento;
 }
 
 // Contexto agregado pra gerar sugestões — busca uma vez no compute,
@@ -44,11 +66,14 @@ export interface ContextoSugestoes {
   // Plant.id → boolean: existe RateioVersion VIGENTE com mais de 1 item
   // (i.e., faz sentido sugerir rebalancear)
   temRateioMultiItem: Set<string>;
+  // Plant.id → simulação enriquecida do rateio (UCs sobrando × no limite)
+  simulacoesPorPlant: Map<string, SimulacaoRebalanceamento>;
 }
 
 export async function carregarContextoSugestoes(
   plantIds: string[],
   vencendoPorPlant: Map<string, number>,
+  consumoPorUcDoMes: Map<string, number>,
 ): Promise<ContextoSugestoes> {
   // 1) Cross-plant: pra cada plant, achar outras plants do mesmo investidor
   //    com vencendoKwh > 100. Critério: compartilhar AO MENOS um investidor.
@@ -117,21 +142,69 @@ export async function carregarContextoSugestoes(
     }
   }
 
-  // 2) Rateio multi-item: pra sugerir rebalancear precisa de RateioVersion
-  //    VIGENTE com 2+ itens (senão não tem o que rebalancear).
-  const rateiosComItens = await prisma.rateioVersion.findMany({
+  // 2) Rateio multi-item + simulação: carrega VIGENTE com items+UCs pra
+  //    calcular cota×consumo×margem de cada UC do rateio.
+  const rateios = await prisma.rateioVersion.findMany({
     where: { plantId: { in: plantIds }, status: "VIGENTE" },
     select: {
       plantId: true,
-      _count: { select: { items: true } },
+      items: {
+        select: {
+          consumerUnitId: true,
+          percentual: true,
+          consumerUnit: { select: { codigoUc: true, nome: true } },
+        },
+      },
     },
   });
   const temRateioMultiItem = new Set<string>();
-  for (const r of rateiosComItens) {
-    if (r._count.items >= 2) temRateioMultiItem.add(r.plantId);
+  const simulacoesPorPlant = new Map<string, SimulacaoRebalanceamento>();
+  for (const r of rateios) {
+    if (r.items.length < 2) continue;
+    temRateioMultiItem.add(r.plantId);
+    // Geração estimada = soma dos consumos das UCs do rateio (proxy
+    // honesta — é o "fluxo" que esse rateio movimentou no mês).
+    let geracaoEstimada = 0;
+    for (const it of r.items) {
+      geracaoEstimada += consumoPorUcDoMes.get(it.consumerUnitId) ?? 0;
+    }
+    if (geracaoEstimada <= 0) continue;
+
+    const ucsDados: UcRateioDado[] = r.items.map((it) => {
+      const consumoKwh = consumoPorUcDoMes.get(it.consumerUnitId) ?? 0;
+      const cotaEstimadaKwh = (it.percentual / 100) * geracaoEstimada;
+      const margemPct = cotaEstimadaKwh > 0 ? consumoKwh / cotaEstimadaKwh : 0;
+      return {
+        consumerUnitId: it.consumerUnitId,
+        codigoUc: it.consumerUnit.codigoUc,
+        nome: it.consumerUnit.nome,
+        percentualAtual: it.percentual,
+        cotaEstimadaKwh,
+        consumoKwh,
+        margemPct,
+      };
+    });
+    // Sobrando: margem < 0.7 (usa menos de 70% da cota)
+    // No limite: margem > 0.95 (consome quase tudo que recebe)
+    const sobrando = ucsDados
+      .filter((u) => u.margemPct < 0.7 && u.cotaEstimadaKwh > 50)
+      .sort((a, b) => b.cotaEstimadaKwh - b.consumoKwh - (a.cotaEstimadaKwh - a.consumoKwh))
+      .slice(0, 3);
+    const noLimite = ucsDados
+      .filter((u) => u.margemPct > 0.95 && u.consumoKwh > 50)
+      .sort((a, b) => b.margemPct - a.margemPct)
+      .slice(0, 3);
+    if (sobrando.length === 0 && noLimite.length === 0) continue;
+
+    simulacoesPorPlant.set(r.plantId, {
+      plantId: r.plantId,
+      geracaoEstimadaKwh: geracaoEstimada,
+      ucsSobrando: sobrando,
+      ucsNoLimite: noLimite,
+    });
   }
 
-  return { plantsCandidatasPorPlant, temRateioMultiItem };
+  return { plantsCandidatasPorPlant, temRateioMultiItem, simulacoesPorPlant };
 }
 
 // Gera sugestões pra uma ação. Recebe a ação + contexto agregado +
@@ -171,6 +244,7 @@ export function gerarSugestoesParaAcao(
 
       // Rebalancear / aumentar rateio
       if (acao.plantId && ctx.temRateioMultiItem.has(acao.plantId)) {
+        const sim = ctx.simulacoesPorPlant.get(acao.plantId);
         sugestoes.push({
           tipo: subiu ? "AUMENTAR_RATEIO_UC" : "REBALANCEAR_RATEIO",
           label: subiu
@@ -181,6 +255,7 @@ export function gerarSugestoesParaAcao(
             : "UC consumindo abaixo — % do rateio aqui pode ir pra outras UCs no limite.",
           tone: "primary",
           href: `/admin/gestao-creditos/rateios?plantId=${acao.plantId}`,
+          simulacao: sim,
         });
       }
 
@@ -222,6 +297,7 @@ export function gerarSugestoesParaAcao(
 
     case "CREDITOS_VENCENDO_30D": {
       if (acao.plantId && ctx.temRateioMultiItem.has(acao.plantId)) {
+        const sim = ctx.simulacoesPorPlant.get(acao.plantId);
         sugestoes.push({
           tipo: "REBALANCEAR_RATEIO",
           label: "Rebalancear rateio",
@@ -229,6 +305,7 @@ export function gerarSugestoesParaAcao(
             "Aumentar % das UCs gargalo (com menos margem de consumo) absorve mais antes de vencer.",
           tone: "primary",
           href: `/admin/gestao-creditos/rateios?plantId=${acao.plantId}`,
+          simulacao: sim,
         });
       }
       if (acao.plantId) {

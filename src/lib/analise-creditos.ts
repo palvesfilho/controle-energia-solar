@@ -626,8 +626,10 @@ export async function computeAnaliseCreditos(
     });
   }
 
-  // Consumo anômalo: UC com consumo do mês ≥50% acima/abaixo da média
-  // dos últimos 5 meses fechados. Ignora UC com consumo desprezível.
+  // Consumo anômalo: UC com consumo do mês ≥50% acima/abaixo da REFERÊNCIA.
+  // Referência preferencial: mesmo mês do ano anterior (captura sazonalidade
+  // — UC residencial cai naturalmente em janeiro, UC comercial em dezembro).
+  // Fallback: média móvel dos últimos 5 meses fechados.
   // Suprime UCs com ConsumoBaseline ativo cobrindo mes/ano de referência.
   const baselinesAtivas = ucs.length
     ? await prisma.consumoBaseline.findMany({
@@ -644,28 +646,64 @@ export async function computeAnaliseCreditos(
   const ucsComBaselineAtiva = new Set(
     baselinesAtivas.map((b) => b.consumerUnitId),
   );
+
+  // Baseline sazonal: bills do mesmo mês ano anterior (uma query rápida)
+  const billsSazonais = ucs.length
+    ? await prisma.consumerBill.findMany({
+        where: {
+          consumerUnitId: { in: ucs.map((u) => u.id) },
+          mesReferencia: mes,
+          anoReferencia: ano - 1,
+        },
+        select: { consumerUnitId: true, consumoKwh: true },
+      })
+    : [];
+  const consumoSazonalPorUc = new Map<string, number>();
+  for (const b of billsSazonais) {
+    if (b.consumerUnitId && b.consumoKwh && b.consumoKwh > 0) {
+      consumoSazonalPorUc.set(b.consumerUnitId, b.consumoKwh);
+    }
+  }
+
   for (const uc of ucs) {
     if (ucsComBaselineAtiva.has(uc.id)) continue;
     const billAtual = billPorUcDoMes.get(uc.id);
     if (!billAtual || !billAtual.consumoKwh) continue;
     if (billAtual.consumoKwh < THRESHOLDS.consumoMinimoKwh) continue;
 
-    const historicos = billsSlim
-      .filter(
-        (b) =>
-          b.consumerUnitId === uc.id &&
-          !(b.mes === mes && b.ano === ano) &&
-          b.consumoKwh != null &&
-          b.consumoKwh > 0,
-      )
-      .slice(0, THRESHOLDS.consumoAnomaloMesesBase - 1);
-    if (historicos.length < 2) continue; // amostra muito pequena
+    // Tenta baseline sazonal (mes-12). Se UC tem bill desse mês ano passado,
+    // é o critério mais "honesto" pra detectar anomalia real.
+    const consumoSazonal = consumoSazonalPorUc.get(uc.id);
+    let referencia: number;
+    let baselineLabel: string;
+    let baselineAmostra: number;
 
-    const media =
-      historicos.reduce((s, b) => s + (b.consumoKwh ?? 0), 0) / historicos.length;
-    if (media < THRESHOLDS.consumoMinimoKwh) continue;
+    if (consumoSazonal && consumoSazonal >= THRESHOLDS.consumoMinimoKwh) {
+      referencia = consumoSazonal;
+      baselineLabel = `mesmo mês de ${ano - 1}`;
+      baselineAmostra = 1;
+    } else {
+      // Fallback: média móvel dos últimos 5 meses fechados
+      const historicos = billsSlim
+        .filter(
+          (b) =>
+            b.consumerUnitId === uc.id &&
+            !(b.mes === mes && b.ano === ano) &&
+            b.consumoKwh != null &&
+            b.consumoKwh > 0,
+        )
+        .slice(0, THRESHOLDS.consumoAnomaloMesesBase - 1);
+      if (historicos.length < 2) continue;
+      const media =
+        historicos.reduce((s, b) => s + (b.consumoKwh ?? 0), 0) /
+        historicos.length;
+      if (media < THRESHOLDS.consumoMinimoKwh) continue;
+      referencia = media;
+      baselineLabel = `média ${historicos.length}m`;
+      baselineAmostra = historicos.length;
+    }
 
-    const delta = (billAtual.consumoKwh - media) / media;
+    const delta = (billAtual.consumoKwh - referencia) / referencia;
     if (Math.abs(delta) < THRESHOLDS.consumoAnomaloPct) continue;
 
     const plant = uc.plantId ? plantById.get(uc.plantId) : null;
@@ -674,7 +712,9 @@ export async function computeAnaliseCreditos(
       tipo: "CONSUMO_ANOMALO",
       severidade: Math.abs(delta) > 1 ? "critico" : "atencao",
       titulo: `UC ${uc.codigoUc} (${uc.nome}): consumo ${subiu ? "subiu" : "caiu"} ${(Math.abs(delta) * 100).toFixed(0)}%`,
-      descricao: `Mês: ${billAtual.consumoKwh.toFixed(0)} kWh · Média ${historicos.length}m: ${media.toFixed(0)} kWh. ${
+      descricao: `Mês: ${billAtual.consumoKwh.toFixed(0)} kWh · Referência (${baselineLabel}): ${referencia.toFixed(0)} kWh${
+        baselineAmostra === 1 ? " — comparação sazonal" : ""
+      }. ${
         subiu
           ? "Investigar novo consumo, troca de inquilino, fuga ou erro de leitura."
           : "Pode ser UC desocupada, troca de medidor ou erro de leitura — afeta a compensação."
@@ -834,14 +874,21 @@ export async function computeAnaliseCreditos(
 
   // 11) Sugestões — depois do sort pra cada ação ter contexto enriquecido.
   // vencendoPorPlant é Map<plantId, {kwh, ucs}> — passamos só kwh pra
-  // contexto.
+  // contexto. consumoPorUcDoMes alimenta o simulador de rebalanceamento.
   const vencendoKwhPorPlant = new Map<string, number>();
   for (const [pid, v] of vencendoPorPlant) {
     vencendoKwhPorPlant.set(pid, v.kwh);
   }
+  const consumoPorUcDoMes = new Map<string, number>();
+  for (const [ucId, bill] of billPorUcDoMes) {
+    if (bill.consumoKwh && bill.consumoKwh > 0) {
+      consumoPorUcDoMes.set(ucId, bill.consumoKwh);
+    }
+  }
   const ctxSugestoes = await carregarContextoSugestoes(
     plantIds,
     vencendoKwhPorPlant,
+    consumoPorUcDoMes,
   );
   for (const a of acoes) {
     a.sugestoes = gerarSugestoesParaAcao(a, ctxSugestoes);
