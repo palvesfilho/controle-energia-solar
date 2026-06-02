@@ -99,12 +99,20 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
   // ─── 1) PAGAR_FATURA ──────────────────────────────────────────────────
   // 2 dias antes do vencimento. Source: ConsumerBill com vencimento na janela [start+2d, end+2d].
   // DONE se pagoEm preenchido.
+  // Filtra ConsumerBill que pertence a UC de cliente Brasil Solar — só faturas
+  // da usina (plantId != null) ou de UC do fluxo investidor (origem=PADRAO)
+  // devem virar tarefa. UCs com origem BRASIL_SOLAR_TITULAR/BENEFICIARIA
+  // sincronizam fatura pra fins de monitoramento mas não entram na agenda.
   const billsForPayment = await prisma.consumerBill.findMany({
     where: {
       vencimento: {
         gte: addDays(windowStart, 2),
         lte: addDays(windowEnd, 2),
       },
+      OR: [
+        { plantId: { not: null } },
+        { consumerUnit: { origem: "PADRAO" } },
+      ],
     },
     select: {
       id: true,
@@ -169,6 +177,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
         lte: addDays(windowEnd, -3),
       },
       consumerUnitId: { not: null },
+      consumerUnit: { origem: "PADRAO" },
     },
     select: {
       id: true,
@@ -326,6 +335,10 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
         gte: addDays(windowStart, -DIAS_ATE_CONFERIR_RGE),
         lte: addDays(windowEnd, -DIAS_ATE_CONFERIR_RGE),
       },
+      OR: [
+        { plantId: { not: null } },
+        { consumerUnit: { origem: "PADRAO" } },
+      ],
     },
     select: {
       id: true,
@@ -380,7 +393,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
   // 1 dia antes de ConsumerBill.proximaLeitura (do bill mais recente de cada UC).
   // Sem status auto-derivável — sempre PENDING ou OVERDUE.
   const ucsComLeitura = await prisma.consumerUnit.findMany({
-    where: { active: true },
+    where: { active: true, origem: "PADRAO" },
     select: {
       id: true,
       nome: true,

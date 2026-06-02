@@ -5,6 +5,13 @@ import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { serializeObraObservacoes } from "@/lib/obra-meta";
 import { parseDateOnly } from "@/lib/obra-calendario";
+import { encrypt } from "@/lib/crypto";
+
+const DISTRIBUIDORAS_PORTAL = new Set([
+  "RGE",
+  "CPFL_PAULISTA",
+  "CPFL_PIRATININGA",
+]);
 
 const TIPOS_TELHADO = new Set([
   "FIBROCIMENTO",
@@ -22,6 +29,8 @@ const ESTRUTURA_DURACAO_DIAS = 3;
 const LAG_ENTRE_TAREFAS = 15;
 const PRAZO_MIN_CARPORT_SOLO =
   ESTRUTURA_DURACAO_DIAS + LAG_ENTRE_TAREFAS + 1; // T1 + lag + ao menos 1 dia de T2
+
+const EXECUTADO_POR_VALORES = new Set(["BRASIL_SOLAR", "TERCEIRO"]);
 
 function addDays(date: Date, days: number): Date {
   const d = new Date(date);
@@ -116,60 +125,92 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
   }
 
-  // ---- Validação dos campos novos do contrato/obra ---------------------
-  const tipoTelhado =
-    typeof body.tipoTelhado === "string" ? body.tipoTelhado.trim() : "";
-  if (!tipoTelhado || !TIPOS_TELHADO.has(tipoTelhado)) {
+  // executadoPor define se Brasil Solar executa a obra (fluxo completo,
+  // com Obra+tarefas auto) ou se é só monitoramento de usina de terceiro.
+  const executadoPor =
+    typeof body.executadoPor === "string" ? body.executadoPor.trim() : "BRASIL_SOLAR";
+  if (!EXECUTADO_POR_VALORES.has(executadoPor)) {
     return NextResponse.json(
-      { error: "Tipo de telhado inválido ou ausente" },
+      { error: "Campo 'executadoPor' inválido (use BRASIL_SOLAR ou TERCEIRO)" },
       { status: 400 }
     );
   }
+  const isTerceiro = executadoPor === "TERCEIRO";
 
+  // ---- Validação dos campos do contrato/obra ---------------------------
+  // Quando executadoPor=TERCEIRO, Brasil Solar não executa obra: os campos
+  // de telhado/data/prazo ficam nulos e o fluxo automático de Obra/tarefas
+  // é pulado mais abaixo.
+  let tipoTelhado: string | null = null;
   let tipoTelhadoOutro: string | null = null;
-  if (tipoTelhado === "MISTO") {
-    const v =
-      typeof body.tipoTelhadoOutro === "string" ? body.tipoTelhadoOutro.trim() : "";
-    if (!v) {
+  let dataPagamento: Date | null = null;
+  let prazoContratoDias: number | null = null;
+
+  if (!isTerceiro) {
+    const t = typeof body.tipoTelhado === "string" ? body.tipoTelhado.trim() : "";
+    if (!t || !TIPOS_TELHADO.has(t)) {
       return NextResponse.json(
-        { error: "Descreva o tipo de telhado misto" },
+        { error: "Tipo de telhado inválido ou ausente" },
         { status: 400 }
       );
     }
-    tipoTelhadoOutro = v;
-  }
 
-  const dataPagamento = parseDateOnly(
-    typeof body.dataPagamento === "string" ? body.dataPagamento : null
-  );
-  if (!dataPagamento) {
-    return NextResponse.json(
-      { error: "Data de pagamento inválida ou ausente" },
-      { status: 400 }
-    );
-  }
+    if (t === "MISTO") {
+      const v =
+        typeof body.tipoTelhadoOutro === "string" ? body.tipoTelhadoOutro.trim() : "";
+      if (!v) {
+        return NextResponse.json(
+          { error: "Descreva o tipo de telhado misto" },
+          { status: 400 }
+        );
+      }
+      tipoTelhadoOutro = v;
+    }
 
-  const prazoContratoDias = toInt(body.prazoContratoDias);
-  if (!prazoContratoDias || prazoContratoDias <= 0) {
-    return NextResponse.json(
-      { error: "Prazo do contrato deve ser maior que zero" },
-      { status: 400 }
+    const dp = parseDateOnly(
+      typeof body.dataPagamento === "string" ? body.dataPagamento : null
     );
-  }
-  if (
-    TIPOS_COM_ESTRUTURA.has(tipoTelhado) &&
-    prazoContratoDias < PRAZO_MIN_CARPORT_SOLO
-  ) {
-    return NextResponse.json(
-      {
-        error: `Para CARPORT/USINA DE SOLO o prazo precisa ser de no mínimo ${PRAZO_MIN_CARPORT_SOLO} dias (3d estrutura + 15d intervalo + instalação)`,
-      },
-      { status: 400 }
-    );
+    if (!dp) {
+      return NextResponse.json(
+        { error: "Data de pagamento inválida ou ausente" },
+        { status: 400 }
+      );
+    }
+
+    const pcd = toInt(body.prazoContratoDias);
+    if (!pcd || pcd <= 0) {
+      return NextResponse.json(
+        { error: "Prazo do contrato deve ser maior que zero" },
+        { status: 400 }
+      );
+    }
+    if (TIPOS_COM_ESTRUTURA.has(t) && pcd < PRAZO_MIN_CARPORT_SOLO) {
+      return NextResponse.json(
+        {
+          error: `Para CARPORT/USINA DE SOLO o prazo precisa ser de no mínimo ${PRAZO_MIN_CARPORT_SOLO} dias (3d estrutura + 15d intervalo + instalação)`,
+        },
+        { status: 400 }
+      );
+    }
+
+    tipoTelhado = t;
+    dataPagamento = dp;
+    prazoContratoDias = pcd;
   }
   // ----------------------------------------------------------------------
 
   const planta = body.planta && typeof body.planta === "object" ? body.planta : {};
+
+  // codigoUc e concessionaria podem vir direto no body (form de cadastro manual)
+  // ou dentro de `planta` (prefill do Anexo F). Direto no body tem precedência.
+  const codigoUcInput =
+    (typeof body.codigoUc === "string" && body.codigoUc.trim()) ||
+    (typeof planta.codigoUc === "string" && planta.codigoUc.trim()) ||
+    null;
+  const concessionariaInput =
+    (typeof body.concessionaria === "string" && body.concessionaria.trim()) ||
+    (typeof planta.concessionaria === "string" && planta.concessionaria.trim()) ||
+    null;
 
   const proprietario = await prisma.brasilSolarProprietario.create({
     data: {
@@ -181,14 +222,15 @@ export async function POST(req: NextRequest) {
       cidade: body.cidade?.trim() || null,
       uf: body.uf?.trim() || null,
       observacoes: body.observacoes?.trim() || null,
+      executadoPor,
       tipoTelhado,
       tipoTelhadoOutro,
       dataPagamento,
       prazoContratoDias,
       latitude: toFloat(planta.latitude),
       longitude: toFloat(planta.longitude),
-      codigoUc: planta.codigoUc?.toString().trim() || null,
-      concessionaria: planta.concessionaria?.toString().trim() || null,
+      codigoUc: codigoUcInput,
+      concessionaria: concessionariaInput,
       potenciaInstalada: toFloat(planta.potenciaInstalada),
       modulosMarca: planta.modulosMarca?.toString().trim() || null,
       modulosModelo: planta.modulosModelo?.toString().trim() || null,
@@ -202,6 +244,83 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  // Cria automaticamente a ConsumerUnit quando o código UC foi informado.
+  // Não falha o cadastro do proprietário se a UC não puder ser criada
+  // (ex.: código já em uso).
+  let consumerUnitId: string | null = null;
+  if (codigoUcInput) {
+    try {
+      const existing = await prisma.consumerUnit.findUnique({
+        where: { codigoUc: codigoUcInput },
+      });
+      if (existing) {
+        consumerUnitId = existing.id;
+      } else {
+        const created = await prisma.consumerUnit.create({
+          data: {
+            nome: proprietario.nome,
+            codigoUc: codigoUcInput,
+            cpfCnpj: proprietario.cpfCnpj,
+            distribuidora: concessionariaInput,
+            cidade: proprietario.cidade,
+            origem: "BRASIL_SOLAR_TITULAR",
+          },
+        });
+        consumerUnitId = created.id;
+      }
+    } catch (e) {
+      console.error("[POST /brasil-solar/proprietarios] auto-UC falhou:", e);
+    }
+  }
+
+  // Cria a credencial de acesso à concessionária (CpflCredential, usada também
+  // para RGE) quando o bloco `portal` veio no body e a UC já existe. Senha é
+  // sempre criptografada (AES-GCM via encrypt()). Falha aqui não derruba o
+  // cadastro do proprietário/UC.
+  const portal =
+    body.portal && typeof body.portal === "object" ? body.portal : null;
+  if (consumerUnitId && portal) {
+    try {
+      const distribuidora =
+        typeof portal.distribuidora === "string" ? portal.distribuidora.trim() : "";
+      const email = typeof portal.email === "string" ? portal.email.trim() : "";
+      const senha = typeof portal.senha === "string" ? portal.senha : "";
+      const instalacao =
+        (typeof portal.instalacao === "string" && portal.instalacao.trim()) ||
+        codigoUcInput ||
+        "";
+
+      if (
+        distribuidora &&
+        DISTRIBUIDORAS_PORTAL.has(distribuidora) &&
+        email &&
+        senha &&
+        instalacao
+      ) {
+        const existingCred = await prisma.cpflCredential.findUnique({
+          where: { consumerUnitId },
+        });
+        if (!existingCred) {
+          await prisma.cpflCredential.create({
+            data: {
+              consumerUnitId,
+              emailCpfl: email,
+              senhaCpfl: encrypt(senha),
+              instalacao,
+              distribuidora,
+              statusSync: "PENDING",
+            },
+          });
+        }
+      }
+    } catch (e) {
+      console.error("[POST /brasil-solar/proprietarios] auto-credencial falhou:", e);
+    }
+  }
+
+  // Sistema executado por terceiro: Brasil Solar só monitora geração e créditos,
+  // não cria Obra nem tarefas de gestão de obra.
+  if (!isTerceiro && dataPagamento && prazoContratoDias && tipoTelhado) {
   try {
     const localParts = [proprietario.endereco, proprietario.cidade, proprietario.uf].filter(Boolean);
     const dataFimPrevista = addDays(dataPagamento, prazoContratoDias);
@@ -274,6 +393,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     // Não falhar a criação do proprietário se a obra/tarefas não puderem ser criadas.
     console.error("[POST /brasil-solar/proprietarios] auto-obra falhou:", e);
+  }
   }
 
   return NextResponse.json(proprietario, { status: 201 });

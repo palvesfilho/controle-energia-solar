@@ -367,6 +367,13 @@ model ConsumerUnit {
   consumerId String? @map("consumer_id")
   plantId    String? @map("plant_id")
 
+  // Origem do cadastro: define em qual contexto a UC vive.
+  // PADRAO: fluxo investidor — aparece na gestão de UCs que recebem créditos.
+  // BRASIL_SOLAR_TITULAR: UC do proprietário Brasil Solar (gera créditos).
+  // BRASIL_SOLAR_BENEFICIARIA: UC que recebe créditos do proprietário BS.
+  // Os dois últimos são ocultados por padrão da tela de gestão de UCs.
+  origem String @default("PADRAO")
+
   // Identificação
   nome     String
   codigoUc String  @unique @map("codigo_uc")
@@ -436,6 +443,7 @@ model ConsumerUnit {
   investorPayables InvestorPayable[]
   acoesRecomendadas AcaoRecomendada[]
   consumoBaselines ConsumoBaseline[]
+  brasilSolarBeneficiarias BrasilSolarBeneficiaria[]
 
   @@index([consumerId])
   @@index([plantId])
@@ -976,9 +984,15 @@ model BrasilSolarProprietario {
   numeroFases        String? @map("numero_fases")
   tipoAtendimento    String? @map("tipo_atendimento")
 
+  // Quem executa a obra: BRASIL_SOLAR (fluxo completo de obra) ou TERCEIRO
+  // (Brasil Solar só monitora a geração e gere os créditos — não cria obra
+  // nem tarefas automáticas).
+  executadoPor String @default("BRASIL_SOLAR") @map("executado_por")
+
   // Dados de gestão do contrato/obra. Coletados na criação do proprietário
-  // (obrigatórios via API; nullable no banco apenas para tolerar registros
-  // anteriores à migração).
+  // quando executadoPor=BRASIL_SOLAR (obrigatórios via API nesse caso).
+  // Sempre nullable no banco — TERCEIRO não preenche e o histórico anterior
+  // à migração também pode estar vazio.
   // tipoTelhado: FIBROCIMENTO | CERAMICO | LAJE | CARPORT | USINA_DE_SOLO |
   //              CALHETAO_FIBROCIMENTO | CALHETAO_METALICO | MISTO
   // tipoTelhadoOutro: descrição livre quando tipoTelhado = MISTO
@@ -996,10 +1010,44 @@ model BrasilSolarProprietario {
   // Um proprietario pode ter varias usinas (plantas)
   plantas BrasilSolarClient[]
 
+  // UCs do mesmo titular que recebem créditos das usinas dele (autoconsumo
+  // remoto). Modelo simples, sem versionamento — edição reescreve em vigor.
+  beneficiarias BrasilSolarBeneficiaria[]
+
   @@index([nome])
   @@index([cpfCnpj])
   @@index([codigoUc])
   @@map("brasil_solar_proprietarios")
+}
+
+// Rateio simplificado para clientes Brasil Solar (sem versionamento, ao
+// contrário de RateioVersion que é exclusivo do fluxo de investidor).
+// Cada linha representa uma UC do mesmo titular recebendo créditos.
+model BrasilSolarBeneficiaria {
+  id             String   @id @default(cuid())
+  proprietarioId String   @map("proprietario_id")
+
+  codigoUc    String  @map("codigo_uc")
+  nome        String?
+  percentual  Float
+  observacoes String?
+
+  // UC física vinculada — guarda as faturas baixadas. Preenchida pelo PUT bulk
+  // que cria/linka uma ConsumerUnit por código de beneficiária.
+  consumerUnitId String? @map("consumer_unit_id")
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  proprietario BrasilSolarProprietario @relation(fields: [proprietarioId], references: [id], onDelete: Cascade)
+  consumerUnit ConsumerUnit?           @relation(fields: [consumerUnitId], references: [id], onDelete: SetNull)
+
+  @@unique([proprietarioId, codigoUc])
+  @@index([proprietarioId])
+  @@index([codigoUc])
+  @@index([consumerUnitId])
+  @@map("brasil_solar_beneficiarias")
 }
 
 model MonitoringLog {

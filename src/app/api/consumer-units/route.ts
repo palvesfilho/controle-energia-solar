@@ -27,12 +27,26 @@ export async function GET(req: NextRequest) {
   // Esconde UCs que representam usinas sem investidor (são da área Brasil
   // Solar, não devem aparecer em Clientes). UCs com cliente físico vinculado
   // (consumerId) ou sem plant continuam visíveis. Override com ?showAll=1.
+  // Também esconde UCs de cliente Brasil Solar (titular + beneficiárias):
+  // elas têm gestão própria na área Brasil Solar e não devem poluir a tela
+  // de gestão de UCs que recebem créditos de investidor.
+  //
+  // Consultas POR codigoUc específico não aplicam esses filtros — quem busca
+  // um código quer aquela UC exata (usado p/ ex. pela página do proprietário
+  // Brasil Solar pra achar a UC titular).
   const showAll = searchParams.get("showAll") === "1";
-  if (!showAll) {
-    where.OR = [
-      { plantId: null },
-      { consumerId: { not: null } },
-      { plant: { usinaDeInvestidor: true } },
+  if (!showAll && !codigoUc) {
+    where.AND = [
+      {
+        OR: [
+          { plantId: null },
+          { consumerId: { not: null } },
+          { plant: { usinaDeInvestidor: true } },
+        ],
+      },
+      {
+        origem: { notIn: ["BRASIL_SOLAR_TITULAR", "BRASIL_SOLAR_BENEFICIARIA"] },
+      },
     ];
   }
 
@@ -73,10 +87,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const allowedOrigem = new Set([
+    "PADRAO",
+    "BRASIL_SOLAR_TITULAR",
+    "BRASIL_SOLAR_BENEFICIARIA",
+  ]);
+  const origem =
+    typeof body.origem === "string" && allowedOrigem.has(body.origem)
+      ? body.origem
+      : "PADRAO";
+
   const unit = await prisma.consumerUnit.create({
     data: {
       nome: body.nome,
       codigoUc: body.codigoUc,
+      origem,
       consumerId: body.consumerId || null,
       plantId: body.plantId || null,
       cpfCnpj: body.cpfCnpj || null,

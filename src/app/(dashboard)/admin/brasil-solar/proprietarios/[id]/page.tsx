@@ -30,6 +30,8 @@ import { formatNumber } from "@/lib/formatters";
 import { toast } from "sonner";
 import { UcCredentialsForm } from "@/components/consumer-units/uc-credentials-form";
 import { UcBills } from "@/components/consumer-units/uc-bills";
+import { BeneficiariasCard } from "@/components/brasil-solar/beneficiarias-card";
+import { StatusFaturasCard } from "@/components/brasil-solar/status-faturas-card";
 import {
   MonitoringPlanModal,
   deriveStatus,
@@ -191,7 +193,7 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
       return;
     }
     setConsumerUnitChecked(false);
-    fetch(`/api/consumer-units?codigoUc=${encodeURIComponent(data.codigoUc)}`)
+    fetch(`/api/consumer-units?codigoUc=${encodeURIComponent(data.codigoUc)}&showAll=1`)
       .then((r) => r.json())
       .then((arr: { id: string; nome: string }[]) => {
         setConsumerUnit(Array.isArray(arr) && arr.length > 0 ? arr[0] : null);
@@ -213,6 +215,7 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
           cpfCnpj: data.cpfCnpj ?? null,
           distribuidora: data.concessionaria ?? null,
           cidade: data.cidade ?? null,
+          origem: "BRASIL_SOLAR_TITULAR",
         }),
       });
       const j = await res.json().catch(() => ({}));
@@ -756,6 +759,8 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
             defaultInstalacao={data.codigoUc ?? ""}
             onSyncComplete={() => setBillsRefreshKey((k) => k + 1)}
           />
+          <BeneficiariasCard proprietarioId={id} />
+          <StatusFaturasCard proprietarioId={id} />
           <UcBills
             consumerUnitId={consumerUnit.id}
             refreshKey={billsRefreshKey}
