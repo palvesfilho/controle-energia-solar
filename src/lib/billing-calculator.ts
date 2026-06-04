@@ -1,7 +1,7 @@
 /**
  * Cálculo de cobrança do cliente final a partir da fatura de energia.
  *
- * Duas regras implementadas (ConsumerUnit.regraRemuneracao):
+ * Regras implementadas (ConsumerUnit.regraRemuneracao):
  *
  *   - FAT_UNICA_COMPENSADA_BANDEIRAS:
  *       cobrança = (energiaCompensada + ajusteSaldo) × percentCompensado
@@ -13,7 +13,12 @@
  *       igual ao FAT_UNICA, **sem** somar o valorTotal da RGE.
  *       (cliente paga a RGE direto; a gente cobra só o percentual)
  *
- * Regras legadas (DESC_COMPENSADA, DESC_FATURA_COMPENSADA_DOMMO, etc.) retornam
+ *   - DESC_COMPENSADA:
+ *       cobrança = (energiaCompensada + ajusteSaldo) × percentCompensado
+ *                + parcelaInstantâneo                  (se UC geradora descontado)
+ *       Sem bandeira, sem pass-through da RGE.
+ *
+ * Regras legadas (DESC_FATURA_COMPENSADA_DOMMO, etc.) retornam
  * null com mensagem "ainda não implementada".
  */
 
@@ -187,6 +192,81 @@ function calcularPercentualSobreCompensadoBase(
   };
 }
 
+/**
+ * DESC_COMPENSADA: cobrança = (compensada + ajuste) × percentCompensado.
+ * Sem bandeira e sem pass-through do valorTotal da RGE.
+ */
+function calcularDescCompensada(bill: BillInput, unit: UnitInput): CalcResultado {
+  const problemas: string[] = [];
+
+  if (bill.injetadaOucTeValor == null) problemas.push("Sem injetadaOucTeValor na fatura");
+  if (bill.injetadaOucTusdValor == null) problemas.push("Sem injetadaOucTusdValor na fatura");
+
+  const descontoContrato = unit.percentCompensado;
+  if (descontoContrato == null) problemas.push("UC sem Desconto de Contrato cadastrado");
+
+  const energiaCompensadaValor =
+    bill.injetadaOucTeValor != null && bill.injetadaOucTusdValor != null
+      ? Math.abs(bill.injetadaOucTeValor) + Math.abs(bill.injetadaOucTusdValor)
+      : null;
+
+  const ajusteSaldoValor =
+    bill.ajusteSaldoCredito != null ? Math.abs(bill.ajusteSaldoCredito) : null;
+
+  const parcelaEnergia =
+    energiaCompensadaValor != null && descontoContrato != null
+      ? (energiaCompensadaValor + (ajusteSaldoValor ?? 0)) * descontoContrato
+      : null;
+
+  let consumoInstantaneoValor: number | null = null;
+  let parcelaInstantaneo: number | null = null;
+  if (unit.isGeradoraDescontado) {
+    const kwh = bill.consumoInstantaneoKwh;
+    const te = bill.tarifaTE;
+    const tusd = bill.tarifaTUSD;
+    if (kwh == null) {
+      problemas.push(
+        "UC geradora em DESCONTADO sem consumoInstantaneoKwh preenchido — cobrança ignora consumo instantâneo",
+      );
+    } else if (te == null || tusd == null) {
+      problemas.push(
+        "Fatura sem tarifaTE/tarifaTUSD — não foi possível valorar consumo instantâneo",
+      );
+    } else {
+      consumoInstantaneoValor = kwh * (te + tusd);
+      if (descontoContrato != null) {
+        parcelaInstantaneo = consumoInstantaneoValor * descontoContrato;
+      }
+    }
+  }
+
+  let valorCobrado: number | null = null;
+  if (parcelaEnergia != null) {
+    valorCobrado = parcelaEnergia + (parcelaInstantaneo ?? 0);
+  }
+
+  return {
+    valorCobrado,
+    regra: "DESC_COMPENSADA",
+    detalhamento: {
+      injetadaOucTeValor: bill.injetadaOucTeValor,
+      injetadaOucTusdValor: bill.injetadaOucTusdValor,
+      energiaCompensadaValor,
+      ajusteSaldoValor,
+      descontoContrato,
+      parcelaEnergia,
+      bandeiraCreditoValor: null,
+      descontoContratoBandeira: null,
+      parcelaBandeira: null,
+      consumoInstantaneoKwh: bill.consumoInstantaneoKwh ?? null,
+      consumoInstantaneoValor,
+      parcelaInstantaneo,
+      valorTotalRGE: null,
+    },
+    problemas,
+  };
+}
+
 function notImplementedResult(regra: string | null, msg: string): CalcResultado {
   return {
     valorCobrado: null,
@@ -230,6 +310,7 @@ export function calcularValorCobrado(
         "PERCENTUAL_SOBRE_COMPENSADO",
       );
     case "DESC_COMPENSADA":
+      return calcularDescCompensada(bill, unit);
     case "DESC_FATURA_COMPENSADA_DOMMO":
       return notImplementedResult(
         unit.regraRemuneracao,
