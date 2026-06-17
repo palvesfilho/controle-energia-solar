@@ -22,6 +22,7 @@ import {
   Sun,
   RefreshCw,
   Check,
+  FileBarChart2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MonitoringStatusBadge } from "@/components/brasil-solar/status-badge";
@@ -421,6 +422,13 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href={`/admin/brasil-solar/proprietarios/${id}/relatorios`}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+          >
+            <FileBarChart2 className="h-4 w-4" />
+            Ver Relatório
+          </Link>
           <button
             onClick={handleSyncAll}
             disabled={syncingAll || data.plantas.length === 0}

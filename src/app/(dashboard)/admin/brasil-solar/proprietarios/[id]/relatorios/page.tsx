@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, FileBarChart2, Sun } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,6 +13,8 @@ interface UC {
   nome: string;
   distribuidora: string | null;
   active: boolean;
+  papel: "TITULAR" | "BENEFICIARIA";
+  percentual: number | null;
   usinasMonitoradas: number;
   potenciaTotalKwp: number;
   investimentoTotal: number;
@@ -35,6 +37,7 @@ function formatBRL(v: number) {
 
 export default function RelatoriosListPage() {
   const params = useParams();
+  const router = useRouter();
   const proprietarioId = params.id as string;
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,10 +50,21 @@ export default function RelatoriosListPage() {
         if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
         return j as ApiResponse;
       })
-      .then(setData)
+      .then((d) => {
+        // Proprietário com beneficiárias → relatório consolidado direto,
+        // sem mostrar lista de UCs individuais (decisão 2026-06-02).
+        const temBeneficiarias = d.ucs.some((uc) => uc.papel === "BENEFICIARIA");
+        if (temBeneficiarias) {
+          router.replace(
+            `/admin/brasil-solar/proprietarios/${proprietarioId}/relatorio-agregado`,
+          );
+          return;
+        }
+        setData(d);
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [proprietarioId]);
+  }, [proprietarioId, router]);
 
   if (loading) {
     return <p className="p-8 text-sm text-muted-foreground">Carregando...</p>;
@@ -121,9 +135,23 @@ export default function RelatoriosListPage() {
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                        UC {uc.codigoUc}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                          UC {uc.codigoUc}
+                        </p>
+                        <span
+                          className="text-[10px] font-medium uppercase rounded-full px-2 py-0.5"
+                          style={
+                            uc.papel === "TITULAR"
+                              ? { backgroundColor: `${brand.tealDark}15`, color: brand.tealDark }
+                              : { backgroundColor: `${brand.orange}15`, color: brand.orange }
+                          }
+                        >
+                          {uc.papel === "TITULAR"
+                            ? "Titular"
+                            : `Beneficiária${uc.percentual != null ? ` · ${uc.percentual}%` : ""}`}
+                        </span>
+                      </div>
                       <h3 className="font-semibold truncate">{uc.nome}</h3>
                       {uc.distribuidora && (
                         <p className="text-xs text-muted-foreground">

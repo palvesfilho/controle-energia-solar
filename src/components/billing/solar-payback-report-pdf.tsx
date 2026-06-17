@@ -322,6 +322,9 @@ export function SolarPaybackReportPDF({
     data.meses.length > 0
       ? data.meses[data.meses.length - 1].economiaAcumuladaRs
       : 0;
+  // Versão "lite": sem usina cadastrada não dá pra mostrar geração, desempenho
+  // ou payback. Mantém o mesmo layout, oculta seções dependentes e avisa.
+  const semMonitoramento = data.usinasMonitoradas.length === 0;
 
   return (
     <Document>
@@ -341,14 +344,38 @@ export function SolarPaybackReportPDF({
               </Text>
             </View>
             <Text style={s.heroFooter}>
-              {data.usinasMonitoradas.length} usina(s) ·{" "}
-              {data.potenciaTotalKwp.toLocaleString("pt-BR", {
-                maximumFractionDigits: 2,
-              })}{" "}
-              kWp instalados · Emissão {emissao}
+              {semMonitoramento
+                ? `Emissão ${emissao}`
+                : `${data.usinasMonitoradas.length} usina(s) · ${data.potenciaTotalKwp.toLocaleString(
+                    "pt-BR",
+                    { maximumFractionDigits: 2 },
+                  )} kWp instalados · Emissão ${emissao}`}
             </Text>
           </View>
         </View>
+
+        {semMonitoramento && (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: C.orange,
+              backgroundColor: "#FFF6EE",
+              borderRadius: 6,
+              padding: 8,
+              marginBottom: 10,
+            }}
+          >
+            <Text style={{ fontSize: 8, color: C.orange, fontWeight: 700 }}>
+              Monitoramento da usina ainda não configurado
+            </Text>
+            <Text style={{ fontSize: 8, color: C.black, marginTop: 2 }}>
+              Os campos de geração, desempenho, autoconsumo instantâneo e
+              retorno do investimento estão indisponíveis. Os valores de
+              economia exibidos consideram apenas os créditos compensados na
+              fatura — a economia real tende a ser maior.
+            </Text>
+          </View>
+        )}
 
         {/* KPIs do mês de referência (7 cards) */}
         {mes && (
@@ -367,39 +394,48 @@ export function SolarPaybackReportPDF({
               </Text>
             )}
             <View style={[s.kpiRow, { flexWrap: "wrap" }]}>
-              <View
-                style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
-              >
-                <Text style={s.kpiLabel}>Geração</Text>
-                <Text style={[s.kpiValue, { color: C.teal, fontSize: 12 }]}>
-                  {formatKwh(mes.geracaoInversorKwh)}
-                </Text>
-              </View>
-              <View
-                style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
-              >
-                <Text style={s.kpiLabel}>Desempenho</Text>
-                <Text
-                  style={[s.kpiValue, { color: C.tealDark, fontSize: 12 }]}
+              {!semMonitoramento && (
+                <View
+                  style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
                 >
-                  {mes.desempenhoPct != null
-                    ? `${mes.desempenhoPct.toFixed(0)}%`
-                    : "—"}
-                </Text>
-                {data.geracaoEsperadaMensalKwh > 0 && (
-                  <Text style={s.kpiSub}>
-                    Esperado: {formatKwh(data.geracaoEsperadaMensalKwh)}
+                  <Text style={s.kpiLabel}>Geração</Text>
+                  <Text style={[s.kpiValue, { color: C.teal, fontSize: 12 }]}>
+                    {formatKwh(mes.geracaoInversorKwh)}
                   </Text>
-                )}
-              </View>
+                </View>
+              )}
+              {!semMonitoramento && (
+                <View
+                  style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
+                >
+                  <Text style={s.kpiLabel}>Desempenho</Text>
+                  <Text
+                    style={[s.kpiValue, { color: C.tealDark, fontSize: 12 }]}
+                  >
+                    {mes.desempenhoPct != null
+                      ? `${mes.desempenhoPct.toFixed(0)}%`
+                      : "—"}
+                  </Text>
+                  {data.geracaoEsperadaMensalKwh > 0 && (
+                    <Text style={s.kpiSub}>
+                      Esperado: {formatKwh(data.geracaoEsperadaMensalKwh)}
+                    </Text>
+                  )}
+                </View>
+              )}
               <View
                 style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
               >
-                <Text style={s.kpiLabel}>Consumo Total</Text>
-                <Text style={[s.kpiValue, { color: C.orange, fontSize: 12 }]}>
-                  {formatKwh(mes.consumoTotalKwh)}
+                <Text style={s.kpiLabel}>
+                  {semMonitoramento ? "Consumo da rede" : "Consumo Total"}
                 </Text>
-                {mes.consumoRedeKwh != null &&
+                <Text style={[s.kpiValue, { color: C.orange, fontSize: 12 }]}>
+                  {formatKwh(
+                    semMonitoramento ? mes.consumoRedeKwh : mes.consumoTotalKwh,
+                  )}
+                </Text>
+                {!semMonitoramento &&
+                  mes.consumoRedeKwh != null &&
                   mes.consumoInstantaneoKwh != null && (
                     <Text style={s.kpiSub}>
                       {Math.round(mes.consumoRedeKwh)} rede +{" "}
@@ -416,13 +452,17 @@ export function SolarPaybackReportPDF({
                     ? formatBRL(mes.economiaMensalRs)
                     : "—"}
                 </Text>
-                {mes.economiaInstantaneaRs != null &&
+                {!semMonitoramento &&
+                  mes.economiaInstantaneaRs != null &&
                   mes.economiaInstantaneaRs > 0 && (
                     <Text style={s.kpiSub}>
                       {formatBRL(mes.economiaCompensadaRs ?? 0)} comp +{" "}
                       {formatBRL(mes.economiaInstantaneaRs)} inst
                     </Text>
                   )}
+                {semMonitoramento && (
+                  <Text style={s.kpiSub}>apenas créditos compensados</Text>
+                )}
               </View>
               <View
                 style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
@@ -434,17 +474,21 @@ export function SolarPaybackReportPDF({
                   {mes.faturadoRs != null ? formatBRL(mes.faturadoRs) : "—"}
                 </Text>
               </View>
-              <View
-                style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
-              >
-                <Text style={s.kpiLabel}>Retorno do mês</Text>
-                <Text style={[s.kpiValue, { color: C.orange, fontSize: 12 }]}>
-                  {mes.retornoPct != null
-                    ? `${mes.retornoPct.toFixed(2)}%`
-                    : "—"}
-                </Text>
-                <Text style={s.kpiSub}>do investimento</Text>
-              </View>
+              {!semMonitoramento && (
+                <View
+                  style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
+                >
+                  <Text style={s.kpiLabel}>Retorno do mês</Text>
+                  <Text
+                    style={[s.kpiValue, { color: C.orange, fontSize: 12 }]}
+                  >
+                    {mes.retornoPct != null
+                      ? `${mes.retornoPct.toFixed(2)}%`
+                      : "—"}
+                  </Text>
+                  <Text style={s.kpiSub}>do investimento</Text>
+                </View>
+              )}
               <View
                 style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
               >
@@ -458,16 +502,22 @@ export function SolarPaybackReportPDF({
           </>
         )}
 
-        <Text style={s.sectionTitle}>Acumulado desde a operação</Text>
+        <Text style={s.sectionTitle}>
+          {semMonitoramento
+            ? "Economia acumulada (créditos compensados)"
+            : "Acumulado desde a operação"}
+        </Text>
 
         {/* KPIs */}
         <View style={s.kpiRow}>
-          <View style={s.kpiCard}>
-            <Text style={s.kpiLabel}>Investimento total</Text>
-            <Text style={[s.kpiValue, { color: C.tealDark }]}>
-              {formatBRL(data.investimentoTotal)}
-            </Text>
-          </View>
+          {!semMonitoramento && (
+            <View style={s.kpiCard}>
+              <Text style={s.kpiLabel}>Investimento total</Text>
+              <Text style={[s.kpiValue, { color: C.tealDark }]}>
+                {formatBRL(data.investimentoTotal)}
+              </Text>
+            </View>
+          )}
           <View style={s.kpiCard}>
             <Text style={s.kpiLabel}>Economia Total</Text>
             <Text style={[s.kpiValue, { color: C.teal }]}>
@@ -476,73 +526,138 @@ export function SolarPaybackReportPDF({
             <Text style={s.kpiSub}>{data.meses.length} mês(es) com fatura</Text>
           </View>
           <View style={s.kpiCard}>
-            <Text style={s.kpiLabel}>Retorno Total</Text>
+            <Text style={s.kpiLabel}>Economia média</Text>
             <Text style={[s.kpiValue, { color: C.orange }]}>
-              {data.retornoTotalPct.toFixed(2)}%
+              {formatBRL(data.economiaMediaMensalRs)}
             </Text>
-            <Text style={s.kpiSub}>
-              Média {formatBRL(data.economiaMediaMensalRs)}/mês
-            </Text>
+            <Text style={s.kpiSub}>por mês</Text>
           </View>
-          <View style={s.kpiCard}>
-            <Text style={s.kpiLabel}>
-              {data.paybackQuitado ? "Payback" : "Payback previsto"}
-            </Text>
-            <Text
-              style={[
-                s.kpiValue,
-                { color: data.paybackQuitado ? C.teal : C.orange },
-              ]}
-            >
-              {data.paybackQuitado
-                ? "QUITADO"
-                : formatMesAno(data.paybackQuitacaoPrevista)}
-            </Text>
-            {!data.paybackQuitado && (
-              <Text style={s.kpiSub}>
-                Saldo: {formatBRL(Math.max(0, ultimoSaldo))}
-              </Text>
-            )}
-          </View>
-        </View>
-
-        {/* Geração x Consumo */}
-        <Text style={s.sectionTitle}>Geração × Consumo (kWh)</Text>
-        <View style={s.sectionCard}>
-          <GeneractionConsumptionBars data={data} />
-        </View>
-
-        {/* Usinas vinculadas */}
-        <Text style={s.sectionTitle}>Usinas monitoradas</Text>
-        <View style={s.sectionCard}>
-          {data.usinasMonitoradas.map((u) => (
-            <View
-              key={u.id}
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                paddingVertical: 3,
-                borderBottomWidth: 0.5,
-                borderBottomColor: C.grayBorder,
-              }}
-            >
-              <Text style={{ fontSize: 8, fontWeight: 700 }}>
-                {u.nome}
-                {u.plataforma ? (
-                  <Text style={s.textMuted}> · {u.plataforma}</Text>
-                ) : null}
-              </Text>
-              <Text style={s.textMuted}>
-                {u.potenciaInstalada != null
-                  ? `${u.potenciaInstalada.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kWp`
-                  : ""}
-                {u.investimento != null && u.investimento > 0
-                  ? ` · ${formatBRL(u.investimento)}`
-                  : ""}
+          {!semMonitoramento && (
+            <View style={s.kpiCard}>
+              <Text style={s.kpiLabel}>Retorno Total</Text>
+              <Text style={[s.kpiValue, { color: C.orange }]}>
+                {data.retornoTotalPct.toFixed(2)}%
               </Text>
             </View>
-          ))}
+          )}
+          {!semMonitoramento && (
+            <View style={s.kpiCard}>
+              <Text style={s.kpiLabel}>
+                {data.paybackQuitado ? "Payback" : "Payback previsto"}
+              </Text>
+              <Text
+                style={[
+                  s.kpiValue,
+                  { color: data.paybackQuitado ? C.teal : C.orange },
+                ]}
+              >
+                {data.paybackQuitado
+                  ? "QUITADO"
+                  : formatMesAno(data.paybackQuitacaoPrevista)}
+              </Text>
+              {!data.paybackQuitado && (
+                <Text style={s.kpiSub}>
+                  Saldo: {formatBRL(Math.max(0, ultimoSaldo))}
+                </Text>
+              )}
+            </View>
+          )}
         </View>
+
+        {!semMonitoramento && (
+          <>
+            {/* Geração x Consumo */}
+            <Text style={s.sectionTitle}>Geração × Consumo (kWh)</Text>
+            <View style={s.sectionCard}>
+              <GeneractionConsumptionBars data={data} />
+            </View>
+
+            {/* Usinas vinculadas */}
+            <Text style={s.sectionTitle}>Usinas monitoradas</Text>
+            <View style={s.sectionCard}>
+              {data.usinasMonitoradas.map((u) => (
+                <View
+                  key={u.id}
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    paddingVertical: 3,
+                    borderBottomWidth: 0.5,
+                    borderBottomColor: C.grayBorder,
+                  }}
+                >
+                  <Text style={{ fontSize: 8, fontWeight: 700 }}>
+                    {u.nome}
+                    {u.plataforma ? (
+                      <Text style={s.textMuted}> · {u.plataforma}</Text>
+                    ) : null}
+                  </Text>
+                  <Text style={s.textMuted}>
+                    {u.potenciaInstalada != null
+                      ? `${u.potenciaInstalada.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kWp`
+                      : ""}
+                    {u.investimento != null && u.investimento > 0
+                      ? ` · ${formatBRL(u.investimento)}`
+                      : ""}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* Tabela mês a mês — sempre, mas mostra colunas diferentes no modo lite */}
+        {data.meses.length > 0 && (
+          <>
+            <Text style={s.sectionTitle}>Histórico por mês</Text>
+            <View style={s.sectionCard}>
+              <View style={s.tableHead}>
+                <Text style={[s.tableHeadCell, { flex: 1.2 }]}>Mês</Text>
+                <Text style={[s.tableHeadCell, { flex: 1.4, textAlign: "right" }]}>
+                  Consumo
+                </Text>
+                <Text style={[s.tableHeadCell, { flex: 1.4, textAlign: "right" }]}>
+                  Compensado
+                </Text>
+                <Text style={[s.tableHeadCell, { flex: 1.6, textAlign: "right" }]}>
+                  Economia
+                </Text>
+                <Text style={[s.tableHeadCell, { flex: 1.6, textAlign: "right" }]}>
+                  Fatura RGE
+                </Text>
+              </View>
+              {data.meses.map((m) => (
+                <View key={`${m.ano}-${m.mes}`} style={s.tableRow}>
+                  <Text style={[s.tableCell, { flex: 1.2 }]}>
+                    {MES_ABREV[m.mes - 1]}/{m.ano}
+                  </Text>
+                  <Text
+                    style={[s.tableCell, { flex: 1.4, textAlign: "right" }]}
+                  >
+                    {formatKwh(m.consumoRedeKwh)}
+                  </Text>
+                  <Text
+                    style={[s.tableCell, { flex: 1.4, textAlign: "right" }]}
+                  >
+                    {formatKwh(m.energiaCompensadaKwh)}
+                  </Text>
+                  <Text
+                    style={[s.tableCellBold, { flex: 1.6, textAlign: "right", color: C.teal }]}
+                  >
+                    {m.economiaMensalRs != null
+                      ? formatBRL(m.economiaMensalRs)
+                      : "—"}
+                  </Text>
+                  <Text
+                    style={[s.tableCell, { flex: 1.6, textAlign: "right" }]}
+                  >
+                    {m.faturadoRs != null ? formatBRL(m.faturadoRs) : "—"}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
 
         {/* Footer */}
         <View style={s.footer} fixed>

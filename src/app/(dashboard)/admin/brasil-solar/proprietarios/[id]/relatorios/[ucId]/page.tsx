@@ -167,6 +167,9 @@ export default function RelatorioDetalhePage() {
     data.meses.length > 0
       ? data.meses[data.meses.length - 1].economiaAcumuladaRs
       : 0;
+  // Versão "lite": sem usina cadastrada não dá pra mostrar geração, desempenho
+  // ou payback. Mantém o mesmo layout, oculta seções dependentes e avisa.
+  const semMonitoramento = data.usinasMonitoradas.length === 0;
 
   return (
     <div className="space-y-4">
@@ -219,12 +222,12 @@ export default function RelatorioDetalhePage() {
             <h1 className="text-2xl font-bold">{data.uc.nome}</h1>
             <p className="text-sm text-white/85">
               UC {data.uc.codigoUc}
-              {data.uc.distribuidora && ` · ${data.uc.distribuidora}`} ·{" "}
-              {data.usinasMonitoradas.length} usina(s) monitorada(s) ·{" "}
-              {data.potenciaTotalKwp.toLocaleString("pt-BR", {
-                maximumFractionDigits: 2,
-              })}{" "}
-              kWp
+              {data.uc.distribuidora && ` · ${data.uc.distribuidora}`}
+              {!semMonitoramento &&
+                ` · ${data.usinasMonitoradas.length} usina(s) monitorada(s) · ${data.potenciaTotalKwp.toLocaleString(
+                  "pt-BR",
+                  { maximumFractionDigits: 2 },
+                )} kWp`}
             </p>
           </div>
           {data.meses.length > 0 && (
@@ -248,6 +251,25 @@ export default function RelatorioDetalhePage() {
         </div>
       </div>
 
+      {semMonitoramento && (
+        <div
+          className="rounded-lg border p-3 flex items-start gap-2"
+          style={{ borderColor: brand.orange, backgroundColor: "#FFF6EE" }}
+        >
+          <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" style={{ color: brand.orange }} />
+          <div className="text-xs">
+            <p className="font-semibold" style={{ color: brand.orange }}>
+              Monitoramento da usina ainda não configurado
+            </p>
+            <p className="text-muted-foreground mt-0.5">
+              Os campos de geração, desempenho, autoconsumo instantâneo e retorno do investimento estão
+              indisponíveis. Os valores de economia exibidos consideram apenas os créditos compensados na
+              fatura — a economia real tende a ser maior.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* KPIs DO MÊS SELECIONADO */}
       {mesSelecionado && (
         <>
@@ -266,32 +288,42 @@ export default function RelatorioDetalhePage() {
             )}
           </div>
           <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-7">
+            {!semMonitoramento && (
+              <KpiCard
+                label="Geração"
+                value={formatKwh(mesSelecionado.geracaoInversorKwh)}
+                icon={<Sun className="h-4 w-4" />}
+                color={brand.teal}
+              />
+            )}
+            {!semMonitoramento && (
+              <KpiCard
+                label="Desempenho"
+                value={
+                  mesSelecionado.desempenhoPct != null
+                    ? `${mesSelecionado.desempenhoPct.toFixed(0)}%`
+                    : "—"
+                }
+                sublabel={
+                  data.geracaoEsperadaMensalKwh > 0
+                    ? `Esperado: ${formatKwh(data.geracaoEsperadaMensalKwh)}`
+                    : undefined
+                }
+                icon={<Activity className="h-4 w-4" />}
+                color={brand.tealDark}
+              />
+            )}
             <KpiCard
-              label="Geração"
-              value={formatKwh(mesSelecionado.geracaoInversorKwh)}
-              icon={<Sun className="h-4 w-4" />}
-              color={brand.teal}
-            />
-            <KpiCard
-              label="Desempenho"
-              value={
-                mesSelecionado.desempenhoPct != null
-                  ? `${mesSelecionado.desempenhoPct.toFixed(0)}%`
-                  : "—"
-              }
+              label={semMonitoramento ? "Consumo da rede" : "Consumo Total"}
+              value={formatKwh(
+                semMonitoramento
+                  ? mesSelecionado.consumoRedeKwh
+                  : mesSelecionado.consumoTotalKwh,
+              )}
               sublabel={
-                data.geracaoEsperadaMensalKwh > 0
-                  ? `Esperado: ${formatKwh(data.geracaoEsperadaMensalKwh)}`
-                  : undefined
-              }
-              icon={<Activity className="h-4 w-4" />}
-              color={brand.tealDark}
-            />
-            <KpiCard
-              label="Consumo Total"
-              value={formatKwh(mesSelecionado.consumoTotalKwh)}
-              sublabel={
-                mesSelecionado.consumoRedeKwh != null && mesSelecionado.consumoInstantaneoKwh != null
+                !semMonitoramento &&
+                mesSelecionado.consumoRedeKwh != null &&
+                mesSelecionado.consumoInstantaneoKwh != null
                   ? `${mesSelecionado.consumoRedeKwh.toFixed(0)} rede + ${mesSelecionado.consumoInstantaneoKwh.toFixed(0)} inst.`
                   : undefined
               }
@@ -306,9 +338,13 @@ export default function RelatorioDetalhePage() {
                   : "—"
               }
               sublabel={
-                mesSelecionado.economiaInstantaneaRs != null && mesSelecionado.economiaInstantaneaRs > 0
+                !semMonitoramento &&
+                mesSelecionado.economiaInstantaneaRs != null &&
+                mesSelecionado.economiaInstantaneaRs > 0
                   ? `${formatBRL(mesSelecionado.economiaCompensadaRs ?? 0)} comp + ${formatBRL(mesSelecionado.economiaInstantaneaRs)} inst`
-                  : undefined
+                  : semMonitoramento
+                    ? "apenas créditos compensados"
+                    : undefined
               }
               icon={<TrendingUp className="h-4 w-4" />}
               color={brand.teal}
@@ -323,17 +359,19 @@ export default function RelatorioDetalhePage() {
               icon={<Wallet className="h-4 w-4" />}
               color={brand.tealDark}
             />
-            <KpiCard
-              label="Retorno do mês"
-              value={
-                mesSelecionado.retornoPct != null
-                  ? `${mesSelecionado.retornoPct.toFixed(2)}%`
-                  : "—"
-              }
-              sublabel={`do investimento`}
-              icon={<TrendingUp className="h-4 w-4" />}
-              color={brand.orange}
-            />
+            {!semMonitoramento && (
+              <KpiCard
+                label="Retorno do mês"
+                value={
+                  mesSelecionado.retornoPct != null
+                    ? `${mesSelecionado.retornoPct.toFixed(2)}%`
+                    : "—"
+                }
+                sublabel={`do investimento`}
+                icon={<TrendingUp className="h-4 w-4" />}
+                color={brand.orange}
+              />
+            )}
             <KpiCard
               label="Créditos acumulados"
               value={formatKwh(mesSelecionado.saldoCreditosKwh)}
@@ -348,56 +386,72 @@ export default function RelatorioDetalhePage() {
       {/* Acumulados */}
       <div className="flex items-center gap-2 mt-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: brand.tealDark }}>
-          Acumulado desde a operação
+          {semMonitoramento
+            ? "Economia acumulada (créditos compensados)"
+            : "Acumulado desde a operação"}
         </h2>
       </div>
       <div className="grid gap-3 md:grid-cols-4">
-        <KpiCard
-          label="Investimento total"
-          value={formatBRL(data.investimentoTotal)}
-          icon={<Wallet className="h-4 w-4" />}
-          color={brand.tealDark}
-        />
+        {!semMonitoramento && (
+          <KpiCard
+            label="Investimento total"
+            value={formatBRL(data.investimentoTotal)}
+            icon={<Wallet className="h-4 w-4" />}
+            color={brand.tealDark}
+          />
+        )}
         <KpiCard
           label="Economia Total"
           value={formatBRL(economiaTotal)}
-          sublabel={`${mesesAnteriores.length + 1} mês(es) com fatura`}
+          sublabel={`${data.meses.length} mês(es) com fatura`}
           icon={<TrendingUp className="h-4 w-4" />}
           color={brand.teal}
         />
         <KpiCard
-          label="Retorno Total"
-          value={`${data.retornoTotalPct.toFixed(2)}%`}
-          sublabel={`Média: ${formatBRL(data.economiaMediaMensalRs)}/mês`}
+          label="Economia média"
+          value={formatBRL(data.economiaMediaMensalRs)}
+          sublabel="por mês"
           icon={<Activity className="h-4 w-4" />}
           color={brand.orange}
         />
-        <KpiCard
-          label={data.paybackQuitado ? "Payback quitado" : "Payback previsto"}
-          value={
-            data.paybackQuitado
-              ? "✓"
-              : data.paybackQuitacaoPrevista
-                ? `${MESES_LONGO[data.paybackQuitacaoPrevista.mes - 1]}/${data.paybackQuitacaoPrevista.ano}`
-                : "—"
-          }
-          sublabel={
-            data.paybackQuitado
-              ? "Investimento já recuperado"
-              : `Saldo: ${formatBRL(Math.max(0, ultimoSaldo))}`
-          }
-          icon={
-            data.paybackQuitado ? (
-              <CheckCircle2 className="h-4 w-4" />
-            ) : (
-              <Calendar className="h-4 w-4" />
-            )
-          }
-          color={data.paybackQuitado ? brand.teal : brand.orange}
-        />
+        {!semMonitoramento && (
+          <KpiCard
+            label="Retorno Total"
+            value={`${data.retornoTotalPct.toFixed(2)}%`}
+            sublabel={`Média: ${formatBRL(data.economiaMediaMensalRs)}/mês`}
+            icon={<Activity className="h-4 w-4" />}
+            color={brand.orange}
+          />
+        )}
+        {!semMonitoramento && (
+          <KpiCard
+            label={data.paybackQuitado ? "Payback quitado" : "Payback previsto"}
+            value={
+              data.paybackQuitado
+                ? "✓"
+                : data.paybackQuitacaoPrevista
+                  ? `${MESES_LONGO[data.paybackQuitacaoPrevista.mes - 1]}/${data.paybackQuitacaoPrevista.ano}`
+                  : "—"
+            }
+            sublabel={
+              data.paybackQuitado
+                ? "Investimento já recuperado"
+                : `Saldo: ${formatBRL(Math.max(0, ultimoSaldo))}`
+            }
+            icon={
+              data.paybackQuitado ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <Calendar className="h-4 w-4" />
+              )
+            }
+            color={data.paybackQuitado ? brand.teal : brand.orange}
+          />
+        )}
       </div>
 
       {/* Gráfico geração x consumo */}
+      {!semMonitoramento && (
       <Card>
         <CardContent className="p-4">
           <h2
@@ -448,8 +502,10 @@ export default function RelatorioDetalhePage() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Gráfico payback acumulado */}
+      {!semMonitoramento && (
       <Card>
         <CardContent className="p-4">
           <h2
@@ -507,6 +563,7 @@ export default function RelatorioDetalhePage() {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Tabela mês a mês */}
       <Card>
@@ -629,6 +686,7 @@ export default function RelatorioDetalhePage() {
       </Card>
 
       {/* Lista de usinas monitoradas */}
+      {!semMonitoramento && (
       <Card>
         <CardContent className="p-4">
           <h2
@@ -670,6 +728,7 @@ export default function RelatorioDetalhePage() {
           </div>
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }
