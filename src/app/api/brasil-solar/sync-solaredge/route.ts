@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getAllSites, type SolarEdgeSite } from "@/lib/solaredge";
 
-// POST /api/brasil-solar/sync-solaredge - Sincronizar plantas SolarEdge → BrasilSolarClient
+// POST /api/brasil-solar/sync-solaredge - Sincronizar plantas SolarEdge â†’ BrasilSolarClient
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user || !canAccessSection(session.user.role, "brasilSolar")) {

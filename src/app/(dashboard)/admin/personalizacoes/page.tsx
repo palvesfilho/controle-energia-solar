@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import {
   HardHat,
   Users,
@@ -10,7 +10,7 @@ import {
   FileText,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { getServerSession } from "next-auth";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection, type AdminSection } from "@/lib/roles";
 
@@ -24,16 +24,16 @@ interface HubItem {
     | "Clientes"
     | "Financeiro"
     | "Monitoramento"
-    | "Concessionárias";
+    | "ConcessionÃ¡rias";
   accent: string;
   section: AdminSection;
 }
 
 const items: HubItem[] = [
   {
-    title: "Padrões de materiais",
+    title: "PadrÃµes de materiais",
     description:
-      "Especificações padrão por potência do inversor (disjuntor, cabos, DPS, barramento, placas e observações).",
+      "EspecificaÃ§Ãµes padrÃ£o por potÃªncia do inversor (disjuntor, cabos, DPS, barramento, placas e observaÃ§Ãµes).",
     href: "/admin/personalizacoes/obras",
     icon: HardHat,
     group: "Obras",
@@ -41,9 +41,9 @@ const items: HubItem[] = [
     section: "persObras",
   },
   {
-    title: "Equipes de execução",
+    title: "Equipes de execuÃ§Ã£o",
     description:
-      "Cadastro das equipes de campo e contato do responsável. Usadas na alocação de obras.",
+      "Cadastro das equipes de campo e contato do responsÃ¡vel. Usadas na alocaÃ§Ã£o de obras.",
     href: "/admin/personalizacoes/equipes",
     icon: Users,
     group: "Obras",
@@ -53,7 +53,7 @@ const items: HubItem[] = [
   {
     title: "Alertas de usinas",
     description:
-      "Configure quais erros das usinas serão monitorados e o nível de severidade de cada limite (crítico, médio, baixo).",
+      "Configure quais erros das usinas serÃ£o monitorados e o nÃ­vel de severidade de cada limite (crÃ­tico, mÃ©dio, baixo).",
     href: "/admin/personalizacoes/alertas-usinas",
     icon: ShieldAlert,
     group: "Monitoramento",
@@ -61,9 +61,9 @@ const items: HubItem[] = [
     section: "persAlertasUsinas",
   },
   {
-    title: "Códigos de erro do inversor",
+    title: "CÃ³digos de erro do inversor",
     description:
-      "Base de conhecimento dos códigos por fabricante (Fronius, SolarEdge, Sungrow, Huawei) com ações sugeridas pro time de pós-venda.",
+      "Base de conhecimento dos cÃ³digos por fabricante (Fronius, SolarEdge, Sungrow, Huawei) com aÃ§Ãµes sugeridas pro time de pÃ³s-venda.",
     href: "/admin/personalizacoes/codigos-erro-inversor",
     icon: Wrench,
     group: "Monitoramento",
@@ -71,19 +71,19 @@ const items: HubItem[] = [
     section: "persCodigosErroView",
   },
   {
-    title: "Emails das concessionárias",
+    title: "Emails das concessionÃ¡rias",
     description:
-      "Cadastro de emails (destino, remetente e cópia) usados para enviar rateios às distribuidoras de energia.",
+      "Cadastro de emails (destino, remetente e cÃ³pia) usados para enviar rateios Ã s distribuidoras de energia.",
     href: "/admin/personalizacoes/distribuidora-emails",
     icon: Mail,
-    group: "Concessionárias",
+    group: "ConcessionÃ¡rias",
     accent: "from-indigo-500 to-indigo-700",
     section: "persDistribuidoraEmails",
   },
   {
-    title: "Parâmetros do relatório",
+    title: "ParÃ¢metros do relatÃ³rio",
     description:
-      "Reajuste anual de tarifa e depreciação dos módulos usados no cálculo de payback dos relatórios Brasil Solar.",
+      "Reajuste anual de tarifa e depreciaÃ§Ã£o dos mÃ³dulos usados no cÃ¡lculo de payback dos relatÃ³rios Brasil Solar.",
     href: "/admin/personalizacoes/relatorio-parametros",
     icon: FileText,
     group: "Financeiro",
@@ -97,7 +97,7 @@ const GROUPS: Array<HubItem["group"]> = [
   "Clientes",
   "Financeiro",
   "Monitoramento",
-  "Concessionárias",
+  "ConcessionÃ¡rias",
 ];
 
 export default async function PersonalizacoesHubPage() {
@@ -112,9 +112,9 @@ export default async function PersonalizacoesHubPage() {
           <Settings2 className="h-6 w-6" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold">Personalizações</h1>
+          <h1 className="text-2xl font-bold">PersonalizaÃ§Ãµes</h1>
           <p className="text-sm text-muted-foreground">
-            Configure os padrões e cadastros que alimentam os fluxos
+            Configure os padrÃµes e cadastros que alimentam os fluxos
             operacionais do sistema.
           </p>
         </div>

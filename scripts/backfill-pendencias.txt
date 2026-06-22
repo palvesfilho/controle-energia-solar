@@ -1,0 +1,85 @@
+PENDÊNCIAS DO BACKFILL DE PAGAMENTO DE FATURAS
+Gerado em: 20/05/2026 20:51
+CSV origem: scripts/backfill-pagamento-faturas-template.csv
+============================================================
+
+=== UCs NÃO CADASTRADAS NO SISTEMA (5 linhas) ===
+Precisam ser criadas em /admin/unidades-consumidoras antes do próximo backfill.
+
+Linha 19: UC 3092571658 não encontrada
+Linha 20: UC 3092571658 não encontrada
+Linha 58: UC 3092571658 não encontrada
+Linha 92: UC 3092571658 não encontrada
+Linha 293: UC 3090656337 não encontrada
+
+------------------------------------------------------------
+
+=== UCs CADASTRADAS MAS SEM FATURA NO MÊS (51 linhas) ===
+UC existe no sistema, mas a fatura RGE daquele mês não foi importada.
+Resolver via sync Infosimples ou upload manual do PDF.
+
+--- Agrupado por UC ---
+3090585491: 04/2026
+3090656984: 10/2025, 11/2025, 12/2025
+3090783930: 02/2025, 03/2025, 04/2025, 05/2025, 06/2025, 07/2025, 08/2025, 09/2025, 10/2025, 11/2025, 12/2025
+3090813408: 10/2025
+3091159533: 05/2025, 06/2025, 07/2025, 08/2025, 09/2025, 10/2025, 11/2025, 12/2025
+3091314655: 01/2025, 02/2025, 03/2025, 04/2025, 05/2025, 06/2025, 07/2025, 08/2025, 09/2025, 10/2025, 11/2025, 12/2025
+3091496341: 04/2025, 05/2025, 06/2025, 07/2025, 08/2025, 09/2025, 10/2025, 11/2025, 12/2025
+3093262301: 04/2025, 05/2025, 06/2025
+3095196256: 12/2025
+4003327541: 09/2025
+4003513902: 11/2025
+
+--- Detalhado por linha ---
+Linha 5: UC 3091314655 sem fatura 01/2025
+Linha 36: UC 3091314655 sem fatura 02/2025
+Linha 48: UC 3090783930 sem fatura 02/2025
+Linha 73: UC 3091314655 sem fatura 03/2025
+Linha 77: UC 3090783930 sem fatura 03/2025
+Linha 86: UC 3090783930 sem fatura 04/2025
+Linha 93: UC 3091314655 sem fatura 04/2025
+Linha 100: UC 3091496341 sem fatura 04/2025
+Linha 106: UC 3091159533 sem fatura 05/2025
+Linha 120: UC 3091496341 sem fatura 05/2025
+Linha 122: UC 3093262301 sem fatura 04/2025
+Linha 123: UC 3090783930 sem fatura 05/2025
+Linha 124: UC 3093262301 sem fatura 05/2025
+Linha 130: UC 3091314655 sem fatura 05/2025
+Linha 156: UC 3091496341 sem fatura 06/2025
+Linha 168: UC 3091159533 sem fatura 07/2025
+Linha 176: UC 3090783930 sem fatura 06/2025
+Linha 177: UC 3091159533 sem fatura 06/2025
+Linha 182: UC 3093262301 sem fatura 06/2025
+Linha 189: UC 3091496341 sem fatura 07/2025
+Linha 209: UC 3091314655 sem fatura 06/2025
+Linha 216: UC 3090783930 sem fatura 07/2025
+Linha 225: UC 3091314655 sem fatura 07/2025
+Linha 268: UC 3091159533 sem fatura 08/2025
+Linha 269: UC 3091314655 sem fatura 08/2025
+Linha 283: UC 3091496341 sem fatura 08/2025
+Linha 306: UC 3090783930 sem fatura 08/2025
+Linha 307: UC 3090783930 sem fatura 09/2025
+Linha 308: UC 4003327541 sem fatura 09/2025
+Linha 314: UC 3091496341 sem fatura 09/2025
+Linha 315: UC 3091496341 sem fatura 10/2025
+Linha 325: UC 3091159533 sem fatura 09/2025
+Linha 335: UC 3091159533 sem fatura 10/2025
+Linha 341: UC 3091314655 sem fatura 09/2025
+Linha 342: UC 3091314655 sem fatura 10/2025
+Linha 347: UC 3090813408 sem fatura 10/2025
+Linha 371: UC 3090783930 sem fatura 10/2025
+Linha 399: UC 3090656984 sem fatura 10/2025
+Linha 406: UC 3091496341 sem fatura 11/2025
+Linha 420: UC 3091159533 sem fatura 11/2025
+Linha 440: UC 4003513902 sem fatura 11/2025
+Linha 456: UC 3090783930 sem fatura 11/2025
+Linha 462: UC 3091314655 sem fatura 11/2025
+Linha 473: UC 3090656984 sem fatura 11/2025
+Linha 476: UC 3091159533 sem fatura 12/2025
+Linha 477: UC 3090783930 sem fatura 12/2025
+Linha 491: UC 3091496341 sem fatura 12/2025
+Linha 493: UC 3095196256 sem fatura 12/2025
+Linha 546: UC 3090656984 sem fatura 12/2025
+Linha 560: UC 3091314655 sem fatura 12/2025
+Linha 786: UC 3090585491 sem fatura 04/2026

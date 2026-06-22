@@ -1,4 +1,4 @@
-import { getServerSession } from "next-auth";
+﻿import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { getTasksForWeek, startOfWeekMonday, endOfWeekSunday } from "@/lib/agenda";
 import { AgendaWeekGrid } from "@/components/agenda/agenda-week-grid";
@@ -46,7 +46,7 @@ export default async function AgendaPage({ searchParams }: AgendaPageProps) {
         }))}
         allUcs={ucs.map((u) => ({
           id: u.id,
-          label: `${u.codigoUc}${u.nome ? ` — ${u.nome}` : ""}`,
+          label: `${u.codigoUc}${u.nome ? ` â€” ${u.nome}` : ""}`,
         }))}
       />
     </div>

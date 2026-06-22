@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   }
   if (!process.env.ASAAS_API_KEY) {
     return NextResponse.json(
-      { error: "ASAAS_API_KEY não configurado no servidor" },
+      { error: "ASAAS_API_KEY nÃ£o configurado no servidor" },
       { status: 500 },
     );
   }

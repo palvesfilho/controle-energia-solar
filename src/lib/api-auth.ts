@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection, type AdminSection } from "@/lib/roles";
 import { UserRole } from "@/types/next-auth";
@@ -19,7 +19,7 @@ export interface AuthedSession {
  *   if (!guard.ok) return guard.response;
  *   const { session } = guard;
  *
- * Retorna 401 se não autenticado, 403 se role não pertence à section.
+ * Retorna 401 se nÃ£o autenticado, 403 se role nÃ£o pertence Ã  section.
  */
 export async function requireSection(
   section: AdminSection,
@@ -31,14 +31,14 @@ export async function requireSection(
   if (!session?.user?.id || !session.user.role) {
     return {
       ok: false,
-      response: NextResponse.json({ error: "Não autenticado" }, { status: 401 }),
+      response: NextResponse.json({ error: "NÃ£o autenticado" }, { status: 401 }),
     };
   }
   const role = session.user.role as UserRole;
   if (!canAccessSection(role, section)) {
     return {
       ok: false,
-      response: NextResponse.json({ error: "Sem permissão" }, { status: 403 }),
+      response: NextResponse.json({ error: "Sem permissÃ£o" }, { status: 403 }),
     };
   }
   return {

@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import {
   buscarPrevisao,
@@ -29,14 +29,14 @@ export interface ForecastResponse {
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
   }
 
   let body: { points?: ForecastPoint[] };
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
+    return NextResponse.json({ error: "JSON invÃ¡lido" }, { status: 400 });
   }
 
   const points = Array.isArray(body.points) ? body.points : [];

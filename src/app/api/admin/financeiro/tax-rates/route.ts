@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
@@ -12,7 +12,7 @@ type Body = {
 };
 
 function monthToDate(ano: number, mes: number): Date {
-  // UTC noon do dia 1 do mês — evita drift de timezone (mesma estratégia das
+  // UTC noon do dia 1 do mÃªs â€” evita drift de timezone (mesma estratÃ©gia das
   // datas "calendar-only" do projeto).
   return new Date(Date.UTC(ano, mes - 1, 1, 12, 0, 0));
 }
@@ -54,10 +54,10 @@ export async function POST(req: NextRequest) {
   const percentual = Number(body.percentual);
 
   if (!Number.isInteger(ano) || ano < 2000 || ano > 2100) {
-    return NextResponse.json({ error: "Ano inválido." }, { status: 400 });
+    return NextResponse.json({ error: "Ano invÃ¡lido." }, { status: 400 });
   }
   if (!Number.isInteger(mes) || mes < 1 || mes > 12) {
-    return NextResponse.json({ error: "Mês inválido." }, { status: 400 });
+    return NextResponse.json({ error: "MÃªs invÃ¡lido." }, { status: 400 });
   }
   if (!Number.isFinite(percentual) || percentual < 0 || percentual > 100) {
     return NextResponse.json(
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("Unique constraint")) {
       return NextResponse.json(
-        { error: "Já existe alíquota cadastrada com vigência neste mês." },
+        { error: "JÃ¡ existe alÃ­quota cadastrada com vigÃªncia neste mÃªs." },
         { status: 409 },
       );
     }

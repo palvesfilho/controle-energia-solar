@@ -1,13 +1,13 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 
 /**
  * GET /api/billing/plants/pendencias
- * Lista usinas ativas com indicador do próximo mês pendente de pagamento ao
- * investidor (mais antigo com payable em status ≠ PAGO) e contagem total de
+ * Lista usinas ativas com indicador do prÃ³ximo mÃªs pendente de pagamento ao
+ * investidor (mais antigo com payable em status â‰  PAGO) e contagem total de
  * meses pendentes. Alimenta a landing /admin/faturamento/usinas.
  */
 export async function GET() {
@@ -18,7 +18,7 @@ export async function GET() {
 
   const [plants, payables] = await Promise.all([
     prisma.plant.findMany({
-      // Gestora — só plantas com "Usina de Investidor" marcado
+      // Gestora â€” sÃ³ plantas com "Usina de Investidor" marcado
       where: { active: true, usinaDeInvestidor: true },
       select: {
         id: true,
@@ -99,7 +99,7 @@ export async function GET() {
     };
   });
 
-  // Ordena: usinas com pendência primeiro (mais antiga no topo), depois sem pendência por nome.
+  // Ordena: usinas com pendÃªncia primeiro (mais antiga no topo), depois sem pendÃªncia por nome.
   result.sort((a, b) => {
     if (a.proximoMes && !b.proximoMes) return -1;
     if (!a.proximoMes && b.proximoMes) return 1;

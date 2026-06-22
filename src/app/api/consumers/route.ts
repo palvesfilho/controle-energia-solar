@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
   const { name, plantId, cotaPercent, descontoPercent } = body;
 
   if (!name) {
-    return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
+    return NextResponse.json({ error: "Nome Ã© obrigatÃ³rio" }, { status: 400 });
   }
 
   const consumer = await prisma.consumer.create({

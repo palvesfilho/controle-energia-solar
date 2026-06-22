@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { isAdminRole } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
 
     try {
       // pdfjs-dist consome (transfere) o Uint8Array passado em getDocument({data:...}),
-      // deixando o buffer original detached. Por isso clonamos: uma cópia pra parsear,
+      // deixando o buffer original detached. Por isso clonamos: uma cÃ³pia pra parsear,
       // outra pra persistir em disco depois. Sem o clone, o save grava 0 bytes.
       const arrayBuffer = await f.arrayBuffer();
       const buffer = new Uint8Array(arrayBuffer);
@@ -64,14 +64,14 @@ export async function POST(req: NextRequest) {
       item.valorTotal = parsed.bill.valorTotal;
 
       if (!parsed.codigoInstalacao) {
-        item.error = "Código da instalação não encontrado no PDF";
+        item.error = "CÃ³digo da instalaÃ§Ã£o nÃ£o encontrado no PDF";
         results.push(item);
         continue;
       }
 
       // Localiza UC: por ConsumerUnit.codigoUc, depois por CpflCredential.instalacao.
-      // Também precisamos saber se essa instalação corresponde à própria UC de
-      // uma usina — nesse caso a bill é marcada com plantId (é a fatura da usina).
+      // TambÃ©m precisamos saber se essa instalaÃ§Ã£o corresponde Ã  prÃ³pria UC de
+      // uma usina â€” nesse caso a bill Ã© marcada com plantId (Ã© a fatura da usina).
       let unit = await prisma.consumerUnit.findFirst({
         where: { codigoUc: parsed.codigoInstalacao },
         select: { id: true, nome: true },
@@ -86,8 +86,8 @@ export async function POST(req: NextRequest) {
         });
         if (cred?.consumerUnit) unit = cred.consumerUnit;
       }
-      // Se o código da instalação bate com uma usina cadastrada, registra o
-      // plantId — a bill representa a conta de energia da UC da usina.
+      // Se o cÃ³digo da instalaÃ§Ã£o bate com uma usina cadastrada, registra o
+      // plantId â€” a bill representa a conta de energia da UC da usina.
       const plantDaUsina = await prisma.plant.findFirst({
         where: {
           OR: [
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
             syncedAt: new Date(),
           },
         });
-        // Preenche ConsumerUnitBilling (campos da aba "Valores da Cobrança")
+        // Preenche ConsumerUnitBilling (campos da aba "Valores da CobranÃ§a")
         await populateBillingFromBill(upserted.id).catch((e) =>
           console.error("[upload-manual] populateBillingFromBill falhou:", e),
         );
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
           console.error("[upload-manual] syncInvestorPayablesFromBill falhou:", e),
         );
       } else {
-        // UC não cadastrada: salva a fatura órfã por (instalacao, ano, mes).
+        // UC nÃ£o cadastrada: salva a fatura Ã³rfÃ£ por (instalacao, ano, mes).
         // Fica aguardando vincular quando a UC for cadastrada.
         const subdir = `bills/_pending/${parsed.codigoInstalacao}`;
         await saveBufferToStorage(bufferForStorage, subdir, fileName);
@@ -163,9 +163,9 @@ export async function POST(req: NextRequest) {
           });
         }
         if (plantIdDaUsina) {
-          item.warning = `Fatura registrada como da usina (código ${parsed.codigoInstalacao}).`;
+          item.warning = `Fatura registrada como da usina (cÃ³digo ${parsed.codigoInstalacao}).`;
         } else {
-          item.warning = `UC não cadastrada — fatura salva como pendente. Cadastre a UC com código ${parsed.codigoInstalacao} para vincular.`;
+          item.warning = `UC nÃ£o cadastrada â€” fatura salva como pendente. Cadastre a UC com cÃ³digo ${parsed.codigoInstalacao} para vincular.`;
         }
       }
 
@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
 
 function shortenError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
-  // Mensagens do Prisma incluem o payload inteiro da query; extrai só a linha útil.
+  // Mensagens do Prisma incluem o payload inteiro da query; extrai sÃ³ a linha Ãºtil.
   const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
   const marker = lines.find(
     (l) =>
@@ -202,5 +202,5 @@ function shortenError(err: unknown): string {
   );
   if (marker) return marker.slice(0, 240);
   const first = lines[0] ?? raw;
-  return first.length > 240 ? first.slice(0, 240) + "…" : first;
+  return first.length > 240 ? first.slice(0, 240) + "â€¦" : first;
 }

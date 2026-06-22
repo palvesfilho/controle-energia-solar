@@ -1,129 +1,63 @@
-import { Leaf, Sun, Droplets, Wind } from "lucide-react";
-import { brand, brandGradient } from "@/lib/brand-colors";
+"use client";
+
+import { useMemo } from "react";
+
+const LOGIN_IMAGES = [
+  "/login/FACHADA_EMPRESA.jpg",
+  "/login/1.jpg",
+  "/login/2.jpg",
+  "/login/3.jpg",
+  "/login/4.jpg",
+  "/login/5.jpg",
+  "/login/6.jpg",
+  "/login/7.jpg",
+];
 
 export default function AuthLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const imagemFundo = useMemo(
+    () => LOGIN_IMAGES[Math.floor(Math.random() * LOGIN_IMAGES.length)],
+    [],
+  );
+
   return (
-    <div className="flex min-h-screen">
-      {/* Left panel - hidden on mobile */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden flex-col justify-between p-12 text-white">
-        {/* Background image */}
+    <div
+      className="min-h-screen flex bg-[#F5F5F2]"
+      style={{ fontFamily: "var(--font-inter)" }}
+    >
+      {/* Painel esquerdo: foto da fachada com overlay petrol (esconde no mobile) */}
+      <div className="hidden md:flex md:flex-[3] text-white items-end p-12 relative overflow-hidden">
         <div
           className="absolute inset-0 bg-cover bg-center"
-          style={{
-            backgroundImage:
-              "url('https://images.unsplash.com/photo-1509391366360-2e959784a276?q=80&w=1920&auto=format&fit=crop')",
-          }}
+          style={{ backgroundImage: `url(${imagemFundo})` }}
         />
-        {/* Brand gradient overlay (espelha capa do PDF do investidor) */}
         <div
           className="absolute inset-0"
           style={{
-            background: `linear-gradient(135deg, ${brand.tealDark}EE 0%, ${brand.teal}E6 50%, ${brand.orange}D9 100%)`,
+            background:
+              "linear-gradient(110deg, rgba(15,42,52,0.92) 0%, rgba(15,42,52,0.78) 45%, rgba(15,42,52,0.35) 100%)",
           }}
         />
-        {/* Círculos decorativos translúcidos, ecoando a capa do PDF */}
-        <div
-          className="absolute -top-24 -right-20 h-72 w-72 rounded-full"
-          style={{ backgroundColor: "rgba(255,255,255,0.10)" }}
-        />
-        <div
-          className="absolute -bottom-32 -left-16 h-96 w-96 rounded-full"
-          style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
-        />
-
-        {/* Content over image */}
-        <div className="relative z-10">
-          <div className="flex items-center gap-3">
-            <div
-              className="h-10 w-10 rounded-lg backdrop-blur-sm border border-white/20 flex items-center justify-center"
-              style={{ background: brandGradient }}
-            >
-              <Leaf className="h-6 w-6 text-white" />
-            </div>
-            <span className="text-xl font-bold tracking-tight">AURA</span>
+        <div className="relative z-10 drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]">
+          <div className="font-extrabold text-3xl mb-2 tracking-[0.02em]">
+            <span className="font-light text-white/80">gestor</span>
+            <span className="text-white">AURA</span>
+            <span className="text-[#EA6E2C]">solar</span>
           </div>
-        </div>
-
-        <div className="relative z-10 space-y-6">
-          <h1 className="text-4xl font-bold leading-tight">
-            Energia limpa,{" "}
-            <span style={{ color: brand.orangeLight }}>futuro sustentável</span>
-          </h1>
-          <p className="text-lg text-white/85 max-w-md">
-            Acompanhe a geração de energia solar das suas usinas, visualize
-            relatórios e contribua para um planeta mais verde.
-          </p>
-
-          {/* Feature pills */}
-          <div className="flex flex-wrap gap-3 pt-2">
-            <div className="flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/10 px-4 py-2 text-sm">
-              <Sun className="h-4 w-4" style={{ color: brand.orangeLight }} />
-              <span>Energia Solar</span>
-            </div>
-            <div className="flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/10 px-4 py-2 text-sm">
-              <Droplets className="h-4 w-4 text-white/85" />
-              <span>Sustentabilidade</span>
-            </div>
-            <div className="flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/10 px-4 py-2 text-sm">
-              <Wind className="h-4 w-4 text-white/85" />
-              <span>Energia Limpa</span>
-            </div>
+          <div className="text-[11px] uppercase tracking-[0.22em] text-white/70 mb-6">
+            Gestão de Energia Sustentável
           </div>
-
-          {/* Stats */}
-          <div className="flex gap-8 pt-4">
-            <div>
-              <p
-                className="text-3xl font-bold"
-                style={{ color: brand.orangeLight }}
-              >
-                12.000+
-              </p>
-              <p className="text-sm text-white/65">kWh gerados</p>
-            </div>
-            <div>
-              <p
-                className="text-3xl font-bold"
-                style={{ color: brand.orangeLight }}
-              >
-                R$ 2M+
-              </p>
-              <p className="text-sm text-white/65">economizados</p>
-            </div>
-            <div>
-              <p
-                className="text-3xl font-bold"
-                style={{ color: brand.orangeLight }}
-              >
-                12
-              </p>
-              <p className="text-sm text-white/65">usinas ativas</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="relative z-10 flex items-center gap-2">
-          <div
-            className="h-2 w-2 rounded-full animate-pulse"
-            style={{ backgroundColor: brand.orangeLight }}
-          />
-          <p className="text-sm text-white/60">
-            AURA - Gestão de Energia Sustentável
+          <p className="text-white/90 text-base max-w-md leading-relaxed">
+            Acompanhe usinas, gerencie energia, gere relatórios e faça vendas em um único lugar.
           </p>
         </div>
       </div>
 
-      {/* Right panel - form area */}
-      <div
-        className="flex w-full lg:w-1/2 items-center justify-center p-6"
-        style={{
-          background: `linear-gradient(180deg, #ffffff 0%, ${brand.teal}0D 100%)`,
-        }}
-      >
+      {/* Formulário */}
+      <div className="flex-1 md:flex-[2] flex items-center justify-center p-6 md:p-12">
         {children}
       </div>
     </div>

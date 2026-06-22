@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -168,8 +168,8 @@ export default function FaturamentoUsinaDetalhePage() {
   const params = useParams();
   const mesParam = params.mes as string;
   const id = params.id as string;
-  const { data: session } = useSession();
-  const userRole = session?.user?.role ?? "";
+  const { user } = useUser();
+  const userRole = ((user?.publicMetadata as Record<string, unknown> | undefined)?.role as string) ?? "";
   const canPayment = isFinanceRole(userRole);
   const isAdmin = userRole === "ADMIN";
 

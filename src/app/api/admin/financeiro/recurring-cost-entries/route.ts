@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
@@ -16,8 +16,8 @@ type Body = {
   entries: EntryInput[];
 };
 
-// Upsert em massa das entries de um mês. Usado pelo botão "Confirmar valores
-// do mês" na tela do fechamento financeiro.
+// Upsert em massa das entries de um mÃªs. Usado pelo botÃ£o "Confirmar valores
+// do mÃªs" na tela do fechamento financeiro.
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || !isAdminRole(session.user.role)) {
@@ -29,10 +29,10 @@ export async function POST(req: NextRequest) {
   const mes = Number(body.mes);
 
   if (!Number.isInteger(ano) || ano < 2000 || ano > 2100) {
-    return NextResponse.json({ error: "Ano inválido." }, { status: 400 });
+    return NextResponse.json({ error: "Ano invÃ¡lido." }, { status: 400 });
   }
   if (!Number.isInteger(mes) || mes < 1 || mes > 12) {
-    return NextResponse.json({ error: "Mês inválido." }, { status: 400 });
+    return NextResponse.json({ error: "MÃªs invÃ¡lido." }, { status: 400 });
   }
   if (!Array.isArray(body.entries) || body.entries.length === 0) {
     return NextResponse.json(
@@ -44,14 +44,14 @@ export async function POST(req: NextRequest) {
   for (const e of body.entries) {
     if (!e.recurringCostId) {
       return NextResponse.json(
-        { error: "recurringCostId é obrigatório em cada entry." },
+        { error: "recurringCostId Ã© obrigatÃ³rio em cada entry." },
         { status: 400 },
       );
     }
     const v = Number(e.valor);
     if (!Number.isFinite(v) || v < 0) {
       return NextResponse.json(
-        { error: `Valor inválido para rubrica ${e.recurringCostId}.` },
+        { error: `Valor invÃ¡lido para rubrica ${e.recurringCostId}.` },
         { status: 400 },
       );
     }

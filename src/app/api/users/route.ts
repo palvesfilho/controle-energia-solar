@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { hashSync } from "bcryptjs";
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 
   if (!name || !email || !password || !role) {
     return NextResponse.json(
-      { error: "Campos obrigatórios: nome, email, senha e perfil" },
+      { error: "Campos obrigatÃ³rios: nome, email, senha e perfil" },
       { status: 400 }
     );
   }
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
   const validRoles = ["ADMIN", "GESTOR", "FINANCEIRO", "INVESTOR", "CONSUMER"];
   if (!validRoles.includes(role)) {
     return NextResponse.json(
-      { error: "Perfil inválido" },
+      { error: "Perfil invÃ¡lido" },
       { status: 400 }
     );
   }
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) {
     return NextResponse.json(
-      { error: "Email já cadastrado" },
+      { error: "Email jÃ¡ cadastrado" },
       { status: 400 }
     );
   }

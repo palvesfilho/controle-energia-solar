@@ -12,7 +12,7 @@
  * "des-paga" e não duplica transição.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, isFullAdmin } from "@/lib/roles";

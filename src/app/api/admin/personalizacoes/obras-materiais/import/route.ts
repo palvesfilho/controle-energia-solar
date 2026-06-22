@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { canAccessSection } from "@/lib/roles";
@@ -21,19 +21,19 @@ type ParsedRow = {
 
 const HEADER_MAP: Record<string, keyof ParsedRow> = {
   "potencia (w)": "potenciaW",
-  "potência (w)": "potenciaW",
+  "potÃªncia (w)": "potenciaW",
   "disjuntor (a)": "disjuntorA",
-  "cabo (mm²)": "caboMm2",
+  "cabo (mmÂ²)": "caboMm2",
   "cabo (mm2)": "caboMm2",
   "cd (posicoes)": "cdPosicoes",
-  "cd (posições)": "cdPosicoes",
+  "cd (posiÃ§Ãµes)": "cdPosicoes",
   "dps 275vca": "dpsQtd",
   barramento: "barramento",
   canaleta: "canaleta",
   "caixa de passagem": "caixaPassagem",
   "placa rge": "placaRge",
   "placa pisar modulos": "placaPisarModulos",
-  "placa pisar módulos": "placaPisarModulos",
+  "placa pisar mÃ³dulos": "placaPisarModulos",
   "placa gerador": "placaGerador",
 };
 
@@ -72,13 +72,13 @@ export async function POST(req: NextRequest) {
   const replaceAll = form.get("replaceAll") === "true";
 
   if (!(file instanceof File)) {
-    return NextResponse.json({ error: "Arquivo não enviado" }, { status: 400 });
+    return NextResponse.json({ error: "Arquivo nÃ£o enviado" }, { status: 400 });
   }
 
   const buf = Buffer.from(await file.arrayBuffer());
   const workbook = new ExcelJS.Workbook();
   try {
-    // exceljs declara seu próprio `interface Buffer extends ArrayBuffer` — incompatível
+    // exceljs declara seu prÃ³prio `interface Buffer extends ArrayBuffer` â€” incompatÃ­vel
     // com o Buffer<ArrayBufferLike> do @types/node 22. Cast por unknown pra contornar.
     await workbook.xlsx.load(buf as unknown as Parameters<typeof workbook.xlsx.load>[0]);
   } catch (err) {
@@ -160,14 +160,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Cabeçalho não reconhecido. A primeira linha precisa conter colunas como 'Potência (W)', 'Disjuntor (A)', 'Cabo (mm²)'...",
+          "CabeÃ§alho nÃ£o reconhecido. A primeira linha precisa conter colunas como 'PotÃªncia (W)', 'Disjuntor (A)', 'Cabo (mmÂ²)'...",
       },
       { status: 400 }
     );
   }
 
   if (!rows.length) {
-    return NextResponse.json({ error: "Nenhuma linha válida encontrada" }, { status: 400 });
+    return NextResponse.json({ error: "Nenhuma linha vÃ¡lida encontrada" }, { status: 400 });
   }
 
   try {

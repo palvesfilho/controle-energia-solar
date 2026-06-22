@@ -1,12 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 
 /**
- * GET /api/billing/consumer-units?ano=2026&mes=4  → lista do mês
- * GET /api/billing/consumer-units?meses=1         → lista de meses distintos
+ * GET /api/billing/consumer-units?ano=2026&mes=4  â†’ lista do mÃªs
+ * GET /api/billing/consumer-units?meses=1         â†’ lista de meses distintos
  */
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
   const ano = Number(searchParams.get("ano"));
   const mes = Number(searchParams.get("mes"));
   if (!ano || !mes) {
-    return NextResponse.json({ error: "ano e mes são obrigatórios" }, { status: 400 });
+    return NextResponse.json({ error: "ano e mes sÃ£o obrigatÃ³rios" }, { status: 400 });
   }
 
   const [units, billings, consumerBills] = await Promise.all([
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
   const { consumerUnitId, ano, mes } = body;
   if (!consumerUnitId || !ano || !mes) {
     return NextResponse.json(
-      { error: "consumerUnitId, ano e mes são obrigatórios" },
+      { error: "consumerUnitId, ano e mes sÃ£o obrigatÃ³rios" },
       { status: 400 },
     );
   }

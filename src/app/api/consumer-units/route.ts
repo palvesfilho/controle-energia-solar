@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
@@ -24,15 +24,15 @@ export async function GET(req: NextRequest) {
   if (status) where.statusContrato = status;
   if (codigoUc) where.codigoUc = codigoUc;
 
-  // Esconde UCs que representam usinas sem investidor (são da área Brasil
-  // Solar, não devem aparecer em Clientes). UCs com cliente físico vinculado
-  // (consumerId) ou sem plant continuam visíveis. Override com ?showAll=1.
-  // Também esconde UCs de cliente Brasil Solar (titular + beneficiárias):
-  // elas têm gestão própria na área Brasil Solar e não devem poluir a tela
-  // de gestão de UCs que recebem créditos de investidor.
+  // Esconde UCs que representam usinas sem investidor (sÃ£o da Ã¡rea Brasil
+  // Solar, nÃ£o devem aparecer em Clientes). UCs com cliente fÃ­sico vinculado
+  // (consumerId) ou sem plant continuam visÃ­veis. Override com ?showAll=1.
+  // TambÃ©m esconde UCs de cliente Brasil Solar (titular + beneficiÃ¡rias):
+  // elas tÃªm gestÃ£o prÃ³pria na Ã¡rea Brasil Solar e nÃ£o devem poluir a tela
+  // de gestÃ£o de UCs que recebem crÃ©ditos de investidor.
   //
-  // Consultas POR codigoUc específico não aplicam esses filtros — quem busca
-  // um código quer aquela UC exata (usado p/ ex. pela página do proprietário
+  // Consultas POR codigoUc especÃ­fico nÃ£o aplicam esses filtros â€” quem busca
+  // um cÃ³digo quer aquela UC exata (usado p/ ex. pela pÃ¡gina do proprietÃ¡rio
   // Brasil Solar pra achar a UC titular).
   const showAll = searchParams.get("showAll") === "1";
   if (!showAll && !codigoUc) {
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
 
   if (!body.nome || !body.codigoUc) {
     return NextResponse.json(
-      { error: "Nome e Código da UC são obrigatórios" },
+      { error: "Nome e CÃ³digo da UC sÃ£o obrigatÃ³rios" },
       { status: 400 }
     );
   }
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
   });
   if (existing) {
     return NextResponse.json(
-      { error: "Já existe uma UC com esse código" },
+      { error: "JÃ¡ existe uma UC com esse cÃ³digo" },
       { status: 400 }
     );
   }

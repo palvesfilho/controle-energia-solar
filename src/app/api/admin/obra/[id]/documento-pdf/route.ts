@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { getServerSession } from "@/lib/auth-compat";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";

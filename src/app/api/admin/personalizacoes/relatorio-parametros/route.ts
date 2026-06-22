@@ -1,12 +1,12 @@
-/**
+﻿/**
  * GET/PUT /api/admin/personalizacoes/relatorio-parametros
  *
- * Lê e escreve os parâmetros do cálculo de payback (model AppSetting):
+ * LÃª e escreve os parÃ¢metros do cÃ¡lculo de payback (model AppSetting):
  * - reajusteTarifaAnual (0 a 1, ex.: 0.07 = 7%/ano)
  * - depreciacaoModuloAnual (0 a 1, ex.: 0.005 = 0,5%/ano)
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { isAdminRole } from "@/lib/roles";
 import {
@@ -19,7 +19,7 @@ import {
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user || !isAdminRole(session.user.role)) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
   }
 
   const params = await getRelatorioParametros();
@@ -36,7 +36,7 @@ export async function GET() {
 export async function PUT(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user || !isAdminRole(session.user.role)) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
   }
 
   const body = await req.json().catch(() => ({}));
@@ -45,13 +45,13 @@ export async function PUT(req: NextRequest) {
 
   if (!Number.isFinite(reajuste) || reajuste < 0 || reajuste > 1) {
     return NextResponse.json(
-      { error: "reajusteTarifaAnual deve ser número entre 0 e 1 (ex.: 0.07 = 7%)" },
+      { error: "reajusteTarifaAnual deve ser nÃºmero entre 0 e 1 (ex.: 0.07 = 7%)" },
       { status: 400 },
     );
   }
   if (!Number.isFinite(depreciacao) || depreciacao < 0 || depreciacao > 1) {
     return NextResponse.json(
-      { error: "depreciacaoModuloAnual deve ser número entre 0 e 1 (ex.: 0.005 = 0,5%)" },
+      { error: "depreciacaoModuloAnual deve ser nÃºmero entre 0 e 1 (ex.: 0.005 = 0,5%)" },
       { status: 400 },
     );
   }

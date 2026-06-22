@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
@@ -51,31 +51,31 @@ function validarAcaoRequerida(v: unknown): AcaoRequerida | null | undefined {
 }
 
 function validarPayload(body: unknown): CodigoInput | { error: string } {
-  if (!body || typeof body !== "object") return { error: "payload inválido" };
+  if (!body || typeof body !== "object") return { error: "payload invÃ¡lido" };
   const b = body as Record<string, unknown>;
 
   const fabricante = validarFabricante(b.fabricante);
-  if (!fabricante) return { error: "fabricante inválido" };
+  if (!fabricante) return { error: "fabricante invÃ¡lido" };
 
   if (typeof b.codigo !== "string" || b.codigo.trim().length === 0)
-    return { error: "código obrigatório" };
+    return { error: "cÃ³digo obrigatÃ³rio" };
   if (typeof b.titulo !== "string" || b.titulo.trim().length === 0)
-    return { error: "título obrigatório" };
+    return { error: "tÃ­tulo obrigatÃ³rio" };
 
   const sev = validarSeveridade(b.severidadeSugerida);
-  if (sev === undefined) return { error: "severidadeSugerida inválida" };
+  if (sev === undefined) return { error: "severidadeSugerida invÃ¡lida" };
 
   if (!Array.isArray(b.acoes)) return { error: "acoes deve ser um array" };
 
   const acoes: AcaoInput[] = [];
   for (const raw of b.acoes) {
-    if (!raw || typeof raw !== "object") return { error: "ação inválida" };
+    if (!raw || typeof raw !== "object") return { error: "aÃ§Ã£o invÃ¡lida" };
     const a = raw as Record<string, unknown>;
-    if (typeof a.ordem !== "number") return { error: "ordem da ação inválida" };
+    if (typeof a.ordem !== "number") return { error: "ordem da aÃ§Ã£o invÃ¡lida" };
     if (typeof a.descricao !== "string" || a.descricao.trim().length === 0)
-      return { error: "descrição da ação obrigatória" };
+      return { error: "descriÃ§Ã£o da aÃ§Ã£o obrigatÃ³ria" };
     const acao = validarAcaoRequerida(a.acaoRequerida);
-    if (acao === undefined) return { error: "acaoRequerida da ação inválida" };
+    if (acao === undefined) return { error: "acaoRequerida da aÃ§Ã£o invÃ¡lida" };
     acoes.push({
       ordem: a.ordem,
       descricao: a.descricao.trim(),
@@ -97,7 +97,7 @@ function validarPayload(body: unknown): CodigoInput | { error: string } {
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user || !canAccessSection(session.user.role, "persCodigosErroView")) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
   }
 
   const fabricanteParam = req.nextUrl.searchParams.get("fabricante");
@@ -118,7 +118,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user || !canAccessSection(session.user.role, "persCodigosErroEdit")) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
   }
 
   const body = await req.json().catch(() => ({}));
@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("Unique constraint")) {
       return NextResponse.json(
-        { error: "Já existe um código com esse fabricante e código." },
+        { error: "JÃ¡ existe um cÃ³digo com esse fabricante e cÃ³digo." },
         { status: 409 },
       );
     }

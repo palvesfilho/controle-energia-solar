@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
@@ -274,7 +274,7 @@ export async function POST(_req: NextRequest) {
     };
 
     return NextResponse.json({
-      message: "Geração e status atualizados para todas as marcas",
+      message: "GeraÃ§Ã£o e status atualizados para todas as marcas",
       periodo: `${month}/${year}`,
       totais,
       porPlataforma: { HUAWEI: huawei, SUNGROW: sungrow, FRONIUS: fronius, SOLAREDGE: solaredge },

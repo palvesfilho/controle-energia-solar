@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { computeAnaliseCreditos } from "@/lib/analise-creditos";
@@ -11,7 +11,7 @@ import {
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || !canAccessSection(session.user.role, "gestaoCreditos")) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
   }
 
   const { searchParams } = request.nextUrl;
@@ -21,16 +21,16 @@ export async function GET(request: NextRequest) {
   const anoRaw = searchParams.get("ano");
   const mes = mesRaw ? Number(mesRaw) : undefined;
   const ano = anoRaw ? Number(anoRaw) : undefined;
-  // Persistência só vale pra portfólio inteiro — ações filtradas por
-  // usina/investidor não devem alterar status global. Quando há filtro
-  // ativo, retornamos só o compute on-the-fly.
+  // PersistÃªncia sÃ³ vale pra portfÃ³lio inteiro â€” aÃ§Ãµes filtradas por
+  // usina/investidor nÃ£o devem alterar status global. Quando hÃ¡ filtro
+  // ativo, retornamos sÃ³ o compute on-the-fly.
   const semFiltroEscopo = !plantId && !investorId;
   if (
     (mes !== undefined && (!Number.isInteger(mes) || mes < 1 || mes > 12)) ||
     (ano !== undefined && (!Number.isInteger(ano) || ano < 2000 || ano > 2100))
   ) {
     return NextResponse.json(
-      { error: "mes/ano inválidos" },
+      { error: "mes/ano invÃ¡lidos" },
       { status: 400 },
     );
   }

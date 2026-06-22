@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({
-      message: "Histórico importado com sucesso para todas as marcas",
+      message: "HistÃ³rico importado com sucesso para todas as marcas",
       clientesProcessados: clients.length,
       totalLogs,
       porPlataforma: resultsByPlatform,

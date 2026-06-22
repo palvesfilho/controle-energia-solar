@@ -13,6 +13,9 @@ model User {
   email        String   @unique
   name         String
   passwordHash String   @map("password_hash")
+  // Vínculo com a identidade no Clerk. Nullable durante migração; após o
+  // cutover do middleware deve ser preenchido pra todo user ativo.
+  clerkId      String?  @unique @map("clerk_id")
   role         String   @default("INVESTOR") // ADMIN | GESTOR | FINANCEIRO | POS_VENDA | GESTOR_OBRA | INVESTOR | CONSUMER
   active       Boolean  @default(true)
   createdAt    DateTime @default(now()) @map("created_at")

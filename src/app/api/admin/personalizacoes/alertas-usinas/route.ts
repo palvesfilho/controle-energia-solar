@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { isAdminRole } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
@@ -15,7 +15,7 @@ import {
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user || !isAdminRole(session.user.role)) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
   }
 
   try {
@@ -51,14 +51,14 @@ function toSeveridade(v: unknown): Severidade | null {
 export async function PUT(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user || !isAdminRole(session.user.role)) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
   }
 
   let body: PutBody;
   try {
     body = (await req.json()) as PutBody;
   } catch {
-    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
+    return NextResponse.json({ error: "JSON invÃ¡lido" }, { status: 400 });
   }
 
   try {

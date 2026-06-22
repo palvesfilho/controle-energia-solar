@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getDailyGenerationBatch } from "@/lib/fronius";
 
-// POST /api/brasil-solar/sync/generation - Sincronizar geração diária do mês
+// POST /api/brasil-solar/sync/generation - Sincronizar geraÃ§Ã£o diÃ¡ria do mÃªs
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user || !canAccessSection(session.user.role, "brasilSolar")) {
@@ -36,13 +36,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Nenhum cliente Fronius encontrado. Execute a sincronizacao de plantas primeiro." }, { status: 400 });
     }
 
-    // Mapear pvSystemId → clientId
+    // Mapear pvSystemId â†’ clientId
     const pvToClient = new Map(
       clients.map((c) => [c.monitoramentoPlantId!, c])
     );
     const pvSystemIds = clients.map((c) => c.monitoramentoPlantId!);
 
-    // Buscar geração em lotes (com rate limiting)
+    // Buscar geraÃ§Ã£o em lotes (com rate limiting)
     const generationData = await getDailyGenerationBatch(pvSystemIds, year, month);
 
     let logsCreated = 0;
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
         if (!clientInfo) return;
 
         try {
-          // Upsert cada dia de geração
+          // Upsert cada dia de geraÃ§Ã£o
           for (const day of dailyData) {
             const date = new Date(Date.UTC(year, month - 1, day.day, 12, 0, 0));
 

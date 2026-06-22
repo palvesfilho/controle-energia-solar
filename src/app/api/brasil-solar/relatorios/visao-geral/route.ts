@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
@@ -8,19 +8,19 @@ export type RelatorioCellStatus = "ok" | "error" | "missing";
 
 export interface RelatorioCell {
   status: RelatorioCellStatus;
-  /** Razão pela qual o mês não está OK (apenas quando status != ok) */
+  /** RazÃ£o pela qual o mÃªs nÃ£o estÃ¡ OK (apenas quando status != ok) */
   motivo: string | null;
-  /** Mês de referência (1..12) */
+  /** MÃªs de referÃªncia (1..12) */
   mes: number;
-  /** Geração total dos inversores do proprietário na janela do mês (kWh).
-   *  null quando não há `MonitoringLog` na janela. */
+  /** GeraÃ§Ã£o total dos inversores do proprietÃ¡rio na janela do mÃªs (kWh).
+   *  null quando nÃ£o hÃ¡ `MonitoringLog` na janela. */
   geracaoInversorKwh: number | null;
-  /** consumo instantâneo = geração − energia injetada do medidor. null quando
-   *  faltam dados ou quando a injeção excede a geração reportada (anomalia). */
+  /** consumo instantÃ¢neo = geraÃ§Ã£o âˆ’ energia injetada do medidor. null quando
+   *  faltam dados ou quando a injeÃ§Ã£o excede a geraÃ§Ã£o reportada (anomalia). */
   consumoInstantaneoKwh: number | null;
-  /** consumo da rede (o que veio na fatura RGE) — `bill.consumoKwh`. */
+  /** consumo da rede (o que veio na fatura RGE) â€” `bill.consumoKwh`. */
   consumoRedeKwh: number | null;
-  /** consumo total real do cliente = rede + autoconsumo instantâneo. */
+  /** consumo total real do cliente = rede + autoconsumo instantÃ¢neo. */
   consumoTotalKwh: number | null;
 }
 
@@ -29,7 +29,7 @@ export interface RelatorioVisaoGeralRow {
   proprietarioId: string;
   proprietarioNome: string;
   cpfCnpj: string | null;
-  /** UC vinculada (pode ser null se proprietário ainda não foi associado a uma UC) */
+  /** UC vinculada (pode ser null se proprietÃ¡rio ainda nÃ£o foi associado a uma UC) */
   ucId: string | null;
   codigoUc: string | null;
   ucNome: string | null;
@@ -58,10 +58,10 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const ano = Number(searchParams.get("ano")) || new Date().getFullYear();
 
-  // Janelas de leitura podem extrapolar o ano calendário em até ~30 dias.
-  // Buscar logs de Dez/(ano-1) até Jan/(ano+1) cobre todos os ciclos do ano.
-  const logsRangeStart = new Date(Date.UTC(ano - 1, 11, 1)); // 1º de Dez do ano anterior
-  const logsRangeEnd = new Date(Date.UTC(ano + 1, 1, 1)); // 1º de Fev do ano seguinte
+  // Janelas de leitura podem extrapolar o ano calendÃ¡rio em atÃ© ~30 dias.
+  // Buscar logs de Dez/(ano-1) atÃ© Jan/(ano+1) cobre todos os ciclos do ano.
+  const logsRangeStart = new Date(Date.UTC(ano - 1, 11, 1)); // 1Âº de Dez do ano anterior
+  const logsRangeEnd = new Date(Date.UTC(ano + 1, 1, 1)); // 1Âº de Fev do ano seguinte
 
   const [proprietarios, ucs, bills, bscs, logs] = await Promise.all([
     prisma.brasilSolarProprietario.findMany({
@@ -122,7 +122,7 @@ export async function GET(req: NextRequest) {
     billByUcMes.set(`${b.consumerUnitId}:${b.mesReferencia}`, b);
   }
 
-  // BSCs (usinas físicas) por proprietário.
+  // BSCs (usinas fÃ­sicas) por proprietÃ¡rio.
   const bscIdsByProprietario = new Map<string, string[]>();
   for (const c of bscs) {
     if (!c.proprietarioId) continue;
@@ -165,7 +165,7 @@ export async function GET(req: NextRequest) {
     status: RelatorioCellStatus;
     motivo: string | null;
   } {
-    if (!bill) return { status: "error", motivo: "Sem fatura no mês" };
+    if (!bill) return { status: "error", motivo: "Sem fatura no mÃªs" };
     const faltando: string[] = [];
     for (const f of CRITICAL_FIELDS) {
       const v = bill[f];
@@ -187,8 +187,8 @@ export async function GET(req: NextRequest) {
         meses[mes] = {
           status: "missing",
           motivo: p.codigoUc
-            ? `Código UC ${p.codigoUc} não cadastrado em ConsumerUnit`
-            : "Proprietário sem UC vinculada",
+            ? `CÃ³digo UC ${p.codigoUc} nÃ£o cadastrado em ConsumerUnit`
+            : "ProprietÃ¡rio sem UC vinculada",
           mes,
           geracaoInversorKwh: null,
           consumoInstantaneoKwh: null,
@@ -201,8 +201,8 @@ export async function GET(req: NextRequest) {
       const bill = billByUcMes.get(`${uc.id}:${mes}`);
       const { status, motivo } = evaluate(bill);
 
-      // Preferir a janela de leitura da fatura. Sem ela, cair pro mês calendário
-      // (mesma convenção da view focada do mês — `MES_CALENDARIO`).
+      // Preferir a janela de leitura da fatura. Sem ela, cair pro mÃªs calendÃ¡rio
+      // (mesma convenÃ§Ã£o da view focada do mÃªs â€” `MES_CALENDARIO`).
       let inicio: Date;
       let fim: Date;
       if (bill?.dataLeituraAnterior && bill?.dataLeituraAtual) {
@@ -218,7 +218,7 @@ export async function GET(req: NextRequest) {
       let consumoInstantaneoKwh: number | null = null;
       if (geracaoInversorKwh != null && injetada != null) {
         const diff = geracaoInversorKwh - injetada;
-        // Diff < 0 = anomalia (perda de monitoramento); não silenciar com max(0,x).
+        // Diff < 0 = anomalia (perda de monitoramento); nÃ£o silenciar com max(0,x).
         consumoInstantaneoKwh = diff >= 0 ? diff : null;
       }
 

@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { canAccessSection } from "@/lib/roles";
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   if (aprovacaoParam) {
     where.aprovacao = aprovacaoParam.toUpperCase();
   } else {
-    // Padrão: cronograma só mostra obras já aceitas
+    // PadrÃ£o: cronograma sÃ³ mostra obras jÃ¡ aceitas
     where.aprovacao = "ACEITA";
   }
 
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   if (!body.nome) {
-    return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
+    return NextResponse.json({ error: "Nome Ã© obrigatÃ³rio" }, { status: 400 });
   }
 
   const obra = await prisma.obra.create({

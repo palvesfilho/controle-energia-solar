@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
@@ -69,9 +69,9 @@ export async function POST(req: NextRequest) {
               statusMonitoramento: newStatus,
               ultimaLeitura: new Date(status.lastReading),
               ultimaGeracao: status.currentPowerW
-                ? status.currentPowerW / 1000 // W → kW (potência instantânea)
+                ? status.currentPowerW / 1000 // W â†’ kW (potÃªncia instantÃ¢nea)
                 : undefined,
-              // Métricas instantâneas (quando o canal correspondente vem no flowdata)
+              // MÃ©tricas instantÃ¢neas (quando o canal correspondente vem no flowdata)
               tensaoRede: status.voltageAC ?? undefined,
               temperaturaInversor: status.temperature ?? undefined,
               frequenciaRede: status.frequency ?? undefined,

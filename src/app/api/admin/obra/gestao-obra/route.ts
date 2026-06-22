@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { canAccessSection } from "@/lib/roles";
@@ -28,7 +28,7 @@ export interface GestaoObraRow {
   dataFimPrevista: string | null;
   dataFimReal: string | null;
   createdAt: string;
-  // Indicam se cada PDF já foi gerado ao menos uma vez (para colorir os ícones)
+  // Indicam se cada PDF jÃ¡ foi gerado ao menos uma vez (para colorir os Ã­cones)
   documentoPdfGerado: boolean;
   listaMateriaisPdfGerado: boolean;
   conferenciaPdfGerado: boolean;
@@ -37,7 +37,7 @@ export interface GestaoObraRow {
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || !canAccessSection(session.user.role, "obra")) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
   }
 
   const { searchParams } = new URL(req.url);

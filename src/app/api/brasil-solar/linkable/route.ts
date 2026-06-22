@@ -1,17 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 
 /**
- * GET /api/brasil-solar/linkable — lista leve de BrasilSolarClient com
- * monitoramento real ativo (monitoramentoPlantId preenchido) disponíveis para
- * vincular a uma Plant do Gestor de Créditos.
+ * GET /api/brasil-solar/linkable â€” lista leve de BrasilSolarClient com
+ * monitoramento real ativo (monitoramentoPlantId preenchido) disponÃ­veis para
+ * vincular a uma Plant do Gestor de CrÃ©ditos.
  *
  * Query params:
- *  - plantId: inclui também os já vinculados A ESTA plant (permite "re-show"
- *    no seletor caso o usuário queira reconfirmar).
+ *  - plantId: inclui tambÃ©m os jÃ¡ vinculados A ESTA plant (permite "re-show"
+ *    no seletor caso o usuÃ¡rio queira reconfirmar).
  *  - search: filtra por nome, CPF/CNPJ, codigoUc, cidade.
  */
 export async function GET(req: NextRequest) {

@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     );
     const stationCodes = clients.map((c) => c.monitoramentoPlantId!);
 
-    // Busca status agregado + métricas instantâneas por inversor em paralelo
+    // Busca status agregado + mÃ©tricas instantÃ¢neas por inversor em paralelo
     const [statusResults, metricsResults] = await Promise.all([
       getPlantStatusBatch(stationCodes),
       getDeviceMetricsBatch(stationCodes),

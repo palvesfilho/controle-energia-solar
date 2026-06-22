@@ -1,11 +1,11 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getAllStations, getStationCapacityKwp, type SungrowStation } from "@/lib/sungrow";
 
-// POST /api/brasil-solar/sync-sungrow - Sincronizar plantas Sungrow iSolarCloud → BrasilSolarClient
+// POST /api/brasil-solar/sync-sungrow - Sincronizar plantas Sungrow iSolarCloud â†’ BrasilSolarClient
 export async function POST(_req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user || !canAccessSection(session.user.role, "brasilSolar")) {

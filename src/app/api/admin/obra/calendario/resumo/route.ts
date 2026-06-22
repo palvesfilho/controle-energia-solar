@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { canAccessSection } from "@/lib/roles";
@@ -35,7 +35,7 @@ export interface ResumoCalendario {
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session || !canAccessSection(session.user.role, "obra")) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
   }
 
   try {

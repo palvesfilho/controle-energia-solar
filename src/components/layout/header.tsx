@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession, signOut } from "next-auth/react";
+import { useUser, useClerk } from "@clerk/nextjs";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -57,7 +57,8 @@ const MOTIVATIONAL_MESSAGES = [
 ];
 
 export function Header({ role }: { role: UserRole }) {
-  const { data: session } = useSession();
+  const { user } = useUser();
+  const { signOut } = useClerk();
   const [motivation, setMotivation] = useState<string | null>(null);
 
   useEffect(() => {
@@ -65,7 +66,8 @@ export function Header({ role }: { role: UserRole }) {
     setMotivation(MOTIVATIONAL_MESSAGES[idx]);
   }, []);
 
-  const initials = session?.user?.name
+  const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(" ");
+  const initials = fullName
     ?.split(" ")
     .map((n) => n[0])
     .join("")
@@ -108,7 +110,7 @@ export function Header({ role }: { role: UserRole }) {
       <DropdownMenu>
         <DropdownMenuTrigger className="flex items-center gap-3 outline-none">
           <div className="hidden sm:flex flex-col items-end">
-            <span className="text-sm font-medium">{session?.user?.name}</span>
+            <span className="text-sm font-medium">{fullName}</span>
             <Badge
               variant="secondary"
               className="text-[10px] h-5"
@@ -130,7 +132,7 @@ export function Header({ role }: { role: UserRole }) {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="gap-2 text-red-600"
-            onClick={() => signOut({ callbackUrl: "/login" })}
+            onClick={() => signOut({ redirectUrl: "/login-clerk" })}
           >
             <LogOut className="h-4 w-4" />
             Sair

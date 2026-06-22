@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { canAccessSection } from "@/lib/roles";
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
   if (!nome) {
     return NextResponse.json(
-      { error: "Nome da equipe é obrigatório." },
+      { error: "Nome da equipe Ã© obrigatÃ³rio." },
       { status: 400 }
     );
   }
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("Unique constraint")) {
       return NextResponse.json(
-        { error: `Já existe uma equipe com o nome "${nome}".` },
+        { error: `JÃ¡ existe uma equipe com o nome "${nome}".` },
         { status: 409 }
       );
     }

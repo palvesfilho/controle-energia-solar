@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
@@ -130,15 +130,44 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const investor = await prisma.investor.findUnique({ where: { id } });
+  const investor = await prisma.investor.findUnique({
+    where: { id },
+    include: {
+      _count: {
+        select: {
+          plants: true,
+          payables: true,
+          reports: true,
+          settlements: true,
+          debits: true,
+        },
+      },
+    },
+  });
+
   if (!investor) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  await prisma.user.update({
-    where: { id: investor.userId },
-    data: { active: false },
-  });
+  const blockers: string[] = [];
+  if (investor._count.plants > 0) blockers.push(`${investor._count.plants} usina(s) vinculada(s)`);
+  if (investor._count.payables > 0) blockers.push(`${investor._count.payables} pagamento(s)`);
+  if (investor._count.reports > 0) blockers.push(`${investor._count.reports} relatório(s)`);
+  if (investor._count.settlements > 0) blockers.push(`${investor._count.settlements} fechamento(s)`);
+  if (investor._count.debits > 0) blockers.push(`${investor._count.debits} débito(s)`);
+
+  if (blockers.length > 0) {
+    return NextResponse.json(
+      {
+        error: "Investidor possui vínculos e não pode ser excluído",
+        details: blockers,
+      },
+      { status: 409 },
+    );
+  }
+
+  // Sem vínculos: hard-delete via User (cascade apaga o Investor).
+  await prisma.user.delete({ where: { id: investor.userId } });
 
   return NextResponse.json({ success: true });
 }

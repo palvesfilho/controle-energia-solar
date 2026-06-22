@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { canAccessSection } from "@/lib/roles";
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
 
   if (!potenciaW || potenciaW <= 0) {
     return NextResponse.json(
-      { error: "Potência (W) é obrigatória e deve ser maior que zero." },
+      { error: "PotÃªncia (W) Ã© obrigatÃ³ria e deve ser maior que zero." },
       { status: 400 }
     );
   }
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("Unique constraint")) {
       return NextResponse.json(
-        { error: `Já existe um registro para a potência ${potenciaW} W.` },
+        { error: `JÃ¡ existe um registro para a potÃªncia ${potenciaW} W.` },
         { status: 409 }
       );
     }

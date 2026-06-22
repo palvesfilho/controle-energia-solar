@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { authOptions } from "@/lib/auth-options";
 import { isAdminRole } from "@/lib/roles";
@@ -33,10 +33,10 @@ export async function GET(req: NextRequest) {
     : "mensal";
 
   if (!Number.isInteger(ano) || ano < 2000 || ano > 2100) {
-    return NextResponse.json({ error: "Ano inválido." }, { status: 400 });
+    return NextResponse.json({ error: "Ano invÃ¡lido." }, { status: 400 });
   }
   if (!Number.isInteger(mes) || mes < 1 || mes > 12) {
-    return NextResponse.json({ error: "Mês inválido." }, { status: 400 });
+    return NextResponse.json({ error: "MÃªs invÃ¡lido." }, { status: 400 });
   }
 
   try {

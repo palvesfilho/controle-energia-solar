@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
@@ -41,14 +41,14 @@ export async function POST(req: NextRequest) {
   const nome = toStr(body.nome);
   if (!nome) {
     return NextResponse.json(
-      { error: "Nome da rubrica é obrigatório." },
+      { error: "Nome da rubrica Ã© obrigatÃ³rio." },
       { status: 400 },
     );
   }
   const valorPadrao = Number(body.valorPadrao ?? 0);
   if (!Number.isFinite(valorPadrao) || valorPadrao < 0) {
     return NextResponse.json(
-      { error: "Valor padrão inválido." },
+      { error: "Valor padrÃ£o invÃ¡lido." },
       { status: 400 },
     );
   }
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("Unique constraint")) {
       return NextResponse.json(
-        { error: `Já existe rubrica com o nome "${nome}".` },
+        { error: `JÃ¡ existe rubrica com o nome "${nome}".` },
         { status: 409 },
       );
     }

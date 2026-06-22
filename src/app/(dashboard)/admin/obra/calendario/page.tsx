@@ -1,4 +1,4 @@
-import { getServerSession } from "next-auth";
+﻿import { getServerSession } from "@/lib/auth-compat";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth-options";
 import { isAdminRole } from "@/lib/roles";

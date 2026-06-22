@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
@@ -109,9 +109,9 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/brasil-solar/proprietarios - Criar proprietario
-// Aceita opcionalmente body.planta {...} com os dados técnicos extraídos
-// do Anexo F (latitude, longitude, módulos, inversor, UC, concessionária).
-// Esses campos ficam no próprio Proprietário — a usina em si é sincronizada
+// Aceita opcionalmente body.planta {...} com os dados tÃ©cnicos extraÃ­dos
+// do Anexo F (latitude, longitude, mÃ³dulos, inversor, UC, concessionÃ¡ria).
+// Esses campos ficam no prÃ³prio ProprietÃ¡rio â€” a usina em si Ã© sincronizada
 // por API (Fronius/SolarEdge/...) e vinculada manualmente depois.
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -122,25 +122,25 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   if (!body.nome?.trim()) {
-    return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
+    return NextResponse.json({ error: "Nome Ã© obrigatÃ³rio" }, { status: 400 });
   }
 
   // executadoPor define se Brasil Solar executa a obra (fluxo completo,
-  // com Obra+tarefas auto) ou se é só monitoramento de usina de terceiro.
+  // com Obra+tarefas auto) ou se Ã© sÃ³ monitoramento de usina de terceiro.
   const executadoPor =
     typeof body.executadoPor === "string" ? body.executadoPor.trim() : "BRASIL_SOLAR";
   if (!EXECUTADO_POR_VALORES.has(executadoPor)) {
     return NextResponse.json(
-      { error: "Campo 'executadoPor' inválido (use BRASIL_SOLAR ou TERCEIRO)" },
+      { error: "Campo 'executadoPor' invÃ¡lido (use BRASIL_SOLAR ou TERCEIRO)" },
       { status: 400 }
     );
   }
   const isTerceiro = executadoPor === "TERCEIRO";
 
-  // ---- Validação dos campos do contrato/obra ---------------------------
-  // Quando executadoPor=TERCEIRO, Brasil Solar não executa obra: os campos
-  // de telhado/data/prazo ficam nulos e o fluxo automático de Obra/tarefas
-  // é pulado mais abaixo.
+  // ---- ValidaÃ§Ã£o dos campos do contrato/obra ---------------------------
+  // Quando executadoPor=TERCEIRO, Brasil Solar nÃ£o executa obra: os campos
+  // de telhado/data/prazo ficam nulos e o fluxo automÃ¡tico de Obra/tarefas
+  // Ã© pulado mais abaixo.
   let tipoTelhado: string | null = null;
   let tipoTelhadoOutro: string | null = null;
   let dataPagamento: Date | null = null;
@@ -150,7 +150,7 @@ export async function POST(req: NextRequest) {
     const t = typeof body.tipoTelhado === "string" ? body.tipoTelhado.trim() : "";
     if (!t || !TIPOS_TELHADO.has(t)) {
       return NextResponse.json(
-        { error: "Tipo de telhado inválido ou ausente" },
+        { error: "Tipo de telhado invÃ¡lido ou ausente" },
         { status: 400 }
       );
     }
@@ -172,7 +172,7 @@ export async function POST(req: NextRequest) {
     );
     if (!dp) {
       return NextResponse.json(
-        { error: "Data de pagamento inválida ou ausente" },
+        { error: "Data de pagamento invÃ¡lida ou ausente" },
         { status: 400 }
       );
     }
@@ -187,7 +187,7 @@ export async function POST(req: NextRequest) {
     if (TIPOS_COM_ESTRUTURA.has(t) && pcd < PRAZO_MIN_CARPORT_SOLO) {
       return NextResponse.json(
         {
-          error: `Para CARPORT/USINA DE SOLO o prazo precisa ser de no mínimo ${PRAZO_MIN_CARPORT_SOLO} dias (3d estrutura + 15d intervalo + instalação)`,
+          error: `Para CARPORT/USINA DE SOLO o prazo precisa ser de no mÃ­nimo ${PRAZO_MIN_CARPORT_SOLO} dias (3d estrutura + 15d intervalo + instalaÃ§Ã£o)`,
         },
         { status: 400 }
       );
@@ -202,7 +202,7 @@ export async function POST(req: NextRequest) {
   const planta = body.planta && typeof body.planta === "object" ? body.planta : {};
 
   // codigoUc e concessionaria podem vir direto no body (form de cadastro manual)
-  // ou dentro de `planta` (prefill do Anexo F). Direto no body tem precedência.
+  // ou dentro de `planta` (prefill do Anexo F). Direto no body tem precedÃªncia.
   const codigoUcInput =
     (typeof body.codigoUc === "string" && body.codigoUc.trim()) ||
     (typeof planta.codigoUc === "string" && planta.codigoUc.trim()) ||
@@ -244,9 +244,9 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Cria automaticamente a ConsumerUnit quando o código UC foi informado.
-  // Não falha o cadastro do proprietário se a UC não puder ser criada
-  // (ex.: código já em uso).
+  // Cria automaticamente a ConsumerUnit quando o cÃ³digo UC foi informado.
+  // NÃ£o falha o cadastro do proprietÃ¡rio se a UC nÃ£o puder ser criada
+  // (ex.: cÃ³digo jÃ¡ em uso).
   let consumerUnitId: string | null = null;
   if (codigoUcInput) {
     try {
@@ -273,10 +273,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Cria a credencial de acesso à concessionária (CpflCredential, usada também
-  // para RGE) quando o bloco `portal` veio no body e a UC já existe. Senha é
-  // sempre criptografada (AES-GCM via encrypt()). Falha aqui não derruba o
-  // cadastro do proprietário/UC.
+  // Cria a credencial de acesso Ã  concessionÃ¡ria (CpflCredential, usada tambÃ©m
+  // para RGE) quando o bloco `portal` veio no body e a UC jÃ¡ existe. Senha Ã©
+  // sempre criptografada (AES-GCM via encrypt()). Falha aqui nÃ£o derruba o
+  // cadastro do proprietÃ¡rio/UC.
   const portal =
     body.portal && typeof body.portal === "object" ? body.portal : null;
   if (consumerUnitId && portal) {
@@ -318,8 +318,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Sistema executado por terceiro: Brasil Solar só monitora geração e créditos,
-  // não cria Obra nem tarefas de gestão de obra.
+  // Sistema executado por terceiro: Brasil Solar sÃ³ monitora geraÃ§Ã£o e crÃ©ditos,
+  // nÃ£o cria Obra nem tarefas de gestÃ£o de obra.
   if (!isTerceiro && dataPagamento && prazoContratoDias && tipoTelhado) {
   try {
     const localParts = [proprietario.endereco, proprietario.cidade, proprietario.uf].filter(Boolean);
@@ -327,8 +327,8 @@ export async function POST(req: NextRequest) {
 
     const obra = await prisma.obra.create({
       data: {
-        nome: `Instalação — ${proprietario.nome}`,
-        descricao: "Obra gerada automaticamente a partir do cadastro do proprietário.",
+        nome: `InstalaÃ§Ã£o â€” ${proprietario.nome}`,
+        descricao: "Obra gerada automaticamente a partir do cadastro do proprietÃ¡rio.",
         cliente: proprietario.nome,
         local: localParts.length ? localParts.join(", ") : null,
         status: "PLANEJAMENTO",
@@ -360,7 +360,7 @@ export async function POST(req: NextRequest) {
       const tarefa1 = await prisma.obraTarefa.create({
         data: {
           obraId: obra.id,
-          nome: `Execução da estrutura de fixação — ${estruturaLabel}`,
+          nome: `ExecuÃ§Ã£o da estrutura de fixaÃ§Ã£o â€” ${estruturaLabel}`,
           ordem: 0,
           dataInicioPlan: dataPagamento,
           dataFimPlan: tarefa1Fim,
@@ -372,7 +372,7 @@ export async function POST(req: NextRequest) {
       const tarefa2 = await prisma.obraTarefa.create({
         data: {
           obraId: obra.id,
-          nome: "Instalação do sistema fotovoltaico",
+          nome: "InstalaÃ§Ã£o do sistema fotovoltaico",
           ordem: 1,
           dataInicioPlan: tarefa2Inicio,
           dataFimPlan: tarefa2Fim,
@@ -391,7 +391,7 @@ export async function POST(req: NextRequest) {
       });
     }
   } catch (e) {
-    // Não falhar a criação do proprietário se a obra/tarefas não puderem ser criadas.
+    // NÃ£o falhar a criaÃ§Ã£o do proprietÃ¡rio se a obra/tarefas nÃ£o puderem ser criadas.
     console.error("[POST /brasil-solar/proprietarios] auto-obra falhou:", e);
   }
   }

@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
@@ -25,7 +25,7 @@ interface SyncResultItem {
   skipReason?: string;
 }
 
-// Dias de folga após a data da próxima leitura antes da fatura aparecer no portal.
+// Dias de folga apÃ³s a data da prÃ³xima leitura antes da fatura aparecer no portal.
 const DIAS_APOS_LEITURA = 2;
 
 async function persistPdf(
@@ -91,8 +91,8 @@ async function syncOne(
         sourceUrl,
       );
 
-      // Fallback: se OCR Infosimples deixou medidor de injeção vazio mas há
-      // injeção fiscal > 0 e PDF salvo, recupera do parser PDF.
+      // Fallback: se OCR Infosimples deixou medidor de injeÃ§Ã£o vazio mas hÃ¡
+      // injeÃ§Ã£o fiscal > 0 e PDF salvo, recupera do parser PDF.
       const fallback = await enrichBillFromPdfFallback(
         billDataRaw as unknown as Record<string, unknown>,
         billDataRaw.pdfUrl,
@@ -104,12 +104,12 @@ async function syncOne(
         );
       }
 
-      // ConsumerBill.plantId representa "bill DA usina" (conta da UC da própria
-      // usina) e não "bill de UC que faz rateio com essa usina". Por isso não
-      // copiamos ConsumerUnit.plantId para cá: essa sync é sempre de UC de
+      // ConsumerBill.plantId representa "bill DA usina" (conta da UC da prÃ³pria
+      // usina) e nÃ£o "bill de UC que faz rateio com essa usina". Por isso nÃ£o
+      // copiamos ConsumerUnit.plantId para cÃ¡: essa sync Ã© sempre de UC de
       // cliente (filtro consumerUnitId: { not: null } no POST).
-      // Preserva pdfUrl existente quando persistPdf devolveu null. Senão,
-      // sync flaky da Infosimples zera o vínculo mesmo com PDF no R2.
+      // Preserva pdfUrl existente quando persistPdf devolveu null. SenÃ£o,
+      // sync flaky da Infosimples zera o vÃ­nculo mesmo com PDF no R2.
       const { pdfUrl: nextPdfUrl, ...billDataNoPdf } = billData;
       const upserted = await prisma.consumerBill.upsert({
         where: {
@@ -131,7 +131,7 @@ async function syncOne(
           syncedAt: new Date(),
         },
       });
-      // Preenche ConsumerUnitBilling (campos da aba "Valores da Cobrança")
+      // Preenche ConsumerUnitBilling (campos da aba "Valores da CobranÃ§a")
       await populateBillingFromBill(upserted.id).catch((e) =>
         console.error("[sync-all] populateBillingFromBill falhou:", e),
       );
@@ -196,9 +196,9 @@ export async function POST(_req: NextRequest) {
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
 
-  // Pré-filtragem: separa elegíveis (precisam consultar Infosimples) de
-  // skipped (já têm fatura recente / aguardando próxima leitura). O total
-  // mostrado no progresso reflete apenas as elegíveis pra não confundir.
+  // PrÃ©-filtragem: separa elegÃ­veis (precisam consultar Infosimples) de
+  // skipped (jÃ¡ tÃªm fatura recente / aguardando prÃ³xima leitura). O total
+  // mostrado no progresso reflete apenas as elegÃ­veis pra nÃ£o confundir.
   const elegiveis: { uc: { id: string; codigoUc: string; nome: string } }[] = [];
   const skippedAhead: SyncResultItem[] = [];
 
@@ -225,7 +225,7 @@ export async function POST(_req: NextRequest) {
           synced: 0,
           error: null,
           skipped: true,
-          skipReason: `Aguardando próxima leitura — consulta a partir de ${dataStr}`,
+          skipReason: `Aguardando prÃ³xima leitura â€” consulta a partir de ${dataStr}`,
         });
         continue;
       }

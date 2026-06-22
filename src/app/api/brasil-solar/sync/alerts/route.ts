@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+﻿import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { runAlertSync } from "@/lib/sync-alerts";
 
-// POST /api/brasil-solar/sync/alerts - Gerar alertas automáticos com base nos dados
+// POST /api/brasil-solar/sync/alerts - Gerar alertas automÃ¡ticos com base nos dados
 export async function POST(_req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user || !canAccessSection(session.user.role, "brasilSolar")) {
