@@ -4,7 +4,18 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Eye, Search, ArrowUpDown, Users, UserCheck, UserX, Sun } from "lucide-react";
+import { Plus, Pencil, Eye, Trash2, Search, ArrowUpDown, Users, UserCheck, UserX, Sun, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+const FRASE_CONFIRMACAO = "quero mesmo excluir investidor";
 
 interface InvestorData {
   id: string;
@@ -23,6 +34,52 @@ export default function InvestidoresPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | "ativo" | "inativo">("");
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "name", dir: "asc" });
+  const [confirmTarget, setConfirmTarget] = useState<InvestorData | null>(null);
+  const [confirmText, setConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
+  const fraseBate = confirmText.trim().toLowerCase() === FRASE_CONFIRMACAO;
+
+  function abrirConfirmacao(inv: InvestorData) {
+    setConfirmTarget(inv);
+    setConfirmText("");
+  }
+
+  function fecharConfirmacao() {
+    if (deleting) return;
+    setConfirmTarget(null);
+    setConfirmText("");
+  }
+
+  async function confirmarExclusao() {
+    if (!confirmTarget || !fraseBate) return;
+    setDeleting(true);
+    const inv = confirmTarget;
+    try {
+      const res = await fetch(`/api/investors/${inv.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        if (res.status === 409 && Array.isArray(data.details)) {
+          toast.error("Não é possível excluir", {
+            description: `Vínculos existentes: ${data.details.join(", ")}`,
+          });
+        } else {
+          toast.error(data.error ?? "Falha ao excluir investidor");
+        }
+        return;
+      }
+
+      toast.success(`${inv.user.name} excluído`);
+      setInvestors((prev) => prev.filter((i) => i.id !== inv.id));
+      setConfirmTarget(null);
+      setConfirmText("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro inesperado");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/investors")
@@ -182,6 +239,14 @@ export default function InvestidoresPage() {
                           >
                             <Pencil className="h-4 w-4" />
                           </Link>
+                          <button
+                            type="button"
+                            onClick={() => abrirConfirmacao(inv)}
+                            title="Excluir"
+                            className="p-1.5 rounded text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -192,6 +257,65 @@ export default function InvestidoresPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={confirmTarget !== null} onOpenChange={(open) => !open && fecharConfirmacao()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+              <AlertTriangle className="h-6 w-6 text-red-600" />
+            </div>
+            <DialogTitle className="text-center text-lg">
+              Excluir investidor?
+            </DialogTitle>
+            <DialogDescription className="text-center">
+              Você está prestes a excluir{" "}
+              <span className="font-semibold text-foreground">
+                {confirmTarget?.user.name}
+              </span>{" "}
+              <span className="text-muted-foreground">({confirmTarget?.user.email})</span>.
+              <br />
+              <span className="text-red-600 font-medium">Esta ação é permanente e não pode ser desfeita.</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 mt-2">
+            <label className="block text-sm font-medium">
+              Para confirmar, digite a frase abaixo:
+            </label>
+            <div className="rounded-md bg-muted px-3 py-2 text-sm font-mono select-all">
+              {FRASE_CONFIRMACAO}
+            </div>
+            <input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="Digite a frase exata aqui"
+              autoFocus
+              disabled={deleting}
+              className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all"
+            />
+          </div>
+
+          <DialogFooter className="mt-4 gap-2 sm:gap-2">
+            <button
+              type="button"
+              onClick={fecharConfirmacao}
+              disabled={deleting}
+              className="px-4 py-2 text-sm font-medium border rounded-lg hover:bg-muted transition-colors disabled:opacity-40"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={confirmarExclusao}
+              disabled={!fraseBate || deleting}
+              className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {deleting ? "Excluindo..." : "Excluir definitivamente"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
