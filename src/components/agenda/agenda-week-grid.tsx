@@ -16,6 +16,8 @@ import {
   AlertCircle,
   Circle,
   CalendarDays,
+  Search,
+  X,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -95,6 +97,14 @@ const STATUS_META: Record<AgendaTaskStatus, { icon: React.ElementType; cls: stri
   OVERDUE: { icon: AlertCircle, cls: "text-red-600", label: "Atrasada" },
 };
 
+// Normaliza texto para busca: minúsculas e sem acentos (Postgres/JS acento-insensível).
+function normalize(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
 function formatWeekRange(inicio: Date, fim: Date): string {
   const fmt = (d: Date) => d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
   return `${fmt(inicio)} — ${fmt(fim)}`;
@@ -116,6 +126,7 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
 
   const canEditPaidBill = userRole ? ROLES_PODEM_EDITAR_PAGAMENTO.has(userRole) : false;
 
+  const [filterQuery, setFilterQuery] = useState("");
   const [filterType, setFilterType] = useState<AgendaTaskType | "ALL">("ALL");
   const [filterStatus, setFilterStatus] = useState<AgendaTaskStatus | "ALL">("ALL");
   const [filterMes, setFilterMes] = useState<string>("ALL"); // "ALL" ou "1".."12"
@@ -173,7 +184,16 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
   }, [allUcs]);
 
   const filtered = useMemo(() => {
+    const q = normalize(filterQuery.trim());
     return tasks.filter((t) => {
+      if (q) {
+        // Busca por nome do cliente ou código da UC — casa contra título,
+        // subtítulo e o rótulo "codigoUc — nome".
+        const haystack = normalize(
+          `${t.title} ${t.subtitle ?? ""} ${t.consumerUnitLabel ?? ""}`
+        );
+        if (!haystack.includes(q)) return false;
+      }
       if (filterType !== "ALL" && t.type !== filterType) return false;
       if (filterStatus !== "ALL" && t.status !== filterStatus) return false;
       if (filterMes !== "ALL") {
@@ -189,9 +209,10 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
       }
       return true;
     });
-  }, [tasks, filterType, filterStatus, filterMes, filterAno, filterUc]);
+  }, [tasks, filterQuery, filterType, filterStatus, filterMes, filterAno, filterUc]);
 
   const hasActiveFilters =
+    filterQuery.trim() !== "" ||
     filterType !== "ALL" ||
     filterStatus !== "ALL" ||
     filterMes !== "ALL" ||
@@ -199,6 +220,7 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
     filterUc !== "ALL";
 
   const clearFilters = () => {
+    setFilterQuery("");
     setFilterType("ALL");
     setFilterStatus("ALL");
     setFilterMes("ALL");
@@ -313,7 +335,27 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
           <span className="font-medium">{formatWeekRange(inicioDate, fimDate)}</span>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={filterQuery}
+              onChange={(e) => setFilterQuery(e.target.value)}
+              placeholder="Buscar cliente ou código da UC…"
+              className="w-56 rounded-md border bg-background py-1 pl-7 pr-7 text-sm"
+            />
+            {filterQuery && (
+              <button
+                type="button"
+                onClick={() => setFilterQuery("")}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Limpar busca"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value as AgendaTaskType | "ALL")}
