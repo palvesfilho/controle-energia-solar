@@ -54,6 +54,10 @@ const isApi = createRouteMatcher([
 const isPublicApi = createRouteMatcher([
   "/api/webhooks/(.*)",
   "/api/auth/(.*)", // legado NextAuth — pode remover quando lib/auth-options sumir
+  // Server-to-server: o robô RGE (backfill de faturas) faz POST aqui com a sua
+  // PRÓPRIA autenticação (Authorization: Bearer CRON_SECRET). Sem sessão Clerk,
+  // então precisa ser público no middleware — a rota valida o Bearer.
+  "/api/faturas-energia/ingest",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
