@@ -45,6 +45,7 @@ const isProtected = createRouteMatcher([
   "/relatorios(.*)",
   "/perfil(.*)",
   "/portal(.*)",
+  "/portal-cliente(.*)",
 ]);
 
 const isApi = createRouteMatcher([
@@ -58,7 +59,14 @@ const isPublicApi = createRouteMatcher([
   // PRÓPRIA autenticação (Authorization: Bearer CRON_SECRET). Sem sessão Clerk,
   // então precisa ser público no middleware — a rota valida o Bearer.
   "/api/faturas-energia/ingest",
+  // Pagamento branded: o cliente paga ANTES de ter conta. A chave é o
+  // conviteToken (UUID) na URL — a rota valida o token, não a sessão.
+  "/api/portal/cobranca/(.*)",
 ]);
+
+// Página pública de pagamento branded (/portal-cliente/pagar/<token>): o pagador
+// ainda não tem login. Fica FORA do isProtected mesmo casando /portal-cliente(.*).
+const isPagamentoPublico = createRouteMatcher(["/portal-cliente/pagar/(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
   const pathname = req.nextUrl.pathname;
@@ -71,6 +79,9 @@ export default clerkMiddleware(async (auth, req) => {
     }
     return;
   }
+
+  // Página de pagamento branded é pública (autenticada pelo token na URL).
+  if (isPagamentoPublico(req)) return;
 
   if (!isProtected(req)) return;
 
@@ -98,7 +109,10 @@ export default clerkMiddleware(async (auth, req) => {
     }
   }
 
-  if (pathname.startsWith("/painel") && canEnterAdminPanel(role)) {
+  if (
+    pathname.startsWith("/painel") &&
+    (canEnterAdminPanel(role) || role === "CLIENTE_BS")
+  ) {
     return NextResponse.redirect(new URL(getHomeRoute(role), req.url));
   }
 });
