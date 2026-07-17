@@ -33,7 +33,29 @@ export function ReportPdfViewer({
     (async () => {
       try {
         setStatus("loading");
-        const pdfjs = await import("pdfjs-dist");
+
+        // Tablets antigos (Safari/Android desatualizados) não têm
+        // Promise.withResolvers, usado pelo pdf.js — polyfill antes de importar.
+        const P = globalThis.Promise as PromiseConstructor & {
+          withResolvers?: unknown;
+        };
+        if (typeof P.withResolvers !== "function") {
+          (P as { withResolvers: unknown }).withResolvers = function <T>() {
+            let resolve!: (v: T | PromiseLike<T>) => void;
+            let reject!: (r?: unknown) => void;
+            const promise = new Promise<T>((res, rej) => {
+              resolve = res;
+              reject = rej;
+            });
+            return { promise, resolve, reject };
+          };
+        }
+
+        // Build "legacy" do pdf.js: transpilado para navegadores mais antigos
+        // (o build padrão quebra em tablets desatualizados).
+        const pdfjs: typeof import("pdfjs-dist") = await import(
+          "pdfjs-dist/legacy/build/pdf.mjs"
+        );
         pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
         const task = pdfjs.getDocument({ url, withCredentials: true });
