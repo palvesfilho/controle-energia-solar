@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ReportPdfViewer } from "@/components/brasil-solar/report-pdf-viewer";
 import {
   Wifi,
   Wrench,
@@ -376,10 +377,9 @@ export default function ProcessoGestaoPage() {
             </div>
 
             <div className="pg-pdfwrap">
-              <iframe
-                className="pg-pdfframe"
-                src={RELATORIO_EXEMPLO.pdfUrl}
-                title={`Relatório de ${RELATORIO_EXEMPLO.mesLabel} — ${RELATORIO_EXEMPLO.cliente}`}
+              <ReportPdfViewer
+                url={RELATORIO_EXEMPLO.pdfUrl}
+                fallbackHref={RELATORIO_EXEMPLO.pdfUrl}
               />
             </div>
           </div>
@@ -650,11 +650,14 @@ const CSS = `
 .pg-ropen { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; font-size: 12.5px; font-weight: 700; color: #0C4A45; background: var(--pg-amber); padding: 7px 11px; border-radius: 10px; white-space: nowrap; transition: filter .15s ease; }
 .pg-ropen:hover { filter: brightness(1.05); }
 
-/* Modal em modo PDF: mais largo e alto, iframe ocupa o corpo */
+/* Modal em modo PDF: mais largo e alto; o corpo rola e renderiza canvas */
 .pg-report-pdf { max-width: 880px; display: flex; flex-direction: column; max-height: calc(100vh - 60px); }
-.pg-pdfwrap { flex: 1; min-height: 0; background: #525659; }
-.pg-pdfframe { width: 100%; height: 78vh; border: 0; display: block; }
-@media (max-width: 640px) { .pg-ropen span, .pg-report-pdf { max-width: 100%; } .pg-pdfframe { height: 70vh; } }
+.pg-pdfwrap { flex: 1; min-height: 0; background: #525659; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.pg-pdfcanvaswrap { min-height: 60vh; }
+.pg-pdfpages { padding: 16px; }
+.pg-pdfmsg { color: #fff; text-align: center; padding: 40px 20px; font-size: 14px; }
+.pg-pdfmsg a { color: var(--pg-amber); font-weight: 700; }
+@media (max-width: 640px) { .pg-report-pdf { max-width: 100%; } .pg-pdfpages { padding: 10px; } }
 .pg-rbody { padding: 20px 22px 26px; }
 .pg-rexample { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--pg-orange); background: rgba(245,133,31,.12); border: 1px solid rgba(245,133,31,.3); display: inline-block; padding: 3px 9px; border-radius: 999px; margin-bottom: 14px; }
 .pg-rclient { font-size: 18px; font-weight: 750; letter-spacing: -.01em; }
