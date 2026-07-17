@@ -17,6 +17,7 @@ import {
   Clock,
   ShieldAlert,
   ChevronRight,
+  Route,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
@@ -258,14 +259,27 @@ export default function MapaUsinasPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <MapPin className="h-6 w-6 text-green-600" />
-        <div>
-          <h1 className="text-2xl font-bold">Mapa de Usinas</h1>
-          <p className="text-muted-foreground">
-            Localização geográfica e status das usinas Brasil Solar
-          </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <MapPin className="h-6 w-6 text-green-600" />
+          <div>
+            <h1 className="text-2xl font-bold">Mapa de Usinas</h1>
+            <p className="text-muted-foreground">
+              Localização geográfica e status das usinas Brasil Solar
+            </p>
+          </div>
         </div>
+
+        <Link
+          href="/admin/brasil-solar/processo-gestao"
+          className={cn(
+            buttonVariants({ variant: "outline", size: "sm" }),
+            "shrink-0 border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-200 dark:hover:bg-emerald-900/30"
+          )}
+        >
+          <Route className="h-4 w-4" />
+          Processo de gestão da usina
+        </Link>
       </div>
 
       <Link
