@@ -33,6 +33,10 @@ export interface AsaasPaymentInput {
   // true desabilita os e-mails/notificações padrão do Asaas (usado quando o operador
   // optou por não notificar por email nesta cobrança).
   notificationDisabled?: boolean;
+  // Vincula esta cobrança a uma autorização de Pix Automático já ativa. Quando
+  // presente, a cobrança é debitada automaticamente da conta do pagador (sem
+  // ação dele). Deve ser criada de 2 a 10 dias úteis antes do vencimento.
+  pixAutomaticAuthorizationId?: string;
 }
 
 export interface AsaasPayment {
@@ -193,5 +197,157 @@ export async function receivePaymentInCash(
       value: input.value,
       notifyCustomer: input.notifyCustomer ?? false,
     }),
+  });
+}
+
+// ============================================================================
+// Pix Automático — débito recorrente autorizado (mandato do Banco Central).
+// Fluxo: cria a autorização + QR do 1º pagamento (consentimento) → cliente paga
+// o QR → autorização vira ACTIVE → cria cobranças recorrentes vinculadas
+// (`pixAutomaticAuthorizationId`), de 2 a 10 dias úteis antes do vencimento.
+// ============================================================================
+
+export type AsaasPixAutomaticFrequency =
+  | "WEEKLY"
+  | "MONTHLY"
+  | "QUARTERLY"
+  | "SEMIANNUALLY"
+  | "ANNUALLY";
+
+export interface AsaasPixAutomaticAuthorizationInput {
+  customerId: string;
+  /** Identificador do contrato/objeto (máx. 35 chars). Ex.: id da UC/billing. */
+  contractId: string;
+  frequency: AsaasPixAutomaticFrequency;
+  /** Início da validade da autorização (YYYY-MM-DD). */
+  startDate: string;
+  /** Fim da validade (YYYY-MM-DD). Omitido = indeterminado. */
+  finishDate?: string;
+  /** Valor fixo das cobranças. Omitir quando for valor variável. */
+  value?: number;
+  /** Piso mínimo (só pra autorização de valor variável). */
+  minLimitValue?: number;
+  description?: string;
+  /** MANUAL (default): você cria cada cobrança. SUBSCRIPTION: o Asaas gera. */
+  paymentCreationMode?: "MANUAL" | "SUBSCRIPTION";
+  /** Política de retentativa em caso de falha. */
+  retryPolicy?: "NOT_ALLOWED" | "ALLOW_THREE_IN_SEVEN_DAYS";
+  /** Cobrança imediata que serve de consentimento (gera o 1º QR). */
+  immediateQrCode: {
+    value: number;
+    dueDate: string; // YYYY-MM-DD
+    description?: string;
+  };
+}
+
+export interface AsaasPixAutomaticAuthorization {
+  id: string;
+  status: string; // PENDING | ACTIVE | REJECTED | CANCELLED ...
+  /** Copia-e-cola do QR do 1º pagamento (consentimento). */
+  payload?: string | null;
+  /** Imagem base64 do QR, quando retornada. */
+  encodedImage?: string | null;
+  /** Cobrança do 1º pagamento gerada junto. */
+  firstPaymentId?: string | null;
+}
+
+export async function createPixAutomaticAuthorization(
+  input: AsaasPixAutomaticAuthorizationInput,
+): Promise<AsaasPixAutomaticAuthorization> {
+  return asaasFetch<AsaasPixAutomaticAuthorization>(
+    "/pix/automatic/authorizations",
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+export async function getPixAutomaticAuthorization(
+  id: string,
+): Promise<AsaasPixAutomaticAuthorization> {
+  return asaasFetch<AsaasPixAutomaticAuthorization>(
+    `/pix/automatic/authorizations/${id}`,
+    { method: "GET" },
+  );
+}
+
+export async function cancelPixAutomaticAuthorization(
+  id: string,
+): Promise<AsaasPixAutomaticAuthorization> {
+  return asaasFetch<AsaasPixAutomaticAuthorization>(
+    `/pix/automatic/authorizations/${id}`,
+    { method: "DELETE" },
+  );
+}
+
+// ===================== Assinaturas (cobrança recorrente) =====================
+// Usadas pelo acesso MENSAL ao portal do cliente Brasil Solar. Cada ciclo o
+// Asaas gera uma cobrança nova (mesmos eventos de webhook PAYMENT_*), com o
+// campo `subscription` apontando pra assinatura. O externalReference definido
+// aqui se propaga pras cobranças geradas.
+
+export type AsaasSubscriptionCycle =
+  | "WEEKLY"
+  | "BIWEEKLY"
+  | "MONTHLY"
+  | "QUARTERLY"
+  | "SEMIANNUALLY"
+  | "YEARLY";
+
+export interface AsaasSubscriptionInput {
+  customer: string;
+  billingType: AsaasBillingType;
+  value: number;
+  nextDueDate: string; // YYYY-MM-DD — vencimento da 1ª cobrança
+  cycle: AsaasSubscriptionCycle;
+  description?: string;
+  externalReference?: string;
+}
+
+export interface AsaasSubscription {
+  id: string;
+  status: string;
+  customer: string;
+  value: number;
+  cycle: string;
+  nextDueDate?: string;
+  deleted?: boolean;
+}
+
+export async function createSubscription(
+  input: AsaasSubscriptionInput,
+): Promise<AsaasSubscription> {
+  return asaasFetch<AsaasSubscription>("/subscriptions", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getSubscription(id: string): Promise<AsaasSubscription> {
+  return asaasFetch<AsaasSubscription>(`/subscriptions/${id}`, { method: "GET" });
+}
+
+/**
+ * Lista as cobranças geradas por uma assinatura. A primeira (mais antiga) é a
+ * que carrega o `invoiceUrl` do checkout inicial que mandamos pro cliente.
+ */
+export async function listSubscriptionPayments(
+  id: string,
+): Promise<AsaasPayment[]> {
+  const r = await asaasFetch<{ data: AsaasPayment[] }>(
+    `/subscriptions/${id}/payments`,
+    { method: "GET" },
+  );
+  return r.data ?? [];
+}
+
+export interface AsaasDeleteSubscriptionResult {
+  deleted: boolean;
+  id: string;
+}
+
+export async function deleteSubscription(
+  id: string,
+): Promise<AsaasDeleteSubscriptionResult> {
+  return asaasFetch<AsaasDeleteSubscriptionResult>(`/subscriptions/${id}`, {
+    method: "DELETE",
   });
 }

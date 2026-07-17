@@ -26,6 +26,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   GESTOR_OBRA: "Gestor de Obras",
   INVESTOR: "Investidor",
   CONSUMER: "Consumidor",
+  CLIENTE_BS: "Cliente Brasil Solar",
 };
 
 const PANEL_TITLES: Record<UserRole, string> = {
@@ -36,6 +37,7 @@ const PANEL_TITLES: Record<UserRole, string> = {
   GESTOR_OBRA: "Painel de Obras",
   INVESTOR: "Portal do Investidor",
   CONSUMER: "Portal do Consumidor",
+  CLIENTE_BS: "Portal do Cliente",
 };
 
 const MOTIVATIONAL_MESSAGES = [

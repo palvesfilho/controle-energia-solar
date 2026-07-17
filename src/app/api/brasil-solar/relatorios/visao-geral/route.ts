@@ -35,6 +35,9 @@ export interface RelatorioVisaoGeralRow {
   ucNome: string | null;
   distribuidora: string | null;
   active: boolean;
+  /** true quando o proprietário tem acesso ao portal vigente: pago (mensal/anual
+   *  com status ATIVO) ou cortesia com hoje dentro da janela de vigência. */
+  acessoAtivo: boolean;
   meses: Record<number, RelatorioCell>;
 }
 
@@ -56,14 +59,15 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const ano = Number(searchParams.get("ano")) || new Date().getFullYear();
+  const now = new Date();
+  const ano = Number(searchParams.get("ano")) || now.getFullYear();
 
   // Janelas de leitura podem extrapolar o ano calendÃ¡rio em atÃ© ~30 dias.
   // Buscar logs de Dez/(ano-1) atÃ© Jan/(ano+1) cobre todos os ciclos do ano.
   const logsRangeStart = new Date(Date.UTC(ano - 1, 11, 1)); // 1Âº de Dez do ano anterior
   const logsRangeEnd = new Date(Date.UTC(ano + 1, 1, 1)); // 1Âº de Fev do ano seguinte
 
-  const [proprietarios, ucs, bills, bscs, logs] = await Promise.all([
+  const [proprietarios, ucs, bills, bscs, logs, acessosAtivos] = await Promise.all([
     prisma.brasilSolarProprietario.findMany({
       where: { active: true },
       orderBy: { nome: "asc" },
@@ -108,7 +112,34 @@ export async function GET(req: NextRequest) {
       },
       select: { clientId: true, data: true, geracaoDiaria: true },
     }),
+    // Acessos ao portal com status ATIVO. A vigência da cortesia (janela
+    // vigenteDesde..vigenteAte) é conferida em memória logo abaixo.
+    prisma.brasilSolarAcesso.findMany({
+      where: { status: "ATIVO" },
+      select: {
+        proprietarioId: true,
+        modalidade: true,
+        vigenteDesde: true,
+        vigenteAte: true,
+      },
+    }),
   ]);
+
+  // Proprietários "ativos": têm acesso ao portal vigente. Pago (MENSAL/ANUAL) =
+  // basta status ATIVO; CORTESIA = precisa hoje estar dentro da janela
+  // (vigenteDesde <= hoje <= vigenteAte). A tela usa a flag `acessoAtivo` pra
+  // alternar entre "Ativos" e "todos".
+  const proprietariosComAcessoAtivo = new Set<string>();
+  for (const a of acessosAtivos) {
+    if (a.modalidade === "CORTESIA") {
+      const vigente =
+        (!a.vigenteDesde || a.vigenteDesde <= now) &&
+        (!a.vigenteAte || a.vigenteAte >= now);
+      if (vigente) proprietariosComAcessoAtivo.add(a.proprietarioId);
+    } else {
+      proprietariosComAcessoAtivo.add(a.proprietarioId);
+    }
+  }
 
   const ucByCodigoUc = new Map<
     string,
@@ -248,6 +279,7 @@ export async function GET(req: NextRequest) {
       ucNome: uc?.nome ?? null,
       distribuidora: uc?.distribuidora ?? null,
       active: p.active,
+      acessoAtivo: proprietariosComAcessoAtivo.has(p.id),
       meses,
     };
   });

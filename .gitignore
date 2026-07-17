@@ -63,3 +63,15 @@ uploads-zeroed-*.txt
 
 # relatórios gerados (contém PII de clientes — não commitar em repo público)
 /infosimples-report-*.md
+
+# scripts temporários de diagnóstico/backfill (prefixo _). Os já versionados
+# permanecem rastreados; isto só evita commitar novos descartáveis.
+scripts/_*
+
+# pasta aninhada acidental (cópia dentro do próprio projeto)
+/controle-energia-solar/
+
+# arquivos de trabalho / scratch locais
+/temp/
+/TODO_*.md
+/unidades-consumidoras.xlsx

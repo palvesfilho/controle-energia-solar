@@ -23,6 +23,7 @@ import {
   RefreshCw,
   Check,
   FileBarChart2,
+  Send,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MonitoringStatusBadge } from "@/components/brasil-solar/status-badge";
@@ -38,7 +39,8 @@ import {
   deriveStatus,
   type MonitoringPlanStatus,
 } from "@/components/brasil-solar/monitoring-plan-modal";
-import { ShieldCheck, ShieldAlert, ShieldOff } from "lucide-react";
+import { ConviteAcessoModal } from "@/components/brasil-solar/convite-acesso-modal";
+import { ShieldCheck, ShieldAlert, ShieldOff, Clock, CheckCircle2 } from "lucide-react";
 
 interface Planta {
   id: string;
@@ -134,6 +136,15 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
   const [planoModal, setPlanoModal] = useState<{ clientId: string; nome: string } | null>(
     null,
   );
+
+  // Modal convite de acesso ao portal do cliente + estado do acesso (pro botão)
+  const [conviteOpen, setConviteOpen] = useState(false);
+  const [acessoConvite, setAcessoConvite] = useState<{
+    status: string;
+    modalidade: string;
+    pagoEm: string | null;
+    vigenteAte: string | null;
+  } | null>(null);
 
   // Modal vincular
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -256,6 +267,19 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
     }
   }, [id]);
 
+  // Estado do acesso pago (pra refletir no botão "Enviar convite").
+  const fetchAcessoConvite = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/brasil-solar/proprietarios/${id}/convite`);
+      if (res.ok) {
+        const d = await res.json();
+        setAcessoConvite(d?.acesso ?? null);
+      }
+    } catch {
+      // silencioso — botão fica no estado padrão
+    }
+  }, [id]);
+
   const handleSyncAll = useCallback(async () => {
     if (!data) return;
     const sincronizaveis = data.plantas.filter(
@@ -274,26 +298,41 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
     }
     setSyncingAll(true);
     let ok = 0;
+    let semDados = 0;
     let fail = 0;
     for (const p of sincronizaveis) {
       const route = SYNC_ROUTES[p.plataformaMonitoramento!];
       try {
         const res = await fetch(`/api/brasil-solar/${p.id}/${route}`, { method: "POST" });
-        if (res.ok) ok++;
-        else fail++;
+        if (res.ok) {
+          // res.ok não garante que veio dado: uma usina sem inversor exposto
+          // pela API responde 200 com logsUpserted=0. Conta separado pra não
+          // mascarar de "ok".
+          const r = await res.json().catch(() => null);
+          if (r && r.logsUpserted > 0) ok++;
+          else semDados++;
+        } else {
+          fail++;
+        }
       } catch {
         fail++;
       }
     }
     setSyncingAll(false);
-    toast.success(`Sincronização concluída: ${ok} ok, ${fail} falha(s).`);
+    const partes = [`${ok} com dados`];
+    if (semDados > 0) partes.push(`${semDados} sem dados`);
+    if (fail > 0) partes.push(`${fail} falha(s)`);
+    const msg = `Sincronização: ${partes.join(", ")}.`;
+    if (fail > 0 || semDados > 0) toast.warning(msg, { duration: 9000 });
+    else toast.success(msg);
     await Promise.all([fetchData(), fetchMetricas()]);
   }, [data, fetchData, fetchMetricas]);
 
   useEffect(() => {
     fetchData();
     fetchMetricas();
-  }, [fetchData, fetchMetricas]);
+    fetchAcessoConvite();
+  }, [fetchData, fetchMetricas, fetchAcessoConvite]);
 
   // Buscar clientes sem proprietário para o modal
   const fetchAvailableClients = useCallback(async () => {
@@ -448,6 +487,52 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
             <Pencil className="h-4 w-4" />
             Editar
           </Link>
+          {(() => {
+            const st = acessoConvite?.status;
+            const isCortesia = acessoConvite?.modalidade === "CORTESIA";
+            let label = "Enviar convite";
+            let cls = "border hover:bg-muted";
+            let Icon = Send;
+            let title: string | undefined;
+            if (st === "AGUARDANDO_PAGAMENTO") {
+              label = "Cobrança gerada";
+              cls =
+                "border border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200";
+              Icon = Clock;
+              title = "Cobrança gerada — aguardando pagamento. Clique para ver/editar.";
+            } else if (st === "ATIVO") {
+              Icon = CheckCircle2;
+              cls =
+                "border border-emerald-300 bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200";
+              if (isCortesia) {
+                label = "Cortesia ativa";
+                title = "Acesso de cortesia (gratuito).";
+              } else {
+                label = "Cobrança paga";
+                if (acessoConvite?.pagoEm) {
+                  const quando = new Date(acessoConvite.pagoEm).toLocaleDateString(
+                    "pt-BR",
+                  );
+                  title =
+                    acessoConvite.modalidade === "MENSAL"
+                      ? `Último pagamento (recorrência): ${quando}`
+                      : `Pagamento do boleto: ${quando}`;
+                } else {
+                  title = "Pagamento confirmado.";
+                }
+              }
+            }
+            return (
+              <button
+                onClick={() => setConviteOpen(true)}
+                title={title}
+                className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg transition-colors ${cls}`}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </button>
+            );
+          })()}
           <button
             onClick={handleDelete}
             className="flex items-center gap-1.5 px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
@@ -984,6 +1069,15 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
           onChanged={() => fetchData()}
         />
       )}
+
+      <ConviteAcessoModal
+        proprietarioId={id}
+        proprietarioNome={data.nome}
+        temCpfCnpj={Boolean(data.cpfCnpj)}
+        open={conviteOpen}
+        onClose={() => setConviteOpen(false)}
+        onChanged={fetchAcessoConvite}
+      />
     </div>
   );
 }

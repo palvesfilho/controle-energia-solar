@@ -7,7 +7,10 @@ export type UserRole =
   | "POS_VENDA"
   | "GESTOR_OBRA"
   | "INVESTOR"
-  | "CONSUMER";
+  | "CONSUMER"
+  // Cliente da Rede Brasil Solar (proprietário de usina) com acesso pago ao
+  // portal do cliente. Isolado: só enxerga /portal-cliente, nunca o admin.
+  | "CLIENTE_BS";
 
 declare module "next-auth" {
   interface Session {

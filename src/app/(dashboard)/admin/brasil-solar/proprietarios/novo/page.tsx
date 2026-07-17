@@ -41,7 +41,7 @@ interface FormData {
   prazoContratoDias: string;
 }
 
-export const TIPO_TELHADO_OPTIONS: { value: string; label: string }[] = [
+const TIPO_TELHADO_OPTIONS: { value: string; label: string }[] = [
   { value: "FIBROCIMENTO", label: "Fibrocimento" },
   { value: "CERAMICO", label: "Cerâmico" },
   { value: "LAJE", label: "Laje" },
@@ -57,7 +57,7 @@ const PRAZO_MIN_CARPORT_SOLO = 19; // 3 dias de estrutura + 15 dias de lag + 1 d
 
 // Dados técnicos da planta extraídos do Anexo F, guardados para pré-preencher
 // a tela "Novo Cliente" após a criação do proprietário.
-export interface AnexoFPlantaPrefill {
+interface AnexoFPlantaPrefill {
   codigoUc?: string;
   latitude?: number;
   longitude?: number;

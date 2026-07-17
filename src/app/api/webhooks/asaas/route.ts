@@ -7,6 +7,18 @@ import {
   parseInstallments,
   serializeInstallments,
 } from "@/lib/billing-installments";
+import {
+  ACESSO_REF_PREFIX,
+  ativarAcessoPorCobranca,
+} from "@/lib/brasil-solar-acesso";
+import { enviarConviteCadastroCliente } from "@/lib/clerk-invite";
+
+// Eventos do Asaas que significam pagamento confirmado.
+const EVENTOS_PAGOS = new Set([
+  "PAYMENT_CONFIRMED",
+  "PAYMENT_RECEIVED",
+  "PAYMENT_RECEIVED_IN_CASH",
+]);
 
 interface AsaasWebhookPayload {
   event: string;
@@ -50,6 +62,58 @@ export async function POST(req: NextRequest) {
   const { event, payment } = payload;
   if (!event || !payment?.id) {
     return NextResponse.json({ error: "Missing event/payment" }, { status: 400 });
+  }
+
+  // === Acesso pago ao portal do cliente (externalReference "bs-acesso:<id>") ===
+  // Roteado ANTES da lógica de faturas de UC. Só ativa em pagamento confirmado;
+  // demais eventos são apenas reconhecidos (suspensão por inadimplência = Fase 4).
+  if (payment.externalReference?.startsWith(ACESSO_REF_PREFIX)) {
+    if (!EVENTOS_PAGOS.has(event)) {
+      return NextResponse.json({ ok: true, event, ignored: "acesso: evento não-pago" });
+    }
+    const dateStr = payment.paymentDate || payment.clientPaymentDate;
+    const ativado = await ativarAcessoPorCobranca({
+      externalReference: payment.externalReference,
+      chargeId: payment.id,
+      paidAt: dateStr ? new Date(dateStr) : new Date(),
+    });
+    if (!ativado) {
+      console.warn(`[asaas-webhook] acesso não encontrado para ${payment.externalReference}`);
+      return NextResponse.json({ ok: true, ignored: "acesso not found" });
+    }
+
+    // Envio AUTOMÁTICO do convite de cadastro no fluxo PAGO (cartão/Pix/boleto).
+    // A cortesia não passa por aqui (é ativada direto), então segue manual.
+    // Idempotente: só envia uma vez (sem clerkUserId e sem conviteEnviadoEm).
+    // Nunca lança — falha aqui não pode derrubar o ACK do webhook pro Asaas.
+    let conviteEnviado = false;
+    try {
+      const prop = await prisma.brasilSolarProprietario.findUnique({
+        where: { id: ativado.proprietarioId },
+        select: {
+          email: true,
+          clerkUserId: true,
+          acesso: { select: { conviteEnviadoEm: true } },
+        },
+      });
+      if (prop?.email && !prop.clerkUserId && !prop.acesso?.conviteEnviadoEm) {
+        await enviarConviteCadastroCliente({
+          email: prop.email,
+          proprietarioId: ativado.proprietarioId,
+        });
+        await prisma.brasilSolarAcesso.update({
+          where: { proprietarioId: ativado.proprietarioId },
+          data: { conviteEnviadoEm: new Date() },
+        });
+        conviteEnviado = true;
+        console.log(`[asaas-webhook] convite de cadastro enviado p/ ${prop.email}`);
+      }
+    } catch (e) {
+      console.error("[asaas-webhook] falha ao enviar convite (não bloqueia):", e);
+    }
+
+    console.log(`[asaas-webhook] acesso ${ativado.id} ATIVO (proprietário ${ativado.proprietarioId})`);
+    return NextResponse.json({ ok: true, event, acessoId: ativado.id, status: "ATIVO", conviteEnviado });
   }
 
   // O externalReference traz "billingId" (cobrança única) ou "billingId#N" (parcela).

@@ -8,6 +8,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   GESTOR_OBRA: "Gestor de Obras",
   INVESTOR: "Investidor",
   CONSUMER: "Consumidor",
+  CLIENTE_BS: "Cliente Brasil Solar",
 };
 
 // Sections (granularidade de acesso). Toda checagem nova de permissão
@@ -30,7 +31,8 @@ export type AdminSection =
   | "persCodigosErroEdit"
   | "persDistribuidoraEmails"
   | "persAlertasUsinas"
-  | "persRelatorioParametros";
+  | "persRelatorioParametros"
+  | "persAcessoPortal";
 
 const FULL_ADMIN_TRIO: UserRole[] = ["ADMIN", "GESTOR", "FINANCEIRO"];
 
@@ -54,6 +56,7 @@ export const SECTION_ROLES: Record<AdminSection, UserRole[]> = {
   persDistribuidoraEmails: FULL_ADMIN_TRIO,
   persAlertasUsinas: FULL_ADMIN_TRIO,
   persRelatorioParametros: FULL_ADMIN_TRIO,
+  persAcessoPortal: FULL_ADMIN_TRIO,
 };
 
 export function canAccessSection(
@@ -128,6 +131,8 @@ export function getHomeRoute(role: string): string {
       return "/painel";
     case "CONSUMER":
       return "/painel";
+    case "CLIENTE_BS":
+      return "/portal-cliente";
     default:
       return "/login";
   }

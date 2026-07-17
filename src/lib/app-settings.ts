@@ -10,11 +10,17 @@ import { prisma } from "@/lib/prisma";
 export const APP_SETTING_KEYS = {
   reajusteTarifaAnual: "relatorio.reajusteTarifaAnual",
   depreciacaoModuloAnual: "relatorio.depreciacaoModuloAnual",
+  // Valores de tabela do acesso pago ao portal do cliente Brasil Solar (R$).
+  // MENSAL/ANUAL usam o valor de tabela; PERSONALIZADO exige valor >= tabela.
+  acessoValorMensalTabela: "acesso.valorMensalTabela",
+  acessoValorAnualTabela: "acesso.valorAnualTabela",
 } as const;
 
 export const APP_SETTING_DEFAULTS = {
   [APP_SETTING_KEYS.reajusteTarifaAnual]: 0.07,
   [APP_SETTING_KEYS.depreciacaoModuloAnual]: 0.005,
+  [APP_SETTING_KEYS.acessoValorMensalTabela]: 0,
+  [APP_SETTING_KEYS.acessoValorAnualTabela]: 0,
 } as const;
 
 /**
@@ -55,4 +61,26 @@ export async function getRelatorioParametros(): Promise<{
     ),
   ]);
   return { reajusteTarifaAnual: reajuste, depreciacaoModuloAnual: depreciacao };
+}
+
+/**
+ * Valores de tabela do acesso pago ao portal (mensal e anual, em R$). Default 0
+ * — o admin define em /admin/personalizacoes/acesso-portal. Usados pra
+ * pré-preencher MENSAL/ANUAL e como piso do valor no modo PERSONALIZADO.
+ */
+export async function getAcessoValoresTabela(): Promise<{
+  mensal: number;
+  anual: number;
+}> {
+  const [mensal, anual] = await Promise.all([
+    getNumberSetting(
+      APP_SETTING_KEYS.acessoValorMensalTabela,
+      APP_SETTING_DEFAULTS[APP_SETTING_KEYS.acessoValorMensalTabela],
+    ),
+    getNumberSetting(
+      APP_SETTING_KEYS.acessoValorAnualTabela,
+      APP_SETTING_DEFAULTS[APP_SETTING_KEYS.acessoValorAnualTabela],
+    ),
+  ]);
+  return { mensal, anual };
 }

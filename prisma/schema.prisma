@@ -21,8 +21,8 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  investor Investor?
-  uploads  Upload[]
+  investor         Investor?
+  uploads          Upload[]
   acoesResponsavel AcaoRecomendada[] @relation("AcaoResponsavel")
   acoesResolvidas  AcaoRecomendada[] @relation("AcaoResolvidaPor")
 
@@ -230,11 +230,55 @@ model InvestorPlant {
   valorKwhContrato   Float? @map("valor_kwh_contrato") // R$/kWh pago ao investidor
   gestaoFixaContrato Float? @map("gestao_fixa_contrato") // R$ gestao fixa mensal
 
-  investor Investor @relation(fields: [investorId], references: [id], onDelete: Cascade)
-  plant    Plant    @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  investor  Investor           @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  plant     Plant              @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  contracts InvestorContract[]
 
   @@unique([investorId, plantId])
   @@map("investor_plants")
+}
+
+// Contrato assinado entre Dommo Soluções (gestora) e o investidor (dono da
+// usina). Cada InvestorPlant pode ter N contratos — original + aditivos —
+// versionados por `versao`. O PDF fica no R2; valores monetários extraídos
+// vão pros campos correspondentes em InvestorPlant (valorKwhContrato,
+// gestaoFixaContrato). Aqui guardamos só o que não cabe lá: o arquivo,
+// cláusulas de prazo/rescisão, e a versão.
+model InvestorContract {
+  id              String @id @default(cuid())
+  investorPlantId String @map("investor_plant_id")
+
+  // PDF arquivado no R2 (caminho relativo, via file-storage)
+  url      String
+  fileName String @map("file_name")
+  size     Int?
+
+  // Cláusulas extraídas do contrato
+  dataAssinatura           DateTime? @map("data_assinatura")
+  prazoMeses               Int?      @map("prazo_meses")
+  marcoInicioPrazo         String?   @map("marco_inicio_prazo") // texto livre: "êxito do crédito", "data da assinatura", etc
+  antecedenciaRescisaoDias Int?      @map("antecedencia_rescisao_dias")
+  // Taxa inicial em múltiplos da geração mensal esperada (ex: 2 = 2× geração).
+  // Paga pelos terceiros beneficiários, não pelo investidor diretamente.
+  taxaInicialMultGeracao   Int?      @map("taxa_inicial_mult_geracao")
+  foro                     String?
+  observacoes              String?
+
+  // Versionamento: 1 = original, 2+ = aditivos. `substituiId` aponta pro
+  // contrato anterior quando este é um aditivo que o substitui.
+  versao      Int     @default(1)
+  substituiId String? @map("substitui_id")
+
+  uploadedById String?  @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  investorPlant InvestorPlant      @relation(fields: [investorPlantId], references: [id], onDelete: Cascade)
+  substitui     InvestorContract?  @relation("ContratoAditivo", fields: [substituiId], references: [id], onDelete: SetNull)
+  substituidos  InvestorContract[] @relation("ContratoAditivo")
+
+  @@index([investorPlantId])
+  @@map("investor_contracts")
 }
 
 model MonthlyReport {
@@ -378,9 +422,13 @@ model ConsumerUnit {
   origem String @default("PADRAO")
 
   // Identificação
-  nome     String
-  codigoUc String  @unique @map("codigo_uc")
-  cpfCnpj  String? @map("cpf_cnpj")
+  nome           String
+  codigoUc       String  @unique @map("codigo_uc")
+  // Código de instalação ANTERIOR à migração de códigos da RGE (jul/2026).
+  // Preenchido pelo script importar-codigo-uc-rge quando o codigoUc é atualizado
+  // para o novo número; preserva o histórico pra rastreabilidade/re-consulta.
+  codigoUcAntigo String? @map("codigo_uc_antigo")
+  cpfCnpj        String? @map("cpf_cnpj")
 
   // Distribuidora e classificação
   distribuidora String?
@@ -437,15 +485,15 @@ model ConsumerUnit {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  consumer         Consumer?             @relation(fields: [consumerId], references: [id], onDelete: SetNull)
-  plant            Plant?                @relation(fields: [plantId], references: [id], onDelete: SetNull)
-  billings         ConsumerUnitBilling[]
-  bills            ConsumerBill[]
-  cpflCredential   CpflCredential?
-  rateioItems      RateioItem[]
-  investorPayables InvestorPayable[]
-  acoesRecomendadas AcaoRecomendada[]
-  consumoBaselines ConsumoBaseline[]
+  consumer                 Consumer?                 @relation(fields: [consumerId], references: [id], onDelete: SetNull)
+  plant                    Plant?                    @relation(fields: [plantId], references: [id], onDelete: SetNull)
+  billings                 ConsumerUnitBilling[]
+  bills                    ConsumerBill[]
+  cpflCredential           CpflCredential?
+  rateioItems              RateioItem[]
+  investorPayables         InvestorPayable[]
+  acoesRecomendadas        AcaoRecomendada[]
+  consumoBaselines         ConsumoBaseline[]
   brasilSolarBeneficiarias BrasilSolarBeneficiaria[]
 
   @@index([consumerId])
@@ -485,16 +533,16 @@ model ConsumerUnitBilling {
 
   // Demonstrativo de cobrança (PDF gerado pelo sistema, anexado ao email do
   // cliente). Caminho no R2/storage; emitido junto com a cobrança Asaas.
-  demonstrativoUrl       String?   @map("demonstrativo_url")
-  demonstrativoGeradoEm  DateTime? @map("demonstrativo_gerado_em")
+  demonstrativoUrl         String?   @map("demonstrativo_url")
+  demonstrativoGeradoEm    DateTime? @map("demonstrativo_gerado_em")
   // Validação do demonstrativo (FULL_ADMIN_TRIO) — só após validação o
   // botão "Realizar Cobrança" libera. Edição de valores reseta pra null.
   demonstrativoValidadoEm  DateTime? @map("demonstrativo_validado_em")
   demonstrativoValidadoPor String?   @map("demonstrativo_validado_por")
 
   // Envio do demonstrativo por email (Resend)
-  emailEnviadoEm     DateTime? @map("email_enviado_em")
-  emailErro          String?   @map("email_erro")
+  emailEnviadoEm DateTime? @map("email_enviado_em")
+  emailErro      String?   @map("email_erro")
 
   // Preferências de envio escolhidas pelo operador (persistidas mesmo sem disparar)
   notificarEmail    Boolean @default(true) @map("notificar_email")
@@ -550,16 +598,16 @@ model ConsumerBill {
   instalacao    String? // Numero da instalacao na concessionaria
 
   // Valores da fatura
-  valorTotal   Float?    @map("valor_total")
+  valorTotal          Float?    @map("valor_total")
   // Valor recalculado pelo nosso parser a partir dos itens da fatura — exclui
   // ajustes que não são do mês (juros/multa de débito antigo, refaturamento,
   // recuperação de consumo, etc.). É essa a base usada pra cobrar o cliente.
   // Mantém valorTotal original pra auditoria contra a fatura impressa.
-  valorTotalCalculado Float? @map("valor_total_calculado")
-  vencimento   DateTime?
-  contaPaga    Boolean   @default(false) @map("conta_paga")
-  codigoBarras String?   @map("codigo_barras")
-  pixCopiaCola String?   @map("pix_copia_cola")
+  valorTotalCalculado Float?    @map("valor_total_calculado")
+  vencimento          DateTime?
+  contaPaga           Boolean   @default(false) @map("conta_paga")
+  codigoBarras        String?   @map("codigo_barras")
+  pixCopiaCola        String?   @map("pix_copia_cola")
 
   // Pagamento da fatura para a distribuidora (registrado pelo financeiro
   // via tela "Pagar Faturas"). Independe do contaPaga (que vem do parser).
@@ -688,22 +736,35 @@ model ConsumerBill {
   // JSON pra não inflar mais o schema. Estrutura: GrupoALeituraMedidor[] de fatura-pdf-parser-grupo-a.ts
   leiturasMedidorJson String? @map("leituras_medidor_json")
 
+  // Energia injetada pelo painel solar DO PRÓPRIO CLIENTE (Lei 14.300).
+  // Linhas "Energia Ativa Injetada TE/TUSD" da fatura RGE — SEM "oUC" no nome.
+  // 100% do benefício é do cliente; NÃO entra no cálculo de cobrança da Associação.
+  energiaInjetadaPropriaTeKwh     Float? @map("energia_injetada_propria_te_kwh")
+  energiaInjetadaPropriaTeValor   Float? @map("energia_injetada_propria_te_valor")
+  energiaInjetadaPropriaTusdKwh   Float? @map("energia_injetada_propria_tusd_kwh")
+  energiaInjetadaPropriaTusdValor Float? @map("energia_injetada_propria_tusd_valor")
+
   // Tarifas
-  tarifaTE          Float?  @map("tarifa_te") // Tarifa Energia (ANEEL)
-  tarifaTUSD        Float?  @map("tarifa_tusd") // Tarifa Uso Sistema Distribuicao
-  bandeiraTarifaria String? @map("bandeira_tarifaria")
-  bandeiraValor     Float?  @map("bandeira_valor") // Soma R$ de todas as linhas de bandeira da fatura
+  tarifaTE                      Float?  @map("tarifa_te") // Tarifa Energia (ANEEL) — base sem impostos
+  tarifaTUSD                    Float?  @map("tarifa_tusd") // Tarifa Uso Sistema Distribuicao — base sem impostos
+  // Tarifa "com tributos" (ICMS+PIS+COFINS aplicados) — é o R$/kWh que o cliente
+  // efetivamente paga. Usada no cálculo de cobrança da UC geradora DESCONTADO
+  // (consumo instantâneo) para refletir o valor real economizado.
+  tarifaTeComTributos           Float?  @map("tarifa_te_com_tributos")
+  tarifaTusdComTributos         Float?  @map("tarifa_tusd_com_tributos")
+  bandeiraTarifaria             String? @map("bandeira_tarifaria")
+  bandeiraValor                 Float?  @map("bandeira_valor") // Soma R$ de todas as linhas de bandeira da fatura
   // Adicional de Bandeira por cor — preenchido na linha "Adicional de Bandeira X".
   // Valor positivo (cobrança). Soma desses 3 = bandeiraValor (em Grupo B sem posto).
-  bandeiraAmarelaValor    Float? @map("bandeira_amarela_valor")
-  bandeiraVermelhaValor   Float? @map("bandeira_vermelha_valor")
-  bandeiraVermelha2Valor  Float? @map("bandeira_vermelha2_valor")
+  bandeiraAmarelaValor          Float?  @map("bandeira_amarela_valor")
+  bandeiraVermelhaValor         Float?  @map("bandeira_vermelha_valor")
+  bandeiraVermelha2Valor        Float?  @map("bandeira_vermelha2_valor")
   // Crédito de Adicional de Bandeira por cor — preenchido na linha "Cred Adc Band X".
   // Valor NEGATIVO (vem com "-" na fatura, ex.: "4,34-"). Não entra na soma da fatura;
   // virará desconto pro cliente em etapa futura (mesma lógica do ajusteSaldoCredito).
-  bandeiraAmarelaCreditoValor    Float? @map("bandeira_amarela_credito_valor")
-  bandeiraVermelhaCreditoValor   Float? @map("bandeira_vermelha_credito_valor")
-  bandeiraVermelha2CreditoValor  Float? @map("bandeira_vermelha2_credito_valor")
+  bandeiraAmarelaCreditoValor   Float?  @map("bandeira_amarela_credito_valor")
+  bandeiraVermelhaCreditoValor  Float?  @map("bandeira_vermelha_credito_valor")
+  bandeiraVermelha2CreditoValor Float?  @map("bandeira_vermelha2_credito_valor")
 
   // Consumo instantâneo: energia gerada pela usina e consumida na hora, sem
   // passar pela rede (não compensada). Só faz sentido para UC geradora em
@@ -1006,6 +1067,11 @@ model BrasilSolarProprietario {
 
   observacoes String?
 
+  // Vínculo com o usuário Clerk criado quando o proprietário aceita o convite
+  // e cadastra login/senha. Preenchido no fim do fluxo de acesso pago. Um
+  // usuário Clerk = um proprietário (portal do cliente Brasil Solar).
+  clerkUserId String? @unique @map("clerk_user_id")
+
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1017,18 +1083,68 @@ model BrasilSolarProprietario {
   // remoto). Modelo simples, sem versionamento — edição reescreve em vigor.
   beneficiarias BrasilSolarBeneficiaria[]
 
+  // Acesso pago ao portal do cliente (1:1). Ver BrasilSolarAcesso.
+  acesso BrasilSolarAcesso?
+
   @@index([nome])
   @@index([cpfCnpj])
   @@index([codigoUc])
   @@map("brasil_solar_proprietarios")
 }
 
+// Acesso pago do proprietário ao portal do cliente Brasil Solar. UM registro
+// por proprietário (o acesso cobre TODAS as usinas dele). Máquina de estados:
+//   AGUARDANDO_PAGAMENTO → (webhook Asaas confirma) → ATIVO
+//   ATIVO → (assinatura falha / anual vence) → SUSPENSO
+//   qualquer → CANCELADO (admin)
+// Modalidade define como o Asaas cobra:
+//   ANUAL  = cobrança única (asaasChargeId), acesso vale 12 meses (vigenteAte)
+//   MENSAL = assinatura recorrente (asaasSubscriptionId), vigenteAte estende a
+//            cada pagamento confirmado.
+model BrasilSolarAcesso {
+  id             String @id @default(cuid())
+  proprietarioId String @unique @map("proprietario_id")
+
+  modalidade String // MENSAL | ANUAL | CORTESIA
+  valor      Float // R$ do plano (mensal ou anual, conforme modalidade). CORTESIA = 0.
+  status     String @default("AGUARDANDO_PAGAMENTO") // AGUARDANDO_PAGAMENTO | ATIVO | SUSPENSO | CANCELADO
+
+  // Referências no Asaas
+  asaasCustomerId     String? @map("asaas_customer_id")
+  asaasChargeId       String? @map("asaas_charge_id") // cobrança única (ANUAL)
+  asaasSubscriptionId String? @map("asaas_subscription_id") // assinatura (MENSAL)
+  checkoutUrl         String? @map("checkout_url") // invoiceUrl hospedada do Asaas
+
+  // Token do link de cadastro (login/senha) enviado após o pagamento confirmar.
+  conviteToken String? @unique @map("convite_token")
+
+  // Vigência do acesso: liberado enquanto vigenteDesde <= hoje <= vigenteAte.
+  // vigenteDesde é usado principalmente na CORTESIA (admin escolhe início e fim);
+  // nas modalidades pagas fica null e a vigência é derivada do pagamento.
+  vigenteDesde DateTime? @map("vigente_desde")
+  vigenteAte   DateTime? @map("vigente_ate")
+
+  conviteEnviadoEm DateTime? @map("convite_enviado_em")
+  pagoEm           DateTime? @map("pago_em")
+  ativadoEm        DateTime? @map("ativado_em")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  proprietario BrasilSolarProprietario @relation(fields: [proprietarioId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([asaasChargeId])
+  @@index([asaasSubscriptionId])
+  @@map("brasil_solar_acessos")
+}
+
 // Rateio simplificado para clientes Brasil Solar (sem versionamento, ao
 // contrário de RateioVersion que é exclusivo do fluxo de investidor).
 // Cada linha representa uma UC do mesmo titular recebendo créditos.
 model BrasilSolarBeneficiaria {
-  id             String   @id @default(cuid())
-  proprietarioId String   @map("proprietario_id")
+  id             String @id @default(cuid())
+  proprietarioId String @map("proprietario_id")
 
   codigoUc    String  @map("codigo_uc")
   nome        String?
@@ -1748,13 +1864,13 @@ model AcaoRecomendada {
   tipo       String // AcaoTipo (CREDITOS_VENCENDO_30D, USINA_SUBPERFORMANDO, ...)
   severidade String // info | atencao | critico
   titulo     String
-  descricao  String  @db.Text
-  prazoDias  Int     @map("prazo_dias") // 30 | 60 | 90 — janela do SLA
+  descricao  String @db.Text
+  prazoDias  Int    @map("prazo_dias") // 30 | 60 | 90 — janela do SLA
 
-  plantId            String? @map("plant_id")
-  consumerUnitId     String? @map("consumer_unit_id")
-  metricaValor       Float?  @map("metrica_valor")
-  metricaLabel       String? @map("metrica_label")
+  plantId        String? @map("plant_id")
+  consumerUnitId String? @map("consumer_unit_id")
+  metricaValor   Float?  @map("metrica_valor")
+  metricaLabel   String? @map("metrica_label")
 
   // Mês de referência em que a ação foi vista pela primeira vez. Usado pra
   // saber se a ação ainda é desse ciclo ou virou histórico de outro.
@@ -1768,16 +1884,16 @@ model AcaoRecomendada {
   // por urgência e calcular "atrasada".
   prazoEm DateTime @map("prazo_em")
 
-  responsavelUserId    String? @map("responsavel_user_id")
-  observacaoResolucao  String? @map("observacao_resolucao") @db.Text
-  resolvidaEm          DateTime? @map("resolvida_em")
-  resolvidaPorUserId   String?   @map("resolvida_por_user_id")
+  responsavelUserId   String?   @map("responsavel_user_id")
+  observacaoResolucao String?   @map("observacao_resolucao") @db.Text
+  resolvidaEm         DateTime? @map("resolvida_em")
+  resolvidaPorUserId  String?   @map("resolvida_por_user_id")
 
-  criadaEm    DateTime @default(now()) @map("criada_em")
+  criadaEm     DateTime @default(now()) @map("criada_em")
   atualizadaEm DateTime @updatedAt @map("atualizada_em")
   // Última vez que a análise viu essa ação ainda válida. Quando uma ação
   // ABERTA não é revista por N dias, vira AUTO_FECHADA.
-  vistaEm     DateTime @default(now()) @map("vista_em")
+  vistaEm      DateTime @default(now()) @map("vista_em")
 
   plant        Plant?        @relation(fields: [plantId], references: [id], onDelete: SetNull)
   consumerUnit ConsumerUnit? @relation(fields: [consumerUnitId], references: [id], onDelete: SetNull)
@@ -1803,7 +1919,7 @@ model AnaliseCreditosSnapshot {
 
   // FULL = portfólio inteiro; PLANT = uma usina; INVESTOR = um investidor.
   // escopoId é null pra FULL.
-  escopoTipo String @map("escopo_tipo")
+  escopoTipo String  @map("escopo_tipo")
   escopoId   String? @map("escopo_id")
 
   completo Boolean @default(false)
@@ -1812,9 +1928,9 @@ model AnaliseCreditosSnapshot {
   // Imutável — recompute futuro NÃO sobrescreve o snapshot histórico.
   payloadJson String @map("payload_json") @db.Text
 
-  emailEnviado    Boolean   @default(false) @map("email_enviado")
-  emailEnviadoEm  DateTime? @map("email_enviado_em")
-  emailDestinatarios String? @map("email_destinatarios") // CSV de emails
+  emailEnviado       Boolean   @default(false) @map("email_enviado")
+  emailEnviadoEm     DateTime? @map("email_enviado_em")
+  emailDestinatarios String?   @map("email_destinatarios") // CSV de emails
 
   geradoEm        DateTime @default(now()) @map("gerado_em")
   geradoPorUserId String?  @map("gerado_por_user_id") // null = automático (script/cron)

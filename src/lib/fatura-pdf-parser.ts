@@ -169,6 +169,10 @@ export interface ParsedFaturaPdf {
     injetadaOucTeValor: number | null;
     injetadaOucTusdKwh: number | null;
     injetadaOucTusdValor: number | null;
+    energiaInjetadaPropriaTeKwh: number | null;
+    energiaInjetadaPropriaTeValor: number | null;
+    energiaInjetadaPropriaTusdKwh: number | null;
+    energiaInjetadaPropriaTusdValor: number | null;
     injetadaDetalhes: string | null;
 
     historicoConsumo: string | null;
@@ -189,6 +193,8 @@ export interface ParsedFaturaPdf {
 
     tarifaTE: number | null;
     tarifaTUSD: number | null;
+    tarifaTeComTributos: number | null;
+    tarifaTusdComTributos: number | null;
     bandeiraTarifaria: string | null;
     bandeiraValor: number | null;
     // Bandeiras por cor — cobrança (positivo)
@@ -390,6 +396,7 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
   let custoDispTeKwh: number | null = null, custoDispTeValor: number | null = null;
   let custoDispTusdKwh: number | null = null, custoDispTusdValor: number | null = null;
   let tarifaTE: number | null = null, tarifaTUSD: number | null = null;
+  let tarifaTeComTributos: number | null = null, tarifaTusdComTributos: number | null = null;
   let bandeiraTarifaria: string | null = null;
   let bandeiraValor: number | null = null;
   let bandeiraAmarelaValor: number | null = null;
@@ -402,10 +409,19 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
   const injByOrigem = new Map<string, InjetadaDetalhe>();
   let injTeKwh = 0, injTeValor = 0, injTusdKwh = 0, injTusdValor = 0;
   let temInjTe = false, temInjTusd = false;
+  // Geração própria do cliente (linhas "Energia Ativa Injetada" SEM "oUC").
+  let energiaInjetadaPropriaTeKwh: number | null = null;
+  let energiaInjetadaPropriaTeValor: number | null = null;
+  let energiaInjetadaPropriaTusdKwh: number | null = null;
+  let energiaInjetadaPropriaTusdValor: number | null = null;
 
   for (const lc of linhasConsumo) {
     const d = normDesc(lc.desc);
-    const isInj = d.includes("energ") && d.includes("inj");
+    const isInjAny = d.includes("energ") && d.includes("inj");
+    // "oUC" = "outra UC" — só aparece em compensação por rateio da nossa usina.
+    // "Energia Ativa Injetada" SEM oUC = painel solar do próprio cliente (Lei 14.300).
+    const isInjPropria = isInjAny && !d.includes("ouc");
+    const isInj = isInjAny && d.includes("ouc");
     const isTusd = d.includes("tusd");
     const isTe = !isTusd && (d.includes(" te ") || d.endsWith(" te") || d.includes("- te") || d.includes("-te"));
     // Linha de bandeira cobrada ("Adicional de Bandeira X") ou de crédito
@@ -414,8 +430,8 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
     const isCreditoBandeira =
       (d.includes("cred") || d.includes("credito")) && d.includes("band");
     const isBandeira = d.includes("bandeira") || isCreditoBandeira;
-    const isDisp = d.includes("disp") && d.includes("energ") && !isInj;
-    const isConsumo = !isDisp && d.startsWith("consumo") && !isInj;
+    const isDisp = d.includes("disp") && d.includes("energ") && !isInjAny;
+    const isConsumo = !isDisp && d.startsWith("consumo") && !isInjAny;
 
     if (isBandeira) {
       // Detecta cor — vale tanto pra cobrança quanto pra crédito.
@@ -466,6 +482,21 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
       continue;
     }
 
+    if (isInjPropria) {
+      // Linha "Energia Ativa Injetada TE/TUSD" — geração do painel próprio do cliente.
+      // O valor monetário negativo (crédito) entra como Math.abs.
+      const valor = lc.valorTotal != null ? Math.abs(lc.valorTotal) : null;
+      const qtd = lc.qtd != null ? Math.abs(lc.qtd) : null;
+      if (isTusd) {
+        if (qtd != null) energiaInjetadaPropriaTusdKwh = (energiaInjetadaPropriaTusdKwh ?? 0) + qtd;
+        if (valor != null) energiaInjetadaPropriaTusdValor = (energiaInjetadaPropriaTusdValor ?? 0) + valor;
+      } else if (isTe) {
+        if (qtd != null) energiaInjetadaPropriaTeKwh = (energiaInjetadaPropriaTeKwh ?? 0) + qtd;
+        if (valor != null) energiaInjetadaPropriaTeValor = (energiaInjetadaPropriaTeValor ?? 0) + valor;
+      }
+      continue;
+    }
+
     if (isInj) {
       const origem = extractMesOrigem(lc.desc) ?? "SEM_ORIGEM";
       const entry = injByOrigem.get(origem) ?? {
@@ -507,10 +538,12 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
         if (consumoTusdKwh == null) consumoTusdKwh = lc.qtd;
         if (consumoTusdValor == null) consumoTusdValor = lc.valorTotal;
         if (tarifaTUSD == null) tarifaTUSD = lc.tarifaAneel;
+        if (tarifaTusdComTributos == null) tarifaTusdComTributos = lc.tarifaCTrib;
       } else if (isTe) {
         if (consumoTeKwh == null) consumoTeKwh = lc.qtd;
         if (consumoTeValor == null) consumoTeValor = lc.valorTotal;
         if (tarifaTE == null) tarifaTE = lc.tarifaAneel;
+        if (tarifaTeComTributos == null) tarifaTeComTributos = lc.tarifaCTrib;
       }
     }
   }
@@ -706,6 +739,10 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
       injetadaOucTeValor: temInjTe ? injTeValor : null,
       injetadaOucTusdKwh: temInjTusd ? injTusdKwh : null,
       injetadaOucTusdValor: temInjTusd ? injTusdValor : null,
+      energiaInjetadaPropriaTeKwh,
+      energiaInjetadaPropriaTeValor,
+      energiaInjetadaPropriaTusdKwh,
+      energiaInjetadaPropriaTusdValor,
       injetadaDetalhes: injetadaDetalhes.length > 0 ? JSON.stringify(injetadaDetalhes) : null,
 
       historicoConsumo: historico.length > 0 ? JSON.stringify(historico) : null,
@@ -726,6 +763,8 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
 
       tarifaTE,
       tarifaTUSD,
+      tarifaTeComTributos,
+      tarifaTusdComTributos,
       bandeiraTarifaria,
       bandeiraValor,
       bandeiraAmarelaValor,

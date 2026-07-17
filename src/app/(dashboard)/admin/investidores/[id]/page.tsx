@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,7 @@ import {
   Calendar,
   CreditCard,
   Copy,
+  Trash2,
 } from "lucide-react";
 
 interface ConsumerData {
@@ -143,11 +144,13 @@ function InfoItem({
 
 export default function DetalhesInvestidorPage() {
   const params = useParams();
+  const router = useRouter();
   const [investor, setInvestor] = useState<InvestorDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetch(`/api/investors/${params.id}`)
@@ -184,6 +187,36 @@ export default function DetalhesInvestidorPage() {
   function copyToClipboard(text: string) {
     navigator.clipboard.writeText(text);
     toast.success("Copiado!");
+  }
+
+  async function handleDelete() {
+    if (!investor) return;
+    if (
+      !confirm(
+        `Excluir o investidor "${investor.user.name}"?\n\nEssa ação é permanente. Só é possível se não houver usinas, pagamentos, relatórios, fechamentos ou débitos vinculados.`,
+      )
+    ) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/investors/${params.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const description = Array.isArray(data.details)
+          ? data.details.join(" · ")
+          : data.error;
+        toast.error("Não foi possível excluir", { description });
+        return;
+      }
+      toast.success("Investidor excluído");
+      router.push("/admin/investidores");
+    } catch {
+      toast.error("Erro ao excluir investidor");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   if (loading) {
@@ -248,6 +281,14 @@ export default function DetalhesInvestidorPage() {
             <Pencil className="h-4 w-4" />
             Editar
           </Link>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border border-red-200 text-red-600 rounded-lg hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950 disabled:opacity-50 transition-colors"
+          >
+            <Trash2 className="h-4 w-4" />
+            {deleting ? "Excluindo..." : "Excluir"}
+          </button>
         </div>
       </div>
 

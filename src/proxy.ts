@@ -46,6 +46,9 @@ const isProtected = createRouteMatcher([
   "/perfil(.*)",
   "/portal(.*)",
   "/portal-cliente(.*)",
+  // "Visão do cliente" (pós-venda): prévia read-only do portal. Exige login; o
+  // gate de role (section brasilSolar) é feito na própria página.
+  "/visao-cliente(.*)",
 ]);
 
 const isApi = createRouteMatcher([
@@ -59,6 +62,9 @@ const isPublicApi = createRouteMatcher([
   // PRÓPRIA autenticação (Authorization: Bearer CRON_SECRET). Sem sessão Clerk,
   // então precisa ser público no middleware — a rota valida o Bearer.
   "/api/faturas-energia/ingest",
+  // Callback do robô RGE ao terminar o backfill assíncrono (Bearer CRON_SECRET,
+  // sem sessão Clerk). O [id] da UC é dinâmico → wildcard.
+  "/api/consumer-units/(.*)/bills/backfill/status",
   // Pagamento branded: o cliente paga ANTES de ter conta. A chave é o
   // conviteToken (UUID) na URL — a rota valida o token, não a sessão.
   "/api/portal/cobranca/(.*)",

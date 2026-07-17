@@ -6,7 +6,7 @@
     "node": ">=20.9.0"
   },
   "scripts": {
-    "dev": "cross-env NODE_OPTIONS=--use-system-ca next dev",
+    "dev": "cross-env NODE_OPTIONS=--use-system-ca next dev --webpack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

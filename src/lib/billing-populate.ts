@@ -83,6 +83,10 @@ export async function populateBillingFromBill(
       energiaInjetadaMedidorKwh: true,
       tarifaTE: true,
       tarifaTUSD: true,
+      tarifaTeComTributos: true,
+      tarifaTusdComTributos: true,
+      energiaInjetadaPropriaTeValor: true,
+      energiaInjetadaPropriaTusdValor: true,
       consumerUnit: {
         select: {
           id: true,
@@ -179,6 +183,10 @@ export async function populateBillingFromBill(
       consumoInstantaneoKwh,
       tarifaTE: bill.tarifaTE,
       tarifaTUSD: bill.tarifaTUSD,
+      tarifaTeComTributos: bill.tarifaTeComTributos,
+      tarifaTusdComTributos: bill.tarifaTusdComTributos,
+      energiaInjetadaPropriaTeValor: bill.energiaInjetadaPropriaTeValor,
+      energiaInjetadaPropriaTusdValor: bill.energiaInjetadaPropriaTusdValor,
     },
     {
       regraRemuneracao: uc.regraRemuneracao,

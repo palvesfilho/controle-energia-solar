@@ -8,6 +8,7 @@ import {
   Mail,
   Wrench,
   FileText,
+  KeyRound,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { getServerSession } from "@/lib/auth-compat";
@@ -89,6 +90,16 @@ const items: HubItem[] = [
     group: "Financeiro",
     accent: "from-emerald-500 to-teal-700",
     section: "persRelatorioParametros",
+  },
+  {
+    title: "Acesso ao portal do cliente",
+    description:
+      "Valores de tabela (mensal e anual) cobrados no convite de acesso ao portal do cliente Brasil Solar. Base do modo personalizado e piso mínimo.",
+    href: "/admin/personalizacoes/acesso-portal",
+    icon: KeyRound,
+    group: "Financeiro",
+    accent: "from-teal-500 to-cyan-700",
+    section: "persAcessoPortal",
   },
 ];
 

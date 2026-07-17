@@ -489,13 +489,19 @@ const DAY_SLICES_UTC: Array<readonly [number, number]> = [
 const invertersCache = new Map<string, { keys: { psKey: string; name: string }[]; expiresAt: number }>();
 const INVERTERS_CACHE_TTL_MS = 60 * 60 * 1000;
 
+// Tipos de dispositivo que geram energia (device_type da OpenAPI Sungrow):
+//   1  = inversor string
+//   55 = microinversor (ex.: linha S2000S). Sem ele, plantas com microinversor
+//        retornavam "0 inversores" e a geração zerava.
+const INVERTER_DEVICE_TYPES = new Set([1, 55]);
+
 async function getInvertersForPlant(psId: string): Promise<{ psKey: string; name: string }[]> {
   const cached = invertersCache.get(psId);
   if (cached && Date.now() < cached.expiresAt) return cached.keys;
 
   const devs = await getDeviceList(psId);
   const inverters = devs
-    .filter((d) => Number((d as unknown as { device_type?: number }).device_type ?? d.dev_type) === 1)
+    .filter((d) => INVERTER_DEVICE_TYPES.has(Number((d as unknown as { device_type?: number }).device_type ?? d.dev_type)))
     .map((d) => {
       const raw = d as unknown as { ps_key?: string; device_name?: string };
       return {

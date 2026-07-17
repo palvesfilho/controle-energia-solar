@@ -3,7 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
-import { getDailyGeneration, getPlantStatus, getStationDetail } from "@/lib/sungrow";
+import { getDailyGeneration, getPlantStatus, getStationDetail, getDeviceList } from "@/lib/sungrow";
 import { persistDailySamples } from "@/lib/sungrow-persist";
 
 /**
@@ -97,6 +97,33 @@ export async function POST(
     }
 
     let logsUpserted = 0;
+
+    // Diagnóstico: enumera os dispositivos que a API expõe nesta planta, separando
+    // inversor string (device_type 1) de microinversor (55). Isso distingue as
+    // causas reais de um sync vazio:
+    //   - nenhum dispositivo → compartilhamento/sessão (a estação aparece, o device não)
+    //   - só microinversor → a geração dele NÃO vem pelo minute-data (único endpoint
+    //     que o appkey libera); os endpoints alternativos dão Unauthorized. É limite
+    //     de escopo do appkey, NÃO compartilhamento (confirmado 2026-07-16).
+    //   - getDeviceList falha no login → throttle/auth.
+    let devicesTotal = 0;
+    let inversoresVisiveis = 0;
+    let microinversores = 0;
+    let deviceListErro: string | null = null;
+    try {
+      const devs = await getDeviceList(psId);
+      devicesTotal = devs.length;
+      for (const d of devs) {
+        const t = Number(
+          (d as unknown as { device_type?: number }).device_type ??
+            (d as unknown as { dev_type?: number }).dev_type,
+        );
+        if (t === 1) inversoresVisiveis++;
+        else if (t === 55) microinversores++;
+      }
+    } catch (e) {
+      deviceListErro = e instanceof Error ? e.message : String(e);
+    }
 
     for (const { year, month } of months) {
       try {
@@ -198,8 +225,53 @@ export async function POST(
       },
     });
 
+    // Explica POR QUE o sync trouxe (ou não) dados, em vez de reportar "0
+    // registros" em silêncio. A UI usa isso pra mostrar aviso acionável.
+    const authThrottle =
+      !!deviceListErro && /invalid_appkey|login falhou|token|unauthor|401|403/i.test(deviceListErro);
+    let diagnostico: { codigo: string; mensagem: string };
+    if (logsUpserted > 0) {
+      diagnostico = {
+        codigo: "OK",
+        mensagem: `Sincronização concluída: ${logsUpserted} registros de geração.`,
+      };
+    } else if (authThrottle) {
+      diagnostico = {
+        codigo: "AUTH_THROTTLE",
+        mensagem:
+          "A API Sungrow recusou o login (provável limite temporário de requisições). Aguarde alguns minutos e tente novamente.",
+      };
+    } else if (devicesTotal === 0) {
+      diagnostico = {
+        codigo: "SEM_DISPOSITIVO",
+        mensagem:
+          "A planta está visível, mas nenhum dispositivo foi exposto pela API. Verifique o compartilhamento OpenAPI/organização desta usina no iSolarCloud — o dispositivo precisa estar compartilhado, não só a estação.",
+      };
+    } else if (inversoresVisiveis === 0 && microinversores > 0) {
+      diagnostico = {
+        codigo: "MICROINVERSOR_SEM_DADOS",
+        mensagem:
+          "Microinversor detectado, mas o appkey atual não expõe a geração dele pela API (o endpoint de dados por minuto vem vazio e os alternativos exigem escopo ampliado). Não é problema de compartilhamento — depende de liberar o escopo do appkey junto à Sungrow.",
+      };
+    } else if (inversoresVisiveis === 0) {
+      diagnostico = {
+        codigo: "SEM_INVERSOR_API",
+        mensagem:
+          "A planta está visível, mas nenhum inversor foi exposto pela API. Verifique o compartilhamento OpenAPI/organização desta usina no iSolarCloud.",
+      };
+    } else {
+      diagnostico = {
+        codigo: "SEM_GERACAO",
+        mensagem: `Inversor visível (${inversoresVisiveis}), mas sem geração no período consultado (${monthsCount} ${monthsCount === 1 ? "mês" : "meses"}).`,
+      };
+    }
+
     return NextResponse.json({
-      message: "Sincronizacao Sungrow concluida",
+      message: diagnostico.mensagem,
+      diagnostico,
+      devicesTotal,
+      inversoresVisiveis,
+      microinversores,
       logsUpserted,
       samplesUpserted,
       geracaoMesAtual: geracaoMes,

@@ -251,12 +251,23 @@ export function parseBillData(data: InfosimplesBillData) {
   const energiaInjetada = maxLado(injetada.tusdKwh, injetada.teKwh);
   const energiaCompensada = energiaInjetada;
 
-  // Tarifas: pegar tarifa_aneel das linhas "Consumo - TE" e "Consumo ... TUSD"
-  const { tarifaTE, tarifaTUSD } = parseTarifas(consumoItems);
+  // Geração própria do cliente (linhas "Energia Ativa Injetada" SEM "oUC").
+  const propria = parseInjetadaPropria(consumoItems);
+
+  // Tarifas: pegar tarifa_aneel (base) e tarifa_com_tributos das linhas Consumo TE/TUSD
+  const { tarifaTE, tarifaTUSD, tarifaTeComTributos, tarifaTusdComTributos } =
+    parseTarifas(consumoItems);
 
   // Bandeira: procurar linhas de bandeira em consumo; default Verde se nenhuma aparece
   const bandeiraTarifaria = parseBandeira(consumoItems);
-  const bandeiraValor = parseBandeiraValor(consumoItems);
+  const bandeiras = parseBandeiraValores(consumoItems);
+  const bandeiraValor = bandeiras.bandeiraValor;
+  const bandeiraAmarelaValor = bandeiras.bandeiraAmarelaValor;
+  const bandeiraVermelhaValor = bandeiras.bandeiraVermelhaValor;
+  const bandeiraVermelha2Valor = bandeiras.bandeiraVermelha2Valor;
+  const bandeiraAmarelaCreditoValor = bandeiras.bandeiraAmarelaCreditoValor;
+  const bandeiraVermelhaCreditoValor = bandeiras.bandeiraVermelhaCreditoValor;
+  const bandeiraVermelha2CreditoValor = bandeiras.bandeiraVermelha2CreditoValor;
 
   // Aviso: saldo, participação, saldo a expirar
   const saldoCreditos = parseSaldoCreditos(ocr?.aviso);
@@ -311,6 +322,12 @@ export function parseBillData(data: InfosimplesBillData) {
     injetadaOucTusdValor: injetada.tusdValor,
     injetadaDetalhes: injetada.detalhes.length > 0 ? JSON.stringify(injetada.detalhes) : null,
 
+    // Geração própria do cliente (Lei 14.300)
+    energiaInjetadaPropriaTeKwh: propria.teKwh,
+    energiaInjetadaPropriaTeValor: propria.teValor,
+    energiaInjetadaPropriaTusdKwh: propria.tusdKwh,
+    energiaInjetadaPropriaTusdValor: propria.tusdValor,
+
     // Novos: histórico 13 meses
     historicoConsumo: historicoConsumo ? JSON.stringify(historicoConsumo) : null,
 
@@ -333,8 +350,16 @@ export function parseBillData(data: InfosimplesBillData) {
 
     tarifaTE,
     tarifaTUSD,
+    tarifaTeComTributos,
+    tarifaTusdComTributos,
     bandeiraTarifaria,
     bandeiraValor,
+    bandeiraAmarelaValor,
+    bandeiraVermelhaValor,
+    bandeiraVermelha2Valor,
+    bandeiraAmarelaCreditoValor,
+    bandeiraVermelhaCreditoValor,
+    bandeiraVermelha2CreditoValor,
     icms,
     pis,
     cofins,
@@ -387,10 +412,18 @@ function parseConsumoFromItems(items: InfosimplesOcrConsumoItem[]): number | nul
   return null;
 }
 
-/** Retorna true se a linha for um Energ Atv Inj oUC */
+/** Retorna true se a linha for um "Energ Atv Inj. oUC" (compensação da nossa
+ *  usina via rateio). "oUC" = "outra UC" no jargão da concessionária. */
 function isInjecaoOuc(it: InfosimplesOcrConsumoItem): boolean {
   const d = normDesc(it.descricao);
-  return d.includes("energ") && d.includes("inj");
+  return d.includes("energ") && d.includes("inj") && d.includes("ouc");
+}
+
+/** Retorna true se a linha for "Energia Ativa Injetada TE/TUSD" SEM "oUC" —
+ *  ou seja, geração do painel solar PRÓPRIO do cliente (Lei 14.300). */
+function isInjecaoPropria(it: InfosimplesOcrConsumoItem): boolean {
+  const d = normDesc(it.descricao);
+  return d.includes("energ") && d.includes("inj") && !d.includes("ouc");
 }
 
 /**
@@ -444,6 +477,37 @@ interface InjetadaResumo {
  * Cada origem aparece em duas linhas (TUSD + TE).
  * Totais = soma por lado (TE e TUSD dão a mesma qtd somada).
  */
+interface InjetadaPropriaResumo {
+  teKwh: number | null;
+  teValor: number | null;
+  tusdKwh: number | null;
+  tusdValor: number | null;
+}
+
+/** Extrai geração própria do cliente das linhas "Energia Ativa Injetada TE/TUSD".
+ *  Não aplica lógica de shift (não vi essas linhas com OCR corrompido). */
+function parseInjetadaPropria(items: InfosimplesOcrConsumoItem[]): InjetadaPropriaResumo {
+  const result: InjetadaPropriaResumo = {
+    teKwh: null, teValor: null, tusdKwh: null, tusdValor: null,
+  };
+  for (const it of items) {
+    if (!isInjecaoPropria(it)) continue;
+    const d = normDesc(it.descricao);
+    const qtd = parseNum(it.quantidade_faturada);
+    const valor = parseNum(it.valor_total);
+    const qtdAbs = qtd != null ? Math.abs(qtd) : null;
+    const valorAbs = valor != null ? Math.abs(valor) : null;
+    if (d.includes("tusd")) {
+      if (qtdAbs != null) result.tusdKwh = (result.tusdKwh ?? 0) + qtdAbs;
+      if (valorAbs != null) result.tusdValor = (result.tusdValor ?? 0) + valorAbs;
+    } else if (d.includes(" te ") || d.endsWith(" te") || d.includes("- te")) {
+      if (qtdAbs != null) result.teKwh = (result.teKwh ?? 0) + qtdAbs;
+      if (valorAbs != null) result.teValor = (result.teValor ?? 0) + valorAbs;
+    }
+  }
+  return result;
+}
+
 function parseInjetadaOuc(items: InfosimplesOcrConsumoItem[]): InjetadaResumo {
   const byOrigem = new Map<string, InjetadaDetalhe>();
   let teKwhTotal = 0, teValorTotal = 0, tusdKwhTotal = 0, tusdValorTotal = 0;
@@ -673,19 +737,37 @@ function parseParticipacaoGeracao(aviso: string | undefined): number | null {
   return parseNum(m[1]);
 }
 
-/** Extrai tarifas TE e TUSD (tarifa_aneel) das linhas de Consumo. */
-function parseTarifas(items: InfosimplesOcrConsumoItem[]): { tarifaTE: number | null; tarifaTUSD: number | null } {
+/** Extrai tarifas TE e TUSD das linhas de Consumo — ambas as variantes:
+ *  - tarifa_aneel: base sem impostos
+ *  - tarifa_com_tributos: com ICMS+PIS+COFINS aplicados (o que o cliente paga
+ *    de fato por kWh). Usada no cálculo de consumo instantâneo de UC geradora
+ *    DESCONTADO. */
+function parseTarifas(items: InfosimplesOcrConsumoItem[]): {
+  tarifaTE: number | null;
+  tarifaTUSD: number | null;
+  tarifaTeComTributos: number | null;
+  tarifaTusdComTributos: number | null;
+} {
   let tarifaTE: number | null = null;
   let tarifaTUSD: number | null = null;
+  let tarifaTeComTributos: number | null = null;
+  let tarifaTusdComTributos: number | null = null;
   for (const it of items) {
     const d = normDesc(it.descricao);
     if (!d.startsWith("consumo") || d.includes("inj") || d.includes("bandeira")) continue;
-    const v = parseNum(it.tarifa_aneel);
-    if (v == null) continue;
-    if (d.includes("tusd") && tarifaTUSD == null) tarifaTUSD = v;
-    else if ((d.includes(" te ") || d.endsWith(" te") || d.includes("- te")) && tarifaTE == null) tarifaTE = v;
+    const vAneel = parseNum(it.tarifa_aneel);
+    const vComTrib = parseNum(it.tarifa_com_tributos);
+    const isTUSD = d.includes("tusd");
+    const isTE = d.includes(" te ") || d.endsWith(" te") || d.includes("- te");
+    if (isTUSD) {
+      if (tarifaTUSD == null && vAneel != null) tarifaTUSD = vAneel;
+      if (tarifaTusdComTributos == null && vComTrib != null) tarifaTusdComTributos = vComTrib;
+    } else if (isTE) {
+      if (tarifaTE == null && vAneel != null) tarifaTE = vAneel;
+      if (tarifaTeComTributos == null && vComTrib != null) tarifaTeComTributos = vComTrib;
+    }
   }
-  return { tarifaTE, tarifaTUSD };
+  return { tarifaTE, tarifaTUSD, tarifaTeComTributos, tarifaTusdComTributos };
 }
 
 /** Procura linhas de bandeira nos consumo items. Ausência = Verde. */
@@ -705,18 +787,74 @@ function parseBandeira(items: InfosimplesOcrConsumoItem[]): string | null {
  * Soma o valor em R$ de todas as linhas de bandeira. Pode haver mais de uma
  * (ex.: transição de bandeira no mês). Retorna null se nenhuma linha aparece.
  */
-function parseBandeiraValor(items: InfosimplesOcrConsumoItem[]): number | null {
-  let total = 0;
-  let encontrou = false;
+interface BandeiraValores {
+  bandeiraValor: number | null;
+  bandeiraAmarelaValor: number | null;
+  bandeiraVermelhaValor: number | null;
+  bandeiraVermelha2Valor: number | null;
+  bandeiraAmarelaCreditoValor: number | null;
+  bandeiraVermelhaCreditoValor: number | null;
+  bandeiraVermelha2CreditoValor: number | null;
+}
+
+/** Extrai R$ das linhas de bandeira (cobrança e crédito) por cor.
+ *  A API Infosimples mapeia mal as colunas dessas linhas: o `valor_total`
+ *  vem como o ICMS, não como o R$ real da bandeira. O valor real está em
+ *  `quantidade_faturada` (mesma convenção que o PDF parser usa em lc.qtd).
+ *
+ *  Cobrança: "Adicional de Bandeira <cor> MES/AA" → positivo
+ *  Crédito: "Cred Adc Band <cor> MES/AA" → vem com "-" no final, parseNum
+ *           já entrega negativo. */
+function parseBandeiraValores(items: InfosimplesOcrConsumoItem[]): BandeiraValores {
+  const result: BandeiraValores = {
+    bandeiraValor: null,
+    bandeiraAmarelaValor: null,
+    bandeiraVermelhaValor: null,
+    bandeiraVermelha2Valor: null,
+    bandeiraAmarelaCreditoValor: null,
+    bandeiraVermelhaCreditoValor: null,
+    bandeiraVermelha2CreditoValor: null,
+  };
   for (const it of items) {
     const d = normDesc(it.descricao);
-    if (!d.includes("bandeira")) continue;
-    const v = parseNum(it.valor_total);
+    const isCreditoBandeira =
+      (d.includes("cred") || d.includes("credito")) && d.includes("band");
+    const isBandeira = d.includes("bandeira") || isCreditoBandeira;
+    if (!isBandeira) continue;
+    let cor: "amarela" | "vermelha" | "vermelha2" | "verde" | null = null;
+    if (d.includes("vermelha 2") || d.includes("vermelha2") || d.includes("vermelha p2")) {
+      cor = "vermelha2";
+    } else if (d.includes("vermelha")) {
+      cor = "vermelha";
+    } else if (d.includes("amarela")) {
+      cor = "amarela";
+    } else if (d.includes("verde")) {
+      cor = "verde";
+    }
+    // R$ real na coluna "quantidade_faturada" (colunas mal mapeadas no JSON).
+    const v = parseNum(it.quantidade_faturada);
     if (v == null) continue;
-    total += v;
-    encontrou = true;
+    if (isCreditoBandeira) {
+      if (cor === "amarela") {
+        result.bandeiraAmarelaCreditoValor = (result.bandeiraAmarelaCreditoValor ?? 0) + v;
+      } else if (cor === "vermelha") {
+        result.bandeiraVermelhaCreditoValor = (result.bandeiraVermelhaCreditoValor ?? 0) + v;
+      } else if (cor === "vermelha2") {
+        result.bandeiraVermelha2CreditoValor = (result.bandeiraVermelha2CreditoValor ?? 0) + v;
+      }
+    } else {
+      if (cor === "amarela") {
+        result.bandeiraAmarelaValor = (result.bandeiraAmarelaValor ?? 0) + v;
+      } else if (cor === "vermelha") {
+        result.bandeiraVermelhaValor = (result.bandeiraVermelhaValor ?? 0) + v;
+      } else if (cor === "vermelha2") {
+        result.bandeiraVermelha2Valor = (result.bandeiraVermelha2Valor ?? 0) + v;
+      }
+      // bandeiraValor genérico = soma das cobranças (não dos créditos).
+      result.bandeiraValor = (result.bandeiraValor ?? 0) + v;
+    }
   }
-  return encontrou ? total : null;
+  return result;
 }
 
 /** Regex no texto "aviso" para "Saldo em Energia da Instalação: ... 1.059,0000 kWh". */

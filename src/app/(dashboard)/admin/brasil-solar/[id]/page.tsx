@@ -180,7 +180,19 @@ export default function ClientDetailPage() {
       if (res.ok) {
         const result = await res.json();
         setLastSync(new Date().toISOString());
-        toast.success(`Dados atualizados: ${result.logsUpserted} registros`);
+        if (result.logsUpserted > 0) {
+          toast.success(`Dados atualizados: ${result.logsUpserted} registros`);
+        } else {
+          // Sem registros: mostrar a causa explícita (compartilhamento no
+          // iSolarCloud, throttle de login, ou planta sem geração) em vez de
+          // "0 registros" mascarado de sucesso.
+          toast.warning(
+            result.diagnostico?.mensagem ||
+              result.message ||
+              "Sincronização sem novos registros.",
+            { duration: 9000 },
+          );
+        }
         await fetchClient();
       } else {
         const err = await res.json();

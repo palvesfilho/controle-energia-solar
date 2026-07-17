@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Trash2 } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isValidPhone } from "@/lib/phone";
 import { AdditionalEmailsInput } from "@/components/investors/additional-emails-input";
@@ -73,6 +73,7 @@ export default function EditarInvestidorPage() {
   const router = useRouter();
   const params = useParams();
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [investor, setInvestor] = useState<InvestorData | null>(null);
 
   useEffect(() => {
@@ -117,6 +118,36 @@ export default function EditarInvestidorPage() {
 
     toast.success("Investidor atualizado", { description: "Alterações salvas com sucesso" });
     router.push(`/admin/investidores/${params.id}`);
+  }
+
+  async function handleDelete() {
+    if (!investor) return;
+    if (
+      !confirm(
+        `Excluir o investidor "${investor.user.name}"?\n\nEssa ação é permanente. Só é possível se não houver usinas, pagamentos, relatórios, fechamentos ou débitos vinculados.`,
+      )
+    ) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/investors/${params.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const description = Array.isArray(data.details)
+          ? data.details.join(" · ")
+          : data.error;
+        toast.error("Não foi possível excluir", { description });
+        return;
+      }
+      toast.success("Investidor excluído");
+      router.push("/admin/investidores");
+    } catch {
+      toast.error("Erro ao excluir investidor");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   if (!investor) {
@@ -202,20 +233,31 @@ export default function EditarInvestidorPage() {
           </CardContent>
         </Card>
 
-        <div className="flex justify-end gap-2">
-          <Link
-            href={`/admin/investidores/${params.id}`}
-            className="px-4 py-2 text-sm font-medium border rounded-lg hover:bg-muted transition-colors"
-          >
-            Cancelar
-          </Link>
+        <div className="flex items-center justify-between gap-2">
           <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border border-red-200 text-red-600 rounded-lg hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950 disabled:opacity-50 transition-colors"
           >
-            {loading ? "Salvando..." : "Salvar Alterações"}
+            <Trash2 className="h-4 w-4" />
+            {deleting ? "Excluindo..." : "Excluir Investidor"}
           </button>
+          <div className="flex gap-2">
+            <Link
+              href={`/admin/investidores/${params.id}`}
+              className="px-4 py-2 text-sm font-medium border rounded-lg hover:bg-muted transition-colors"
+            >
+              Cancelar
+            </Link>
+            <button
+              type="submit"
+              disabled={loading}
+              className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {loading ? "Salvando..." : "Salvar Alterações"}
+            </button>
+          </div>
         </div>
       </form>
     </div>

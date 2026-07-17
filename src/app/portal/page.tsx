@@ -25,6 +25,8 @@ export default async function PortalPage() {
 
   // Investidor e consumidor não passam pelo portal — vão direto pro painel deles
   if (role === "INVESTOR" || role === "CONSUMER") redirect("/painel");
+  // Cliente Brasil Solar tem portal próprio (isolado do hub corporativo)
+  if (role === "CLIENTE_BS") redirect("/portal-cliente");
 
   const acesso = ACESSO_POR_ROLE[role] ?? { assoc: false, bs: false, prop: false };
   const visiveis = Number(acesso.assoc) + Number(acesso.bs) + Number(acesso.prop);

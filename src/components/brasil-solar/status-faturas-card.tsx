@@ -13,6 +13,7 @@ import {
   Clock,
   FileX,
   Eye,
+  History,
 } from "lucide-react";
 import {
   FaturaPreviewDialog,
@@ -87,6 +88,7 @@ function sameComp(a: Competencia | null, b: Competencia | null): boolean {
 export function StatusFaturasCard({ proprietarioId }: { proprietarioId: string }) {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [syncingAntigas, setSyncingAntigas] = useState(false);
   const [data, setData] = useState<Response | null>(null);
   const [selected, setSelected] = useState<Competencia | null>(null);
   const [preview, setPreview] = useState<FaturaPreviewData | null>(null);
@@ -144,6 +146,44 @@ export function StatusFaturasCard({ proprietarioId }: { proprietarioId: string }
     await load(selected);
   }
 
+  // Backfill de faturas de meses ANTERIORES via robô RGE (portal CPFL/RGE).
+  // Só faz sentido nas UCs com credencial cadastrada; as demais são puladas.
+  async function syncAntigas() {
+    if (!data) return;
+    const alvos = data.ucs.filter((u) => u.credencial);
+    if (alvos.length === 0) {
+      toast.error("Nenhuma UC com credencial CPFL/RGE cadastrada.");
+      return;
+    }
+    setSyncingAntigas(true);
+    let ok = 0;
+    let fail = 0;
+    for (const u of alvos) {
+      try {
+        const res = await fetch(
+          `/api/consumer-units/${u.consumerUnitId}/bills/backfill`,
+          { method: "POST" },
+        );
+        const j = await res.json().catch(() => ({}));
+        // A rota agora só DISPARA o robô (assíncrono); o download roda em segundo
+        // plano e o statusSync atualiza quando termina. `ok` = job aceito.
+        if (res.ok && j?.success !== false) {
+          ok++;
+        } else {
+          fail++;
+        }
+      } catch {
+        fail++;
+      }
+    }
+    setSyncingAntigas(false);
+    toast.success(
+      `Backfill iniciado em ${ok} UC(s)${fail ? `, ${fail} falha(s) ao disparar` : ""}. ` +
+        `O download roda em segundo plano — o status atualiza quando terminar.`,
+    );
+    await load(selected);
+  }
+
   if (loading && !data) {
     return (
       <Card>
@@ -170,17 +210,31 @@ export function StatusFaturasCard({ proprietarioId }: { proprietarioId: string }
               Status de faturas — todas as UCs
             </CardTitle>
           </div>
-          <Button
-            size="sm"
-            className="bg-green-700 hover:bg-green-800"
-            onClick={syncAll}
-            disabled={syncing}
-          >
-            <RefreshCw
-              className={`h-4 w-4 mr-1.5 ${syncing ? "animate-spin" : ""}`}
-            />
-            {syncing ? "Sincronizando..." : "Sincronizar todas"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={syncAntigas}
+              disabled={syncing || syncingAntigas}
+              title="Baixa faturas de meses anteriores do portal CPFL/RGE (backfill)"
+            >
+              <History
+                className={`h-4 w-4 mr-1.5 ${syncingAntigas ? "animate-spin" : ""}`}
+              />
+              {syncingAntigas ? "Baixando antigas..." : "Sincronizar faturas antigas"}
+            </Button>
+            <Button
+              size="sm"
+              className="bg-green-700 hover:bg-green-800"
+              onClick={syncAll}
+              disabled={syncing || syncingAntigas}
+            >
+              <RefreshCw
+                className={`h-4 w-4 mr-1.5 ${syncing ? "animate-spin" : ""}`}
+              />
+              {syncing ? "Sincronizando..." : "Sincronizar todas"}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

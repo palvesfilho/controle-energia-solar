@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, X, Minus, Loader2, FileBarChart, ArrowRight } from "lucide-react";
+import { CheckCircle2, X, Minus, Loader2, FileBarChart, ArrowRight, Eye } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import type {
   RelatorioVisaoGeralRow,
@@ -100,6 +100,7 @@ export default function RelatoriosVisaoGeralPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [escopo, setEscopo] = useState<"todos" | "comUc" | "semUc">("todos");
+  const [plano, setPlano] = useState<"ativos" | "todos">("ativos");
 
   useEffect(() => {
     setLoading(true);
@@ -120,6 +121,7 @@ export default function RelatoriosVisaoGeralPage() {
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return rows.filter((r) => {
+      if (plano === "ativos" && !r.acessoAtivo) return false;
       if (escopo === "comUc" && !r.ucId) return false;
       if (escopo === "semUc" && r.ucId) return false;
       if (!term) return true;
@@ -131,7 +133,7 @@ export default function RelatoriosVisaoGeralPage() {
         (r.distribuidora ?? "").toLowerCase().includes(term)
       );
     });
-  }, [rows, search, escopo]);
+  }, [rows, search, escopo, plano]);
 
   const totals = useMemo(() => {
     let ok = 0,
@@ -162,7 +164,7 @@ export default function RelatoriosVisaoGeralPage() {
         <div className="flex-1">
           <h1 className="text-2xl font-bold">Relatórios Brasil Solar — Visão Geral</h1>
           <p className="text-sm text-muted-foreground">
-            Status mês-a-mês de cada proprietário Brasil Solar. Clique em um mês para abrir / corrigir o relatório.
+            Status mês-a-mês dos proprietários Brasil Solar. Por padrão mostra só os ativos (acesso ao portal pago ou cortesia vigente) — use o filtro "Acesso" para ver todos. Clique em um mês para abrir / corrigir o relatório.
           </p>
         </div>
       </div>
@@ -178,6 +180,17 @@ export default function RelatoriosVisaoGeralPage() {
                     {y}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Acesso</label>
+              <select
+                value={plano}
+                onChange={(e) => setPlano(e.target.value as typeof plano)}
+                className={selectClass}
+              >
+                <option value="ativos">Ativos</option>
+                <option value="todos">Todos</option>
               </select>
             </div>
             <div className="space-y-1.5">
@@ -269,13 +282,25 @@ export default function RelatoriosVisaoGeralPage() {
                       }`}
                     >
                       <td className="sticky left-0 z-10 bg-background px-3 py-2">
-                        <Link
-                          href={`/admin/brasil-solar/proprietarios/${r.proprietarioId}`}
-                          className="inline-flex items-center gap-1 text-primary hover:underline"
-                        >
-                          {r.proprietarioNome}
-                          <ArrowRight className="h-3 w-3" />
-                        </Link>
+                        <div className="flex items-center gap-2">
+                          <Link
+                            href={`/admin/brasil-solar/proprietarios/${r.proprietarioId}`}
+                            className="inline-flex items-center gap-1 text-primary hover:underline"
+                          >
+                            {r.proprietarioNome}
+                            <ArrowRight className="h-3 w-3" />
+                          </Link>
+                          <a
+                            href={`/visao-cliente/${r.proprietarioId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Abrir a visão do cliente (somente leitura) — o que o cliente vê no portal"
+                            className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-primary hover:border-primary transition-colors"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            Visão do cliente
+                          </a>
+                        </div>
                         {r.cpfCnpj && (
                           <div className="text-[11px] text-muted-foreground font-mono">{r.cpfCnpj}</div>
                         )}

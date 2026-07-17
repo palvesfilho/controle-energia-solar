@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { getProprietarioRelatorioAgregado } from "@/lib/brasil-solar-relatorio";
 import { SolarPaybackReportProprietarioPDF } from "@/components/billing/solar-payback-report-proprietario-pdf";
+import { sanitizeForFilename } from "@/lib/relatorio-filename";
 
 export const runtime = "nodejs";
 
@@ -60,15 +61,4 @@ export async function GET(
       "Cache-Control": "no-store",
     },
   });
-}
-
-function sanitizeForFilename(s: string): string {
-  return s
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[\\/:*?"<>|]/g, "")
-    .replace(/\s+/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_|_$/g, "")
-    .toUpperCase();
 }

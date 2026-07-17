@@ -25,8 +25,14 @@ export type RegraRemuneracao =
 
 export interface BillInput {
   // Créditos de energia compensada (vêm negativos na fatura — viramos absoluto).
+  // Esses campos representam APENAS o crédito da nossa usina (linhas oUC).
   injetadaOucTeValor: number | null;
   injetadaOucTusdValor: number | null;
+  // Geração própria do cliente (Lei 14.300) — linhas "Energia Ativa Injetada"
+  // sem "oUC". Subtraída do compensado antes de aplicar o desconto da Associação,
+  // porque 100% do benefício é do cliente.
+  energiaInjetadaPropriaTeValor?: number | null;
+  energiaInjetadaPropriaTusdValor?: number | null;
   // Crédito de bandeira por cor (vêm negativos na fatura — viramos absoluto).
   // Se algum vier null, simplesmente não soma.
   bandeiraAmarelaCreditoValor?: number | null;
@@ -40,8 +46,14 @@ export interface BillInput {
   valorTotal?: number | null;
   // Campos usados só em UC geradora com regra USINA_CONSUMO_DESCONTADO:
   consumoInstantaneoKwh?: number | null;
+  // Tarifa BASE (sem impostos) — fallback quando tarifa com tributos não veio
+  // do parser (faturas legadas pré 2026-06-27).
   tarifaTE?: number | null;
   tarifaTUSD?: number | null;
+  // Tarifa COM tributos (ICMS+PIS+COFINS) — preferida no cálculo de consumo
+  // instantâneo, pois é o R$/kWh real que o cliente paga.
+  tarifaTeComTributos?: number | null;
+  tarifaTusdComTributos?: number | null;
 }
 
 export interface UnitInput {
@@ -58,9 +70,11 @@ export interface CalcResultado {
     injetadaOucTeValor: number | null;
     injetadaOucTusdValor: number | null;
     energiaCompensadaValor: number | null;
+    geracaoPropriaValor: number | null;     // descontada antes do percentCompensado
+    energiaCompensadaLiquida: number | null; // compensada − geração própria
     ajusteSaldoValor: number | null;
     descontoContrato: number | null;
-    parcelaEnergia: number | null;          // (compensada + ajuste) × descontoContrato
+    parcelaEnergia: number | null;          // (compensadaLiquida + ajuste) × descontoContrato
     bandeiraCreditoValor: number | null;    // |amarelaCred|+|vermelhaCred|+|vermelha2Cred|
     descontoContratoBandeira: number | null;
     parcelaBandeira: number | null;
@@ -92,11 +106,24 @@ function calcularPercentualSobreCompensadoBase(
 
   const descontoBandeira = unit.percentBandeira;
 
-  // 1) Energia compensada — soma dos absolutos de TE e TUSD.
+  // 1) Energia compensada — soma dos absolutos de TE e TUSD (linhas oUC = nossa usina).
+  //    Os campos injetadaOuc* já vêm separados da geração própria (Lei 14.300)
+  //    pelo parser; não precisa subtrair de novo aqui.
   const energiaCompensadaValor =
     bill.injetadaOucTeValor != null && bill.injetadaOucTusdValor != null
       ? Math.abs(bill.injetadaOucTeValor) + Math.abs(bill.injetadaOucTusdValor)
       : null;
+
+  // 1.5) Geração própria — exposta no detalhamento apenas pra auditoria.
+  //      NÃO entra na fórmula porque já foi separada nos campos oUC.
+  const geracaoPropriaTe = bill.energiaInjetadaPropriaTeValor;
+  const geracaoPropriaTusd = bill.energiaInjetadaPropriaTusdValor;
+  const geracaoPropriaValor =
+    geracaoPropriaTe != null || geracaoPropriaTusd != null
+      ? Math.abs(geracaoPropriaTe ?? 0) + Math.abs(geracaoPropriaTusd ?? 0)
+      : null;
+  // Líquida = mesma coisa que compensada (mantido pra compat do detalhamento).
+  const energiaCompensadaLiquida = energiaCompensadaValor;
 
   // 2) Ajuste de saldo de crédito — também na mesma alíquota do compensado.
   //    Vem negativo na fatura (é crédito a transferir); pegamos absoluto.
@@ -104,8 +131,6 @@ function calcularPercentualSobreCompensadoBase(
     bill.ajusteSaldoCredito != null ? Math.abs(bill.ajusteSaldoCredito) : null;
 
   // 3) Parcela de energia: (compensada + ajuste) × percentCompensado.
-  //    Se compensada é null, parcela é null. Ajuste null vira 0 — só não pode
-  //    inflar o resultado quando compensada existe e ajuste falta.
   const parcelaEnergia =
     energiaCompensadaValor != null && descontoContrato != null
       ? (energiaCompensadaValor + (ajusteSaldoValor ?? 0)) * descontoContrato
@@ -127,12 +152,23 @@ function calcularPercentualSobreCompensadoBase(
       : null;
 
   // 5) Consumo instantâneo (só UC geradora em DESCONTADO).
+  //    Preferimos a tarifa COM tributos (preço real que o cliente pagaria por
+  //    aquele kWh se tivesse passado pela rede). Caímos no fallback da base
+  //    sem impostos só quando os campos novos ainda não foram preenchidos
+  //    (faturas legadas antes do parser ser atualizado em 2026-06-27).
   let consumoInstantaneoValor: number | null = null;
   let parcelaInstantaneo: number | null = null;
   if (unit.isGeradoraDescontado) {
     const kwh = bill.consumoInstantaneoKwh;
-    const te = bill.tarifaTE;
-    const tusd = bill.tarifaTUSD;
+    const teComTrib = bill.tarifaTeComTributos;
+    const tusdComTrib = bill.tarifaTusdComTributos;
+    const teBase = bill.tarifaTE;
+    const tusdBase = bill.tarifaTUSD;
+    const te = teComTrib ?? teBase;
+    const tusd = tusdComTrib ?? tusdBase;
+    const usandoFallbackBase =
+      (teComTrib == null && teBase != null) ||
+      (tusdComTrib == null && tusdBase != null);
     if (kwh == null) {
       problemas.push(
         "UC geradora em DESCONTADO sem consumoInstantaneoKwh preenchido — cobrança ignora consumo instantâneo",
@@ -142,6 +178,11 @@ function calcularPercentualSobreCompensadoBase(
         "Fatura sem tarifaTE/tarifaTUSD — não foi possível valorar consumo instantâneo",
       );
     } else {
+      if (usandoFallbackBase) {
+        problemas.push(
+          "Fatura sem tarifa com tributos — usando tarifa base; reparsear o PDF preenche o campo correto",
+        );
+      }
       consumoInstantaneoValor = kwh * (te + tusd);
       if (descontoContrato != null) {
         parcelaInstantaneo = consumoInstantaneoValor * descontoContrato;
@@ -172,6 +213,8 @@ function calcularPercentualSobreCompensadoBase(
       injetadaOucTeValor: bill.injetadaOucTeValor,
       injetadaOucTusdValor: bill.injetadaOucTusdValor,
       energiaCompensadaValor,
+      geracaoPropriaValor,
+      energiaCompensadaLiquida,
       ajusteSaldoValor,
       descontoContrato,
       parcelaEnergia,
@@ -195,6 +238,8 @@ function notImplementedResult(regra: string | null, msg: string): CalcResultado 
       injetadaOucTeValor: null,
       injetadaOucTusdValor: null,
       energiaCompensadaValor: null,
+      geracaoPropriaValor: null,
+      energiaCompensadaLiquida: null,
       ajusteSaldoValor: null,
       descontoContrato: null,
       parcelaEnergia: null,

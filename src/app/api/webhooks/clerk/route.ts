@@ -12,7 +12,17 @@ const ALLOWED_ROLES = new Set([
   "GESTOR_OBRA",
   "INVESTOR",
   "CONSUMER",
+  "CLIENTE_BS",
 ]);
+
+/** Lê proprietarioId do publicMetadata (setado no convite Clerk do cliente BS). */
+function pickProprietarioId(publicMetadata: unknown): string | null {
+  if (publicMetadata && typeof publicMetadata === "object") {
+    const pid = (publicMetadata as Record<string, unknown>).proprietarioId;
+    if (typeof pid === "string" && pid) return pid;
+  }
+  return null;
+}
 
 function pickRole(publicMetadata: unknown): string {
   if (publicMetadata && typeof publicMetadata === "object") {
@@ -64,6 +74,17 @@ export async function POST(req: NextRequest) {
           role,
         },
       });
+
+      // Cliente Brasil Solar: vincula o proprietário ao usuário Clerk recém-criado
+      // (o proprietarioId veio no publicMetadata do convite). Fecha o loop do
+      // acesso pago — a partir daqui o portal identifica o proprietário pelo login.
+      const proprietarioId = pickProprietarioId(data.public_metadata);
+      if (proprietarioId) {
+        await prisma.brasilSolarProprietario.updateMany({
+          where: { id: proprietarioId },
+          data: { clerkUserId: data.id },
+        });
+      }
     } else if (type === "user.deleted") {
       const clerkId = evt.data.id;
       if (clerkId) {

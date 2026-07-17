@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { getProprietarioRelatorio } from "@/lib/brasil-solar-relatorio";
 import { SolarPaybackReportPDF } from "@/components/billing/solar-payback-report-pdf";
+import { sanitizeForFilename } from "@/lib/relatorio-filename";
 
 export const runtime = "nodejs";
 
@@ -63,23 +64,4 @@ export async function GET(
       "Cache-Control": "no-store",
     },
   });
-}
-
-/**
- * Limpa um trecho pra usar como token em nome de arquivo:
- *  - tira acentos
- *  - troca espaços por "_"
- *  - remove caracteres proibidos em nomes de arquivo (\ / : * ? " < > |)
- *  - uppercase
- */
-function sanitizeForFilename(s: string): string {
-  // ̀-ͯ = combining diacritical marks (acentos após NFD)
-  return s
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[\\/:*?"<>|]/g, "")
-    .replace(/\s+/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_|_$/g, "")
-    .toUpperCase();
 }
