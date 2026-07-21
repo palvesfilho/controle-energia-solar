@@ -76,6 +76,8 @@ model Plant {
   geracaoMediaMensal Float?  @map("geracao_media_mensal")
   enquadramento      String?
   unidadeConsumidora String? @map("unidade_consumidora")
+  // Código de instalação ANTERIOR à migração de códigos da RGE (jul/2026).
+  unidadeConsumidoraAntiga String? @map("unidade_consumidora_antiga")
   concessionaria     String?
   formatoLeitura     String? @map("formato_leitura")
   regraInstalacao    String? @map("regra_instalacao") // USINA_DEDICADA | USINA_CONSUMO_PROPRIO | USINA_CONSUMO_DESCONTADO
@@ -899,6 +901,8 @@ model BrasilSolarClient {
   // Concessionaria
   concessionaria String?
   codigoUc       String? @map("codigo_uc")
+  // Código de instalação ANTERIOR à migração de códigos da RGE (jul/2026).
+  codigoUcAntigo String? @map("codigo_uc_antigo")
 
   // Contrato
   statusContrato String?   @map("status_contrato") // ATIVO, SUSPENSO, CANCELADO, GARANTIA
@@ -1036,6 +1040,8 @@ model BrasilSolarProprietario {
   latitude           Float?
   longitude          Float?
   codigoUc           String? @map("codigo_uc")
+  // Código de instalação ANTERIOR à migração de códigos da RGE (jul/2026).
+  codigoUcAntigo     String? @map("codigo_uc_antigo")
   concessionaria     String?
   potenciaInstalada  Float?  @map("potencia_instalada")
   modulosMarca       String? @map("modulos_marca")
@@ -1147,6 +1153,8 @@ model BrasilSolarBeneficiaria {
   proprietarioId String @map("proprietario_id")
 
   codigoUc    String  @map("codigo_uc")
+  // Código de instalação ANTERIOR à migração de códigos da RGE (jul/2026).
+  codigoUcAntigo String? @map("codigo_uc_antigo")
   nome        String?
   percentual  Float
   observacoes String?

@@ -30,6 +30,7 @@ interface ImportRow {
   inversorMarca?: string;
   concessionaria?: string;
   codigoUc?: string;
+  codigoUcAntigo?: string;
   statusContrato?: string;
   consultor?: string;
   geracaoMediaEsperada?: string;
@@ -91,6 +92,11 @@ const COLUMN_MAP: Record<string, string> = {
   "codigo uc": "codigoUc",
   "código uc": "codigoUc",
   uc: "codigoUc",
+  "codigo uc antigo": "codigoUcAntigo",
+  "código uc antigo": "codigoUcAntigo",
+  "codigo instalacao antigo": "codigoUcAntigo",
+  "código instalação antigo": "codigoUcAntigo",
+  "uc antiga": "codigoUcAntigo",
   "status contrato": "statusContrato",
   status: "statusContrato",
   consultor: "consultor",

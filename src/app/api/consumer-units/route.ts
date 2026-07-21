@@ -101,6 +101,7 @@ export async function POST(req: NextRequest) {
     data: {
       nome: body.nome,
       codigoUc: body.codigoUc,
+      codigoUcAntigo: body.codigoUcAntigo || null,
       origem,
       consumerId: body.consumerId || null,
       plantId: body.plantId || null,

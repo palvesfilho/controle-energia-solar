@@ -28,6 +28,7 @@ interface ImportRow {
   monitoramentoPlantId?: string;
   concessionaria?: string;
   codigoUc?: string;
+  codigoUcAntigo?: string;
   statusContrato?: string;
   dataContrato?: string;
   consultor?: string;
@@ -146,6 +147,7 @@ export async function POST(req: NextRequest) {
           monitoramentoPlantId: trim(row.monitoramentoPlantId),
           concessionaria: trim(row.concessionaria),
           codigoUc: trim(row.codigoUc),
+          codigoUcAntigo: trim(row.codigoUcAntigo) || null,
           statusContrato: trim(row.statusContrato) || "ATIVO",
           dataContrato: parseDate(row.dataContrato as string),
           consultor: trim(row.consultor),

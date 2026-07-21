@@ -87,6 +87,7 @@ export default function EditarClienteBrasilSolarPage() {
           monitoramentoPlantId: data.monitoramentoPlantId || "",
           concessionaria: data.concessionaria || "",
           codigoUc: data.codigoUc || "",
+          codigoUcAntigo: data.codigoUcAntigo || "",
           statusContrato: data.statusContrato || "ATIVO",
           dataContrato: formatDateForInput(data.dataContrato),
           consultor: data.consultor || "",
@@ -253,7 +254,8 @@ export default function EditarClienteBrasilSolarPage() {
                   ))}
                 </select>
               </div>
-              <FormField label="Codigo UC" name="codigoUc" value={form.codigoUc} onChange={handleChange} />
+              <FormField label="Codigo UC (novo)" name="codigoUc" value={form.codigoUc} onChange={handleChange} />
+              <FormField label="Codigo instalacao (antigo)" name="codigoUcAntigo" value={form.codigoUcAntigo} onChange={handleChange} />
               <div>
                 <label className="text-xs font-medium text-muted-foreground">Status Contrato</label>
                 <select name="statusContrato" value={form.statusContrato} onChange={handleChange}

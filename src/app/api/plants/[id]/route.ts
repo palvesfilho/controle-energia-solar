@@ -68,6 +68,7 @@ export async function PUT(
       }),
       ...(body.enquadramento !== undefined && { enquadramento: body.enquadramento || null }),
       ...(body.unidadeConsumidora !== undefined && { unidadeConsumidora: body.unidadeConsumidora || null }),
+      ...(body.unidadeConsumidoraAntiga !== undefined && { unidadeConsumidoraAntiga: body.unidadeConsumidoraAntiga || null }),
       ...(body.concessionaria !== undefined && { concessionaria: body.concessionaria || null }),
       ...(body.formatoLeitura !== undefined && { formatoLeitura: body.formatoLeitura || null }),
       ...(body.regraInstalacao !== undefined && { regraInstalacao: body.regraInstalacao || null }),

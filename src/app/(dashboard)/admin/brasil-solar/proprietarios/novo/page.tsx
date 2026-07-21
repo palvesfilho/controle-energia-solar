@@ -30,6 +30,7 @@ interface FormData {
   observacoes: string;
   executadoPor: "BRASIL_SOLAR" | "TERCEIRO";
   codigoUc: string;
+  codigoUcAntigo: string;
   concessionaria: string;
   distribuidoraPortal: "" | "RGE" | "CPFL_PAULISTA" | "CPFL_PIRATININGA";
   emailPortal: string;
@@ -90,7 +91,7 @@ export default function NovoProprietarioPage() {
     nome: "", cpfCnpj: "", email: "", telefone: "",
     endereco: "", cidade: "", uf: "", observacoes: "",
     executadoPor: "BRASIL_SOLAR",
-    codigoUc: "", concessionaria: "",
+    codigoUc: "", codigoUcAntigo: "", concessionaria: "",
     distribuidoraPortal: "", emailPortal: "", senhaPortal: "", instalacaoPortal: "",
     tipoTelhado: "", tipoTelhadoOutro: "",
     dataPagamento: "", prazoContratoDias: "",
@@ -236,6 +237,7 @@ export default function NovoProprietarioPage() {
         observacoes: form.observacoes,
         executadoPor: form.executadoPor,
         codigoUc: form.codigoUc.trim() || null,
+        codigoUcAntigo: form.codigoUcAntigo.trim() || null,
         concessionaria: form.concessionaria.trim() || null,
       };
       if (portalAny) {
@@ -386,13 +388,25 @@ export default function NovoProprietarioPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div>
                 <label className="text-xs font-medium text-muted-foreground">
-                  Código UC
+                  Código UC (novo)
                 </label>
                 <input
                   type="text"
                   value={form.codigoUc}
                   onChange={(e) => set("codigoUc", e.target.value)}
                   placeholder="Ex.: 3095464357"
+                  className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background font-mono focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">
+                  Código instalação (antigo)
+                </label>
+                <input
+                  type="text"
+                  value={form.codigoUcAntigo}
+                  onChange={(e) => set("codigoUcAntigo", e.target.value)}
+                  placeholder="Anterior à migração RGE"
                   className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background font-mono focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                 />
               </div>

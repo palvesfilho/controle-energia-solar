@@ -207,6 +207,10 @@ export async function POST(req: NextRequest) {
     (typeof body.codigoUc === "string" && body.codigoUc.trim()) ||
     (typeof planta.codigoUc === "string" && planta.codigoUc.trim()) ||
     null;
+  const codigoUcAntigoInput =
+    (typeof body.codigoUcAntigo === "string" && body.codigoUcAntigo.trim()) ||
+    (typeof planta.codigoUcAntigo === "string" && planta.codigoUcAntigo.trim()) ||
+    null;
   const concessionariaInput =
     (typeof body.concessionaria === "string" && body.concessionaria.trim()) ||
     (typeof planta.concessionaria === "string" && planta.concessionaria.trim()) ||
@@ -230,6 +234,7 @@ export async function POST(req: NextRequest) {
       latitude: toFloat(planta.latitude),
       longitude: toFloat(planta.longitude),
       codigoUc: codigoUcInput,
+      codigoUcAntigo: codigoUcAntigoInput,
       concessionaria: concessionariaInput,
       potenciaInstalada: toFloat(planta.potenciaInstalada),
       modulosMarca: planta.modulosMarca?.toString().trim() || null,
@@ -260,6 +265,7 @@ export async function POST(req: NextRequest) {
           data: {
             nome: proprietario.nome,
             codigoUc: codigoUcInput,
+            codigoUcAntigo: codigoUcAntigoInput,
             cpfCnpj: proprietario.cpfCnpj,
             distribuidora: concessionariaInput,
             cidade: proprietario.cidade,

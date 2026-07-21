@@ -78,6 +78,7 @@ export async function PUT(
       latitude: body.latitude !== undefined ? toFloat(body.latitude) : undefined,
       longitude: body.longitude !== undefined ? toFloat(body.longitude) : undefined,
       codigoUc: body.codigoUc,
+      codigoUcAntigo: body.codigoUcAntigo,
       concessionaria: body.concessionaria,
       potenciaInstalada: body.potenciaInstalada !== undefined ? toFloat(body.potenciaInstalada) : undefined,
       modulosMarca: body.modulosMarca,

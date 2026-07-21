@@ -81,6 +81,7 @@ export async function PUT(
       monitoramentoPlantId: body.monitoramentoPlantId,
       concessionaria: body.concessionaria,
       codigoUc: body.codigoUc,
+      codigoUcAntigo: body.codigoUcAntigo ?? undefined,
       statusContrato: body.statusContrato,
       dataContrato: body.dataContrato ? new Date(body.dataContrato) : undefined,
       consultor: body.consultor,

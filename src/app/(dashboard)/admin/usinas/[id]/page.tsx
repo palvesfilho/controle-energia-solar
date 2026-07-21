@@ -153,6 +153,7 @@ interface PlantData {
   geracaoMediaMensal: number | null;
   enquadramento: string | null;
   unidadeConsumidora: string | null;
+  unidadeConsumidoraAntiga: string | null;
   concessionaria: string | null;
   formatoLeitura: string | null;
   regraInstalacao: string | null;
@@ -637,7 +638,8 @@ export default function UsinaPage() {
                 <option value="GD2">GD2</option>
               </select>
             </div>
-            <Field label="Unidade Consumidora" name="unidadeConsumidora" defaultValue={plant.unidadeConsumidora} />
+            <Field label="Unidade Consumidora (novo)" name="unidadeConsumidora" defaultValue={plant.unidadeConsumidora} />
+            <Field label="UC instalação (antigo)" name="unidadeConsumidoraAntiga" defaultValue={plant.unidadeConsumidoraAntiga} />
             <div>
               <label className="text-xs font-medium text-muted-foreground">Concessionária</label>
               <select

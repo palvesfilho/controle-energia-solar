@@ -11,6 +11,7 @@ import { Loader2, Plus, Trash2, Users, Check } from "lucide-react";
 interface Beneficiaria {
   id: string;
   codigoUc: string;
+  codigoUcAntigo: string | null;
   nome: string | null;
   percentual: number;
   observacoes: string | null;
@@ -18,15 +19,17 @@ interface Beneficiaria {
 
 interface Draft {
   codigoUc: string;
+  codigoUcAntigo: string;
   nome: string;
   percentual: string;
 }
 
-const emptyDraft = (): Draft => ({ codigoUc: "", nome: "", percentual: "" });
+const emptyDraft = (): Draft => ({ codigoUc: "", codigoUcAntigo: "", nome: "", percentual: "" });
 
 function toDraft(b: Beneficiaria): Draft {
   return {
     codigoUc: b.codigoUc,
+    codigoUcAntigo: b.codigoUcAntigo ?? "",
     nome: b.nome ?? "",
     percentual: Number.isFinite(b.percentual) ? String(b.percentual) : "",
   };
@@ -135,6 +138,7 @@ export function BeneficiariasCard({ proprietarioId }: { proprietarioId: string }
           body: JSON.stringify({
             beneficiarias: cleaned.map((d) => ({
               codigoUc: d.codigoUc.trim(),
+              codigoUcAntigo: d.codigoUcAntigo.trim() || null,
               nome: d.nome.trim() || null,
               percentual: parseFloat(d.percentual),
             })),
@@ -243,9 +247,9 @@ export function BeneficiariasCard({ proprietarioId }: { proprietarioId: string }
                   key={idx}
                   className="grid grid-cols-12 gap-2 items-end border rounded-lg p-3 bg-muted/20"
                 >
-                  <div className="col-span-12 sm:col-span-4 space-y-1.5">
+                  <div className="col-span-12 sm:col-span-3 space-y-1.5">
                     <Label htmlFor={`uc-${idx}`} className="text-xs">
-                      Código UC
+                      Código UC (novo)
                     </Label>
                     <Input
                       id={`uc-${idx}`}
@@ -257,7 +261,21 @@ export function BeneficiariasCard({ proprietarioId }: { proprietarioId: string }
                       className="font-mono"
                     />
                   </div>
-                  <div className="col-span-12 sm:col-span-5 space-y-1.5">
+                  <div className="col-span-12 sm:col-span-3 space-y-1.5">
+                    <Label htmlFor={`uc-antigo-${idx}`} className="text-xs">
+                      Código instal. (antigo)
+                    </Label>
+                    <Input
+                      id={`uc-antigo-${idx}`}
+                      value={d.codigoUcAntigo}
+                      onChange={(e) =>
+                        updateDraft(idx, { codigoUcAntigo: e.target.value })
+                      }
+                      placeholder="Pré-migração RGE"
+                      className="font-mono"
+                    />
+                  </div>
+                  <div className="col-span-12 sm:col-span-3 space-y-1.5">
                     <Label htmlFor={`nome-${idx}`} className="text-xs">
                       Nome (opcional)
                     </Label>

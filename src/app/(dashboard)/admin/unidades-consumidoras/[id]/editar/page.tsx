@@ -43,6 +43,7 @@ export default function EditarUCPage() {
         setInitialData({
           nome: uc.nome ?? "",
           codigoUc: uc.codigoUc ?? "",
+          codigoUcAntigo: uc.codigoUcAntigo ?? "",
           consumerId: uc.consumerId ?? "",
           plantId: uc.plantId ?? "",
           cpfCnpj: uc.cpfCnpj ?? "",

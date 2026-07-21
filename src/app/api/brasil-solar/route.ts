@@ -130,6 +130,7 @@ export async function POST(req: NextRequest) {
       monitoramentoPlantId: body.monitoramentoPlantId,
       concessionaria: body.concessionaria,
       codigoUc: body.codigoUc,
+      codigoUcAntigo: body.codigoUcAntigo || null,
       statusContrato: body.statusContrato || "ATIVO",
       dataContrato: body.dataContrato ? new Date(body.dataContrato) : null,
       consultor: body.consultor,

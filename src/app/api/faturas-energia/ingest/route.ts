@@ -111,9 +111,17 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      // Resolve a UC: por ConsumerUnit.codigoUc, depois por CpflCredential.instalacao.
+      // Resolve a UC: por ConsumerUnit.codigoUc OU codigoUcAntigo, depois por
+      // CpflCredential.instalacao. A migração RGE (jul/2026) fez faturas novas
+      // trazerem o "Número da UC" novo e as antigas o "Código da Instalação"
+      // antigo — casar pelos dois campos garante que ambas caiam na mesma UC.
       let unit = await prisma.consumerUnit.findFirst({
-        where: { codigoUc: parsed.codigoInstalacao },
+        where: {
+          OR: [
+            { codigoUc: parsed.codigoInstalacao },
+            { codigoUcAntigo: parsed.codigoInstalacao },
+          ],
+        },
         select: { id: true, nome: true },
       });
       if (!unit) {
@@ -130,6 +138,7 @@ export async function POST(req: NextRequest) {
         where: {
           OR: [
             { unidadeConsumidora: parsed.codigoInstalacao },
+            { unidadeConsumidoraAntiga: parsed.codigoInstalacao },
             { numeroUsina: parsed.codigoInstalacao },
             { codigoCliente: parsed.codigoInstalacao },
           ],

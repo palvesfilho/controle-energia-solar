@@ -48,6 +48,7 @@ interface FormData {
   monitoramentoPlantId: string;
   concessionaria: string;
   codigoUc: string;
+  codigoUcAntigo: string;
   statusContrato: string;
   dataContrato: string;
   consultor: string;
@@ -66,7 +67,7 @@ const emptyForm: FormData = {
   inversorMarca: "", inversorModelo: "", inversorQuantidade: "", inversorPotencia: "",
   plataformaMonitoramento: "", monitoramentoLogin: "", monitoramentoSenha: "",
   monitoramentoUrl: "", monitoramentoPlantId: "",
-  concessionaria: "", codigoUc: "",
+  concessionaria: "", codigoUc: "", codigoUcAntigo: "",
   statusContrato: "ATIVO", dataContrato: "", consultor: "", garantiaAte: "",
   geracaoMediaEsperada: "", investimento: "", observacoesInternas: "",
 };
@@ -269,7 +270,8 @@ export default function NovoClienteBrasilSolarPage() {
                   ))}
                 </select>
               </div>
-              <FormField label="Codigo UC" name="codigoUc" value={form.codigoUc} onChange={handleChange} />
+              <FormField label="Codigo UC (novo)" name="codigoUc" value={form.codigoUc} onChange={handleChange} placeholder="A partir de jul/2026" />
+              <FormField label="Codigo instalacao (antigo)" name="codigoUcAntigo" value={form.codigoUcAntigo} onChange={handleChange} placeholder="Anterior a migracao RGE" />
               <div>
                 <label className="text-xs font-medium text-muted-foreground">Status Contrato</label>
                 <select

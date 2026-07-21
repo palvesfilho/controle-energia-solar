@@ -73,7 +73,12 @@ export async function POST(req: NextRequest) {
       // TambÃ©m precisamos saber se essa instalaÃ§Ã£o corresponde Ã  prÃ³pria UC de
       // uma usina â€” nesse caso a bill Ã© marcada com plantId (Ã© a fatura da usina).
       let unit = await prisma.consumerUnit.findFirst({
-        where: { codigoUc: parsed.codigoInstalacao },
+        where: {
+          OR: [
+            { codigoUc: parsed.codigoInstalacao },
+            { codigoUcAntigo: parsed.codigoInstalacao },
+          ],
+        },
         select: { id: true, nome: true },
       });
       if (!unit) {
@@ -92,6 +97,7 @@ export async function POST(req: NextRequest) {
         where: {
           OR: [
             { unidadeConsumidora: parsed.codigoInstalacao },
+            { unidadeConsumidoraAntiga: parsed.codigoInstalacao },
             { numeroUsina: parsed.codigoInstalacao },
             { codigoCliente: parsed.codigoInstalacao },
           ],

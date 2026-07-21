@@ -23,6 +23,7 @@ export async function GET(
     select: {
       id: true,
       codigoUc: true,
+      codigoUcAntigo: true,
       nome: true,
       percentual: true,
       observacoes: true,
@@ -65,11 +66,15 @@ export async function PUT(
   }
 
   // Normaliza entradas
-  type Entry = { codigoUc: string; nome: string | null; percentual: number; observacoes: string | null };
+  type Entry = { codigoUc: string; codigoUcAntigo: string | null; nome: string | null; percentual: number; observacoes: string | null };
   const entries: Entry[] = [];
   for (const item of rawList) {
     const codigoUc =
       typeof item?.codigoUc === "string" ? item.codigoUc.trim() : "";
+    const codigoUcAntigo =
+      typeof item?.codigoUcAntigo === "string" && item.codigoUcAntigo.trim()
+        ? item.codigoUcAntigo.trim()
+        : null;
     if (!codigoUc) {
       return NextResponse.json(
         { error: "Toda beneficiária precisa de um Código UC" },
@@ -89,6 +94,7 @@ export async function PUT(
     }
     entries.push({
       codigoUc,
+      codigoUcAntigo,
       nome:
         typeof item?.nome === "string" && item.nome.trim()
           ? item.nome.trim()
@@ -172,19 +178,27 @@ export async function PUT(
     for (const e of entries) {
       let uc = await tx.consumerUnit.findUnique({
         where: { codigoUc: e.codigoUc },
-        select: { id: true },
+        select: { id: true, codigoUcAntigo: true },
       });
       if (!uc) {
         uc = await tx.consumerUnit.create({
           data: {
             nome: e.nome ?? `UC ${e.codigoUc}`,
             codigoUc: e.codigoUc,
+            codigoUcAntigo: e.codigoUcAntigo,
             cpfCnpj: propFull?.cpfCnpj ?? null,
             distribuidora: propFull?.concessionaria ?? null,
             cidade: propFull?.cidade ?? null,
             origem: "BRASIL_SOLAR_BENEFICIARIA",
           },
-          select: { id: true },
+          select: { id: true, codigoUcAntigo: true },
+        });
+      } else if (e.codigoUcAntigo && uc.codigoUcAntigo !== e.codigoUcAntigo) {
+        // Propaga o código antigo informado na beneficiária pra UC física —
+        // é ela que casa as faturas (por codigoUc OU codigoUcAntigo).
+        await tx.consumerUnit.update({
+          where: { id: uc.id },
+          data: { codigoUcAntigo: e.codigoUcAntigo },
         });
       }
       linkPorCodigo.set(e.codigoUc, uc.id);
@@ -195,6 +209,7 @@ export async function PUT(
         data: entries.map((e) => ({
           proprietarioId: id,
           codigoUc: e.codigoUc,
+          codigoUcAntigo: e.codigoUcAntigo,
           nome: e.nome,
           percentual: e.percentual,
           observacoes: e.observacoes,
@@ -244,6 +259,7 @@ export async function PUT(
     select: {
       id: true,
       codigoUc: true,
+      codigoUcAntigo: true,
       nome: true,
       percentual: true,
       observacoes: true,

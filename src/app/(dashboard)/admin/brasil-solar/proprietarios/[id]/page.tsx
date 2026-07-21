@@ -72,6 +72,7 @@ interface Proprietario {
   latitude?: number | null;
   longitude?: number | null;
   codigoUc?: string | null;
+  codigoUcAntigo?: string | null;
   concessionaria?: string | null;
   potenciaInstalada?: number | null;
   modulosMarca?: string | null;
@@ -157,6 +158,7 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
   // Edição inline do código UC
   const [editingUc, setEditingUc] = useState(false);
   const [ucDraft, setUcDraft] = useState("");
+  const [ucAntigoDraft, setUcAntigoDraft] = useState("");
   const [savingUc, setSavingUc] = useState(false);
 
   // ConsumerUnit vinculada via codigoUc (lookup por código)
@@ -167,6 +169,7 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
 
   const startEditUc = () => {
     setUcDraft(data?.codigoUc ?? "");
+    setUcAntigoDraft(data?.codigoUcAntigo ?? "");
     setEditingUc(true);
   };
 
@@ -178,6 +181,7 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           codigoUc: ucDraft.trim() || null,
+          codigoUcAntigo: ucAntigoDraft.trim() || null,
         }),
       });
       if (!res.ok) {
@@ -696,19 +700,33 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
                   <span className="text-muted-foreground">UC (concessionária):</span>
                   {editingUc ? (
                     <>
-                      <input
-                        type="text"
-                        autoFocus
-                        value={ucDraft}
-                        onChange={(e) => setUcDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") saveUc();
-                          if (e.key === "Escape") setEditingUc(false);
-                        }}
-                        placeholder="Ex.: 3095464357"
-                        disabled={savingUc}
-                        className="font-mono text-xs border rounded px-2 py-1 bg-background w-44"
-                      />
+                      <div className="flex flex-col gap-0.5">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={ucDraft}
+                          onChange={(e) => setUcDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveUc();
+                            if (e.key === "Escape") setEditingUc(false);
+                          }}
+                          placeholder="UC novo — ex.: 3095464357"
+                          disabled={savingUc}
+                          className="font-mono text-xs border rounded px-2 py-1 bg-background w-56"
+                        />
+                        <input
+                          type="text"
+                          value={ucAntigoDraft}
+                          onChange={(e) => setUcAntigoDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveUc();
+                            if (e.key === "Escape") setEditingUc(false);
+                          }}
+                          placeholder="Código antigo (pré-migração RGE)"
+                          disabled={savingUc}
+                          className="font-mono text-xs border rounded px-2 py-1 bg-background w-56"
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={saveUc}
@@ -733,6 +751,11 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
                         <span className="font-mono">{data.codigoUc}</span>
                       ) : (
                         <span className="italic text-muted-foreground">não informado</span>
+                      )}
+                      {data.codigoUcAntigo && (
+                        <span className="font-mono text-muted-foreground">
+                          (antigo: {data.codigoUcAntigo})
+                        </span>
                       )}
                       <button
                         type="button"

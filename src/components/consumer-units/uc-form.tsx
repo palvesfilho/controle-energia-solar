@@ -10,6 +10,7 @@ import { Save } from "lucide-react";
 export interface UCFormData {
   nome: string;
   codigoUc: string;
+  codigoUcAntigo: string;
   consumerId: string;
   plantId: string;
   cpfCnpj: string;
@@ -42,6 +43,7 @@ export interface UCFormData {
 export const EMPTY_UC_FORM: UCFormData = {
   nome: "",
   codigoUc: "",
+  codigoUcAntigo: "",
   consumerId: "",
   plantId: "",
   cpfCnpj: "",
@@ -189,6 +191,20 @@ export function UCForm({
               onChange={(e) => update("codigoUc", e.target.value)}
               required
             />
+            <p className="text-xs text-muted-foreground">
+              Número atual (novo, a partir de jul/2026)
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="codigoUcAntigo">Código da instalação (antigo)</Label>
+            <Input
+              id="codigoUcAntigo"
+              value={form.codigoUcAntigo}
+              onChange={(e) => update("codigoUcAntigo", e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Código anterior à migração da RGE. Faturas antigas casam por ele.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="cpfCnpj">CPF/CNPJ</Label>

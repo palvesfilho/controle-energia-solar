@@ -252,7 +252,8 @@ export default function NovaUsinaPage() {
                       <option value="GD2">GD2</option>
                     </select>
                   </div>
-                  <FormField label="Unidade Consumidora" name="unidadeConsumidora" />
+                  <FormField label="Unidade Consumidora (novo)" name="unidadeConsumidora" />
+                  <FormField label="UC instalação (antigo)" name="unidadeConsumidoraAntiga" />
                   <div>
                     <label className="text-xs font-medium text-muted-foreground">
                       Concessionária

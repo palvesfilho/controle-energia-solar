@@ -49,6 +49,7 @@ export async function POST(req: NextRequest) {
       geracaoMediaMensal: body.geracaoMediaMensal ? Number(body.geracaoMediaMensal) : null,
       enquadramento: body.enquadramento || null,
       unidadeConsumidora: body.unidadeConsumidora || null,
+      unidadeConsumidoraAntiga: body.unidadeConsumidoraAntiga || null,
       concessionaria: body.concessionaria || null,
       formatoLeitura: body.formatoLeitura || null,
       inversorMarca: body.inversorMarca || null,

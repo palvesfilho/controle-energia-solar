@@ -64,6 +64,7 @@ export async function PUT(
     data: {
       ...(body.nome !== undefined && { nome: body.nome }),
       ...(body.codigoUc !== undefined && { codigoUc: body.codigoUc }),
+      ...(body.codigoUcAntigo !== undefined && { codigoUcAntigo: body.codigoUcAntigo || null }),
       ...(body.consumerId !== undefined && { consumerId: body.consumerId || null }),
       ...(body.plantId !== undefined && { plantId: body.plantId || null }),
       ...(body.cpfCnpj !== undefined && { cpfCnpj: body.cpfCnpj || null }),

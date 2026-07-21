@@ -268,19 +268,40 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
     }
   }
 
-  // === Código da Instalação ===
-  // Padrões observados em faturas RGE/CPFL:
-  //  (a) "3095156869 Próxima leitura 20/04/2026" (pdfjs cluster Y junta label-ao-lado)
+  // === Identificador da UC (Código da Instalação OU Número da UC) ===
+  // A RGE/CPFL migrou o identificador a partir da referência jul/2026 (REN ANEEL
+  // 1095/24): faturas ANTIGAS trazem "Código da Instalação" com 10 dígitos puros
+  // (ex. "4003655398"); faturas NOVAS trazem "Número da UC" no formato pontuado
+  // "3.562.981.001-26". A fatura nova NÃO imprime o código antigo — o de-para
+  // antigo→novo só existe no portal (robô conversor). Aqui extraímos o que a
+  // fatura mostrar e normalizamos pra SÓ DÍGITOS, que é a forma canônica gravada
+  // em ConsumerUnit.codigoUc / codigoUcAntigo e usada no match do ingest/upload.
+  const onlyDigits = (s: string): string => s.replace(/\D/g, "");
+  // Padrão do número novo: dígito + 3 grupos de 3 + traço + 2 (12 dígitos).
+  // Inconfundível: CNPJ usa "/" antes dos 4 finais, CPF vem mascarado, código de
+  // barras e chave de acesso não têm pontuação nesse arranjo.
+  const NUMERO_UC_RE = /\b\d\.\d{3}\.\d{3}\.\d{3}-\d{2}\b/;
+  let codigoInstalacao: string | null = null;
+
+  // (1) Formato NOVO ("Número da UC") — prioridade: só aparece em faturas migradas.
+  for (const line of lines) {
+    const m = line.match(NUMERO_UC_RE);
+    if (m) { codigoInstalacao = onlyDigits(m[0]); break; }
+  }
+
+  // (2) Formato ANTIGO ("Código da Instalação") — padrões observados:
+  //  (a) "4003655398 Próxima leitura 20/04/2026" (pdfjs cluster Y junta label-ao-lado)
   //  (b) Número isolado em linha própria
   //  (c) Linha contendo "Código da Instalação" seguida do número
-  let codigoInstalacao: string | null = null;
-  for (let i = 0; i < lines.length; i++) {
-    if (/c[oó]digo da instala[cç][aã]o/i.test(lines[i])) {
-      for (let j = i; j < Math.min(i + 4, lines.length); j++) {
-        const m = lines[j].match(/\b(\d{10})\b/);
-        if (m) { codigoInstalacao = m[1]; break; }
+  if (!codigoInstalacao) {
+    for (let i = 0; i < lines.length; i++) {
+      if (/c[oó]digo da instala[cç][aã]o/i.test(lines[i])) {
+        for (let j = i; j < Math.min(i + 4, lines.length); j++) {
+          const m = lines[j].match(/\b(\d{10})\b/);
+          if (m) { codigoInstalacao = m[1]; break; }
+        }
+        if (codigoInstalacao) break;
       }
-      if (codigoInstalacao) break;
     }
   }
   // Fallback (a)/(b): 10 dígitos no início de uma linha.
