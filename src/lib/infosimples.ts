@@ -244,15 +244,19 @@ export function parseBillData(data: InfosimplesBillData) {
   const constanteMedidorInjetada = parseNum(medidorInj?.constante_medidor);
   const energiaInjetadaMedidorKwh = parseNum(medidorInj?.consumo_kwh);
 
-  // Energia injetada oUC — soma por lado (TE ou TUSD dão mesma qtd total).
-  // Em faturas com OCR parcialmente corrompido (colunas deslocadas), um dos lados pode vir
-  // incompleto. Usamos o maior dos dois para refletir o total real compensado.
-  const injetada = parseInjetadaOuc(consumoItems);
-  const energiaInjetada = maxLado(injetada.tusdKwh, injetada.teKwh);
-  const energiaCompensada = energiaInjetada;
-
   // Geração própria do cliente (linhas "Energia Ativa Injetada" SEM "oUC").
   const propria = parseInjetadaPropria(consumoItems);
+
+  // Energia TOTAL injetada/compensada = rateio da usina (oUC) + geração própria
+  // do painel do cliente. É todo o crédito que abateu o consumo. A própria segue
+  // separada em energiaInjetadaPropria* (o cálculo do investidor subtrai a
+  // própria pra isolar só o rateio). TE e TUSD dão a mesma qtd; em OCR corrompido
+  // um lado pode vir incompleto, por isso pegamos o maior dos dois.
+  const injetada = parseInjetadaOuc(consumoItems);
+  const totalTusd = (injetada.tusdKwh ?? 0) + (propria.tusdKwh ?? 0);
+  const totalTe = (injetada.teKwh ?? 0) + (propria.teKwh ?? 0);
+  const energiaInjetada = maxLado(totalTusd || null, totalTe || null);
+  const energiaCompensada = energiaInjetada;
 
   // Tarifas: pegar tarifa_aneel (base) e tarifa_com_tributos das linhas Consumo TE/TUSD
   const { tarifaTE, tarifaTUSD, tarifaTeComTributos, tarifaTusdComTributos } =

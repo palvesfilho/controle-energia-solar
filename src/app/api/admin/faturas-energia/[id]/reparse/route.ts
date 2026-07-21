@@ -71,9 +71,14 @@ export async function POST(
     );
   }
 
+  // `parsed.bill` traz pdfUrl:null e fonteConsulta:"UPLOAD_MANUAL" (defaults do
+  // parser). NÃO sobrescrever esses no reparse — senão zera o ponteiro do PDF já
+  // salvo e reescreve a fonte. Preserva ambos, atualiza só os campos extraídos.
+  const { pdfUrl: _pdfUrl, fonteConsulta: _fonte, ...billData } = parsed.bill;
+  void _pdfUrl; void _fonte;
   await prisma.consumerBill.update({
     where: { id },
-    data: { ...parsed.bill, syncedAt: new Date() },
+    data: { ...billData, syncedAt: new Date() },
   });
 
   await populateBillingFromBill(id).catch(() => {});

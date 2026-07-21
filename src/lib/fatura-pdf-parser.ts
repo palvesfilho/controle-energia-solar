@@ -724,8 +724,19 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
     }
   }
 
-  // Energia injetada/compensada total (uma das laterais; ambas iguais)
-  const energiaInjetada = temInjTusd ? injTusdKwh : temInjTe ? injTeKwh : null;
+  // Energia TOTAL injetada/compensada = geração própria do painel do cliente
+  // (linhas "Energia Ativa Injetada" SEM oUC/mUC) + rateio da usina (linhas
+  // oUC/mUC). É o total de energia que abateu o consumo do cliente. A geração
+  // própria continua disponível separada em energiaInjetadaPropria* (o cálculo
+  // do investidor subtrai a própria pra isolar só o rateio). TE e TUSD são as
+  // duas laterais do mesmo valor; usamos a lateral que tiver dados.
+  const propriaTusdKwh = energiaInjetadaPropriaTusdKwh ?? 0;
+  const propriaTeKwh = energiaInjetadaPropriaTeKwh ?? 0;
+  const totalTusd = injTusdKwh + propriaTusdKwh;
+  const totalTe = injTeKwh + propriaTeKwh;
+  const temTusd = temInjTusd || propriaTusdKwh > 0;
+  const temTe = temInjTe || propriaTeKwh > 0;
+  const energiaInjetada = temTusd ? totalTusd : temTe ? totalTe : null;
   const energiaCompensada = energiaInjetada;
 
   const grupoA = extractGrupoA(lines);
