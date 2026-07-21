@@ -439,10 +439,13 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
   for (const lc of linhasConsumo) {
     const d = normDesc(lc.desc);
     const isInjAny = d.includes("energ") && d.includes("inj");
-    // "oUC" = "outra UC" — só aparece em compensação por rateio da nossa usina.
-    // "Energia Ativa Injetada" SEM oUC = painel solar do próprio cliente (Lei 14.300).
-    const isInjPropria = isInjAny && !d.includes("ouc");
-    const isInj = isInjAny && d.includes("ouc");
+    // "oUC"/"mUC" = crédito de outra(s) UC — compensação por rateio da nossa usina.
+    // A RGE trocou o rótulo "oUC" por "mUC mPT" a partir de mai/2026 (mesma Lei
+    // 14.300, nomenclatura nova). "Energia Ativa Injetada" SEM esses marcadores =
+    // painel solar do próprio cliente.
+    const isCompensacao = d.includes("ouc") || d.includes("muc");
+    const isInjPropria = isInjAny && !isCompensacao;
+    const isInj = isInjAny && isCompensacao;
     const isTusd = d.includes("tusd");
     const isTe = !isTusd && (d.includes(" te ") || d.endsWith(" te") || d.includes("- te") || d.includes("-te"));
     // Linha de bandeira cobrada ("Adicional de Bandeira X") ou de crédito
