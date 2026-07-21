@@ -591,7 +591,7 @@ export default function RelatorioDetalhePage() {
                 </tr>
               </thead>
               <tbody>
-                {mesesAnteriores.map((m) => (
+                {[...mesesAnteriores].reverse().map((m) => (
                   <tr key={`${m.ano}-${m.mes}`} className="border-b last:border-0">
                     <td className="py-2 px-2 font-medium">
                       {MES_ABREV[m.mes - 1]}/{m.ano}

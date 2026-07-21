@@ -506,7 +506,7 @@ export function SolarPaybackReportProprietarioPDF({
               <View style={s.tableHead}>
                 <Text style={[s.tableHeadCell, { flex: 1.2 }]}>Mês</Text>
                 <Text style={[s.tableHeadCell, { flex: 1.4, textAlign: "right" }]}>
-                  Consumo
+                  Consumo total
                 </Text>
                 <Text style={[s.tableHeadCell, { flex: 1.4, textAlign: "right" }]}>
                   Compensado
@@ -518,7 +518,8 @@ export function SolarPaybackReportProprietarioPDF({
                   Fatura RGE
                 </Text>
               </View>
-              {data.meses.map((m) => (
+              {/* Mais recente primeiro. Cópia com reverse pra não mutar data.meses. */}
+              {[...data.meses].reverse().map((m) => (
                 <View key={`${m.ano}-${m.mes}`} style={s.tableRow}>
                   <Text style={[s.tableCell, { flex: 1.2 }]}>
                     {MES_ABREV[m.mes - 1]}/{m.ano}

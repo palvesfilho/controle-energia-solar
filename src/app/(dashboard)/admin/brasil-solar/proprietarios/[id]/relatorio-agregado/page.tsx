@@ -417,7 +417,7 @@ export default function RelatorioAgregadoPage() {
               <thead>
                 <tr className="text-muted-foreground border-b">
                   <th className="text-left py-2 px-2">Mês</th>
-                  <th className="text-right py-2 px-2">Consumo</th>
+                  <th className="text-right py-2 px-2" title="Soma do consumo das beneficiárias (sem consumo instantâneo — beneficiárias não têm geração própria)">Consumo total</th>
                   <th className="text-right py-2 px-2">Compensado</th>
                   <th className="text-right py-2 px-2">Economia</th>
                   <th className="text-right py-2 px-2">Fatura RGE</th>
@@ -425,7 +425,7 @@ export default function RelatorioAgregadoPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.meses.map((m) => (
+                {[...data.meses].reverse().map((m) => (
                   <tr key={`${m.ano}-${m.mes}`} className="border-b last:border-0">
                     <td className="py-2 px-2 font-medium">
                       {MES_ABREV[m.mes - 1]}/{m.ano}
