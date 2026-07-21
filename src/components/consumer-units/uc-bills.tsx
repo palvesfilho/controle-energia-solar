@@ -21,6 +21,7 @@ interface Bill {
   valorTotal: number | null;
   consumoKwh: number | null;
   energiaInjetada: number | null;
+  energiaInjetadaMedidorKwh: number | null;
   energiaCompensada: number | null;
   saldoCreditos: number | null;
   bandeiraTarifaria: string | null;
@@ -106,8 +107,8 @@ export function UcBills({ consumerUnitId, refreshKey }: UcBillsProps) {
                   <TableHead>Referência</TableHead>
                   <TableHead className="text-right">Valor</TableHead>
                   <TableHead className="text-right" title="Consumo registrado da rede (sem o autoconsumo instantâneo da geração própria)">Consumo da Rede</TableHead>
-                  <TableHead className="text-right">Injetada</TableHead>
-                  <TableHead className="text-right">Compensada</TableHead>
+                  <TableHead className="text-right" title="Energia injetada na rede, lida pelo medidor de geração">Injetada</TableHead>
+                  <TableHead className="text-right" title="Energia compensada na fatura (créditos GD que abateram o consumo)">Compensada</TableHead>
                   <TableHead className="text-right">Saldo Créditos</TableHead>
                   <TableHead>Bandeira</TableHead>
                   <TableHead>Fonte</TableHead>
@@ -127,7 +128,7 @@ export function UcBills({ consumerUnitId, refreshKey }: UcBillsProps) {
                       {formatKwh(bill.consumoKwh)}
                     </TableCell>
                     <TableCell className="text-right text-green-600">
-                      {formatKwh(bill.energiaInjetada)}
+                      {formatKwh(bill.energiaInjetadaMedidorKwh)}
                     </TableCell>
                     <TableCell className="text-right text-blue-600">
                       {formatKwh(bill.energiaCompensada)}
