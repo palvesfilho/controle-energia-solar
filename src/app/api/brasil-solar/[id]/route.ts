@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
+import { normalizeCodigoUc } from "@/lib/uc-codigo";
 import { prisma } from "@/lib/prisma";
 
 // GET /api/brasil-solar/[id] - Detalhe do cliente
@@ -80,8 +81,8 @@ export async function PUT(
       monitoramentoUrl: body.monitoramentoUrl,
       monitoramentoPlantId: body.monitoramentoPlantId,
       concessionaria: body.concessionaria,
-      codigoUc: body.codigoUc,
-      codigoUcAntigo: body.codigoUcAntigo ?? undefined,
+      codigoUc: normalizeCodigoUc(body.codigoUc),
+      codigoUcAntigo: normalizeCodigoUc(body.codigoUcAntigo) ?? undefined,
       statusContrato: body.statusContrato,
       dataContrato: body.dataContrato ? new Date(body.dataContrato) : undefined,
       consultor: body.consultor,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
+import { normalizeCodigoUc } from "@/lib/uc-codigo";
 import { isAdminRole } from "@/lib/roles";
 
 export async function GET(
@@ -67,8 +68,8 @@ export async function PUT(
         geracaoMediaMensal: body.geracaoMediaMensal ? Number(body.geracaoMediaMensal) : null,
       }),
       ...(body.enquadramento !== undefined && { enquadramento: body.enquadramento || null }),
-      ...(body.unidadeConsumidora !== undefined && { unidadeConsumidora: body.unidadeConsumidora || null }),
-      ...(body.unidadeConsumidoraAntiga !== undefined && { unidadeConsumidoraAntiga: body.unidadeConsumidoraAntiga || null }),
+      ...(body.unidadeConsumidora !== undefined && { unidadeConsumidora: normalizeCodigoUc(body.unidadeConsumidora) || null }),
+      ...(body.unidadeConsumidoraAntiga !== undefined && { unidadeConsumidoraAntiga: normalizeCodigoUc(body.unidadeConsumidoraAntiga) || null }),
       ...(body.concessionaria !== undefined && { concessionaria: body.concessionaria || null }),
       ...(body.formatoLeitura !== undefined && { formatoLeitura: body.formatoLeitura || null }),
       ...(body.regraInstalacao !== undefined && { regraInstalacao: body.regraInstalacao || null }),

@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
+import { normalizeCodigoUc } from "@/lib/uc-codigo";
 
 // GET /api/brasil-solar/proprietarios/[id]
 export async function GET(
@@ -77,8 +78,8 @@ export async function PUT(
       observacoes: body.observacoes,
       latitude: body.latitude !== undefined ? toFloat(body.latitude) : undefined,
       longitude: body.longitude !== undefined ? toFloat(body.longitude) : undefined,
-      codigoUc: body.codigoUc,
-      codigoUcAntigo: body.codigoUcAntigo,
+      codigoUc: normalizeCodigoUc(body.codigoUc),
+      codigoUcAntigo: normalizeCodigoUc(body.codigoUcAntigo),
       concessionaria: body.concessionaria,
       potenciaInstalada: body.potenciaInstalada !== undefined ? toFloat(body.potenciaInstalada) : undefined,
       modulosMarca: body.modulosMarca,

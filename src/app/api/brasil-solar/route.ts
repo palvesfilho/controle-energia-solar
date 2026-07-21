@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
+import { normalizeCodigoUc } from "@/lib/uc-codigo";
 
 // GET /api/brasil-solar - Lista paginada de clientes Brasil Solar
 export async function GET(req: NextRequest) {
@@ -129,8 +130,8 @@ export async function POST(req: NextRequest) {
       monitoramentoUrl: body.monitoramentoUrl,
       monitoramentoPlantId: body.monitoramentoPlantId,
       concessionaria: body.concessionaria,
-      codigoUc: body.codigoUc,
-      codigoUcAntigo: body.codigoUcAntigo || null,
+      codigoUc: normalizeCodigoUc(body.codigoUc),
+      codigoUcAntigo: normalizeCodigoUc(body.codigoUcAntigo) || null,
       statusContrato: body.statusContrato || "ATIVO",
       dataContrato: body.dataContrato ? new Date(body.dataContrato) : null,
       consultor: body.consultor,

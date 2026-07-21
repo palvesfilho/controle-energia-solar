@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
+import { normalizeCodigoUc } from "@/lib/uc-codigo";
 
 interface ImportRow {
   nome: string;
@@ -146,8 +147,8 @@ export async function POST(req: NextRequest) {
           monitoramentoUrl: trim(row.monitoramentoUrl),
           monitoramentoPlantId: trim(row.monitoramentoPlantId),
           concessionaria: trim(row.concessionaria),
-          codigoUc: trim(row.codigoUc),
-          codigoUcAntigo: trim(row.codigoUcAntigo) || null,
+          codigoUc: normalizeCodigoUc(trim(row.codigoUc)),
+          codigoUcAntigo: normalizeCodigoUc(trim(row.codigoUcAntigo)) || null,
           statusContrato: trim(row.statusContrato) || "ATIVO",
           dataContrato: parseDate(row.dataContrato as string),
           consultor: trim(row.consultor),

@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
+import { normalizeCodigoUc } from "@/lib/uc-codigo";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -48,8 +49,8 @@ export async function POST(req: NextRequest) {
       potenciaInversor: body.potenciaInversor ? Number(body.potenciaInversor) : null,
       geracaoMediaMensal: body.geracaoMediaMensal ? Number(body.geracaoMediaMensal) : null,
       enquadramento: body.enquadramento || null,
-      unidadeConsumidora: body.unidadeConsumidora || null,
-      unidadeConsumidoraAntiga: body.unidadeConsumidoraAntiga || null,
+      unidadeConsumidora: normalizeCodigoUc(body.unidadeConsumidora) || null,
+      unidadeConsumidoraAntiga: normalizeCodigoUc(body.unidadeConsumidoraAntiga) || null,
       concessionaria: body.concessionaria || null,
       formatoLeitura: body.formatoLeitura || null,
       inversorMarca: body.inversorMarca || null,

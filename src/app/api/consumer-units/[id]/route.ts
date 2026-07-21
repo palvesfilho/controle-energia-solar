@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
+import { normalizeCodigoUc } from "@/lib/uc-codigo";
 
 export async function GET(
   _req: NextRequest,
@@ -46,10 +47,13 @@ export async function PUT(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const codigoUc = normalizeCodigoUc(body.codigoUc);
+  const codigoUcAntigo = normalizeCodigoUc(body.codigoUcAntigo);
+
   // Verifica código duplicado
-  if (body.codigoUc && body.codigoUc !== existing.codigoUc) {
+  if (codigoUc && codigoUc !== existing.codigoUc) {
     const dup = await prisma.consumerUnit.findUnique({
-      where: { codigoUc: body.codigoUc },
+      where: { codigoUc },
     });
     if (dup) {
       return NextResponse.json(
@@ -63,8 +67,8 @@ export async function PUT(
     where: { id },
     data: {
       ...(body.nome !== undefined && { nome: body.nome }),
-      ...(body.codigoUc !== undefined && { codigoUc: body.codigoUc }),
-      ...(body.codigoUcAntigo !== undefined && { codigoUcAntigo: body.codigoUcAntigo || null }),
+      ...(codigoUc ? { codigoUc } : {}),
+      ...(body.codigoUcAntigo !== undefined && { codigoUcAntigo: codigoUcAntigo || null }),
       ...(body.consumerId !== undefined && { consumerId: body.consumerId || null }),
       ...(body.plantId !== undefined && { plantId: body.plantId || null }),
       ...(body.cpfCnpj !== undefined && { cpfCnpj: body.cpfCnpj || null }),

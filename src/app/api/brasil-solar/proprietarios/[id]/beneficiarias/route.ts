@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
+import { normalizeCodigoUc } from "@/lib/uc-codigo";
 
 // GET /api/brasil-solar/proprietarios/[id]/beneficiarias
 // Lista todas as beneficiárias ativas do proprietário.
@@ -70,10 +71,10 @@ export async function PUT(
   const entries: Entry[] = [];
   for (const item of rawList) {
     const codigoUc =
-      typeof item?.codigoUc === "string" ? item.codigoUc.trim() : "";
+      typeof item?.codigoUc === "string" ? (normalizeCodigoUc(item.codigoUc.trim()) ?? "") : "";
     const codigoUcAntigo =
       typeof item?.codigoUcAntigo === "string" && item.codigoUcAntigo.trim()
-        ? item.codigoUcAntigo.trim()
+        ? (normalizeCodigoUc(item.codigoUcAntigo.trim()) ?? null)
         : null;
     if (!codigoUc) {
       return NextResponse.json(

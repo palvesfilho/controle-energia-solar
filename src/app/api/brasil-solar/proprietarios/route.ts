@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeObraObservacoes } from "@/lib/obra-meta";
 import { parseDateOnly } from "@/lib/obra-calendario";
 import { encrypt } from "@/lib/crypto";
+import { normalizeCodigoUc } from "@/lib/uc-codigo";
 
 const DISTRIBUIDORAS_PORTAL = new Set([
   "RGE",
@@ -204,13 +205,17 @@ export async function POST(req: NextRequest) {
   // codigoUc e concessionaria podem vir direto no body (form de cadastro manual)
   // ou dentro de `planta` (prefill do Anexo F). Direto no body tem precedÃªncia.
   const codigoUcInput =
-    (typeof body.codigoUc === "string" && body.codigoUc.trim()) ||
-    (typeof planta.codigoUc === "string" && planta.codigoUc.trim()) ||
-    null;
+    normalizeCodigoUc(
+      (typeof body.codigoUc === "string" && body.codigoUc.trim()) ||
+      (typeof planta.codigoUc === "string" && planta.codigoUc.trim()) ||
+      null
+    ) ?? null;
   const codigoUcAntigoInput =
-    (typeof body.codigoUcAntigo === "string" && body.codigoUcAntigo.trim()) ||
-    (typeof planta.codigoUcAntigo === "string" && planta.codigoUcAntigo.trim()) ||
-    null;
+    normalizeCodigoUc(
+      (typeof body.codigoUcAntigo === "string" && body.codigoUcAntigo.trim()) ||
+      (typeof planta.codigoUcAntigo === "string" && planta.codigoUcAntigo.trim()) ||
+      null
+    ) ?? null;
   const concessionariaInput =
     (typeof body.concessionaria === "string" && body.concessionaria.trim()) ||
     (typeof planta.concessionaria === "string" && planta.concessionaria.trim()) ||

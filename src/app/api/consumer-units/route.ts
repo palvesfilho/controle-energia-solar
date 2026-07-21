@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
+import { normalizeCodigoUc } from "@/lib/uc-codigo";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -22,7 +23,12 @@ export async function GET(req: NextRequest) {
   if (plantId) where.plantId = plantId;
   if (distribuidora) where.distribuidora = distribuidora;
   if (status) where.statusContrato = status;
-  if (codigoUc) where.codigoUc = codigoUc;
+  // Busca por código: normaliza (formato pontuado → dígitos) e casa pelo novo OU
+  // pelo antigo, pra achar a UC independentemente do formato/versão informada.
+  if (codigoUc) {
+    const norm = normalizeCodigoUc(codigoUc);
+    where.OR = [{ codigoUc: norm }, { codigoUcAntigo: norm }];
+  }
 
   // Esconde UCs que representam usinas sem investidor (sÃ£o da Ã¡rea Brasil
   // Solar, nÃ£o devem aparecer em Clientes). UCs com cliente fÃ­sico vinculado
@@ -77,8 +83,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const codigoUc = normalizeCodigoUc(body.codigoUc);
+  const codigoUcAntigo = normalizeCodigoUc(body.codigoUcAntigo) || null;
+
   const existing = await prisma.consumerUnit.findUnique({
-    where: { codigoUc: body.codigoUc },
+    where: { codigoUc: codigoUc! },
   });
   if (existing) {
     return NextResponse.json(
@@ -100,8 +109,8 @@ export async function POST(req: NextRequest) {
   const unit = await prisma.consumerUnit.create({
     data: {
       nome: body.nome,
-      codigoUc: body.codigoUc,
-      codigoUcAntigo: body.codigoUcAntigo || null,
+      codigoUc: codigoUc!,
+      codigoUcAntigo,
       origem,
       consumerId: body.consumerId || null,
       plantId: body.plantId || null,
