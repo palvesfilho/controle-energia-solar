@@ -250,6 +250,12 @@ async function sumGenerationForPeriod(
   }[],
   inicio: Date,
   fim: Date,
+  /**
+   * Se false, em cache miss NÃO bate na API (usa só MonitoringLog). Usado nos
+   * meses antigos (só acúmulo) pra não disparar dezenas de chamadas e travar
+   * o relatório. Os meses exibidos passam true (precisam do dado mais fiel).
+   */
+  permitirApi = true,
 ): Promise<{ totalKwh: number | null; erros: string[] }> {
   const erros: string[] = [];
   let total = 0;
@@ -282,6 +288,10 @@ async function sumGenerationForPeriod(
       qualquerSucesso = true;
       continue;
     }
+
+    // Sem cache: só bate na API se permitido (meses exibidos). Nos meses antigos
+    // (só acúmulo) evita storm de chamadas → mantém o relatório rápido.
+    if (!permitirApi) continue;
 
     // Cache miss: bate na API e (idealmente) o sync grava no banco depois
     try {
@@ -451,7 +461,12 @@ export async function getProprietarioRelatorio(
   let economiaAcumulada = 0;
   const mesesAll: RelatorioMonthRow[] = [];
 
-  for (const bill of bills) {
+  // Só os meses exibidos (últimos 12) podem bater na API de monitoramento;
+  // os anteriores (só acúmulo) usam apenas o cache pra não travar o relatório.
+  const idxDisplayInicio = Math.max(0, bills.length - 12);
+  for (let i = 0; i < bills.length; i++) {
+    const bill = bills[i];
+    const permitirApiMes = i >= idxDisplayInicio;
     let inicio: Date | null = bill.dataLeituraAnterior ?? null;
     let fim: Date | null = bill.dataLeituraAtual ?? null;
     let fonte: RelatorioMonthRow["janela"]["fonte"] = "CICLO_LEITURA";
@@ -462,7 +477,7 @@ export async function getProprietarioRelatorio(
     }
 
     const { totalKwh: geracaoInversorKwh, erros: inversoresErros } =
-      await sumGenerationForPeriod(monitoringClients, inicio, fim);
+      await sumGenerationForPeriod(monitoringClients, inicio, fim, permitirApiMes);
 
     // === Tarifas ===
     const tarifaTotal =
@@ -894,7 +909,11 @@ export async function getProprietarioRelatorioAgregado(
   const meses: RelatorioAgregadoMonthRow[] = [];
   let economiaAcumulada = 0;
 
-  for (const key of periodosUsados) {
+  // Só os últimos 12 períodos podem bater na API; os anteriores usam só cache.
+  const idxDisplayInicioAgg = Math.max(0, periodosUsados.length - 12);
+  for (let pi = 0; pi < periodosUsados.length; pi++) {
+    const key = periodosUsados[pi];
+    const permitirApiMes = pi >= idxDisplayInicioAgg;
     const [anoStr, mesStr] = key.split("-");
     const ano = Number(anoStr);
     const mes = Number(mesStr);
@@ -928,7 +947,7 @@ export async function getProprietarioRelatorioAgregado(
     }
 
     const { totalKwh: geracaoInversorKwh, erros: inversoresErros } =
-      await sumGenerationForPeriod(monitoringClients, inicio, fim);
+      await sumGenerationForPeriod(monitoringClients, inicio, fim, permitirApiMes);
 
     // Agrega beneficiárias e gera breakdown
     let consumoRedeTotal: number | null = null;
