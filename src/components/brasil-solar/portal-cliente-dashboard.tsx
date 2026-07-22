@@ -76,11 +76,22 @@ export function PortalClienteDashboard({ data }: { data: PortalClienteData }) {
         />
       </div>
 
-      {/* 1º — Gráfico diário do mês de referência */}
-      {data.refDias.length > 0 && (
-        <Card title="Geração diária" hint={`kWh por dia · ${data.refLabel}`}>
-          <DailyChart data={data} />
+      {/* 1º — Geração diária: curva intradiária (kW × hora) do dia mais recente;
+          se não houver dados intradiários, cai no gráfico de kWh por dia do mês. */}
+      {data.curvaDia.length > 0 ? (
+        <Card
+          title="Geração diária"
+          hint={`potência (kW) · ${data.curvaDiaLabel ?? ""}`}
+        >
+          <IntradayChart data={data} />
+          <Legend items={[{ color: GREEN, label: `Pico ${data.curvaDiaPicoKw.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} kW` }]} />
         </Card>
+      ) : (
+        data.refDias.length > 0 && (
+          <Card title="Geração diária" hint={`kWh por dia · ${data.refLabel}`}>
+            <DailyChart data={data} />
+          </Card>
+        )
       )}
 
       {/* 2º — Gráfico mês a mês */}
@@ -254,6 +265,52 @@ function DailyChart({ data }: { data: PortalClienteData }) {
                 </text>
               )}
             </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function IntradayChart({ data }: { data: PortalClienteData }) {
+  const W = 900, H = 220, padL = 40, padR = 12, padT = 14, padB = 26;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const pts = data.curvaDia;
+  const rawMax = Math.max(1, ...pts.map((p) => p.kw));
+  const { niceMax, step, count } = niceTicks(rawMax, 4);
+  const n = pts.length;
+  const px = (i: number) => padL + (n <= 1 ? iw / 2 : (iw * i) / (n - 1));
+  const py = (kw: number) => padT + ih - (kw / niceMax) * ih;
+
+  const line = pts
+    .map((p, i) => `${i === 0 ? "M" : "L"}${px(i).toFixed(1)},${py(p.kw).toFixed(1)}`)
+    .join(" ");
+  const area = `${line} L${px(n - 1).toFixed(1)},${padT + ih} L${px(0).toFixed(1)},${padT + ih} Z`;
+
+  return (
+    <div className="mt-3 overflow-x-auto">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Curva de geração diária em kW">
+        {Array.from({ length: count + 1 }, (_, i) => {
+          const val = step * i;
+          const y = padT + ih - (val / niceMax) * ih;
+          return (
+            <g key={i}>
+              <line x1={padL} y1={y} x2={W - padR} y2={y} stroke={BORDER} strokeWidth={1} />
+              <text x={padL - 8} y={y + 4} textAnchor="end" fill={INK_FAINT} fontSize={11}>
+                {val.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+              </text>
+            </g>
+          );
+        })}
+        <path d={area} fill={GREEN} fillOpacity={0.16} />
+        <path d={line} fill="none" stroke={GREEN} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+        {pts.map((p, i) => {
+          const [hh, mm] = p.hora.split(":");
+          if (mm !== "00" || Number(hh) % 3 !== 0) return null;
+          return (
+            <text key={i} x={px(i)} y={H - 8} textAnchor="middle" fill={INK_FAINT} fontSize={10}>
+              {hh}h
+            </text>
           );
         })}
       </svg>

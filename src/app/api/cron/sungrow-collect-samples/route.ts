@@ -1,14 +1,15 @@
 /**
  * GET/POST /api/cron/sungrow-collect-samples
  *
- * Cron diário — coleta a curva intra-dia (32 amostras a cada 30min, 5h-21h BRT)
+ * Cron intradiário — coleta a curva intra-dia (amostras a cada ~5min, 5h-21h BRT)
  * de TODOS os clientes BrasilSolar com Sungrow ativo. Persiste em InverterSample.
  *
- * Idempotente. Recomendado rodar 1x/dia depois das 00h UTC (ex.: 02h UTC).
+ * Idempotente. Recomendado rodar várias vezes ao longo do dia solar (BRT) para o
+ * portal exibir a curva do DIA ATUAL enquanto ela ainda está sendo formada.
  *
  * Autenticação: `Authorization: Bearer <CRON_SECRET>` OU `?token=<CRON_SECRET>`.
- * Override de dias: `?days=3` (default 1, máx 7).
- * Override de data fim: `?endDate=YYYY-MM-DD` (default = ontem UTC).
+ * Override de dias: `?days=3` (default 2 = hoje + ontem, máx 7).
+ * Override de data fim: `?endDate=YYYY-MM-DD` (default = HOJE UTC).
  */
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -33,7 +34,7 @@ async function run(req: NextRequest) {
   }
 
   const url = new URL(req.url);
-  const days = Math.max(1, Math.min(7, Number(url.searchParams.get("days") ?? 1)));
+  const days = Math.max(1, Math.min(7, Number(url.searchParams.get("days") ?? 2)));
 
   const endDateParam = url.searchParams.get("endDate");
   const endDate = (() => {
@@ -41,8 +42,8 @@ async function run(req: NextRequest) {
       const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(endDateParam);
       if (m) return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
     }
+    // Default = HOJE (UTC): garante que a curva do dia atual seja coletada.
     const d = new Date();
-    d.setUTCDate(d.getUTCDate() - 1);
     return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   })();
 

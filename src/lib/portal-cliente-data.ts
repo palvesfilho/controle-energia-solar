@@ -48,6 +48,12 @@ export interface PortalDiaGeracao {
   kwh: number;
 }
 
+/** Ponto da curva intradiária: potência AC instantânea (kW) num horário BRT. */
+export interface PortalPontoCurva {
+  hora: string; // "HH:mm" em horário de Brasília
+  kw: number;
+}
+
 export interface PortalClienteData {
   usinas: PortalUsina[];
   potenciaTotal: number;
@@ -57,6 +63,12 @@ export interface PortalClienteData {
   refMediaDia: number;
   refEconomia: number;
   refDias: PortalDiaGeracao[];
+  // Curva de geração intradiária (kW × hora) do dia mais recente com dados.
+  curvaDia: PortalPontoCurva[];
+  /** Data da curva (ex.: "20/jul"), ou null se não houver dados intradiários. */
+  curvaDiaLabel: string | null;
+  /** Pico de potência (kW) no dia da curva. */
+  curvaDiaPicoKw: number;
   // Janela de 12 meses
   geracao12m: number;
   economia12m: number;
@@ -208,6 +220,70 @@ async function getConsumoPorMes(
   return map;
 }
 
+/**
+ * Curva de geração intradiária (potência AC instantânea, kW) do dia mais
+ * recente com dados, somando todos os inversores/usinas do proprietário. Lê o
+ * `pAcW` do `InverterSample` (só Sungrow persiste hoje) — null à noite, então
+ * a curva cobre naturalmente só o período de sol. Timestamps são convertidos
+ * de UTC para horário de Brasília (BRT, UTC−3). Vazio quando não há samples.
+ */
+async function getCurvaDiaAtual(
+  clientIds: string[],
+): Promise<{ pontos: PortalPontoCurva[]; label: string | null; picoKw: number }> {
+  const vazio = { pontos: [] as PortalPontoCurva[], label: null, picoKw: 0 };
+  if (clientIds.length === 0) return vazio;
+
+  // Dia mais recente que tem potência instantânea registrada.
+  const ultimo = await prisma.inverterSample.findFirst({
+    where: { clientId: { in: clientIds }, pAcW: { not: null } },
+    orderBy: { timeStamp: "desc" },
+    select: { timeStamp: true },
+  });
+  if (!ultimo) return vazio;
+
+  const ts = ultimo.timeStamp;
+  const dayStart = new Date(
+    Date.UTC(ts.getUTCFullYear(), ts.getUTCMonth(), ts.getUTCDate(), 0, 0, 0),
+  );
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+
+  const rows = await prisma.inverterSample.findMany({
+    where: {
+      clientId: { in: clientIds },
+      timeStamp: { gte: dayStart, lt: dayEnd },
+      pAcW: { not: null },
+    },
+    select: { timeStamp: true, pAcW: true },
+    orderBy: { timeStamp: "asc" },
+  });
+  if (rows.length === 0) return vazio;
+
+  // Soma a potência de todos os inversores/usinas por instante.
+  const byInstant = new Map<number, number>();
+  for (const r of rows) {
+    if (r.pAcW == null) continue;
+    const t = r.timeStamp.getTime();
+    byInstant.set(t, (byInstant.get(t) ?? 0) + r.pAcW);
+  }
+
+  const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
+  let picoW = 0;
+  const pontos = Array.from(byInstant.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([t, w]) => {
+      if (w > picoW) picoW = w;
+      const brt = new Date(t - BRT_OFFSET_MS);
+      const hh = String(brt.getUTCHours()).padStart(2, "0");
+      const mm = String(brt.getUTCMinutes()).padStart(2, "0");
+      return { hora: `${hh}:${mm}`, kw: Math.round((w / 1000) * 100) / 100 };
+    });
+
+  const brtDate = new Date(ts.getTime() - BRT_OFFSET_MS);
+  const label = `${String(brtDate.getUTCDate()).padStart(2, "0")}/${MES_ABREV[brtDate.getUTCMonth()]}`;
+
+  return { pontos, label, picoKw: Math.round((picoW / 1000) * 10) / 10 };
+}
+
 export async function getPortalClienteData(
   proprietarioId: string,
 ): Promise<PortalClienteData> {
@@ -242,6 +318,9 @@ export async function getPortalClienteData(
     temDados: false,
     tarifaRef: TARIFA_REF,
     tarifaRefFonte: null,
+    curvaDia: [],
+    curvaDiaLabel: null,
+    curvaDiaPicoKw: 0,
   };
   if (usinas.length === 0) return vazio;
 
@@ -312,6 +391,9 @@ export async function getPortalClienteData(
     ? `${MES_ABREV[tarifaResolvida.mes - 1]}/${String(tarifaResolvida.ano).slice(2)}`
     : null;
 
+  // Curva de geração intradiária (kW × hora) do dia mais recente com dados.
+  const curva = await getCurvaDiaAtual(usinas.map((u) => u.id));
+
   return {
     usinas,
     potenciaTotal,
@@ -320,6 +402,9 @@ export async function getPortalClienteData(
     refMediaDia: round1(refMediaDia),
     refEconomia: Math.round(ref.kwh * tarifaRef),
     refDias,
+    curvaDia: curva.pontos,
+    curvaDiaLabel: curva.label,
+    curvaDiaPicoKw: curva.picoKw,
     geracao12m,
     economia12m: Math.round(geracao12m * tarifaRef),
     co2EvitadoKg: Math.round(geracao12m * FATOR_CO2),
