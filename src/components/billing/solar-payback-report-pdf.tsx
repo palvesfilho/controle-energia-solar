@@ -478,6 +478,12 @@ export function SolarPaybackReportPDF({
   // ou payback. Mantém o mesmo layout, oculta seções dependentes e avisa.
   const semMonitoramento = data.usinasMonitoradas.length === 0;
 
+  // Em muitos cadastros o nome da UC é o próprio nome do proprietário — nesse
+  // caso não repete a informação no cabeçalho.
+  const nomeUcDuplicado =
+    (data.uc.nome ?? "").trim().toLowerCase() ===
+    (data.proprietario.nome ?? "").trim().toLowerCase();
+
   // Escala das barras "sem × com solar" da tabela (maior conta sem solar = 100%).
   const maxContaSemSolar = Math.max(
     ...data.meses.map((m) => m.contaSemSolarRs ?? 0),
@@ -487,13 +493,17 @@ export function SolarPaybackReportPDF({
   const totais = data.meses.reduce(
     (a, m) => ({
       consumo: a.consumo + (m.consumoTotalKwh ?? 0),
-      creditos: a.creditos + (m.energiaCompensadaKwh ?? 0),
       semSolar: a.semSolar + (m.contaSemSolarRs ?? 0),
       comSolar: a.comSolar + (m.faturadoRs ?? 0),
       economia: a.economia + (m.economiaMensalRs ?? 0),
     }),
-    { consumo: 0, creditos: 0, semSolar: 0, comSolar: 0, economia: 0 },
+    { consumo: 0, semSolar: 0, comSolar: 0, economia: 0 },
   );
+  // Créditos é SALDO acumulado (não soma): no rodapé mostra o saldo final.
+  const saldoCreditosFinal =
+    data.meses.length > 0
+      ? data.meses[data.meses.length - 1].saldoCreditosKwh
+      : null;
 
   return (
     <Document>
@@ -507,7 +517,9 @@ export function SolarPaybackReportPDF({
                 Relatório mensal · {labelMes}
               </Text>
               <Text style={s.heroTitle}>{data.proprietario.nome}</Text>
-              <Text style={s.heroSub}>{data.uc.nome}</Text>
+              {!nomeUcDuplicado && (
+                <Text style={s.heroSub}>{data.uc.nome}</Text>
+              )}
               <Text style={s.heroMeta}>
                 UC {data.uc.codigoUc}
                 {data.uc.distribuidora ? ` · ${data.uc.distribuidora}` : ""}
@@ -743,7 +755,8 @@ export function SolarPaybackReportPDF({
               <Text
                 style={[
                   s.kpiValue,
-                  { color: data.paybackQuitado ? C.teal : C.orange },
+                  // 11pt cabe o mês mais longo ("Fevereiro/2028") sem estourar.
+                  { color: data.paybackQuitado ? C.teal : C.orange, fontSize: 11 },
                 ]}
               >
                 {data.paybackQuitado
@@ -870,7 +883,7 @@ export function SolarPaybackReportPDF({
                       {formatKwh(m.consumoTotalKwh)}
                     </Text>
                     <Text style={[s.tableCell, { flex: 1.2, textAlign: "right" }]}>
-                      {formatKwh(m.energiaCompensadaKwh)}
+                      {formatKwh(m.saldoCreditosKwh)}
                     </Text>
                     <View style={{ flex: 2.6, flexDirection: "column", gap: 3, paddingLeft: 6 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
@@ -916,7 +929,7 @@ export function SolarPaybackReportPDF({
                   {formatKwh(totais.consumo)}
                 </Text>
                 <Text style={[s.tableCellBold, { flex: 1.2, textAlign: "right" }]}>
-                  {formatKwh(totais.creditos)}
+                  {formatKwh(saldoCreditosFinal)}
                 </Text>
                 <View style={{ flex: 2.6, flexDirection: "row", gap: 8, paddingLeft: 6 }}>
                   <Text style={{ fontSize: 7.5, color: C.gray }}>
