@@ -488,7 +488,7 @@ export function SolarPaybackReportProprietarioPDF({
             <Text style={[s.kpiValue, { color: C.teal }]}>
               {formatBRL(economiaTotal)}
             </Text>
-            <Text style={s.kpiSub}>{data.meses.length} mês(es) com fatura</Text>
+            <Text style={s.kpiSub}>{data.meses.length} mês(es) desde a operação</Text>
           </View>
           <View style={s.kpiCard}>
             <Text style={s.kpiLabel}>Economia média</Text>

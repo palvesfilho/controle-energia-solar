@@ -180,7 +180,13 @@ export interface RelatorioData {
   /** Mês/ano em que a usina deve se pagar. `null` se não quitar em 50 anos. */
   paybackQuitacaoPrevista: { ano: number; mes: number } | null;
   paybackQuitado: boolean;
+  /** Meses exibidos nos gráficos/tabela (últimos 12 até o mês de referência). */
   meses: RelatorioMonthRow[];
+  /**
+   * Total de faturas consideradas no acúmulo "desde a operação" (todos os meses
+   * até o de referência, não só os 12 exibidos). Usado nos cards de somatório.
+   */
+  mesesComFatura?: number;
 }
 
 /**
@@ -309,6 +315,13 @@ async function sumGenerationForPeriod(
 export async function getProprietarioRelatorio(
   proprietarioId: string,
   ucId: string,
+  /**
+   * Mês de referência do relatório. Quando informado, o relatório considera
+   * apenas faturas ATÉ esse mês (nunca meses futuros) — um relatório de junho
+   * não pode incluir dados de julho. Sem ref, usa as 12 faturas mais recentes.
+   */
+  refAno?: number,
+  refMes?: number,
 ): Promise<RelatorioData | { error: string; status: number }> {
   const [proprietario, uc] = await Promise.all([
     prisma.brasilSolarProprietario.findUnique({
@@ -386,10 +399,30 @@ export async function getProprietarioRelatorio(
     0,
   );
 
+  // Limita ao mês de referência: considera faturas ATÉ (refAno, refMes)
+  // inclusive. Assim um relatório de junho nunca traz julho.
+  const limitarAoMesRef =
+    Number.isInteger(refAno) &&
+    Number.isInteger(refMes) &&
+    (refMes as number) >= 1 &&
+    (refMes as number) <= 12;
+
+  // TODAS as faturas até o mês de referência, em ordem cronológica (ASC).
+  // O acúmulo "desde a operação" precisa de todos os meses; a exibição
+  // (gráficos/tabela) usa só os últimos 12 — ver `meses` mais abaixo.
   const bills = await prisma.consumerBill.findMany({
-    where: { consumerUnitId: ucId },
-    orderBy: [{ anoReferencia: "desc" }, { mesReferencia: "desc" }],
-    take: 12,
+    where: {
+      consumerUnitId: ucId,
+      ...(limitarAoMesRef
+        ? {
+            OR: [
+              { anoReferencia: { lt: refAno } },
+              { anoReferencia: refAno, mesReferencia: { lte: refMes } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: [{ anoReferencia: "asc" }, { mesReferencia: "asc" }],
     select: {
       anoReferencia: true,
       mesReferencia: true,
@@ -415,10 +448,8 @@ export async function getProprietarioRelatorio(
       tarifaTusdComTributos: true,
     },
   });
-  bills.reverse();
-
   let economiaAcumulada = 0;
-  const meses: RelatorioMonthRow[] = [];
+  const mesesAll: RelatorioMonthRow[] = [];
 
   for (const bill of bills) {
     let inicio: Date | null = bill.dataLeituraAnterior ?? null;
@@ -503,7 +534,7 @@ export async function getProprietarioRelatorio(
     // instantâneo valorado pela tarifa cheia real. Ver calcularContaSemSolar.
     const contaSemSolarRs = calcularContaSemSolar(bill, consumoInstantaneoKwh);
 
-    meses.push({
+    mesesAll.push({
       ano: bill.anoReferencia,
       mes: bill.mesReferencia,
       janela: {
@@ -534,7 +565,13 @@ export async function getProprietarioRelatorio(
     });
   }
 
-  const economiasValidas = meses
+  // Tabela e acumulados usam TODOS os meses desde a operação (até o mês de
+  // referência). Os gráficos fatiam os últimos 12 internamente pra ficarem
+  // legíveis — ver GeneractionConsumptionBars / SaldoMensalBars.
+  const meses = mesesAll;
+  const mesesComFatura = mesesAll.length;
+
+  const economiasValidas = mesesAll
     .map((m) => m.economiaMensalRs)
     .filter((v): v is number => v != null && v > 0);
   const economiaMediaMensalRs =
@@ -542,13 +579,13 @@ export async function getProprietarioRelatorio(
       ? economiasValidas.reduce((a, b) => a + b, 0) / economiasValidas.length
       : 0;
   const saldoFinal =
-    meses.length > 0
-      ? meses[meses.length - 1].saldoPaybackRs
+    mesesAll.length > 0
+      ? mesesAll[mesesAll.length - 1].saldoPaybackRs
       : investimentoTotal;
   const paybackQuitado = saldoFinal <= 0;
 
-  const ultimoMes = meses.length > 0
-    ? { ano: meses[meses.length - 1].ano, mes: meses[meses.length - 1].mes }
+  const ultimoMes = mesesAll.length > 0
+    ? { ano: mesesAll[mesesAll.length - 1].ano, mes: mesesAll[mesesAll.length - 1].mes }
     : { ano: new Date().getFullYear(), mes: new Date().getMonth() + 1 };
   const params = await getRelatorioParametros();
   const projecao = projetarPayback(
@@ -591,6 +628,7 @@ export async function getProprietarioRelatorio(
     paybackQuitacaoPrevista,
     paybackQuitado,
     meses,
+    mesesComFatura,
   };
 }
 
@@ -693,6 +731,9 @@ export interface RelatorioAgregadoData {
 
 export async function getProprietarioRelatorioAgregado(
   proprietarioId: string,
+  /** Mês de referência: considera períodos ATÉ ele (nunca meses futuros). */
+  refAno?: number,
+  refMes?: number,
 ): Promise<RelatorioAgregadoData | { error: string; status: number }> {
   const proprietario = await prisma.brasilSolarProprietario.findUnique({
     where: { id: proprietarioId },
@@ -784,10 +825,26 @@ export async function getProprietarioRelatorioAgregado(
   const ucIds: string[] = beneficiarias.map((b) => b.ucId);
   if (ucTitularId) ucIds.push(ucTitularId);
 
+  const limitarAoMesRefAgg =
+    Number.isInteger(refAno) &&
+    Number.isInteger(refMes) &&
+    (refMes as number) >= 1 &&
+    (refMes as number) <= 12;
+
+  // TODAS as faturas até o mês de referência (acúmulo "desde a operação").
   const todasBills = await prisma.consumerBill.findMany({
-    where: { consumerUnitId: { in: ucIds } },
+    where: {
+      consumerUnitId: { in: ucIds },
+      ...(limitarAoMesRefAgg
+        ? {
+            OR: [
+              { anoReferencia: { lt: refAno } },
+              { anoReferencia: refAno, mesReferencia: { lte: refMes } },
+            ],
+          }
+        : {}),
+    },
     orderBy: [{ anoReferencia: "desc" }, { mesReferencia: "desc" }],
-    take: 12 * (ucIds.length + 1), // generoso — pega 12 meses de cada UC
     select: {
       consumerUnitId: true,
       anoReferencia: true,
@@ -830,8 +887,9 @@ export async function getProprietarioRelatorioAgregado(
   }
 
   const sortedPeriods = Array.from(periodsComBeneficiaria).sort();
-  // só últimos 12
-  const periodosUsados = sortedPeriods.slice(-12);
+  // TODOS os períodos desde a operação (tabela + acúmulo). Os gráficos do PDF
+  // agregado fatiam os últimos 12 internamente pra ficarem legíveis.
+  const periodosUsados = sortedPeriods;
 
   const meses: RelatorioAgregadoMonthRow[] = [];
   let economiaAcumulada = 0;

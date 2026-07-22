@@ -243,7 +243,8 @@ function niceCeil(v: number, step: number) {
  * rótulos por barra (os valores exatos ficam na tabela "Histórico por mês").
  */
 function GeneractionConsumptionBars({ data }: { data: RelatorioData }) {
-  const meses = data.meses;
+  // Gráfico = tendência dos últimos 12 meses (a tabela mostra o histórico todo).
+  const meses = data.meses.slice(-12);
   if (meses.length === 0) return null;
 
   const W = 540;
@@ -339,7 +340,8 @@ function GeneractionConsumptionBars({ data }: { data: RelatorioData }) {
  * quando falta → usa a rede. Escala Y simétrica em torno do zero.
  */
 function SaldoMensalBars({ data }: { data: RelatorioData }) {
-  const meses = data.meses;
+  // Gráfico = tendência dos últimos 12 meses (a tabela mostra o histórico todo).
+  const meses = data.meses.slice(-12);
   if (meses.length === 0) return null;
 
   const nets = meses.map(
@@ -714,7 +716,9 @@ export function SolarPaybackReportPDF({
             <Text style={[s.kpiValue, { color: C.teal }]}>
               {formatBRL(economiaTotal)}
             </Text>
-            <Text style={s.kpiSub}>{data.meses.length} mês(es) com fatura</Text>
+            <Text style={s.kpiSub}>
+              {data.mesesComFatura ?? data.meses.length} mês(es) desde a operação
+            </Text>
           </View>
           <View style={s.kpiCard}>
             <Text style={s.kpiLabel}>Economia média</Text>

@@ -28,17 +28,26 @@ export async function GET(
   const { searchParams } = new URL(req.url);
   const anoQ = Number(searchParams.get("ano"));
   const mesQ = Number(searchParams.get("mes"));
-  const result = await getProprietarioRelatorio(id, ucId);
+  const temRef =
+    Number.isInteger(anoQ) && Number.isInteger(mesQ) && mesQ >= 1 && mesQ <= 12;
+
+  // Passa o mês de referência: o relatório só considera faturas ATÉ esse mês
+  // (não vaza meses futuros para os gráficos e a tabela).
+  const result = await getProprietarioRelatorio(
+    id,
+    ucId,
+    temRef ? anoQ : undefined,
+    temRef ? mesQ : undefined,
+  );
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  const mesRefAlvo =
-    Number.isInteger(anoQ) && Number.isInteger(mesQ) && mesQ >= 1 && mesQ <= 12
-      ? result.meses.find((m) => m.ano === anoQ && m.mes === mesQ) ?? null
-      : result.meses.length > 0
-        ? result.meses[result.meses.length - 1]
-        : null;
+  const mesRefAlvo = temRef
+    ? result.meses.find((m) => m.ano === anoQ && m.mes === mesQ) ?? null
+    : result.meses.length > 0
+      ? result.meses[result.meses.length - 1]
+      : null;
 
   const emissao = new Date().toLocaleDateString("pt-BR");
   const pdfBuffer = await renderToBuffer(
