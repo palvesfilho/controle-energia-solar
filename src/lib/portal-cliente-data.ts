@@ -54,6 +54,43 @@ export interface PortalPontoCurva {
   kw: number;
 }
 
+/** Curva de um dia específico + total do dia. */
+export interface PortalCurvaDia {
+  /** Data consultada, "YYYY-MM-DD" (calendário de Brasília). */
+  data: string;
+  /** Rótulo amigável, ex.: "22/07/2026". */
+  label: string;
+  pontos: PortalPontoCurva[];
+  /** Pico de potência (kW) no dia. */
+  picoKw: number;
+  /** Geração total do dia (kWh) vinda do MonitoringLog; null se não houver leitura. */
+  totalKwh: number | null;
+}
+
+/**
+ * Estado de comunicação das usinas do proprietário:
+ *  - ONLINE: houve leitura recente (dentro da janela de sincronização);
+ *  - REPOUSO: sem leitura recente, mas fora do horário de geração (noite);
+ *  - OFFLINE: sem leitura recente em pleno horário de sol;
+ *  - SEM_DADOS: nunca houve leitura instantânea (usina sem telemetria).
+ */
+export interface PortalStatusMonitoramento {
+  estado: "ONLINE" | "REPOUSO" | "OFFLINE" | "SEM_DADOS";
+  /** Última leitura instantânea, ISO em UTC. */
+  ultimaLeituraIso: string | null;
+  /** Última leitura formatada em horário de Brasília, ex.: "22/07 14:35". */
+  ultimaLeituraLabel: string | null;
+}
+
+/** Série de barras genérica (mês do ano ou dia do mês). */
+export interface PortalSerieGeracao {
+  ano: number;
+  /** Mês selecionado (1-12) quando a série é diária; null quando é anual. */
+  mes: number | null;
+  pontos: { label: string; kwh: number }[];
+  totalKwh: number;
+}
+
 export interface PortalClienteData {
   usinas: PortalUsina[];
   potenciaTotal: number;
@@ -63,12 +100,16 @@ export interface PortalClienteData {
   refMediaDia: number;
   refEconomia: number;
   refDias: PortalDiaGeracao[];
-  // Curva de geração intradiária (kW × hora) do dia mais recente com dados.
-  curvaDia: PortalPontoCurva[];
-  /** Data da curva (ex.: "20/jul"), ou null se não houver dados intradiários. */
-  curvaDiaLabel: string | null;
-  /** Pico de potência (kW) no dia da curva. */
-  curvaDiaPicoKw: number;
+  /** Curva intradiária do dia de HOJE (calendário de Brasília) — carga inicial. */
+  curvaDia: PortalCurvaDia;
+  /** Data de hoje em Brasília, "YYYY-MM-DD" (máximo do seletor de data). */
+  hojeYmd: string;
+  /** Estado de comunicação das usinas (online/offline). */
+  statusMonitoramento: PortalStatusMonitoramento;
+  /** Anos com geração registrada, do mais recente para o mais antigo. */
+  anosDisponiveis: number[];
+  /** Série mensal do ano corrente — carga inicial do gráfico "Geração Mensal". */
+  serieMensal: PortalSerieGeracao;
   // Janela de 12 meses
   geracao12m: number;
   economia12m: number;
@@ -220,43 +261,97 @@ async function getConsumoPorMes(
   return map;
 }
 
+const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+/** "YYYY-MM-DD" de hoje no calendário de Brasília. */
+export function hojeBrtYmd(): string {
+  const brt = new Date(Date.now() - BRT_OFFSET_MS);
+  return brt.toISOString().slice(0, 10);
+}
+
+/** Valida "YYYY-MM-DD"; devolve null quando o formato/data não bate. */
+export function parseYmd(ymd: string | null | undefined): string | null {
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) {
+    return null;
+  }
+  return ymd;
+}
+
+/** Ano/mês de uma query string, com fallback no ano corrente e ano inteiro. */
+export function parseAnoMes(sp: URLSearchParams): { ano: number; mes: number | null } {
+  const anoRaw = Number(sp.get("ano"));
+  const mesRaw = Number(sp.get("mes"));
+  const ano =
+    Number.isInteger(anoRaw) && anoRaw >= 2000 && anoRaw <= 2100
+      ? anoRaw
+      : Number(hojeBrtYmd().slice(0, 4));
+  const mes = Number.isInteger(mesRaw) && mesRaw >= 1 && mesRaw <= 12 ? mesRaw : null;
+  return { ano, mes };
+}
+
+/** Ids das usinas ativas do proprietário. */
+async function getClientIds(proprietarioId: string): Promise<string[]> {
+  const usinas = await prisma.brasilSolarClient.findMany({
+    where: { proprietarioId, active: true },
+    select: { id: true },
+  });
+  return usinas.map((u) => u.id);
+}
+
 /**
- * Curva de geração intradiária (potência AC instantânea, kW) do dia mais
- * recente com dados, somando todos os inversores/usinas do proprietário. Lê o
- * `pAcW` do `InverterSample` (só Sungrow persiste hoje) — null à noite, então
- * a curva cobre naturalmente só o período de sol. Timestamps são convertidos
- * de UTC para horário de Brasília (BRT, UTC−3). Vazio quando não há samples.
+ * Curva de geração intradiária (potência AC instantânea, kW) de um dia
+ * específico, somando todos os inversores/usinas do proprietário. Lê o `pAcW`
+ * do `InverterSample` (só Sungrow persiste hoje) — null à noite, então a curva
+ * cobre naturalmente só o período de sol. Timestamps são convertidos de UTC
+ * para horário de Brasília (BRT, UTC−3); como toda a geração de um dia BRT cai
+ * dentro do mesmo dia UTC, agrupar por dia UTC é equivalente aqui.
+ *
+ * `totalKwh` vem do MonitoringLog do dia (leitura oficial da distribuidora do
+ * inversor) e existe mesmo quando a usina não tem curva intradiária.
  */
-async function getCurvaDiaAtual(
+async function getCurvaDia(
   clientIds: string[],
-): Promise<{ pontos: PortalPontoCurva[]; label: string | null; picoKw: number }> {
-  const vazio = { pontos: [] as PortalPontoCurva[], label: null, picoKw: 0 };
+  ymd: string,
+): Promise<PortalCurvaDia> {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const label = `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`;
+  const vazio: PortalCurvaDia = { data: ymd, label, pontos: [], picoKw: 0, totalKwh: null };
   if (clientIds.length === 0) return vazio;
 
-  // Dia mais recente que tem potência instantânea registrada.
-  const ultimo = await prisma.inverterSample.findFirst({
-    where: { clientId: { in: clientIds }, pAcW: { not: null } },
-    orderBy: { timeStamp: "desc" },
-    select: { timeStamp: true },
-  });
-  if (!ultimo) return vazio;
-
-  const ts = ultimo.timeStamp;
-  const dayStart = new Date(
-    Date.UTC(ts.getUTCFullYear(), ts.getUTCMonth(), ts.getUTCDate(), 0, 0, 0),
-  );
+  const dayStart = new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
-  const rows = await prisma.inverterSample.findMany({
-    where: {
-      clientId: { in: clientIds },
-      timeStamp: { gte: dayStart, lt: dayEnd },
-      pAcW: { not: null },
-    },
-    select: { timeStamp: true, pAcW: true },
-    orderBy: { timeStamp: "asc" },
-  });
-  if (rows.length === 0) return vazio;
+  const [rows, logs] = await Promise.all([
+    prisma.inverterSample.findMany({
+      where: {
+        clientId: { in: clientIds },
+        timeStamp: { gte: dayStart, lt: dayEnd },
+        pAcW: { not: null },
+      },
+      select: { timeStamp: true, pAcW: true },
+      orderBy: { timeStamp: "asc" },
+    }),
+    prisma.monitoringLog.findMany({
+      where: { clientId: { in: clientIds }, data: { gte: dayStart, lt: dayEnd } },
+      select: { clientId: true, geracaoDiaria: true },
+    }),
+  ]);
+
+  // Total do dia: dedup por usina (bug conhecido de duplicação) mantendo o maior.
+  let totalKwh: number | null = null;
+  if (logs.length > 0) {
+    const porUsina = new Map<string, number>();
+    for (const l of logs) {
+      const prev = porUsina.get(l.clientId) ?? 0;
+      if (l.geracaoDiaria > prev) porUsina.set(l.clientId, l.geracaoDiaria);
+    }
+    totalKwh = round1(Array.from(porUsina.values()).reduce((s, v) => s + v, 0));
+  }
+
+  if (rows.length === 0) return { ...vazio, totalKwh };
 
   // Soma a potência de todos os inversores/usinas por instante.
   const byInstant = new Map<number, number>();
@@ -266,7 +361,6 @@ async function getCurvaDiaAtual(
     byInstant.set(t, (byInstant.get(t) ?? 0) + r.pAcW);
   }
 
-  const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
   let picoW = 0;
   const pontos = Array.from(byInstant.entries())
     .sort(([a], [b]) => a - b)
@@ -278,10 +372,148 @@ async function getCurvaDiaAtual(
       return { hora: `${hh}:${mm}`, kw: Math.round((w / 1000) * 100) / 100 };
     });
 
-  const brtDate = new Date(ts.getTime() - BRT_OFFSET_MS);
-  const label = `${String(brtDate.getUTCDate()).padStart(2, "0")}/${MES_ABREV[brtDate.getUTCMonth()]}`;
+  return { data: ymd, label, pontos, picoKw: Math.round((picoW / 1000) * 10) / 10, totalKwh };
+}
 
-  return { pontos, label, picoKw: Math.round((picoW / 1000) * 10) / 10 };
+/**
+ * Estado de comunicação das usinas, derivado da última leitura instantânea
+ * (`InverterSample`). A coleta roda de 3 em 3 horas (cron Sungrow), então a
+ * janela de tolerância é de 4h — abaixo disso a usina está reportando. Fora do
+ * horário de sol (18h–06h BRT) a ausência de leitura é normal: vira REPOUSO em
+ * vez de OFFLINE, para não alarmar o cliente à noite.
+ */
+async function getStatusMonitoramento(
+  clientIds: string[],
+): Promise<PortalStatusMonitoramento> {
+  const semDados: PortalStatusMonitoramento = {
+    estado: "SEM_DADOS",
+    ultimaLeituraIso: null,
+    ultimaLeituraLabel: null,
+  };
+  if (clientIds.length === 0) return semDados;
+
+  const ultimo = await prisma.inverterSample.findFirst({
+    where: { clientId: { in: clientIds }, pAcW: { not: null } },
+    orderBy: { timeStamp: "desc" },
+    select: { timeStamp: true },
+  });
+  if (!ultimo) return semDados;
+
+  const agora = Date.now();
+  const idadeMs = agora - ultimo.timeStamp.getTime();
+  const brtUltima = new Date(ultimo.timeStamp.getTime() - BRT_OFFSET_MS);
+  const ultimaLeituraLabel =
+    `${String(brtUltima.getUTCDate()).padStart(2, "0")}/${String(brtUltima.getUTCMonth() + 1).padStart(2, "0")}` +
+    ` ${String(brtUltima.getUTCHours()).padStart(2, "0")}:${String(brtUltima.getUTCMinutes()).padStart(2, "0")}`;
+
+  const horaBrtAgora = new Date(agora - BRT_OFFSET_MS).getUTCHours();
+  const noite = horaBrtAgora >= 18 || horaBrtAgora < 6;
+
+  const estado =
+    idadeMs <= 4 * 60 * 60 * 1000 ? "ONLINE" : noite ? "REPOUSO" : "OFFLINE";
+
+  return {
+    estado,
+    ultimaLeituraIso: ultimo.timeStamp.toISOString(),
+    ultimaLeituraLabel,
+  };
+}
+
+/**
+ * Série de geração para o gráfico "Geração Mensal":
+ *  - sem `mes`: 12 barras (jan..dez) com o total de cada mês do ano;
+ *  - com `mes`: uma barra por dia do mês escolhido.
+ * Dedup por (usina, dia) mantendo o maior valor, igual ao resto do portal.
+ */
+async function getSerieGeracao(
+  clientIds: string[],
+  ano: number,
+  mes: number | null,
+): Promise<PortalSerieGeracao> {
+  const vazia: PortalSerieGeracao = { ano, mes, pontos: [], totalKwh: 0 };
+  if (clientIds.length === 0) return vazia;
+
+  const inicio = mes
+    ? new Date(Date.UTC(ano, mes - 1, 1))
+    : new Date(Date.UTC(ano, 0, 1));
+  const fim = mes
+    ? new Date(Date.UTC(ano, mes, 1))
+    : new Date(Date.UTC(ano + 1, 0, 1));
+
+  const logs = await prisma.monitoringLog.findMany({
+    where: { clientId: { in: clientIds }, data: { gte: inicio, lt: fim } },
+    select: { clientId: true, data: true, geracaoDiaria: true },
+  });
+
+  // Dedup por (usina, dia) — mantém o maior valor do dia.
+  const byClientDay = new Map<string, number>();
+  for (const l of logs) {
+    const key = `${l.clientId}|${l.data.toISOString().slice(0, 10)}`;
+    const prev = byClientDay.get(key) ?? 0;
+    if (l.geracaoDiaria > prev) byClientDay.set(key, l.geracaoDiaria);
+  }
+
+  const acc = new Map<number, number>(); // índice (mês 1-12 ou dia 1-31) -> kWh
+  for (const [key, kwh] of byClientDay) {
+    const day = key.split("|")[1]; // YYYY-MM-DD
+    const idx = mes ? Number(day.slice(8, 10)) : Number(day.slice(5, 7));
+    acc.set(idx, (acc.get(idx) ?? 0) + kwh);
+  }
+
+  const total = mes ? new Date(Date.UTC(ano, mes, 0)).getUTCDate() : 12;
+  const pontos = Array.from({ length: total }, (_, i) => {
+    const idx = i + 1;
+    return {
+      label: mes ? String(idx) : MES_ABREV[i],
+      kwh: round1(acc.get(idx) ?? 0),
+    };
+  });
+
+  return {
+    ano,
+    mes,
+    pontos,
+    totalKwh: round1(pontos.reduce((s, p) => s + p.kwh, 0)),
+  };
+}
+
+/** Anos com geração registrada, do mais recente para o mais antigo. */
+async function getAnosDisponiveis(clientIds: string[]): Promise<number[]> {
+  const anoAtual = Number(hojeBrtYmd().slice(0, 4));
+  if (clientIds.length === 0) return [anoAtual];
+
+  const primeiro = await prisma.monitoringLog.findFirst({
+    where: { clientId: { in: clientIds } },
+    orderBy: { data: "asc" },
+    select: { data: true },
+  });
+  const anoInicial = primeiro ? primeiro.data.getUTCFullYear() : anoAtual;
+  const anos: number[] = [];
+  for (let a = anoAtual; a >= Math.min(anoInicial, anoAtual); a--) anos.push(a);
+  return anos;
+}
+
+/** Curva intradiária de um dia para o proprietário (usada pelas rotas de API). */
+export async function getPortalCurvaDia(
+  proprietarioId: string,
+  ymd: string,
+): Promise<PortalCurvaDia & { statusMonitoramento: PortalStatusMonitoramento }> {
+  const clientIds = await getClientIds(proprietarioId);
+  const [curva, status] = await Promise.all([
+    getCurvaDia(clientIds, ymd),
+    getStatusMonitoramento(clientIds),
+  ]);
+  return { ...curva, statusMonitoramento: status };
+}
+
+/** Série mensal/diária do proprietário (usada pelas rotas de API). */
+export async function getPortalSerieGeracao(
+  proprietarioId: string,
+  ano: number,
+  mes: number | null,
+): Promise<PortalSerieGeracao> {
+  const clientIds = await getClientIds(proprietarioId);
+  return getSerieGeracao(clientIds, ano, mes);
 }
 
 export async function getPortalClienteData(
@@ -301,6 +533,9 @@ export async function getPortalClienteData(
   });
 
   const potenciaTotal = usinas.reduce((s, u) => s + (u.potenciaInstalada ?? 0), 0);
+  const clientIds = usinas.map((u) => u.id);
+  const hojeYmd = hojeBrtYmd();
+  const anoAtual = Number(hojeYmd.slice(0, 4));
 
   const vazio: PortalClienteData = {
     usinas,
@@ -318,9 +553,21 @@ export async function getPortalClienteData(
     temDados: false,
     tarifaRef: TARIFA_REF,
     tarifaRefFonte: null,
-    curvaDia: [],
-    curvaDiaLabel: null,
-    curvaDiaPicoKw: 0,
+    curvaDia: {
+      data: hojeYmd,
+      label: hojeYmd.split("-").reverse().join("/"),
+      pontos: [],
+      picoKw: 0,
+      totalKwh: null,
+    },
+    hojeYmd,
+    statusMonitoramento: {
+      estado: "SEM_DADOS",
+      ultimaLeituraIso: null,
+      ultimaLeituraLabel: null,
+    },
+    anosDisponiveis: [anoAtual],
+    serieMensal: { ano: anoAtual, mes: null, pontos: [], totalKwh: 0 },
   };
   if (usinas.length === 0) return vazio;
 
@@ -391,8 +638,15 @@ export async function getPortalClienteData(
     ? `${MES_ABREV[tarifaResolvida.mes - 1]}/${String(tarifaResolvida.ano).slice(2)}`
     : null;
 
-  // Curva de geração intradiária (kW × hora) do dia mais recente com dados.
-  const curva = await getCurvaDiaAtual(usinas.map((u) => u.id));
+  // Carga inicial dos gráficos interativos: curva intradiária de HOJE, estado
+  // de comunicação e série mensal do ano corrente (o cliente troca a data / o
+  // ano / o mês na própria tela, via /api/portal-cliente/geracao/*).
+  const [curva, statusMonitoramento, anosDisponiveis, serieMensal] = await Promise.all([
+    getCurvaDia(clientIds, hojeYmd),
+    getStatusMonitoramento(clientIds),
+    getAnosDisponiveis(clientIds),
+    getSerieGeracao(clientIds, anoAtual, null),
+  ]);
 
   return {
     usinas,
@@ -402,9 +656,11 @@ export async function getPortalClienteData(
     refMediaDia: round1(refMediaDia),
     refEconomia: Math.round(ref.kwh * tarifaRef),
     refDias,
-    curvaDia: curva.pontos,
-    curvaDiaLabel: curva.label,
-    curvaDiaPicoKw: curva.picoKw,
+    curvaDia: curva,
+    hojeYmd,
+    statusMonitoramento,
+    anosDisponiveis,
+    serieMensal,
     geracao12m,
     economia12m: Math.round(geracao12m * tarifaRef),
     co2EvitadoKg: Math.round(geracao12m * FATOR_CO2),

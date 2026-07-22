@@ -50,7 +50,10 @@ export function PortalClienteBody({
 
       {portalData && (
         <div className="mt-6">
-          <PortalClienteDashboard data={portalData} />
+          <PortalClienteDashboard
+            data={portalData}
+            proprietarioId={relatoriosProprietarioId}
+          />
         </div>
       )}
 
