@@ -1,21 +1,34 @@
 "use client";
 
-import { Zap, TrendingUp, Leaf, TreePine } from "lucide-react";
+import { Zap, TrendingUp } from "lucide-react";
 import type { PortalClienteData } from "@/lib/portal-cliente-data";
 
 const TEAL = "#2E9B87";
-const TEAL_DARK = "#1B5E54";
 const ORANGE = "#EA6E2C";
 const ORANGE_DEEP = "#C2551C";
+// Verde-petróleo dos relatórios do cliente (relatório BS / demonstrativo).
+const GREEN = "#2E9B87";
+const GREEN_DEEP = "#1B5E54";
 const INK = "#1F1F1F";
 const INK_SOFT = "#59604F";
 const INK_FAINT = "#8A938D";
 const BORDER = "#E1EAE7";
 
+// Escala com valores "redondos" no eixo Y (evita números quebrados)
+function niceTicks(rawMax: number, count = 4) {
+  const rough = Math.max(rawMax, 1) / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  const norm = rough / mag;
+  const step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
+  return { niceMax: step * count, step, count };
+}
+
 const brl = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 const kwh = (v: number) =>
   v.toLocaleString("pt-BR", { maximumFractionDigits: 0 });
+const tarifaBrl = (v: number) =>
+  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function PortalClienteDashboard({ data }: { data: PortalClienteData }) {
   if (!data.temDados) {
@@ -45,7 +58,7 @@ export function PortalClienteDashboard({ data }: { data: PortalClienteData }) {
           label={`Economia · ${data.refLabel ?? "—"}`}
           value={brl(data.refEconomia)}
           tag="estimada"
-          foot="tarifa ref. R$ 0,95/kWh"
+          foot={`tarifa ${tarifaBrl(data.tarifaRef)}/kWh${data.tarifaRefFonte ? ` · ref. ${data.tarifaRefFonte}` : ""}`}
         />
         <Kpi
           rail={TEAL}
@@ -63,40 +76,31 @@ export function PortalClienteDashboard({ data }: { data: PortalClienteData }) {
         />
       </div>
 
-      {/* Gráfico mês a mês */}
-      <Card title="Geração mês a mês" hint="kWh · últimos meses">
-        <MonthlyChart data={data} />
-        <Legend items={[{ color: ORANGE, label: "Geração mensal" }]} />
-      </Card>
-
-      {/* Gráfico diário do mês de referência */}
+      {/* 1º — Gráfico diário do mês de referência */}
       {data.refDias.length > 0 && (
         <Card title="Geração diária" hint={`kWh por dia · ${data.refLabel}`}>
           <DailyChart data={data} />
         </Card>
       )}
 
-      {/* Impacto ambiental */}
-      <Card title="Impacto ambiental" hint="12 meses">
-        <div className="grid sm:grid-cols-2 gap-4 pt-1">
-          <Eco
-            bg="#E1F3E7"
-            icon={<Leaf className="h-5 w-5" style={{ color: "#1E9B57" }} />}
-            value={`${kwh(data.co2EvitadoKg)} kg`}
-            label="de CO₂ que deixaram de ser emitidos"
-          />
-          <Eco
-            bg="#E1F1EC"
-            icon={<TreePine className="h-5 w-5" style={{ color: TEAL }} />}
-            value={`≈ ${data.arvoresEquivalentes} árvores`}
-            label="equivalente plantado por ano"
-          />
-        </div>
-        <p className="text-xs mt-3" style={{ color: INK_FAINT }}>
-          Estimativas com base na geração medida e no fator médio de emissão do
-          sistema elétrico brasileiro.
-        </p>
+      {/* 2º — Gráfico mês a mês */}
+      <Card title="Geração mês a mês" hint="kWh · últimos meses">
+        <MonthlyChart data={data} />
+        <Legend items={[{ color: GREEN_DEEP, label: "Geração mensal" }]} />
       </Card>
+
+      {/* 3º — Geração × Consumo (mesmas cores do relatório do cliente) */}
+      {data.porMes.some((m) => m.consumoKwh != null) && (
+        <Card title="Geração × Consumo" hint="kWh · últimos meses">
+          <GeracaoConsumoChart data={data} />
+          <Legend
+            items={[
+              { color: GREEN, label: "Geração" },
+              { color: ORANGE, label: "Consumo" },
+            ]}
+          />
+        </Card>
+      )}
     </div>
   );
 }
@@ -166,26 +170,12 @@ function Legend({ items }: { items: { color: string; label: string }[] }) {
   );
 }
 
-function Eco({ bg, icon, value, label }: { bg: string; icon: React.ReactNode; value: string; label: string }) {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="h-11 w-11 rounded-xl grid place-items-center shrink-0" style={{ background: bg }}>
-        {icon}
-      </div>
-      <div>
-        <div className="text-xl font-bold tabular-nums leading-none" style={{ color: INK }}>{value}</div>
-        <div className="text-xs mt-1" style={{ color: INK_SOFT }}>{label}</div>
-      </div>
-    </div>
-  );
-}
-
 function MonthlyChart({ data }: { data: PortalClienteData }) {
   const W = 640, H = 240, padL = 44, padR = 12, padT = 14, padB = 30;
   const iw = W - padL - padR, ih = H - padT - padB;
   const meses = data.porMes;
-  const max = Math.max(100, ...meses.map((m) => m.kwh)) * 1.1;
-  const ticks = 4;
+  const rawMax = Math.max(100, ...meses.map((m) => m.kwh));
+  const { niceMax, step, count } = niceTicks(rawMax, 4);
   const n = meses.length || 1;
   const slot = iw / n;
   const bw = Math.min(34, slot * 0.6);
@@ -193,26 +183,26 @@ function MonthlyChart({ data }: { data: PortalClienteData }) {
   return (
     <div className="mt-3 overflow-x-auto">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Geração mensal em kWh">
-        {Array.from({ length: ticks + 1 }, (_, i) => {
-          const val = (max / ticks) * i;
-          const y = padT + ih - (val / max) * ih;
+        {Array.from({ length: count + 1 }, (_, i) => {
+          const val = step * i;
+          const y = padT + ih - (val / niceMax) * ih;
           return (
             <g key={i}>
               <line x1={padL} y1={y} x2={W - padR} y2={y} stroke={BORDER} strokeWidth={1} />
               <text x={padL - 8} y={y + 4} textAnchor="end" fill={INK_FAINT} fontSize={11}>
-                {Math.round(val)}
+                {kwh(val)}
               </text>
             </g>
           );
         })}
         {meses.map((m, i) => {
-          const h = (m.kwh / max) * ih;
+          const h = (m.kwh / niceMax) * ih;
           const x = padL + slot * i + (slot - bw) / 2;
           const y = padT + ih - h;
           const last = i === n - 1;
           return (
             <g key={`${m.ano}-${m.mes}`}>
-              <rect x={x} y={y} width={bw} height={Math.max(h, 0)} rx={4} fill={last ? ORANGE_DEEP : ORANGE} opacity={last ? 1 : 0.9} />
+              <rect x={x} y={y} width={bw} height={Math.max(h, 0)} rx={4} fill={last ? GREEN_DEEP : GREEN} opacity={last ? 1 : 0.9} />
               <text x={x + bw / 2} y={H - 10} textAnchor="middle" fill={last ? INK : INK_FAINT} fontSize={10} fontWeight={last ? 700 : 400}>
                 {m.label}
               </text>
@@ -225,10 +215,11 @@ function MonthlyChart({ data }: { data: PortalClienteData }) {
 }
 
 function DailyChart({ data }: { data: PortalClienteData }) {
-  const W = 900, H = 200, padL = 34, padR = 10, padT = 12, padB = 24;
+  const W = 900, H = 200, padL = 40, padR = 10, padT = 12, padB = 24;
   const iw = W - padL - padR, ih = H - padT - padB;
   const dias = data.refDias;
-  const max = Math.max(10, ...dias.map((d) => d.kwh)) * 1.1;
+  const rawMax = Math.max(10, ...dias.map((d) => d.kwh));
+  const { niceMax, step, count } = niceTicks(rawMax, 4);
   const n = dias.length || 1;
   const slot = iw / n;
   const bw = slot * 0.66;
@@ -237,23 +228,86 @@ function DailyChart({ data }: { data: PortalClienteData }) {
   return (
     <div className="mt-3 overflow-x-auto">
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Geração diária em kWh">
-        {[0, 0.5, 1].map((f) => {
-          const y = padT + ih - f * ih;
-          return <line key={f} x1={padL} y1={y} x2={W - padR} y2={y} stroke={BORDER} strokeWidth={1} />;
+        {Array.from({ length: count + 1 }, (_, i) => {
+          const val = step * i;
+          const y = padT + ih - (val / niceMax) * ih;
+          return (
+            <g key={i}>
+              <line x1={padL} y1={y} x2={W - padR} y2={y} stroke={BORDER} strokeWidth={1} />
+              <text x={padL - 8} y={y + 4} textAnchor="end" fill={INK_FAINT} fontSize={11}>
+                {kwh(val)}
+              </text>
+            </g>
+          );
         })}
         {dias.map((d, i) => {
-          const h = (d.kwh / max) * ih;
+          const h = (d.kwh / niceMax) * ih;
           const x = padL + slot * i + (slot - bw) / 2;
           const y = padT + ih - h;
           const dim = d.kwh < mediaDim;
           return (
             <g key={d.dia}>
-              <rect x={x} y={y} width={bw} height={Math.max(h, 1.5)} rx={3} fill={ORANGE} opacity={dim ? 0.4 : 0.95} />
+              <rect x={x} y={y} width={bw} height={Math.max(h, 1.5)} rx={3} fill={GREEN} opacity={dim ? 0.4 : 0.95} />
               {(i === 0 || (i + 1) % 5 === 0) && (
                 <text x={x + bw / 2} y={H - 8} textAnchor="middle" fill={INK_FAINT} fontSize={10}>
                   {d.dia}
                 </text>
               )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function GeracaoConsumoChart({ data }: { data: PortalClienteData }) {
+  const W = 640, H = 240, padL = 44, padR = 12, padT = 14, padB = 30;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const meses = data.porMes;
+  const rawMax = Math.max(
+    100,
+    ...meses.map((m) => Math.max(m.kwh, m.consumoKwh ?? 0)),
+  );
+  const { niceMax, step, count } = niceTicks(rawMax, 4);
+  const n = meses.length || 1;
+  const slot = iw / n;
+  const gap = Math.min(4, slot * 0.08);
+  const bw = Math.min(15, (slot * 0.6 - gap) / 2);
+
+  return (
+    <div className="mt-3 overflow-x-auto">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Geração e consumo mensal em kWh">
+        {Array.from({ length: count + 1 }, (_, i) => {
+          const val = step * i;
+          const y = padT + ih - (val / niceMax) * ih;
+          return (
+            <g key={i}>
+              <line x1={padL} y1={y} x2={W - padR} y2={y} stroke={BORDER} strokeWidth={1} />
+              <text x={padL - 8} y={y + 4} textAnchor="end" fill={INK_FAINT} fontSize={11}>
+                {kwh(val)}
+              </text>
+            </g>
+          );
+        })}
+        {meses.map((m, i) => {
+          const groupCenter = padL + slot * i + slot / 2;
+          const gerH = (m.kwh / niceMax) * ih;
+          const gerX = groupCenter - gap / 2 - bw;
+          const gerY = padT + ih - gerH;
+          const hasCons = m.consumoKwh != null;
+          const consH = hasCons ? (m.consumoKwh! / niceMax) * ih : 0;
+          const consX = groupCenter + gap / 2;
+          const consY = padT + ih - consH;
+          return (
+            <g key={`${m.ano}-${m.mes}`}>
+              <rect x={gerX} y={gerY} width={bw} height={Math.max(gerH, 0)} rx={3} fill={GREEN} />
+              {hasCons && (
+                <rect x={consX} y={consY} width={bw} height={Math.max(consH, 0)} rx={3} fill={ORANGE} />
+              )}
+              <text x={groupCenter} y={H - 10} textAnchor="middle" fill={INK_FAINT} fontSize={10}>
+                {m.label}
+              </text>
             </g>
           );
         })}

@@ -59,36 +59,60 @@ export function UploadFaturasButton({
     if (files.length === 0) return;
     setUploading(true);
     setResults(null);
-    try {
-      const fd = new FormData();
-      for (const f of Array.from(files)) fd.append("files", f);
-      const res = await fetch("/api/admin/faturas-energia/upload-manual", {
-        method: "POST",
-        body: fd,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setResults([
-          {
-            file: "erro geral",
+
+    // Envia UM arquivo por request (sequencial). Mandar todos num único POST
+    // fazia o pdfjs acumular memória no servidor e derrubar o processo
+    // (resposta vazia → "Unexpected end of JSON input"). Um por vez é robusto e
+    // ainda dá pra mostrar o progresso arquivo a arquivo.
+    const acc: UploadResultItem[] = [];
+    for (const f of Array.from(files)) {
+      try {
+        const fd = new FormData();
+        fd.append("files", f);
+        const res = await fetch("/api/admin/faturas-energia/upload-manual", {
+          method: "POST",
+          body: fd,
+        });
+        const text = await res.text();
+        let data: { items?: UploadResultItem[]; ok?: number; error?: string } = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          // Resposta não-JSON (crash/timeout no servidor) — reporta por arquivo.
+          data = {};
+        }
+        if (!res.ok || (!data.items && !data.error && !text)) {
+          acc.push({
+            file: f.name,
             success: false,
-            error: data.error ?? "Falha no upload",
+            error:
+              data.error ??
+              `Falha no servidor (HTTP ${res.status}${!text ? " — resposta vazia" : ""})`,
             warning: null,
             codigoInstalacao: null,
             ucNome: null,
             mesRef: null,
             anoRef: null,
             valorTotal: null,
-          },
-        ]);
-      } else {
-        setResults(data.items ?? []);
-        if ((data.ok ?? 0) > 0) onUploadComplete?.();
-      }
-    } catch (e) {
-      setResults([
-        {
-          file: "erro",
+          });
+        } else if (data.items && data.items.length > 0) {
+          acc.push(...data.items);
+        } else {
+          acc.push({
+            file: f.name,
+            success: false,
+            error: data.error ?? "Resposta inesperada do servidor",
+            warning: null,
+            codigoInstalacao: null,
+            ucNome: null,
+            mesRef: null,
+            anoRef: null,
+            valorTotal: null,
+          });
+        }
+      } catch (e) {
+        acc.push({
+          file: f.name,
           success: false,
           error: e instanceof Error ? e.message : String(e),
           warning: null,
@@ -97,12 +121,15 @@ export function UploadFaturasButton({
           mesRef: null,
           anoRef: null,
           valorTotal: null,
-        },
-      ]);
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+        });
+      }
+      // Atualiza a lista a cada arquivo pra dar feedback de progresso.
+      setResults([...acc]);
     }
+
+    if (acc.some((r) => r.success)) onUploadComplete?.();
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   const onFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {

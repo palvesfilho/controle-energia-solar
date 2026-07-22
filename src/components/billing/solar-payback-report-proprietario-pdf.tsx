@@ -324,6 +324,15 @@ export function SolarPaybackReportProprietarioPDF({
               <View
                 style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
               >
+                <Text style={s.kpiLabel}>Sem energia solar</Text>
+                <Text style={[s.kpiValue, { color: C.orange, fontSize: 12 }]}>
+                  {formatBRL(mes.contaSemSolarRsTotal)}
+                </Text>
+                <Text style={s.kpiSub}>quanto pagariam sem a usina</Text>
+              </View>
+              <View
+                style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
+              >
                 <Text style={s.kpiLabel}>Consumo total</Text>
                 <Text style={[s.kpiValue, { color: C.orange, fontSize: 12 }]}>
                   {formatKwh(mes.consumoRedeKwhTotal)}

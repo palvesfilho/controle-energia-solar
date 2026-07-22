@@ -42,6 +42,7 @@ interface MesData {
   economiaAcumuladaRs: number;
   saldoPaybackRs: number;
   faturadoRs: number | null;
+  contaSemSolarRs: number | null;
   desempenhoPct: number | null;
   retornoPct: number | null;
   anomalia: string | null;
@@ -363,6 +364,12 @@ export default function RelatorioMesPage() {
             <Row label="Economia do mês" value={formatBRL(m.economiaMensalRs)} bold />
             <Row label="Retorno do mês" value={formatPct(m.retornoPct)} />
             <Row label="Fatura concessionária" value={formatBRL(m.faturadoRs)} />
+            <Row
+              label="Conta sem energia solar"
+              value={formatBRL(m.contaSemSolarRs)}
+              hint="fatura + economia"
+              bold
+            />
           </CardContent>
         </Card>
       </div>

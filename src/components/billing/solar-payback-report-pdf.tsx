@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Svg,
   Rect,
+  Path,
   Defs,
   LinearGradient,
   Stop,
@@ -24,6 +25,9 @@ const C = {
   tealDark: "#1B5E54",
   orange: "#EA6E2C",
   orangeLight: "#F39350",
+  orangeDark: "#B4501A",
+  orangePale: "#F6C9A6",
+  barTrack: "#F4F1EC",
   cream: "#FDE9D7",
   white: "#ffffff",
   black: "#1F1F1F",
@@ -71,19 +75,24 @@ const s = StyleSheet.create({
   // Hero
   hero: {
     position: "relative",
-    height: 120,
+    height: 96,
     borderRadius: 8,
-    marginBottom: 14,
+    marginBottom: 12,
     overflow: "hidden",
   },
   heroBg: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%" },
   heroContent: {
     position: "absolute",
     top: 0, left: 0, right: 0, bottom: 0,
-    padding: 16,
     color: C.white,
+    flexDirection: "row",
+  },
+  heroLeft: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     flexDirection: "column",
-    justifyContent: "space-between",
+    justifyContent: "center",
   },
   heroEyebrow: {
     fontSize: 8,
@@ -91,9 +100,27 @@ const s = StyleSheet.create({
     textTransform: "uppercase",
     color: "#FFFFFFCC",
   },
-  heroTitle: { fontSize: 18, fontWeight: 700 },
-  heroSub: { fontSize: 9, color: "#FFFFFFE6" },
-  heroFooter: { fontSize: 8, color: "#FFFFFFCC" },
+  heroTitle: { fontSize: 16, fontWeight: 700, marginTop: 1 },
+  heroSub: { fontSize: 10, color: "#FFFFFFF2", marginTop: 1 },
+  heroMeta: { fontSize: 8, color: "#FFFFFFB3", marginTop: 4 },
+  heroBadge: {
+    width: 132,
+    backgroundColor: "#FFFFFF24",
+    borderLeftWidth: 1,
+    borderLeftColor: "#FFFFFF40",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  heroBadgeLabel: {
+    fontSize: 8,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    color: "#FFFFFFD9",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  heroBadgeValue: { fontSize: 18, fontWeight: 700, color: C.white },
 
   // KPIs (4-up)
   kpiRow: { flexDirection: "row", gap: 6, marginBottom: 12 },
@@ -193,48 +220,79 @@ function HeroBackground() {
   );
 }
 
+/** Arredonda o topo (cantos superiores) de uma barra ancorada na base. */
+function barTopPath(x: number, y: number, w: number, h: number, r: number) {
+  const rr = Math.max(0, Math.min(r, w / 2, h));
+  return `M ${x} ${y + h} L ${x} ${y + rr} Q ${x} ${y} ${x + rr} ${y} L ${x + w - rr} ${y} Q ${x + w} ${y} ${x + w} ${y + rr} L ${x + w} ${y + h} Z`;
+}
+
+/** Arredonda a base (cantos inferiores) de uma barra que desce a partir do zero. */
+function barBottomPath(x: number, y: number, w: number, h: number, r: number) {
+  const rr = Math.max(0, Math.min(r, w / 2, h));
+  return `M ${x} ${y} L ${x + w} ${y} L ${x + w} ${y + h - rr} Q ${x + w} ${y + h} ${x + w - rr} ${y + h} L ${x + rr} ${y + h} Q ${x} ${y + h} ${x} ${y + h - rr} Z`;
+}
+
+/** Arredonda o próximo múltiplo de `step` acima de `v` (escala "redonda"). */
+function niceCeil(v: number, step: number) {
+  return Math.max(step, Math.ceil(v / step) * step);
+}
+
 /**
- * Mini barras geração x consumo. Layout simples — 12 pares de barras.
+ * Opção 1 — Barras agrupadas geração × consumo.
+ * Eixo Y em kWh com grade discreta; cantos superiores arredondados; sem
+ * rótulos por barra (os valores exatos ficam na tabela "Histórico por mês").
  */
 function GeneractionConsumptionBars({ data }: { data: RelatorioData }) {
   const meses = data.meses;
   if (meses.length === 0) return null;
 
   const W = 540;
-  const H = 150;
-  const padL = 30;
-  const padR = 8;
-  // Mais espaço no topo pra os labels das barras não cortarem
+  const H = 148;
+  const padL = 36;
+  const padR = 10;
   const padT = 22;
-  const padB = 22;
+  const padB = 24;
   const innerW = W - padL - padR;
   const innerH = H - padT - padB;
 
-  const maxKwh = Math.max(
+  const rawMax = Math.max(
     ...meses.map((m) => Math.max(m.geracaoInversorKwh ?? 0, m.consumoTotalKwh ?? 0)),
     1,
   );
+  const maxKwh = niceCeil(rawMax, 200);
   const groupW = innerW / meses.length;
-  const barW = (groupW - 4) / 2;
-  const fmt = (v: number) =>
-    Math.round(v).toLocaleString("pt-BR");
+  const pad = groupW * 0.16;
+  const gap = 2;
+  const barW = (groupW - pad * 2 - gap) / 2;
+  const fmtTick = (v: number) => Math.round(v).toLocaleString("pt-BR");
 
   return (
     <Svg style={{ width: "100%", height: H }} viewBox={`0 0 ${W} ${H}`}>
-      {/* Grid */}
-      {[0, 0.25, 0.5, 0.75, 1].map((p, i) => (
-        <SvgLine
-          key={i}
-          x1={padL}
-          y1={padT + innerH * p}
-          x2={W - padR}
-          y2={padT + innerH * p}
-          stroke={C.grayBorder}
-          strokeWidth={0.4}
-        />
-      ))}
+      {/* Grade + escala Y */}
+      {[0, 0.25, 0.5, 0.75, 1].map((p, i) => {
+        const y = padT + innerH * (1 - p);
+        return (
+          <React.Fragment key={i}>
+            <SvgLine
+              x1={padL}
+              y1={y}
+              x2={W - padR}
+              y2={y}
+              stroke={C.grayBorder}
+              strokeWidth={0.5}
+            />
+            <Text
+              x={padL - 5}
+              y={y + 2.5}
+              style={{ fontSize: 7, fill: C.gray, fontWeight: 700, textAnchor: "end" }}
+            >
+              {fmtTick(maxKwh * p)}
+            </Text>
+          </React.Fragment>
+        );
+      })}
       {meses.map((m, i) => {
-        const groupX = padL + i * groupW + 2;
+        const groupX = padL + i * groupW + pad;
         const ger = m.geracaoInversorKwh ?? 0;
         const cons = m.consumoTotalKwh ?? 0;
         const gerH = (ger / maxKwh) * innerH;
@@ -242,59 +300,151 @@ function GeneractionConsumptionBars({ data }: { data: RelatorioData }) {
         const gerY = padT + innerH - gerH;
         const consY = padT + innerH - consH;
         return (
-          <View key={i}>
-            <Rect
-              x={groupX}
-              y={gerY}
-              width={barW}
-              height={gerH}
-              fill={C.teal}
-            />
-            <Rect
-              x={groupX + barW}
-              y={consY}
-              width={barW}
-              height={consH}
-              fill={C.orange}
-            />
-            {/* Valores em kWh em cima de cada barra */}
+          <React.Fragment key={i}>
             {ger > 0 && (
-              <Text
-                x={groupX + barW / 2 - 8}
-                y={gerY - 2}
-                style={{ fontSize: 6, fill: C.tealDark, fontWeight: 700 }}
-              >
-                {fmt(ger)}
-              </Text>
+              <Path d={barTopPath(groupX, gerY, barW, gerH, 2)} fill={C.teal} />
             )}
             {cons > 0 && (
-              <Text
-                x={groupX + barW + barW / 2 - 8}
-                y={consY - 2}
-                style={{ fontSize: 6, fill: C.orange, fontWeight: 700 }}
-              >
-                {fmt(cons)}
-              </Text>
+              <Path
+                d={barTopPath(groupX + barW + gap, consY, barW, consH, 2)}
+                fill={C.orange}
+              />
             )}
             <Text
-              x={groupX + barW - 6}
-              y={H - 6}
-              style={{ fontSize: 6, fill: C.gray }}
+              x={groupX + (barW * 2 + gap) / 2}
+              y={H - 7}
+              style={{ fontSize: 7.5, fill: C.gray, fontWeight: 700, textAnchor: "middle" }}
             >
               {MES_ABREV[m.mes - 1]}
             </Text>
-          </View>
+          </React.Fragment>
         );
       })}
       {/* Legenda */}
-      <Rect x={padL} y={padT - 6} width={6} height={6} fill={C.teal} />
-      <Text x={padL + 9} y={padT - 1} style={{ fontSize: 7, fill: C.black }}>
+      <Rect x={padL} y={padT - 14} width={7} height={7} rx={1.5} fill={C.teal} />
+      <Text x={padL + 10} y={padT - 8.5} style={{ fontSize: 7, fill: C.black }}>
         Geração
       </Text>
-      <Rect x={padL + 50} y={padT - 6} width={6} height={6} fill={C.orange} />
-      <Text x={padL + 59} y={padT - 1} style={{ fontSize: 7, fill: C.black }}>
-        Consumo
+      <Rect x={padL + 52} y={padT - 14} width={7} height={7} rx={1.5} fill={C.orange} />
+      <Text x={padL + 62} y={padT - 8.5} style={{ fontSize: 7, fill: C.black }}>
+        Consumo total
       </Text>
+    </Svg>
+  );
+}
+
+/**
+ * Opção 3 — Saldo do mês (geração − consumo), barras divergentes.
+ * Para cima (teal) quando sobra energia → gera crédito; para baixo (laranja)
+ * quando falta → usa a rede. Escala Y simétrica em torno do zero.
+ */
+function SaldoMensalBars({ data }: { data: RelatorioData }) {
+  const meses = data.meses;
+  if (meses.length === 0) return null;
+
+  const nets = meses.map(
+    (m) => (m.geracaoInversorKwh ?? 0) - (m.consumoTotalKwh ?? 0),
+  );
+
+  const W = 540;
+  const H = 150;
+  const padL = 36;
+  const padR = 12;
+  const padT = 18;
+  const padB = 18;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+
+  const bound = niceCeil(Math.max(...nets.map((n) => Math.abs(n)), 1), 100);
+  const zeroY = padT + innerH / 2;
+  const yFor = (v: number) => zeroY - (v / bound) * (innerH / 2);
+  const groupW = innerW / meses.length;
+  const barW = groupW * 0.52;
+  const fmtNet = (v: number) =>
+    (v > 0 ? "+" : v < 0 ? "-" : "") +
+    Math.abs(Math.round(v)).toLocaleString("pt-BR");
+
+  return (
+    <Svg style={{ width: "100%", height: H }} viewBox={`0 0 ${W} ${H}`}>
+      {/* Grade simétrica */}
+      {[1, 0.5, 0, -0.5, -1].map((p, i) => {
+        const y = zeroY - p * (innerH / 2);
+        const zero = p === 0;
+        return (
+          <React.Fragment key={i}>
+            <SvgLine
+              x1={padL}
+              y1={y}
+              x2={W - padR}
+              y2={y}
+              stroke={zero ? C.grayLight : C.grayBorder}
+              strokeWidth={zero ? 1 : 0.5}
+            />
+            <Text
+              x={padL - 5}
+              y={y + 2.5}
+              style={{ fontSize: 7, fill: C.gray, fontWeight: 700, textAnchor: "end" }}
+            >
+              {fmtNet(bound * p)}
+            </Text>
+          </React.Fragment>
+        );
+      })}
+      {/* Sentido do eixo Y: topo = gera crédito, base = usa a rede */}
+      <Text
+        x={padL + 3}
+        y={padT - 7}
+        style={{ fontSize: 7, fill: C.tealDark, fontWeight: 700, textAnchor: "start" }}
+      >
+        gera crédito
+      </Text>
+      <Text
+        x={padL + 3}
+        y={H - 4}
+        style={{ fontSize: 7, fill: C.orange, fontWeight: 700, textAnchor: "start" }}
+      >
+        usa a rede
+      </Text>
+      {meses.map((m, i) => {
+        const net = nets[i];
+        const x = padL + i * groupW + (groupW - barW) / 2;
+        const y = yFor(net);
+        const h = Math.abs(y - zeroY);
+        const up = net >= 0;
+        return (
+          <React.Fragment key={i}>
+            <Path
+              d={
+                up
+                  ? barTopPath(x, y, barW, h, 2)
+                  : barBottomPath(x, zeroY, barW, h, 2)
+              }
+              fill={up ? C.teal : C.orange}
+            />
+            {Math.abs(net) > 0 && (
+              <Text
+                x={x + barW / 2}
+                y={up ? y - 3 : y + 8}
+                style={{
+                  fontSize: 6.5,
+                  fill: up ? C.tealDark : C.orange,
+                  fontWeight: 700,
+                  textAnchor: "middle",
+                }}
+              >
+                {fmtNet(net)}
+              </Text>
+            )}
+            <Text
+              x={x + barW / 2}
+              y={up ? zeroY + 10 : zeroY - 5}
+              style={{ fontSize: 7.5, fill: C.gray, fontWeight: 700, textAnchor: "middle" }}
+            >
+              {MES_ABREV[m.mes - 1]}
+            </Text>
+          </React.Fragment>
+        );
+      })}
     </Svg>
   );
 }
@@ -326,6 +476,23 @@ export function SolarPaybackReportPDF({
   // ou payback. Mantém o mesmo layout, oculta seções dependentes e avisa.
   const semMonitoramento = data.usinasMonitoradas.length === 0;
 
+  // Escala das barras "sem × com solar" da tabela (maior conta sem solar = 100%).
+  const maxContaSemSolar = Math.max(
+    ...data.meses.map((m) => m.contaSemSolarRs ?? 0),
+    1,
+  );
+  // Totais do período (rodapé da tabela).
+  const totais = data.meses.reduce(
+    (a, m) => ({
+      consumo: a.consumo + (m.consumoTotalKwh ?? 0),
+      creditos: a.creditos + (m.energiaCompensadaKwh ?? 0),
+      semSolar: a.semSolar + (m.contaSemSolarRs ?? 0),
+      comSolar: a.comSolar + (m.faturadoRs ?? 0),
+      economia: a.economia + (m.economiaMensalRs ?? 0),
+    }),
+    { consumo: 0, creditos: 0, semSolar: 0, comSolar: 0, economia: 0 },
+  );
+
   return (
     <Document>
       <Page size="A4" style={s.page}>
@@ -333,24 +500,32 @@ export function SolarPaybackReportPDF({
         <View style={s.hero}>
           <HeroBackground />
           <View style={s.heroContent}>
-            <View>
+            <View style={s.heroLeft}>
               <Text style={s.heroEyebrow}>
                 Relatório mensal · {labelMes}
               </Text>
-              <Text style={s.heroTitle}>{data.uc.nome}</Text>
-              <Text style={s.heroSub}>
-                {data.proprietario.nome} · UC {data.uc.codigoUc}
+              <Text style={s.heroTitle}>{data.proprietario.nome}</Text>
+              <Text style={s.heroSub}>{data.uc.nome}</Text>
+              <Text style={s.heroMeta}>
+                UC {data.uc.codigoUc}
                 {data.uc.distribuidora ? ` · ${data.uc.distribuidora}` : ""}
+                {!semMonitoramento
+                  ? ` · ${data.usinasMonitoradas.length} usina(s) · ${data.potenciaTotalKwp.toLocaleString(
+                      "pt-BR",
+                      { maximumFractionDigits: 2 },
+                    )} kWp`
+                  : ""}
+                {` · Emissão ${emissao}`}
               </Text>
             </View>
-            <Text style={s.heroFooter}>
-              {semMonitoramento
-                ? `Emissão ${emissao}`
-                : `${data.usinasMonitoradas.length} usina(s) · ${data.potenciaTotalKwp.toLocaleString(
-                    "pt-BR",
-                    { maximumFractionDigits: 2 },
-                  )} kWp instalados · Emissão ${emissao}`}
-            </Text>
+            {mes && mes.economiaMensalRs != null && (
+              <View style={s.heroBadge}>
+                <Text style={s.heroBadgeLabel}>Economia mensal</Text>
+                <Text style={s.heroBadgeValue}>
+                  {formatBRL(mes.economiaMensalRs)}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -377,7 +552,9 @@ export function SolarPaybackReportPDF({
           </View>
         )}
 
-        {/* KPIs do mês de referência (7 cards) */}
+        {/* KPIs do mês de referência (8 cards, 4×2):
+            Geração · Consumo · Créditos · Desempenho /
+            Sem solar · Com solar · Economia no mês · Retorno do mês */}
         {mes && (
           <>
             <Text style={s.sectionTitle}>Resultado de {labelMes}</Text>
@@ -394,6 +571,7 @@ export function SolarPaybackReportPDF({
               </Text>
             )}
             <View style={[s.kpiRow, { flexWrap: "wrap" }]}>
+              {/* Linha 1: Geração · Consumo · Créditos · Desempenho */}
               {!semMonitoramento && (
                 <View
                   style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
@@ -404,6 +582,35 @@ export function SolarPaybackReportPDF({
                   </Text>
                 </View>
               )}
+              <View
+                style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
+              >
+                <Text style={s.kpiLabel}>
+                  {semMonitoramento ? "Consumo da rede" : "Consumo"}
+                </Text>
+                <Text style={[s.kpiValue, { color: C.orange, fontSize: 12 }]}>
+                  {formatKwh(
+                    semMonitoramento ? mes.consumoRedeKwh : mes.consumoTotalKwh,
+                  )}
+                </Text>
+                {!semMonitoramento &&
+                  mes.consumoRedeKwh != null &&
+                  mes.consumoInstantaneoKwh != null && (
+                    <Text style={s.kpiSub}>
+                      {Math.round(mes.consumoRedeKwh)} rede +{" "}
+                      {Math.round(mes.consumoInstantaneoKwh)} inst.
+                    </Text>
+                  )}
+              </View>
+              <View
+                style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
+              >
+                <Text style={s.kpiLabel}>Créditos</Text>
+                <Text style={[s.kpiValue, { color: C.tealDark, fontSize: 12 }]}>
+                  {formatKwh(mes.saldoCreditosKwh)}
+                </Text>
+                <Text style={s.kpiSub}>energia acumulada (saldo GD)</Text>
+              </View>
               {!semMonitoramento && (
                 <View
                   style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
@@ -423,30 +630,33 @@ export function SolarPaybackReportPDF({
                   )}
                 </View>
               )}
+              {/* Linha 2: Sem solar · Com solar · Economia no mês · Retorno do mês */}
               <View
                 style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
               >
-                <Text style={s.kpiLabel}>
-                  {semMonitoramento ? "Consumo da rede" : "Consumo Total"}
-                </Text>
+                <Text style={s.kpiLabel}>Sem solar</Text>
                 <Text style={[s.kpiValue, { color: C.orange, fontSize: 12 }]}>
-                  {formatKwh(
-                    semMonitoramento ? mes.consumoRedeKwh : mes.consumoTotalKwh,
-                  )}
+                  {mes.contaSemSolarRs != null
+                    ? formatBRL(mes.contaSemSolarRs)
+                    : "—"}
                 </Text>
-                {!semMonitoramento &&
-                  mes.consumoRedeKwh != null &&
-                  mes.consumoInstantaneoKwh != null && (
-                    <Text style={s.kpiSub}>
-                      {Math.round(mes.consumoRedeKwh)} rede +{" "}
-                      {Math.round(mes.consumoInstantaneoKwh)} inst.
-                    </Text>
-                  )}
+                <Text style={s.kpiSub}>quanto pagaria sem a usina</Text>
               </View>
               <View
                 style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
               >
-                <Text style={s.kpiLabel}>Economia mensal</Text>
+                <Text style={s.kpiLabel}>Com solar</Text>
+                <Text
+                  style={[s.kpiValue, { color: C.tealDark, fontSize: 12 }]}
+                >
+                  {mes.faturadoRs != null ? formatBRL(mes.faturadoRs) : "—"}
+                </Text>
+                <Text style={s.kpiSub}>fatura da concessionária</Text>
+              </View>
+              <View
+                style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
+              >
+                <Text style={s.kpiLabel}>Economia no mês</Text>
                 <Text style={[s.kpiValue, { color: C.teal, fontSize: 12 }]}>
                   {mes.economiaMensalRs != null
                     ? formatBRL(mes.economiaMensalRs)
@@ -464,16 +674,6 @@ export function SolarPaybackReportPDF({
                   <Text style={s.kpiSub}>apenas créditos compensados</Text>
                 )}
               </View>
-              <View
-                style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
-              >
-                <Text style={s.kpiLabel}>Fatura concessionária</Text>
-                <Text
-                  style={[s.kpiValue, { color: C.tealDark, fontSize: 12 }]}
-                >
-                  {mes.faturadoRs != null ? formatBRL(mes.faturadoRs) : "—"}
-                </Text>
-              </View>
               {!semMonitoramento && (
                 <View
                   style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
@@ -489,15 +689,6 @@ export function SolarPaybackReportPDF({
                   <Text style={s.kpiSub}>do investimento</Text>
                 </View>
               )}
-              <View
-                style={[s.kpiCard, { minWidth: "23%", marginBottom: 4 }]}
-              >
-                <Text style={s.kpiLabel}>Créditos acumulados</Text>
-                <Text style={[s.kpiValue, { color: C.teal, fontSize: 12 }]}>
-                  {formatKwh(mes.saldoCreditosKwh)}
-                </Text>
-                <Text style={s.kpiSub}>Saldo GD na fatura</Text>
-              </View>
             </View>
           </>
         )}
@@ -572,7 +763,18 @@ export function SolarPaybackReportPDF({
               <GeneractionConsumptionBars data={data} />
             </View>
 
-            {/* Usinas vinculadas */}
+            {/* Saldo do mês (geração − consumo) */}
+            <Text style={s.sectionTitle}>Saldo do mês (geração - consumo)</Text>
+            <View style={s.sectionCard}>
+              <SaldoMensalBars data={data} />
+              <Text style={{ fontSize: 7, color: C.gray, marginTop: 4 }}>
+                Barras para cima somam créditos de energia; para baixo indicam
+                consumo coberto pela rede.
+              </Text>
+            </View>
+
+            {/* Usinas vinculadas — mantém título junto do card ao paginar */}
+            <View wrap={false}>
             <Text style={s.sectionTitle}>Usinas monitoradas</Text>
             <View style={s.sectionCard}>
               {data.usinasMonitoradas.map((u) => (
@@ -603,6 +805,7 @@ export function SolarPaybackReportPDF({
                 </View>
               ))}
             </View>
+            </View>
           </>
         )}
 
@@ -611,52 +814,118 @@ export function SolarPaybackReportPDF({
           <>
             <Text style={s.sectionTitle}>Histórico por mês</Text>
             <View style={s.sectionCard}>
-              <View style={s.tableHead}>
-                <Text style={[s.tableHeadCell, { flex: 1.2 }]}>Mês</Text>
+              {/* Legenda das barras "sem × com solar" */}
+              <View style={{ flexDirection: "row", gap: 14, marginBottom: 6 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: C.orangePale }} />
+                  <Text style={{ fontSize: 7, color: C.gray }}>Sem solar (conta cheia)</Text>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: C.orange }} />
+                  <Text style={{ fontSize: 7, color: C.gray }}>Com solar (o que paga)</Text>
+                </View>
+              </View>
+              <View style={[s.tableHead, { borderBottomColor: C.orange, borderBottomWidth: 1.5 }]}>
+                <Text style={[s.tableHeadCell, { flex: 1.1 }]}>Mês</Text>
                 <Text style={[s.tableHeadCell, { flex: 1.4, textAlign: "right" }]}>
                   Consumo total
                 </Text>
+                <Text style={[s.tableHeadCell, { flex: 1.2, textAlign: "right" }]}>
+                  Créditos
+                </Text>
+                <Text style={[s.tableHeadCell, { flex: 2.6, paddingLeft: 6 }]}>
+                  Sem / com solar
+                </Text>
                 <Text style={[s.tableHeadCell, { flex: 1.4, textAlign: "right" }]}>
-                  Compensado
-                </Text>
-                <Text style={[s.tableHeadCell, { flex: 1.6, textAlign: "right" }]}>
                   Economia
-                </Text>
-                <Text style={[s.tableHeadCell, { flex: 1.6, textAlign: "right" }]}>
-                  Fatura RGE
                 </Text>
               </View>
               {/* Mais recente primeiro (última conta emitida → meses anteriores).
                   Cópia com reverse pra não mutar data.meses, usado no gráfico. */}
-              {[...data.meses].reverse().map((m) => (
-                <View key={`${m.ano}-${m.mes}`} style={s.tableRow}>
-                  <Text style={[s.tableCell, { flex: 1.2 }]}>
-                    {MES_ABREV[m.mes - 1]}/{m.ano}
-                  </Text>
-                  <Text
-                    style={[s.tableCell, { flex: 1.4, textAlign: "right" }]}
+              {[...data.meses].reverse().map((m) => {
+                const BARW = 96;
+                const sem = m.contaSemSolarRs;
+                const com = m.faturadoRs;
+                const semW =
+                  sem != null
+                    ? Math.min(BARW, (sem / maxContaSemSolar) * BARW)
+                    : 0;
+                const comW =
+                  com != null
+                    ? Math.min(BARW, (com / maxContaSemSolar) * BARW)
+                    : 0;
+                return (
+                  <View
+                    key={`${m.ano}-${m.mes}`}
+                    style={[s.tableRow, { borderBottomColor: C.orange, alignItems: "center" }]}
                   >
-                    {formatKwh(m.consumoTotalKwh)}
+                    <Text style={[s.tableCell, { flex: 1.1 }]}>
+                      {MES_ABREV[m.mes - 1]}/{m.ano}
+                    </Text>
+                    <Text style={[s.tableCell, { flex: 1.4, textAlign: "right" }]}>
+                      {formatKwh(m.consumoTotalKwh)}
+                    </Text>
+                    <Text style={[s.tableCell, { flex: 1.2, textAlign: "right" }]}>
+                      {formatKwh(m.energiaCompensadaKwh)}
+                    </Text>
+                    <View style={{ flex: 2.6, flexDirection: "column", gap: 3, paddingLeft: 6 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                        <View style={{ width: BARW, height: 7, backgroundColor: C.barTrack, borderRadius: 2 }}>
+                          <View style={{ width: semW, height: 7, backgroundColor: C.orangePale, borderRadius: 2 }} />
+                        </View>
+                        <Text style={{ fontSize: 7, color: C.gray }}>
+                          {sem != null ? formatBRL(sem) : "—"}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                        <View style={{ width: BARW, height: 7, backgroundColor: C.barTrack, borderRadius: 2 }}>
+                          <View style={{ width: comW, height: 7, backgroundColor: C.orange, borderRadius: 2 }} />
+                        </View>
+                        <Text style={{ fontSize: 7, color: C.orangeDark, fontWeight: 700 }}>
+                          {com != null ? formatBRL(com) : "—"}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={[s.tableCellBold, { flex: 1.4, textAlign: "right", color: C.teal }]}>
+                      {m.economiaMensalRs != null
+                        ? formatBRL(m.economiaMensalRs)
+                        : "—"}
+                    </Text>
+                  </View>
+                );
+              })}
+              {/* Total do período */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: 4,
+                  paddingTop: 6,
+                  borderTopWidth: 1.5,
+                  borderTopColor: C.orange,
+                }}
+              >
+                <Text style={[s.tableCellBold, { flex: 1.1 }]}>
+                  {data.meses.length} meses
+                </Text>
+                <Text style={[s.tableCellBold, { flex: 1.4, textAlign: "right" }]}>
+                  {formatKwh(totais.consumo)}
+                </Text>
+                <Text style={[s.tableCellBold, { flex: 1.2, textAlign: "right" }]}>
+                  {formatKwh(totais.creditos)}
+                </Text>
+                <View style={{ flex: 2.6, flexDirection: "row", gap: 8, paddingLeft: 6 }}>
+                  <Text style={{ fontSize: 7.5, color: C.gray }}>
+                    sem {formatBRL(totais.semSolar)}
                   </Text>
-                  <Text
-                    style={[s.tableCell, { flex: 1.4, textAlign: "right" }]}
-                  >
-                    {formatKwh(m.energiaCompensadaKwh)}
-                  </Text>
-                  <Text
-                    style={[s.tableCellBold, { flex: 1.6, textAlign: "right", color: C.teal }]}
-                  >
-                    {m.economiaMensalRs != null
-                      ? formatBRL(m.economiaMensalRs)
-                      : "—"}
-                  </Text>
-                  <Text
-                    style={[s.tableCell, { flex: 1.6, textAlign: "right" }]}
-                  >
-                    {m.faturadoRs != null ? formatBRL(m.faturadoRs) : "—"}
+                  <Text style={{ fontSize: 7.5, color: C.orangeDark, fontWeight: 700 }}>
+                    com {formatBRL(totais.comSolar)}
                   </Text>
                 </View>
-              ))}
+                <Text style={[s.tableCellBold, { flex: 1.4, textAlign: "right", color: C.teal }]}>
+                  {formatBRL(totais.economia)}
+                </Text>
+              </View>
             </View>
           </>
         )}

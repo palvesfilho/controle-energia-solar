@@ -51,6 +51,7 @@ interface MonthRow {
   economiaAcumuladaRs: number;
   saldoPaybackRs: number;
   faturadoRs: number | null;
+  contaSemSolarRs: number | null;
   desempenhoPct: number | null;
   retornoPct: number | null;
   anomalia: string | null;
@@ -358,6 +359,22 @@ export default function RelatorioDetalhePage() {
               }
               icon={<Wallet className="h-4 w-4" />}
               color={brand.tealDark}
+            />
+            <KpiCard
+              label="Sem energia solar"
+              value={
+                mesSelecionado.contaSemSolarRs != null
+                  ? formatBRL(mesSelecionado.contaSemSolarRs)
+                  : "—"
+              }
+              sublabel={
+                mesSelecionado.contaSemSolarRs != null &&
+                mesSelecionado.faturadoRs != null
+                  ? `${formatBRL(mesSelecionado.faturadoRs)} fatura + ${formatBRL(mesSelecionado.economiaMensalRs ?? 0)} economizado`
+                  : "quanto pagaria sem a usina"
+              }
+              icon={<Sun className="h-4 w-4" />}
+              color={brand.orange}
             />
             {!semMonitoramento && (
               <KpiCard

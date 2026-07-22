@@ -21,6 +21,82 @@ import { getRelatorioParametros } from "@/lib/app-settings";
  */
 const TRIBUTOS_EFETIVOS_PADRAO = 0.25;
 
+/**
+ * Campos da fatura (`ConsumerBill`) necessários pra calcular a "conta sem
+ * energia solar". Todos os componentes de compensação vêm em R$ direto da
+ * fatura RGE (as linhas de crédito vêm com sinal negativo → usamos o módulo).
+ */
+export interface ContaSemSolarInput {
+  /** Valor líquido da fatura RGE (o que a UC efetivamente paga) */
+  valorTotal: number | null;
+  /** Rateio da usina (oUC/mUC) — crédito TE, negativo na fatura */
+  injetadaOucTeValor: number | null;
+  /** Rateio da usina (oUC/mUC) — crédito TUSD, negativo na fatura */
+  injetadaOucTusdValor: number | null;
+  /** Injeção do painel próprio — crédito TE */
+  energiaInjetadaPropriaTeValor: number | null;
+  /** Injeção do painel próprio — crédito TUSD */
+  energiaInjetadaPropriaTusdValor: number | null;
+  /** Ajuste de saldo de crédito GD (quando houver) */
+  ajusteSaldoCredito: number | null;
+  /** Créditos de bandeira tarifária (negativos na fatura) */
+  bandeiraAmarelaCreditoValor: number | null;
+  bandeiraVermelhaCreditoValor: number | null;
+  bandeiraVermelha2CreditoValor: number | null;
+  /** Tarifa cheia (TE com tributos, R$/kWh) — usada no autoconsumo instantâneo */
+  tarifaTeComTributos: number | null;
+  /** Tarifa cheia (TUSD com tributos, R$/kWh) */
+  tarifaTusdComTributos: number | null;
+}
+
+/**
+ * Conta que o cliente teria SEM energia solar — fórmula canônica (Paulo,
+ * 2026-07-21). É o valor de referência do KPI "Sem energia solar":
+ *
+ *   contaSemSolar = valorTotal_RGE
+ *     + |rateio oUC TE| + |rateio oUC TUSD|              ← créditos da usina
+ *     + |injeção própria TE| + |injeção própria TUSD|    ← geração do painel
+ *     + |ajuste de saldo| + |créditos de bandeira|       ← demais compensações
+ *     + consumo_instantaneo_kWh × (tarifaTeComTributos + tarifaTusdComTributos)
+ *
+ * Os componentes de compensação são somados em módulo (as linhas de crédito
+ * vêm negativas na fatura). O autoconsumo instantâneo (energia consumida direto
+ * do painel, que nunca passou pela concessionária) é valorado pela tarifa cheia
+ * REAL da fatura (com tributos), não por um gross-up estimado.
+ *
+ * ⚠️ Os mesmos dados podem vir do Infosimples num formato diferente (outros
+ * nomes de campo / agrupamento de linhas). Ao integrar por essa via, mapear as
+ * grandezas para os campos de `ContaSemSolarInput` ANTES de chamar esta função.
+ *
+ * Retorna `null` quando não há `valorTotal` (sem base pra somar).
+ */
+export function calcularContaSemSolar(
+  bill: ContaSemSolarInput,
+  consumoInstantaneoKwh: number | null,
+): number | null {
+  if (bill.valorTotal == null) return null;
+  const mod = (v: number | null | undefined) => Math.abs(v ?? 0);
+
+  const compensado =
+    mod(bill.injetadaOucTeValor) +
+    mod(bill.injetadaOucTusdValor) +
+    mod(bill.energiaInjetadaPropriaTeValor) +
+    mod(bill.energiaInjetadaPropriaTusdValor) +
+    mod(bill.ajusteSaldoCredito) +
+    mod(bill.bandeiraAmarelaCreditoValor) +
+    mod(bill.bandeiraVermelhaCreditoValor) +
+    mod(bill.bandeiraVermelha2CreditoValor);
+
+  const tarifaCheia =
+    (bill.tarifaTeComTributos ?? 0) + (bill.tarifaTusdComTributos ?? 0);
+  const instantaneoRs =
+    consumoInstantaneoKwh != null && consumoInstantaneoKwh > 0 && tarifaCheia > 0
+      ? consumoInstantaneoKwh * tarifaCheia
+      : 0;
+
+  return bill.valorTotal + compensado + instantaneoRs;
+}
+
 export interface RelatorioMonthRow {
   ano: number;
   mes: number;
@@ -54,6 +130,13 @@ export interface RelatorioMonthRow {
   saldoPaybackRs: number;
   /** Faturado RGE (valor líquido pago à concessionária) */
   faturadoRs: number | null;
+  /**
+   * KPI "Sem energia solar": o que o cliente pagaria à concessionária se NÃO
+   * tivesse a usina = fatura líquida atual + tudo que o solar deixou de cobrar
+   * (compensada + autoconsumo instantâneo). Identidade auditável:
+   * faturado + economia = conta sem solar. `null` quando faltam dados.
+   */
+  contaSemSolarRs: number | null;
   /** Desempenho % = geracaoInversor / geracaoEsperadaMensal × 100 */
   desempenhoPct: number | null;
   /** Retorno % no mês = economiaMensalRs / investimentoTotal × 100 */
@@ -319,6 +402,17 @@ export async function getProprietarioRelatorio(
       tarifaTE: true,
       tarifaTUSD: true,
       valorTotal: true,
+      // Campos da "conta sem energia solar" (ver calcularContaSemSolar)
+      injetadaOucTeValor: true,
+      injetadaOucTusdValor: true,
+      energiaInjetadaPropriaTeValor: true,
+      energiaInjetadaPropriaTusdValor: true,
+      ajusteSaldoCredito: true,
+      bandeiraAmarelaCreditoValor: true,
+      bandeiraVermelhaCreditoValor: true,
+      bandeiraVermelha2CreditoValor: true,
+      tarifaTeComTributos: true,
+      tarifaTusdComTributos: true,
     },
   });
   bills.reverse();
@@ -404,6 +498,11 @@ export async function getProprietarioRelatorio(
         ? (economiaMensalRs / investimentoTotal) * 100
         : null;
 
+    // Conta que o cliente teria sem energia solar (fórmula canônica):
+    // fatura RGE + todos os créditos de compensação (em módulo) + autoconsumo
+    // instantâneo valorado pela tarifa cheia real. Ver calcularContaSemSolar.
+    const contaSemSolarRs = calcularContaSemSolar(bill, consumoInstantaneoKwh);
+
     meses.push({
       ano: bill.anoReferencia,
       mes: bill.mesReferencia,
@@ -427,6 +526,7 @@ export async function getProprietarioRelatorio(
       economiaAcumuladaRs: economiaAcumulada,
       saldoPaybackRs,
       faturadoRs: bill.valorTotal,
+      contaSemSolarRs,
       desempenhoPct,
       retornoPct,
       anomalia,
@@ -518,6 +618,8 @@ export interface RelatorioAgregadoBeneficiariaRow {
   energiaCompensadaKwh: number | null;
   economiaMensalRs: number | null;
   faturadoRs: number | null;
+  /** Conta que a beneficiária teria sem energia solar (ver calcularContaSemSolar) */
+  contaSemSolarRs: number | null;
 }
 
 export interface RelatorioAgregadoMonthRow {
@@ -537,6 +639,8 @@ export interface RelatorioAgregadoMonthRow {
   economiaAcumuladaRs: number;
   /** Soma das faturas RGE das beneficiárias */
   faturadoRs: number | null;
+  /** Soma das beneficiárias — conta sem energia solar (ver calcularContaSemSolar) */
+  contaSemSolarRsTotal: number | null;
   /** Soma do saldo de créditos GD remanescente nas faturas das beneficiárias */
   saldoCreditosBeneficiariasTotal: number | null;
   /** Geração agregada do(s) inversor(es) no período (null sem Plant) */
@@ -697,6 +801,17 @@ export async function getProprietarioRelatorioAgregado(
       tarifaTE: true,
       tarifaTUSD: true,
       valorTotal: true,
+      // Campos da "conta sem energia solar" (ver calcularContaSemSolar)
+      injetadaOucTeValor: true,
+      injetadaOucTusdValor: true,
+      energiaInjetadaPropriaTeValor: true,
+      energiaInjetadaPropriaTusdValor: true,
+      ajusteSaldoCredito: true,
+      bandeiraAmarelaCreditoValor: true,
+      bandeiraVermelhaCreditoValor: true,
+      bandeiraVermelha2CreditoValor: true,
+      tarifaTeComTributos: true,
+      tarifaTusdComTributos: true,
     },
   });
 
@@ -763,6 +878,7 @@ export async function getProprietarioRelatorioAgregado(
     let economiaTotal: number | null = null;
     let faturadoTotal: number | null = null;
     let saldoBeneficiariasTotal: number | null = null;
+    let contaSemSolarTotal: number | null = null;
     const beneficiariasRows: RelatorioAgregadoBeneficiariaRow[] = [];
 
     for (const benef of beneficiarias) {
@@ -777,6 +893,7 @@ export async function getProprietarioRelatorioAgregado(
           energiaCompensadaKwh: null,
           economiaMensalRs: null,
           faturadoRs: null,
+          contaSemSolarRs: null,
         });
         continue;
       }
@@ -788,6 +905,8 @@ export async function getProprietarioRelatorioAgregado(
         bill.energiaCompensada != null && tarifaTotal != null
           ? bill.energiaCompensada * tarifaTotal
           : null;
+      // Beneficiária não tem geração própria → sem autoconsumo instantâneo.
+      const contaSemSolarRs = calcularContaSemSolar(bill, null);
       beneficiariasRows.push({
         ucId: benef.ucId,
         codigoUc: benef.codigoUc,
@@ -797,6 +916,7 @@ export async function getProprietarioRelatorioAgregado(
         energiaCompensadaKwh: bill.energiaCompensada,
         economiaMensalRs: economiaCompensadaRs,
         faturadoRs: bill.valorTotal,
+        contaSemSolarRs,
       });
       if (bill.consumoKwh != null)
         consumoRedeTotal = (consumoRedeTotal ?? 0) + bill.consumoKwh;
@@ -806,6 +926,8 @@ export async function getProprietarioRelatorioAgregado(
         economiaTotal = (economiaTotal ?? 0) + economiaCompensadaRs;
       if (bill.valorTotal != null)
         faturadoTotal = (faturadoTotal ?? 0) + bill.valorTotal;
+      if (contaSemSolarRs != null)
+        contaSemSolarTotal = (contaSemSolarTotal ?? 0) + contaSemSolarRs;
       if (bill.saldoCreditos != null)
         saldoBeneficiariasTotal =
           (saldoBeneficiariasTotal ?? 0) + bill.saldoCreditos;
@@ -822,6 +944,7 @@ export async function getProprietarioRelatorioAgregado(
       economiaMensalRs: economiaTotal,
       economiaAcumuladaRs: economiaAcumulada,
       faturadoRs: faturadoTotal,
+      contaSemSolarRsTotal: contaSemSolarTotal,
       saldoCreditosBeneficiariasTotal: saldoBeneficiariasTotal,
       geracaoInversorKwh,
       injetadaMedidorKwh: billTitular?.energiaInjetadaMedidorKwh ?? null,

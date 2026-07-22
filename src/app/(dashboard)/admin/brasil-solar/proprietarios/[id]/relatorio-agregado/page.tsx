@@ -25,6 +25,7 @@ interface BeneficiariaRow {
   energiaCompensadaKwh: number | null;
   economiaMensalRs: number | null;
   faturadoRs: number | null;
+  contaSemSolarRs: number | null;
 }
 
 interface MonthRow {
@@ -36,6 +37,7 @@ interface MonthRow {
   economiaMensalRs: number | null;
   economiaAcumuladaRs: number;
   faturadoRs: number | null;
+  contaSemSolarRsTotal: number | null;
   saldoCreditosBeneficiariasTotal: number | null;
   geracaoInversorKwh: number | null;
   injetadaMedidorKwh: number | null;
@@ -138,12 +140,15 @@ export default function RelatorioAgregadoPage() {
           economiaMensalRs:
             (acc.economiaMensalRs ?? 0) + (b.economiaMensalRs ?? 0),
           faturadoRs: (acc.faturadoRs ?? 0) + (b.faturadoRs ?? 0),
+          contaSemSolarRs:
+            (acc.contaSemSolarRs ?? 0) + (b.contaSemSolarRs ?? 0),
         }),
         {
           consumoRedeKwh: 0,
           energiaCompensadaKwh: 0,
           economiaMensalRs: 0,
           faturadoRs: 0,
+          contaSemSolarRs: 0,
         },
       )
     : null;
@@ -268,6 +273,13 @@ export default function RelatorioAgregadoPage() {
               color={brand.tealDark}
             />
             <KpiCard
+              label="Sem energia solar"
+              value={formatBRL(mesSelecionado.contaSemSolarRsTotal)}
+              sublabel="quanto pagariam sem a usina"
+              icon={<Sun className="h-4 w-4" />}
+              color={brand.orange}
+            />
+            <KpiCard
               label="Consumo total"
               value={formatKwh(mesSelecionado.consumoRedeKwhTotal)}
               sublabel="rede (kWh)"
@@ -332,6 +344,7 @@ export default function RelatorioAgregadoPage() {
                     <th className="text-right py-2 px-2">Compensado</th>
                     <th className="text-right py-2 px-2">Economia</th>
                     <th className="text-right py-2 px-2">Fatura RGE</th>
+                    <th className="text-right py-2 px-2">Sem solar</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -348,6 +361,9 @@ export default function RelatorioAgregadoPage() {
                         {formatBRL(b.economiaMensalRs)}
                       </td>
                       <td className="py-2 px-2 text-right tabular-nums">{formatBRL(b.faturadoRs)}</td>
+                      <td className="py-2 px-2 text-right tabular-nums font-semibold" style={{ color: brand.orange }}>
+                        {formatBRL(b.contaSemSolarRs)}
+                      </td>
                     </tr>
                   ))}
                   {totaisBenef && (
@@ -360,6 +376,9 @@ export default function RelatorioAgregadoPage() {
                         {formatBRL(totaisBenef.economiaMensalRs)}
                       </td>
                       <td className="py-2 px-2 text-right tabular-nums">{formatBRL(totaisBenef.faturadoRs)}</td>
+                      <td className="py-2 px-2 text-right tabular-nums" style={{ color: brand.orange }}>
+                        {formatBRL(totaisBenef.contaSemSolarRs)}
+                      </td>
                     </tr>
                   )}
                 </tbody>
