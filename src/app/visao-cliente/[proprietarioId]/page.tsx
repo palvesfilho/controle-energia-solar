@@ -7,6 +7,7 @@ import { canAccessSection, getHomeRoute } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { brandGradient } from "@/lib/brand-colors";
 import { getPortalClienteData } from "@/lib/portal-cliente-data";
+import { formatNomeSaudacao } from "@/lib/formatters";
 import { PortalClienteBody } from "@/components/brasil-solar/portal-cliente-body";
 
 export const dynamic = "force-dynamic";
@@ -54,7 +55,7 @@ export default async function VisaoClientePage({
   });
   if (!prop) notFound();
 
-  const nome = prop.nome.split(" ")[0] || prop.nome;
+  const nome = formatNomeSaudacao(prop.nome) ?? prop.nome;
   const portalData = await getPortalClienteData(prop.id);
 
   return (

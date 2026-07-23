@@ -26,5 +26,6 @@ export async function GET(req: NextRequest) {
   }
 
   const data = parseYmd(sp.get("data")) ?? hojeBrtYmd();
-  return NextResponse.json(await getPortalCurvaDia(proprietarioId, data));
+  const refresh = sp.get("refresh") === "1";
+  return NextResponse.json(await getPortalCurvaDia(proprietarioId, data, { refresh }));
 }

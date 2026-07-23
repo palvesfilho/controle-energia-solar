@@ -41,3 +41,25 @@ export function formatDate(date: Date): string {
 export function formatNumber(value: number): string {
   return numberFormatter.format(value);
 }
+
+/**
+ * Nome de saudação: primeiro nome + último sobrenome, em capitalização de
+ * título ("OTHAVIO CECCIM MORALES" → "Othavio Morales"). Partículas ("de",
+ * "da", "dos"…) ficam minúsculas e nunca viram o "sobrenome" exibido.
+ */
+const PARTICULAS = new Set(["de", "da", "do", "das", "dos", "e", "di", "du", "del", "van", "von"]);
+
+export function formatNomeSaudacao(nomeCompleto: string | null | undefined): string | null {
+  const partes = (nomeCompleto ?? "").trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return null;
+
+  const titulo = (p: string) =>
+    PARTICULAS.has(p.toLowerCase())
+      ? p.toLowerCase()
+      : p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
+
+  const primeiro = titulo(partes[0]);
+  // Último termo que não seja partícula (evita "Othavio de").
+  const sobrenome = [...partes.slice(1)].reverse().find((p) => !PARTICULAS.has(p.toLowerCase()));
+  return sobrenome ? `${primeiro} ${titulo(sobrenome)}` : primeiro;
+}

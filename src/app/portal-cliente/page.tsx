@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureLocalUser } from "@/lib/auth-compat";
 import { brandGradient } from "@/lib/brand-colors";
 import { getPortalClienteData } from "@/lib/portal-cliente-data";
+import { formatNomeSaudacao } from "@/lib/formatters";
 import { PortalClienteBody } from "@/components/brasil-solar/portal-cliente-body";
 
 export const dynamic = "force-dynamic";
@@ -38,8 +39,11 @@ export default async function PortalClientePage() {
     },
   });
 
+  // Saudação com nome e sobrenome: o cadastro do proprietário é a fonte mais
+  // confiável (o login Clerk costuma ter só o primeiro nome).
   const nome =
-    user.firstName ||
+    formatNomeSaudacao(prop?.nome) ||
+    formatNomeSaudacao([user.firstName, user.lastName].filter(Boolean).join(" ")) ||
     user.emailAddresses[0]?.emailAddress.split("@")[0] ||
     "Cliente";
 

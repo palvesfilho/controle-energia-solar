@@ -20,6 +20,11 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const data = parseYmd(new URL(req.url).searchParams.get("data")) ?? hojeBrtYmd();
-  return NextResponse.json(await getPortalCurvaDia(prop.id, data));
+  const sp = new URL(req.url).searchParams;
+  const data = parseYmd(sp.get("data")) ?? hojeBrtYmd();
+  // `refresh=1`: coleta as amostras do dia na Sungrow antes de responder (só
+  // vale para hoje/ontem). É como o cliente enxerga o dia atual mesmo quando o
+  // cron de coleta ainda não passou.
+  const refresh = sp.get("refresh") === "1";
+  return NextResponse.json(await getPortalCurvaDia(prop.id, data, { refresh }));
 }

@@ -246,6 +246,12 @@ function geracaoUrl(
   return qs ? `${base}?${qs}` : base;
 }
 
+/** "YYYY-MM-DD" do dia anterior (sem fuso: aritmética em UTC sobre a data). */
+function ontemYmd(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+}
+
 /**
  * Card "Geração diária": curva intradiária do dia selecionado (padrão hoje),
  * selo online/offline ao lado do título e seletor de data à direita.
@@ -263,18 +269,22 @@ function GeracaoDiariaCard({
   const [status, setStatus] = useState(statusInicial);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  // A carga inicial já veio do servidor: só busca quando o cliente troca a data.
+  // A carga inicial já veio do servidor. Ela é reaproveitada, exceto quando o
+  // dia é hoje/ontem: aí buscamos de novo com `refresh=1` para o servidor
+  // coletar na Sungrow o que o cron ainda não trouxe (a curva do dia atual vai
+  // se formando ao longo do dia).
   const primeiraRenderizacao = useRef(true);
 
   useEffect(() => {
-    if (primeiraRenderizacao.current) {
-      primeiraRenderizacao.current = false;
-      return;
-    }
+    const inicial = primeiraRenderizacao.current;
+    primeiraRenderizacao.current = false;
+    const recente = dataSel === hojeYmd || dataSel === ontemYmd(hojeYmd);
+    if (inicial && !recente) return;
+
     let cancelado = false;
     setCarregando(true);
     setErro(null);
-    fetch(geracaoUrl("dia", { data: dataSel }, proprietarioId))
+    fetch(geracaoUrl("dia", { data: dataSel, refresh: recente ? "1" : undefined }, proprietarioId))
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error("falha"))))
       .then((json: PortalCurvaDia & { statusMonitoramento: PortalStatusMonitoramento }) => {
         if (cancelado) return;
@@ -286,7 +296,7 @@ function GeracaoDiariaCard({
     return () => {
       cancelado = true;
     };
-  }, [dataSel, proprietarioId]);
+  }, [dataSel, hojeYmd, proprietarioId]);
 
   const total =
     curva.totalKwh != null

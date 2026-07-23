@@ -4,10 +4,12 @@
  * usina/dia (bug conhecido de duplicação), agrega por mês e por dia do mês de
  * referência, e estima a economia.
  *
- * Só de leitura. Escopo garantido pelo chamador (portal-cliente identifica o
+ * Só de leitura (exceto `refreshAmostrasDia`, que coleta as amostras Sungrow do
+ * dia sob demanda). Escopo garantido pelo chamador (portal-cliente identifica o
  * proprietário pelo clerkUserId).
  */
 import { prisma } from "@/lib/prisma";
+import { persistDailySamples } from "@/lib/sungrow-persist";
 
 /** Tarifa de referência (R$/kWh) de fallback quando não há fatura para derivar a tarifa real. */
 const TARIFA_REF = 0.95;
@@ -375,6 +377,84 @@ async function getCurvaDia(
   return { data: ymd, label, pontos, picoKw: Math.round((picoW / 1000) * 10) / 10, totalKwh };
 }
 
+/** Anti-spam do refresh sob demanda: chave `clientId|YYYY-MM-DD` -> epoch ms. */
+const ultimoRefresh = new Map<string, number>();
+const REFRESH_MIN_INTERVALO_MS = 5 * 60 * 1000;
+/** Amostra de hoje considerada "fresca" se tiver menos de 20 min. */
+const FRESCOR_HOJE_MS = 20 * 60 * 1000;
+
+/**
+ * Coleta sob demanda as amostras Sungrow do dia pedido, quando o que está no
+ * banco está velho ou não existe. Sem isto o cliente só vê a curva dos dias já
+ * varridos pelo cron — hoje e ontem ficam vazios enquanto o cron não roda.
+ *
+ * Só age em HOJE e ONTEM (BRT); dias mais antigos já estão fechados no banco.
+ * Cada usina é coletada no máximo 1x a cada 5 min (guard em memória) e as
+ * falhas são engolidas: o portal segue exibindo o que houver persistido.
+ */
+async function refreshAmostrasDia(clientIds: string[], ymd: string): Promise<void> {
+  if (clientIds.length === 0) return;
+
+  const hoje = hojeBrtYmd();
+  const ontem = (() => {
+    const [y, m, d] = hoje.split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d - 1));
+    return dt.toISOString().slice(0, 10);
+  })();
+  if (ymd !== hoje && ymd !== ontem) return;
+
+  const usinas = await prisma.brasilSolarClient.findMany({
+    where: {
+      id: { in: clientIds },
+      active: true,
+      plataformaMonitoramento: "SUNGROW",
+      monitoramentoPlantId: { not: null },
+    },
+    select: { id: true, monitoramentoPlantId: true },
+  });
+  if (usinas.length === 0) return;
+
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dayStart = new Date(Date.UTC(y, m - 1, d));
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+  const agora = Date.now();
+
+  await Promise.all(
+    usinas.map(async (u) => {
+      const chave = `${u.id}|${ymd}`;
+      const anterior = ultimoRefresh.get(chave) ?? 0;
+      if (agora - anterior < REFRESH_MIN_INTERVALO_MS) return;
+
+      // Já tem a curva completa desse dia? Então não precisa bater na Sungrow.
+      const ultima = await prisma.inverterSample.findFirst({
+        where: {
+          clientId: u.id,
+          timeStamp: { gte: dayStart, lt: dayEnd },
+          pAcW: { not: null },
+        },
+        orderBy: { timeStamp: "desc" },
+        select: { timeStamp: true },
+      });
+      if (ultima) {
+        const horaBrt = new Date(ultima.timeStamp.getTime() - BRT_OFFSET_MS).getUTCHours();
+        // Ontem: completo quando a última amostra já é do fim da tarde.
+        if (ymd !== hoje && horaBrt >= 18) return;
+        // Hoje: completo quando a última amostra é recente (ou já é fim de dia).
+        if (ymd === hoje && (agora - ultima.timeStamp.getTime() < FRESCOR_HOJE_MS || horaBrt >= 19)) {
+          return;
+        }
+      }
+
+      ultimoRefresh.set(chave, agora);
+      try {
+        await persistDailySamples(u.id, u.monitoramentoPlantId!, y, m, d);
+      } catch {
+        // Usina sem escopo na API / instabilidade Sungrow: mantém o que há.
+      }
+    }),
+  );
+}
+
 /**
  * Estado de comunicação das usinas, derivado da última leitura instantânea
  * (`InverterSample`). A coleta roda de 3 em 3 horas (cron Sungrow), então a
@@ -493,12 +573,18 @@ async function getAnosDisponiveis(clientIds: string[]): Promise<number[]> {
   return anos;
 }
 
-/** Curva intradiária de um dia para o proprietário (usada pelas rotas de API). */
+/**
+ * Curva intradiária de um dia para o proprietário (usada pelas rotas de API).
+ * Com `refresh`, coleta antes as amostras de hoje/ontem que ainda não estão no
+ * banco — é o que permite ao cliente ver o dia atual sem esperar o cron.
+ */
 export async function getPortalCurvaDia(
   proprietarioId: string,
   ymd: string,
+  opts: { refresh?: boolean } = {},
 ): Promise<PortalCurvaDia & { statusMonitoramento: PortalStatusMonitoramento }> {
   const clientIds = await getClientIds(proprietarioId);
+  if (opts.refresh) await refreshAmostrasDia(clientIds, ymd);
   const [curva, status] = await Promise.all([
     getCurvaDia(clientIds, ymd),
     getStatusMonitoramento(clientIds),
