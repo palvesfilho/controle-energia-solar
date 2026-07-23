@@ -281,12 +281,29 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
   // Inconfundível: CNPJ usa "/" antes dos 4 finais, CPF vem mascarado, código de
   // barras e chave de acesso não têm pontuação nesse arranjo.
   const NUMERO_UC_RE = /\b\d\.\d{3}\.\d{3}\.\d{3}-\d{2}\b/;
+  // Variante CURTA de 11 dígitos, sem o primeiro grupo: "429.474.001-20".
+  // Confirmada no portal da RGE (2026-07-22) em UCs antigas — não é zero comido
+  // na digitação. ⚠️ Tem EXATAMENTE a forma de um CPF (3+3+3-2), então só pode
+  // ser aceita colada no rótulo "Número da UC"; nunca numa varredura solta.
+  const NUMERO_UC_CURTO_RE = /\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/;
   let codigoInstalacao: string | null = null;
 
   // (1) Formato NOVO ("Número da UC") — prioridade: só aparece em faturas migradas.
   for (const line of lines) {
     const m = line.match(NUMERO_UC_RE);
     if (m) { codigoInstalacao = onlyDigits(m[0]); break; }
+  }
+
+  // (1b) Formato NOVO curto — exige o rótulo por perto (ver aviso do CPF acima).
+  if (!codigoInstalacao) {
+    for (let i = 0; i < lines.length; i++) {
+      if (!/n[uú]mero\s+da\s+uc/i.test(lines[i])) continue;
+      for (let j = i; j < Math.min(i + 4, lines.length); j++) {
+        const m = lines[j].match(NUMERO_UC_CURTO_RE);
+        if (m) { codigoInstalacao = onlyDigits(m[0]); break; }
+      }
+      if (codigoInstalacao) break;
+    }
   }
 
   // (2) Formato ANTIGO ("Código da Instalação") — padrões observados:
