@@ -335,7 +335,13 @@ export async function GET(_req: NextRequest, ctx: RouteCtx) {
       // amortização do débito aparecia zerada no resumo (bug do card).
       valorCompensacao: (p.valorBruto ?? 0) + (p.valorAjuste ?? 0),
       valorLiquido: p.valorLiquido,
-      valorPago: clientePagou ? p.valorLiquido : 0,
+      // Valor liberado da UC quando o cliente final pagou. Mesma base do
+      // valorCompensacao (bruto + ajuste): o abatimento de InvestorDebit NÃO
+      // entra aqui — ele é acerto no nível do investidor e já aparece em
+      // "Multas, negociações, gestão, outros" no card de líquido. Sem isso,
+      // uma UC paga cujo bruto foi todo comido pela amortização aparecia
+      // com "Valor pago = R$ 0,00" ao lado de um "Valor" cheio.
+      valorPago: clientePagou ? (p.valorBruto ?? 0) + (p.valorAjuste ?? 0) : 0,
       payableStatus: p.status,
       billingStatus: cub?.status ?? null,
       pagoEm: cub?.pagoEm ?? null,

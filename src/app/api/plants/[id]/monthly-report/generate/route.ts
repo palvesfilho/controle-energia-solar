@@ -361,11 +361,12 @@ export async function POST(
   const valorKwhContrato = investorLink.valorKwhContrato ?? null;
   const gestaoFixa = investorLink.gestaoFixaContrato ?? null;
 
-  // Conta da usina: SO o mes atual (alinhado com a pagina). Senao acumularia
-  // contas de meses ja deduzidos previamente.
+  // Conta da usina: SO o mes atual. Regra de negocio (2026-07-23): TODO mes eh
+  // publicado, inclusive os SEM compensacao. Num mes sem compensacao valorBruto=0
+  // e a conta da usina do mes vira saldo negativo -> InvestorDebit, amortizado
+  // nos meses seguintes. Assim o investidor ve mes a mes o que deve (sem surpresa)
+  // e NADA acumula aqui — senao dobraria com o InvestorDebit ja criado no publish.
   const valorContaUcUsina = billUsina?.valorTotal ?? null;
-  // (faturasUsinaParaDescontar mantido como [billUsina] pra preencher o PDF
-  // que lista as faturas — sempre 1 item agora.)
   const faturasUsinaParaDescontar = billUsina
     ? [
         {
@@ -414,6 +415,35 @@ export async function POST(
     valorReceberTeorico < -0.009 ? -valorReceberTeorico : 0;
   const valorReceber = Math.max(0, valorReceberTeorico);
 
+  // Detalhamento por UC do que formou o valor bruto: kWh remuneravel x
+  // valorKwhContrato. Agrega por (UC, tarifa) — uma UC pode ter mais de um
+  // payable no mes (natural + saldo line carregado). A soma bate com
+  // valorBruto e com kwhCompensado por construcao (mesmas parcelas).
+  const ucsAgrupadas = new Map<
+    string,
+    { codigoUc: string | null; nome: string | null; kwh: number; valorKwh: number | null; valor: number }
+  >();
+  for (const p of realizado) {
+    const tarifaUc = p.valorKwhContrato ?? valorKwhContrato;
+    const chave = `${p.consumerUnitId ?? "sem-uc"}|${tarifaUc ?? "sem-tarifa"}`;
+    const atual = ucsAgrupadas.get(chave) ?? {
+      codigoUc: p.consumerUnit?.codigoUc ?? null,
+      nome: p.consumerUnit?.nome ?? null,
+      kwh: 0,
+      valorKwh: tarifaUc,
+      valor: 0,
+    };
+    atual.kwh +=
+      (p.kwhCompensadoBase ?? 0) +
+      (p.kwhCompensadoAjuste ?? 0) -
+      (p.kwhCreditoLegadoAbatido ?? 0);
+    atual.valor += (p.valorBruto ?? 0) + (p.valorAjuste ?? 0);
+    ucsAgrupadas.set(chave, atual);
+  }
+  const ucsCompensacao = Array.from(ucsAgrupadas.values())
+    .filter((u) => Math.abs(u.kwh) > 0.001 || Math.abs(u.valor) > 0.009)
+    .sort((a, b) => b.valor - a.valor);
+
   const ucsRepresadasInadimplencia = aguardandoPag
     .map((p) => ({
       codigoUc: p.consumerUnit?.codigoUc ?? null,
@@ -445,6 +475,7 @@ export async function POST(
     valorCreditoLegado,
     valorKwhContrato,
     valorBruto,
+    ucsCompensacao,
     gestaoFixaMensal: gestaoFixa,
     valorContaUcUsina,
     valorAjustesGerais,

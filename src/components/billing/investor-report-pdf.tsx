@@ -39,6 +39,21 @@ export interface InvestorReportData {
   // Financeiro (R$) — só do realizado
   valorKwhContrato: number | null;
   valorBruto: number;
+  /**
+   * Detalhamento por unidade consumidora do que formou o valor bruto:
+   * kWh remunerável × valor do kWh de contrato. A soma de `valor` bate
+   * exatamente com `valorBruto`, e a de `kwh` com `kwhCompensado`.
+   *
+   * Opcional: relatórios publicados antes desta versão têm snapshotJson sem
+   * o campo — nesse caso a tabela simplesmente não é renderizada.
+   */
+  ucsCompensacao?: Array<{
+    codigoUc: string | null;
+    nome: string | null;
+    kwh: number;
+    valorKwh: number | null;
+    valor: number;
+  }>;
   gestaoFixaMensal: number | null;
   valorContaUcUsina: number | null;
   // Multas, negociacoes, gestao extra, outros — soma de valorAbatidoDebito
@@ -106,6 +121,10 @@ const s = StyleSheet.create({
     color: C.black,
     fontFamily: "Helvetica",
     backgroundColor: C.white,
+    // Reserva a faixa do rodapé fixo (bottom 18 + altura ~22) NA PAGE — é o
+    // padding da Page que o paginador respeita ao quebrar. Em View interna
+    // ele é ignorado no corte, e o bloco final sobrepõe o rodapé.
+    paddingBottom: 56,
   },
 
   // ------- CAPA -------
@@ -194,6 +213,7 @@ const s = StyleSheet.create({
   body: {
     padding: 32,
     paddingTop: 24,
+    paddingBottom: 0,
   },
   pageHeader: {
     flexDirection: "row",
@@ -303,6 +323,60 @@ const s = StyleSheet.create({
   },
   tableCellValNeg: { color: C.red },
 
+  // Tabela de detalhamento por UC (4 colunas)
+  ucColKwh: { width: 74 },
+  ucColTarifa: { width: 66 },
+  ucColValor: { width: 74 },
+  ucRow: {
+    flexDirection: "row",
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderTopWidth: 1,
+    borderTopColor: C.grayBorder,
+  },
+  ucCellNome: { flex: 1, fontSize: 9.5, color: C.black },
+  ucCellCodigo: { fontSize: 7.5, color: C.gray },
+  ucCellNum: { fontSize: 9.5, color: C.black, textAlign: "right" },
+  ucCellValor: {
+    fontSize: 9.5,
+    fontFamily: "Helvetica-Bold",
+    color: C.black,
+    textAlign: "right",
+  },
+  ucTotalRow: {
+    flexDirection: "row",
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderTopWidth: 1,
+    borderTopColor: C.grayBorder,
+    backgroundColor: C.cream,
+  },
+  ucTotalLbl: {
+    flex: 1,
+    fontSize: 9.5,
+    fontFamily: "Helvetica-Bold",
+    color: C.tealDark,
+  },
+  ucTotalNum: {
+    fontSize: 9.5,
+    fontFamily: "Helvetica-Bold",
+    color: C.tealDark,
+    textAlign: "right",
+  },
+  ucTableHint: {
+    fontSize: 8,
+    color: C.gray,
+    marginBottom: 6,
+    fontStyle: "italic",
+  },
+  ucTableWrap: { marginTop: 12 },
+  ucTableTitle: {
+    fontSize: 10,
+    fontFamily: "Helvetica-Bold",
+    color: C.tealDark,
+    marginBottom: 2,
+  },
+
   // Caixa "VALOR A RECEBER"
   receberBox: {
     flexDirection: "row",
@@ -394,6 +468,21 @@ function kwh(v: number | null | undefined): string {
 function tarifa(v: number | null | undefined): string {
   if (v == null) return "—";
   return `R$ ${v.toFixed(5).replace(".", ",")} /kWh`;
+}
+
+/** Número puro (sem sufixo) — pra colunas que já têm unidade no cabeçalho. */
+function num(v: number | null | undefined, casas = 2): string {
+  if (v == null) return "—";
+  return v.toLocaleString("pt-BR", {
+    minimumFractionDigits: casas,
+    maximumFractionDigits: casas,
+  });
+}
+
+/** Tarifa compacta pra coluna estreita: "0,40000". */
+function tarifaCompacta(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return v.toFixed(5).replace(".", ",");
 }
 
 // Fundo da capa: gradiente diagonal teal→teal claro→laranja + 2 círculos translúcidos.
@@ -497,6 +586,62 @@ function DataTable({
           </Text>
         </View>
       ))}
+    </View>
+  );
+}
+
+/**
+ * Detalhamento por UC: mostra a conta linha a linha (kWh × R$/kWh = valor),
+ * pra o investidor conferir de onde saiu o valor bruto do período em vez de
+ * ver só o total agregado.
+ */
+function UcCompensacaoTable({
+  ucs,
+}: {
+  ucs: NonNullable<InvestorReportData["ucsCompensacao"]>;
+}) {
+  const totalKwh = ucs.reduce((s, u) => s + u.kwh, 0);
+  const totalValor = ucs.reduce((s, u) => s + u.valor, 0);
+  return (
+    <View style={s.table}>
+      <View style={s.tableHeader}>
+        <Text style={[s.tableHeaderCell, s.tableHeaderLeft]}>
+          Unidade consumidora
+        </Text>
+        <Text style={[s.tableHeaderCell, s.tableHeaderRight, s.ucColKwh]}>
+          kWh
+        </Text>
+        <Text style={[s.tableHeaderCell, s.tableHeaderRight, s.ucColTarifa]}>
+          R$/kWh
+        </Text>
+        <Text style={[s.tableHeaderCell, s.tableHeaderRight, s.ucColValor]}>
+          Valor
+        </Text>
+      </View>
+      {ucs.map((uc, i) => (
+        <View
+          key={i}
+          style={i % 2 === 1 ? [s.ucRow, s.tableRowAlt] : s.ucRow}
+        >
+          <Text style={s.ucCellNome}>
+            {uc.nome ?? uc.codigoUc ?? "—"}
+            {uc.nome && uc.codigoUc && (
+              <Text style={s.ucCellCodigo}> · UC {uc.codigoUc}</Text>
+            )}
+          </Text>
+          <Text style={[s.ucCellNum, s.ucColKwh]}>{num(uc.kwh)}</Text>
+          <Text style={[s.ucCellNum, s.ucColTarifa]}>
+            {tarifaCompacta(uc.valorKwh)}
+          </Text>
+          <Text style={[s.ucCellValor, s.ucColValor]}>{brl(uc.valor)}</Text>
+        </View>
+      ))}
+      <View style={s.ucTotalRow}>
+        <Text style={s.ucTotalLbl}>Total</Text>
+        <Text style={[s.ucTotalNum, s.ucColKwh]}>{num(totalKwh)}</Text>
+        <Text style={[s.ucTotalNum, s.ucColTarifa]}>—</Text>
+        <Text style={[s.ucTotalNum, s.ucColValor]}>{brl(totalValor)}</Text>
+      </View>
     </View>
   );
 }
@@ -634,8 +779,16 @@ export function InvestorReportPDF({ data }: { data: InvestorReportData }) {
       {/* PÁGINA 2 — DADOS */}
       <Page size="A4" style={s.page}>
         <View style={s.body}>
-          <View style={s.pageHeader}>
-            <Text style={s.pageBadge}>2 / 2</Text>
+          <View style={s.pageHeader} fixed>
+            {/* Dinâmico: com muitas UCs no detalhamento o miolo pode passar
+                de uma página, então o contador não pode ser fixo. */}
+            <Text
+              style={s.pageBadge}
+              fixed
+              render={({ pageNumber, totalPages }) =>
+                `${pageNumber} / ${totalPages}`
+              }
+            />
           </View>
 
           {/* Faixa resumo */}
@@ -685,10 +838,14 @@ export function InvestorReportPDF({ data }: { data: InvestorReportData }) {
               <View style={s.sectionBar} />
               <Text style={s.sectionTitle}>3. RESULTADO FINANCEIRO</Text>
             </View>
-            <DataTable rows={financeiroRows} rightHeader="R$" />
-            <View style={s.receberBox}>
-              <Text style={s.receberLbl}>VALOR A RECEBER</Text>
-              <Text style={s.receberVal}>{brl(data.valorReceber)}</Text>
+            {/* wrap={false}: a conta e o "VALOR A RECEBER" andam juntos — o
+                valor final nunca fica órfão, separado da tabela que o gera. */}
+            <View wrap={false}>
+              <DataTable rows={financeiroRows} rightHeader="R$" />
+              <View style={s.receberBox}>
+                <Text style={s.receberLbl}>VALOR A RECEBER</Text>
+                <Text style={s.receberVal}>{brl(data.valorReceber)}</Text>
+              </View>
             </View>
             {data.valorSaldoCarregadoProximo > 0.009 && (
               <View style={s.warnBox}>
@@ -707,6 +864,30 @@ export function InvestorReportPDF({ data }: { data: InvestorReportData }) {
                   Esse valor foi registrado como débito do investidor e será
                   abatido automaticamente nas próximas remunerações.
                 </Text>
+              </View>
+            )}
+
+            {/* Detalhamento do bruto por UC. Fica DEPOIS do valor a receber:
+                é conferência linha a linha, não altera o resultado — e assim
+                a página do resultado continua com a mesma composição. */}
+            {data.ucsCompensacao && data.ucsCompensacao.length > 0 && (
+              // Tabela curta vai inteira pra próxima página em vez de partir
+              // (cabeçalho num lado, total no outro). Com muitas UCs não cabe
+              // numa página só: aí abre página própria e deixa quebrar, senão
+              // o cabeçalho fica órfão no pé da página anterior.
+              <View
+                style={s.ucTableWrap}
+                wrap={data.ucsCompensacao.length > 10}
+                break={data.ucsCompensacao.length > 10}
+              >
+                <Text style={s.ucTableTitle}>
+                  Composição do valor bruto do período
+                </Text>
+                <Text style={s.ucTableHint}>
+                  kWh compensado em cada unidade do rateio × valor do kWh de
+                  contrato.
+                </Text>
+                <UcCompensacaoTable ucs={data.ucsCompensacao} />
               </View>
             )}
           </View>
