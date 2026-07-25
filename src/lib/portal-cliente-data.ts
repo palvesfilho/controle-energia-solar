@@ -592,6 +592,66 @@ export async function getPortalCurvaDia(
   return { ...curva, statusMonitoramento: status };
 }
 
+/**
+ * Subconjunto GRÁTIS dos dados do portal: só geração (curva do dia + série
+ * mensal + status), SEM nenhum número do plano pago (economia, tarifa, consumo,
+ * CO₂). É o que vai serializado pro cliente no free-tier — assim os dados
+ * exclusivos do Plano de Acompanhamento nunca vazam no HTML de quem não pagou.
+ */
+export interface PortalGeracaoFree {
+  temDados: boolean;
+  /** Data de hoje em Brasília, "YYYY-MM-DD" (máximo do seletor de data). */
+  hojeYmd: string;
+  /** Curva intradiária de HOJE — carga inicial do card "Geração diária". */
+  curvaDia: PortalCurvaDia;
+  statusMonitoramento: PortalStatusMonitoramento;
+  anosDisponiveis: number[];
+  /** Série mensal do ano corrente — carga inicial do card "Geração Mensal". */
+  serieMensal: PortalSerieGeracao;
+  /** Geração total do mês corrente (kWh) e rótulo curto ("jul"), pro card. */
+  mesAtualKwh: number;
+  mesAtualLabel: string;
+}
+
+/**
+ * Monta o payload GRÁTIS do portal. Reaproveita os mesmos helpers do endpoint
+ * pago (curva, status, série mensal), mas NÃO calcula economia/tarifa/consumo —
+ * é de propósito, pra não expor dado pago ao cliente do plano grátis.
+ */
+export async function getPortalGeracaoFree(
+  proprietarioId: string,
+): Promise<PortalGeracaoFree> {
+  const clientIds = await getClientIds(proprietarioId);
+  const hojeYmd = hojeBrtYmd();
+  const anoAtual = Number(hojeYmd.slice(0, 4));
+  const mesAtualIdx = Number(hojeYmd.slice(5, 7)) - 1; // 0-11
+
+  const [curvaDia, statusMonitoramento, anosDisponiveis, serieMensal] =
+    await Promise.all([
+      getCurvaDia(clientIds, hojeYmd),
+      getStatusMonitoramento(clientIds),
+      getAnosDisponiveis(clientIds),
+      getSerieGeracao(clientIds, anoAtual, null),
+    ]);
+
+  const mesAtualKwh = serieMensal.pontos[mesAtualIdx]?.kwh ?? 0;
+  const temDados =
+    serieMensal.pontos.some((p) => p.kwh > 0) ||
+    curvaDia.pontos.length > 0 ||
+    curvaDia.totalKwh != null;
+
+  return {
+    temDados,
+    hojeYmd,
+    curvaDia,
+    statusMonitoramento,
+    anosDisponiveis,
+    serieMensal,
+    mesAtualKwh,
+    mesAtualLabel: MES_ABREV[mesAtualIdx],
+  };
+}
+
 /** Série mensal/diária do proprietário (usada pelas rotas de API). */
 export async function getPortalSerieGeracao(
   proprietarioId: string,

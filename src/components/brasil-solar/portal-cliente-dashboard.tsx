@@ -256,13 +256,15 @@ function ontemYmd(ymd: string): string {
  * Card "Geração diária": curva intradiária do dia selecionado (padrão hoje),
  * selo online/offline ao lado do título e seletor de data à direita.
  */
-function GeracaoDiariaCard({
-  curvaInicial, statusInicial, hojeYmd, proprietarioId,
+export function GeracaoDiariaCard({
+  curvaInicial, statusInicial, hojeYmd, proprietarioId, totalMensal,
 }: {
   curvaInicial: PortalCurvaDia;
   statusInicial: PortalStatusMonitoramento;
   hojeYmd: string;
   proprietarioId?: string;
+  /** Total do mês corrente exibido no canto superior direito (free-tier). */
+  totalMensal?: { label: string; kwh: number } | null;
 }) {
   const [dataSel, setDataSel] = useState(curvaInicial.data);
   const [curva, setCurva] = useState(curvaInicial);
@@ -310,6 +312,16 @@ function GeracaoDiariaCard({
       hint={`potência (kW) · ${curva.label}`}
       right={
         <>
+          {totalMensal && (
+            <div className="text-right leading-tight mr-1 hidden sm:block">
+              <div className="text-[11px]" style={{ color: INK_FAINT }}>
+                Geração mensal · {totalMensal.label}
+              </div>
+              <div className="text-base font-bold tabular-nums" style={{ color: INK }}>
+                {kwh(totalMensal.kwh)} kWh
+              </div>
+            </div>
+          )}
           {carregando && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: INK_FAINT }} />}
           <label className="text-xs" style={{ color: INK_FAINT }} htmlFor="portal-data-dia">
             Data
@@ -356,7 +368,7 @@ function GeracaoDiariaCard({
  * Card "Geração Mensal": o cliente escolhe o ano (12 barras, uma por mês) ou um
  * mês específico do ano (uma barra por dia).
  */
-function GeracaoMensalCard({
+export function GeracaoMensalCard({
   serieInicial, anosDisponiveis, proprietarioId,
 }: {
   serieInicial: PortalSerieGeracao;

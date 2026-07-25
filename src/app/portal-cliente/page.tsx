@@ -5,7 +5,11 @@ import { Sun, ShieldOff } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { ensureLocalUser } from "@/lib/auth-compat";
 import { brandGradient } from "@/lib/brand-colors";
-import { getPortalClienteData } from "@/lib/portal-cliente-data";
+import {
+  getPortalClienteData,
+  getPortalGeracaoFree,
+} from "@/lib/portal-cliente-data";
+import { resolvePlanoPortal } from "@/lib/portal-cliente-plano";
 import { formatNomeSaudacao } from "@/lib/formatters";
 import { PortalClienteBody } from "@/components/brasil-solar/portal-cliente-body";
 
@@ -47,7 +51,11 @@ export default async function PortalClientePage() {
     user.emailAddresses[0]?.emailAddress.split("@")[0] ||
     "Cliente";
 
-  const portalData = prop ? await getPortalClienteData(prop.id) : null;
+  const plano = await resolvePlanoPortal(prop?.acesso ?? null);
+  const portalData =
+    prop && plano.planoCompleto ? await getPortalClienteData(prop.id) : null;
+  const geracaoFree =
+    prop && !plano.planoCompleto ? await getPortalGeracaoFree(prop.id) : null;
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F5F8F7]">
@@ -80,6 +88,10 @@ export default async function PortalClientePage() {
             acesso={prop.acesso}
             portalData={portalData}
             usinas={prop.plantas}
+            planoCompleto={plano.planoCompleto}
+            geracaoFree={geracaoFree}
+            precoPlanoLabel={plano.precoPlanoLabel}
+            ctaHref={plano.ctaHref}
           />
         )}
       </main>

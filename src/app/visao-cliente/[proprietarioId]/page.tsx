@@ -6,7 +6,11 @@ import { authOptions } from "@/lib/auth-options";
 import { canAccessSection, getHomeRoute } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { brandGradient } from "@/lib/brand-colors";
-import { getPortalClienteData } from "@/lib/portal-cliente-data";
+import {
+  getPortalClienteData,
+  getPortalGeracaoFree,
+} from "@/lib/portal-cliente-data";
+import { resolvePlanoPortal } from "@/lib/portal-cliente-plano";
 import { formatNomeSaudacao } from "@/lib/formatters";
 import { PortalClienteBody } from "@/components/brasil-solar/portal-cliente-body";
 
@@ -24,8 +28,10 @@ export const dynamic = "force-dynamic";
  */
 export default async function VisaoClientePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ proprietarioId: string }>;
+  searchParams: Promise<{ plano?: string }>;
 }) {
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login-clerk");
@@ -34,6 +40,7 @@ export default async function VisaoClientePage({
   }
 
   const { proprietarioId } = await params;
+  const { plano: planoParam } = await searchParams;
 
   const prop = await prisma.brasilSolarProprietario.findUnique({
     where: { id: proprietarioId },
@@ -56,7 +63,21 @@ export default async function VisaoClientePage({
   if (!prop) notFound();
 
   const nome = formatNomeSaudacao(prop.nome) ?? prop.nome;
-  const portalData = await getPortalClienteData(prop.id);
+  const plano = await resolvePlanoPortal(prop.acesso);
+  // Prévia: por padrão reflete o plano real, mas ?plano=free|completo força a
+  // visão desejada — útil pro pós-venda mostrar o free-tier a um cliente pago.
+  const planoCompleto =
+    planoParam === "free"
+      ? false
+      : planoParam === "completo"
+        ? true
+        : plano.planoCompleto;
+  const portalData = planoCompleto
+    ? await getPortalClienteData(prop.id)
+    : null;
+  const geracaoFree = planoCompleto
+    ? null
+    : await getPortalGeracaoFree(prop.id);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F5F8F7]">
@@ -67,12 +88,33 @@ export default async function VisaoClientePage({
           <span className="font-semibold">Visão do cliente</span>
           <span className="opacity-80 truncate">· somente leitura · {prop.nome}</span>
         </div>
-        <Link
-          href={`/admin/brasil-solar/proprietarios/${prop.id}`}
-          className="inline-flex items-center gap-1 opacity-90 hover:opacity-100 shrink-0"
-        >
-          <ArrowLeft className="h-4 w-4" /> Voltar ao painel
-        </Link>
+        <div className="flex items-center gap-3 shrink-0">
+          {/* Alternador de prévia: força o free-tier ou o plano completo */}
+          <div className="inline-flex items-center rounded-full bg-white/15 p-0.5 text-xs font-semibold">
+            <Link
+              href={`/visao-cliente/${prop.id}?plano=free`}
+              className={`px-2.5 py-1 rounded-full ${
+                !planoCompleto ? "bg-white text-[#1B5E54]" : "opacity-80 hover:opacity-100"
+              }`}
+            >
+              Grátis
+            </Link>
+            <Link
+              href={`/visao-cliente/${prop.id}?plano=completo`}
+              className={`px-2.5 py-1 rounded-full ${
+                planoCompleto ? "bg-white text-[#1B5E54]" : "opacity-80 hover:opacity-100"
+              }`}
+            >
+              Completo
+            </Link>
+          </div>
+          <Link
+            href={`/admin/brasil-solar/proprietarios/${prop.id}`}
+            className="inline-flex items-center gap-1 opacity-90 hover:opacity-100"
+          >
+            <ArrowLeft className="h-4 w-4" /> Voltar ao painel
+          </Link>
+        </div>
       </div>
 
       {/* Header idêntico ao portal do cliente (sem o UserButton do Clerk) */}
@@ -100,6 +142,10 @@ export default async function VisaoClientePage({
           portalData={portalData}
           usinas={prop.plantas}
           relatoriosProprietarioId={prop.id}
+          planoCompleto={planoCompleto}
+          geracaoFree={geracaoFree}
+          precoPlanoLabel={plano.precoPlanoLabel}
+          ctaHref={plano.ctaHref}
         />
       </main>
     </div>

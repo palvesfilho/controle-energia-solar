@@ -1,7 +1,11 @@
-import { ShieldCheck, ShieldOff, Building2 } from "lucide-react";
+import { ShieldCheck, Building2, Sparkles } from "lucide-react";
 import { brand } from "@/lib/brand-colors";
-import type { PortalClienteData } from "@/lib/portal-cliente-data";
+import type {
+  PortalClienteData,
+  PortalGeracaoFree,
+} from "@/lib/portal-cliente-data";
 import { PortalClienteDashboard } from "@/components/brasil-solar/portal-cliente-dashboard";
+import { PortalClienteFree } from "@/components/brasil-solar/portal-cliente-free";
 import { PortalClienteRelatorios } from "@/components/brasil-solar/portal-cliente-relatorios";
 
 /**
@@ -14,6 +18,10 @@ import { PortalClienteRelatorios } from "@/components/brasil-solar/portal-client
  * `relatoriosProprietarioId`: quando definido, a seção "Meus relatórios" busca
  * pelos endpoints admin (preview), resolvendo o proprietário por id em vez do
  * `clerkUserId` do logado.
+ *
+ * `planoCompleto`: true = acesso pago ATIVO → dashboard completo + relatórios.
+ * false = free-tier → só geração (diária/mensal) + painel de upgrade. Os dados
+ * pagos nem chegam ao free-tier (`portalData` vem null; usa-se `geracaoFree`).
  */
 
 interface PortalBodyUsina {
@@ -30,12 +38,20 @@ export function PortalClienteBody({
   portalData,
   usinas,
   relatoriosProprietarioId,
+  planoCompleto,
+  geracaoFree,
+  precoPlanoLabel,
+  ctaHref,
 }: {
   nome: string;
   acesso: { status: string; vigenteAte: Date | null } | null;
   portalData: PortalClienteData | null;
   usinas: PortalBodyUsina[];
   relatoriosProprietarioId?: string;
+  planoCompleto: boolean;
+  geracaoFree: PortalGeracaoFree | null;
+  precoPlanoLabel: string;
+  ctaHref: string | null;
 }) {
   return (
     <>
@@ -43,19 +59,31 @@ export function PortalClienteBody({
         Olá, <span style={{ color: brand.tealDark }}>{nome}</span> 👋
       </h1>
       <p className="text-[#59604F] mt-1">
-        Acompanhe a geração das suas usinas e seus relatórios.
+        Acompanhe a geração das suas usinas
+        {planoCompleto ? " e seus relatórios" : ""}.
       </p>
 
-      <AcessoBadge acesso={acesso} />
+      <AcessoBadge acesso={acesso} planoCompleto={planoCompleto} />
 
-      {portalData && (
-        <div className="mt-6">
-          <PortalClienteDashboard
-            data={portalData}
-            proprietarioId={relatoriosProprietarioId}
-          />
-        </div>
-      )}
+      {planoCompleto
+        ? portalData && (
+            <div className="mt-6">
+              <PortalClienteDashboard
+                data={portalData}
+                proprietarioId={relatoriosProprietarioId}
+              />
+            </div>
+          )
+        : geracaoFree && (
+            <div className="mt-6">
+              <PortalClienteFree
+                data={geracaoFree}
+                proprietarioId={relatoriosProprietarioId}
+                precoLabel={precoPlanoLabel}
+                ctaHref={ctaHref}
+              />
+            </div>
+          )}
 
       <h2 className="text-sm font-semibold text-[#8A938D] uppercase tracking-wide mt-8 mb-3">
         Minhas usinas ({usinas.length})
@@ -86,38 +114,41 @@ export function PortalClienteBody({
         )}
       </div>
 
-      <h2 className="text-sm font-semibold text-[#8A938D] uppercase tracking-wide mt-8 mb-3">
-        Meus relatórios
-      </h2>
-      <PortalClienteRelatorios proprietarioId={relatoriosProprietarioId} />
+      {planoCompleto && (
+        <>
+          <h2 className="text-sm font-semibold text-[#8A938D] uppercase tracking-wide mt-8 mb-3">
+            Meus relatórios
+          </h2>
+          <PortalClienteRelatorios proprietarioId={relatoriosProprietarioId} />
+        </>
+      )}
     </>
   );
 }
 
 function AcessoBadge({
   acesso,
+  planoCompleto,
 }: {
   acesso: { status: string; vigenteAte: Date | null } | null;
+  planoCompleto: boolean;
 }) {
-  const ativo = acesso?.status === "ATIVO";
+  // Free-tier: selo neutro "Plano grátis". O antigo "pendente de pagamento" saiu
+  // — no modelo free×pago não estar no plano pago é o estado normal, não um erro.
+  if (!planoCompleto) {
+    return (
+      <div className="mt-5 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium bg-[#EDF4F1] text-[#1B5E54]">
+        <Sparkles className="h-4 w-4" />
+        Plano grátis · geração básica
+      </div>
+    );
+  }
   return (
-    <div
-      className={`mt-5 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
-        ativo
-          ? "bg-emerald-50 text-emerald-700"
-          : "bg-amber-50 text-amber-700"
-      }`}
-    >
-      {ativo ? (
-        <ShieldCheck className="h-4 w-4" />
-      ) : (
-        <ShieldOff className="h-4 w-4" />
-      )}
-      {ativo
-        ? acesso?.vigenteAte
-          ? `Acesso ativo até ${acesso.vigenteAte.toLocaleDateString("pt-BR")}`
-          : "Acesso ativo"
-        : "Acesso pendente de pagamento"}
+    <div className="mt-5 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium bg-emerald-50 text-emerald-700">
+      <ShieldCheck className="h-4 w-4" />
+      {acesso?.vigenteAte
+        ? `Acesso ativo até ${acesso.vigenteAte.toLocaleDateString("pt-BR")}`
+        : "Acesso ativo"}
     </div>
   );
 }
