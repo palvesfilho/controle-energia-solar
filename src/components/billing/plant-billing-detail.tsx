@@ -123,6 +123,13 @@ interface BillingDetail {
   valorContaUcUsina: number | null;
   gestaoFixaMensal: number | null;
   valorBrutoRealizado: number;
+  /** Painel do saldo devedor (null quando não há dívida amortizada no mês). */
+  debitoPanel: {
+    aberto: number;
+    abatido: number;
+    restante: number;
+    itens: Array<{ label: string; valor: number }>;
+  } | null;
   valorAjustesGerais: number;
   valorSaldoCarregadoProximo: number;
   valorLiquidoInvestidor: number;
@@ -1052,22 +1059,88 @@ export function PlantBillingDetail({
                 {formatBRL(data.gestaoFixaMensal ?? 0)}
               </span>
             </div>
+            {/* Com dívida, mostra o valor REAL EM ABERTO — o que não coube
+                abater volta na linha seguinte, então a coluna soma certo:
+                −aberto +restante = −abatido. Mesma apresentação do PDF. */}
             <div
               className="flex items-center justify-between text-muted-foreground"
-              title="Amortização de saldos negativos anteriores e ajustes diversos"
+              title={
+                data.debitoPanel
+                  ? `Dívida em aberto: ${data.debitoPanel.itens.map((i) => i.label).join(" · ")}`
+                  : "Amortização de saldos negativos anteriores e ajustes diversos"
+              }
             >
               <span>− Multas, negociações, gestão, outros</span>
               <span className="tabular-nums">
-                {formatBRL(data.valorAjustesGerais ?? 0)}
+                {formatBRL(
+                  data.debitoPanel?.aberto ?? data.valorAjustesGerais ?? 0,
+                )}
               </span>
             </div>
+            {data.debitoPanel && data.debitoPanel.restante > 0.009 && (
+              <div
+                className="flex items-center justify-between text-muted-foreground"
+                title="Excedeu o valor bruto do período — segue para o próximo mês"
+              >
+                <span>+ Saldo da dívida não abatido neste mês</span>
+                <span className="tabular-nums">
+                  {formatBRL(data.debitoPanel.restante)}
+                </span>
+              </div>
+            )}
             <div className="flex items-center justify-between border-t pt-2 mt-1.5 text-base">
               <span className="font-semibold">Líquido ao investidor</span>
               <span className="font-bold tabular-nums text-emerald-700">
                 {formatBRL(data.valorLiquidoInvestidor)}
               </span>
             </div>
+            {data.valorSaldoCarregadoProximo > 0 && (
+              <div className="flex items-center justify-between text-sm text-amber-700 dark:text-amber-300">
+                <span>Saldo negativo lançado para o próximo mês</span>
+                <span className="font-semibold tabular-nums">
+                  {formatBRL(data.valorSaldoCarregadoProximo)}
+                </span>
+              </div>
+            )}
           </div>
+
+          {/* Composição da dívida: de onde vem a linha de multas/negociações. */}
+          {data.debitoPanel && (
+            <div className="rounded-lg border bg-background/60 p-3 space-y-1 text-xs">
+              <p className="font-semibold text-foreground">
+                Composição do saldo devedor
+              </p>
+              {data.debitoPanel.itens.map((it, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <span className="text-muted-foreground">{it.label}</span>
+                  <span className="tabular-nums">{formatBRL(it.valor)}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between border-t pt-1 mt-1 font-medium">
+                <span>Total em aberto</span>
+                <span className="tabular-nums">
+                  {formatBRL(data.debitoPanel.aberto)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>− Abatido neste mês</span>
+                <span className="tabular-nums">
+                  {formatBRL(data.debitoPanel.abatido)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between border-t pt-1 mt-1 font-medium">
+                <span>= Saldo a abater nos próximos meses</span>
+                <span className="tabular-nums">
+                  {formatBRL(data.debitoPanel.restante)}
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground pt-1">
+                O abatimento de cada mês é limitado ao valor bruto do período —
+                nunca deixa a remuneração negativa. O que exceder segue para o
+                mês seguinte.
+              </p>
+            </div>
+          )}
           {data.valorSaldoCarregadoProximo > 0 && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-1 text-sm">
               <p className="font-semibold text-amber-800 dark:text-amber-200">

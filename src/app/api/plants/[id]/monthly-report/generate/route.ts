@@ -14,6 +14,7 @@ import {
   applyInvestorDebitsToPayable,
   cancelInvestorDebit,
 } from "@/lib/investor-debits";
+import { resolveDebitoPanel } from "@/lib/investor-debito-panel";
 
 export const runtime = "nodejs";
 
@@ -416,131 +417,14 @@ export async function POST(
     valorReceberTeorico < -0.009 ? -valorReceberTeorico : 0;
   const valorReceber = Math.max(0, valorReceberTeorico);
 
-  // ------------------------------------------------------------------
   // Painel do saldo devedor: de onde veio o abatimento deste relatorio.
-  // Sem isso a linha "Multas, negociacoes, gestao, outros" aparecia como um
-  // desconto sem explicacao — o investidor via o liquido zerar e nao tinha
-  // como saber que existia uma divida, de quanto era, nem quanto sobrou.
-  //
-  // Reconstruido a partir das aplicacoes REAIS (InvestorDebitApplication)
-  // nos payables deste mes, nao de um saldo calculado por fora: assim o
-  // painel nunca diverge do que de fato foi abatido.
-  //
-  // "Aberto antes" = valorOriginal do debito menos o que ja tinha sido
-  // abatido em meses de ORIGEM anteriores a este. Filtrar por origem (e nao
-  // por display nem por data de aplicacao) importa no retroativo: publicando
-  // out/2025 hoje, as aplicacoes feitas em payables de nov/2025 nao podem
-  // contar como "ja abatido" — elas vem depois na linha do tempo do relatorio.
-  // ------------------------------------------------------------------
-  const payableIdsOrigemMes = realizado
-    .filter(isOrigemThisMonth)
-    .map((p) => p.id);
-
-  let debitoPanel: {
-    aberto: number;
-    abatido: number;
-    restante: number;
-    itens: Array<{ label: string; valor: number }>;
-  } | null = null;
-
-  if (payableIdsOrigemMes.length > 0) {
-    const aplicacoesDoMes = await prisma.investorDebitApplication.findMany({
-      where: { payableId: { in: payableIdsOrigemMes } },
-      select: { debitId: true },
-    });
-    const debitIds = Array.from(
-      new Set(aplicacoesDoMes.map((a) => a.debitId)),
-    );
-
-    if (debitIds.length > 0) {
-      const debitos = await prisma.investorDebit.findMany({
-        where: { id: { in: debitIds } },
-        select: {
-          id: true,
-          valorOriginal: true,
-          motivo: true,
-          applications: {
-            select: {
-              valorAbatido: true,
-              payable: {
-                select: {
-                  anoReferencia: true,
-                  mesReferencia: true,
-                  originatedByPlantBill: {
-                    select: { anoReferencia: true, mesReferencia: true },
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
-
-      // Ordinal (ano*12+mes) do mes do relatorio, pra comparar origens.
-      const ordinalRelatorio = ano * 12 + mes;
-      const ordinalOrigem = (p: {
-        anoReferencia: number;
-        mesReferencia: number;
-        originatedByPlantBill: {
-          anoReferencia: number;
-          mesReferencia: number;
-        } | null;
-      }) => {
-        const a = p.originatedByPlantBill?.anoReferencia ?? p.anoReferencia;
-        const m = p.originatedByPlantBill?.mesReferencia ?? p.mesReferencia;
-        return a * 12 + m;
-      };
-
-      const itens: Array<{ label: string; valor: number; ordem: number }> = [];
-      let aberto = 0;
-      let abatido = 0;
-      for (const d of debitos) {
-        let abatidoAntes = 0;
-        let abatidoAgora = 0;
-        for (const app of d.applications) {
-          const ord = ordinalOrigem(app.payable);
-          if (ord < ordinalRelatorio) abatidoAntes += app.valorAbatido;
-          else if (ord === ordinalRelatorio) abatidoAgora += app.valorAbatido;
-          // origem posterior: ainda nao aconteceu do ponto de vista deste
-          // relatorio — entra no "restante".
-        }
-        const abertoDoDebito = d.valorOriginal - abatidoAntes;
-        if (abertoDoDebito <= 0.009 && abatidoAgora <= 0.009) continue;
-        aberto += abertoDoDebito;
-        abatido += abatidoAgora;
-        // "Saldo negativo do relatorio Julho/2025 (usina X)" -> "Julho/2025"
-        const competencia = d.motivo?.match(
-          /relatorio\s+([A-Za-zç]+)\/(\d{4})/i,
-        );
-        const mesIdx = competencia
-          ? MES_LABELS.findIndex(
-              (l) => l.toLowerCase() === competencia[1].toLowerCase(),
-            )
-          : -1;
-        itens.push({
-          label: competencia
-            ? `Conta da usina de ${competencia[1]}/${competencia[2]}`
-            : (d.motivo ?? "Débito do investidor"),
-          valor: abertoDoDebito,
-          // Cronologico: a divida se formou mes a mes e é amortizada nessa
-          // ordem, entao é assim que o investidor espera ler.
-          ordem:
-            mesIdx >= 0 ? Number(competencia![2]) * 12 + mesIdx : Number.MAX_SAFE_INTEGER,
-        });
-      }
-
-      if (aberto > 0.009) {
-        debitoPanel = {
-          aberto,
-          abatido,
-          restante: aberto - abatido,
-          itens: itens
-            .sort((a, b) => a.ordem - b.ordem)
-            .map(({ label, valor }) => ({ label, valor })),
-        };
-      }
-    }
-  }
+  // Helper compartilhado com a tela de faturamento — as duas mostram a mesma
+  // linha "Multas, negociacoes, gestao, outros" e nao podem divergir.
+  const debitoPanel = await resolveDebitoPanel({
+    payableIds: realizado.filter(isOrigemThisMonth).map((p) => p.id),
+    ano,
+    mes,
+  });
 
   // Detalhamento por UC do que formou o valor bruto: kWh remuneravel x
   // valorKwhContrato. Agrega por (UC, tarifa) — uma UC pode ter mais de um

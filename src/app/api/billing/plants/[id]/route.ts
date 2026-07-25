@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
+import { resolveDebitoPanel } from "@/lib/investor-debito-panel";
 
 interface RouteCtx {
   params: Promise<{ id: string }>;
@@ -430,6 +431,15 @@ export async function GET(_req: NextRequest, ctx: RouteCtx) {
     .filter(isOrigemThisMonth)
     .reduce((s, p) => s + (p.valorAbatidoDebito ?? 0), 0);
 
+  // Painel do saldo devedor — mesmo helper que o PDF do investidor usa, pra
+  // a tela e o relatorio nunca mostrarem numeros diferentes na linha
+  // "Multas, negociacoes, gestao, outros".
+  const debitoPanel = await resolveDebitoPanel({
+    payableIds: realizadoPayables.filter(isOrigemThisMonth).map((p) => p.id),
+    ano: billing.ano,
+    mes: billing.mes,
+  });
+
   // Deducoes gestao + conta da usina: sempre aplicam (custo fixo do mes
   // que o operador desconta do investidor, independente de cash flow).
   const valorLiquidoTeorico =
@@ -492,6 +502,7 @@ export async function GET(_req: NextRequest, ctx: RouteCtx) {
     gestaoFixaMensal,
     valorBrutoRealizado,
     valorAjustesGerais,
+    debitoPanel,
     valorSaldoCarregadoProximo,
     valorLiquidoInvestidor,
     kwhCreditoLegadoTotal,
