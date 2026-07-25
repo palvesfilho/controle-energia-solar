@@ -368,8 +368,23 @@ export function BalancoHistoricoInvestidor({
 }
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === "PAGO") return <Badge className="bg-emerald-600">Pago</Badge>;
-  if (status === "DISPONIVEL") return <Badge variant="secondary">Disponível</Badge>;
+  // Mesma nomenclatura do resumo mensal da usina (plant-billing-detail.tsx):
+  // DISPONIVEL = cliente final pagou; PAGO = repasse ao investidor já saiu.
+  if (status === "PAGO")
+    return (
+      <Badge className="bg-emerald-600" title="Repasse ao investidor já efetuado">
+        Pago ao investidor
+      </Badge>
+    );
+  if (status === "DISPONIVEL")
+    return (
+      <Badge
+        variant="secondary"
+        title="Cliente final pagou — valor liberado para o fechamento do investidor"
+      >
+        Pago
+      </Badge>
+    );
   if (status === "AGUARDANDO_PAGAMENTO")
     return <Badge variant="outline">Aguardando</Badge>;
   if (status === "AGUARDANDO_COMPENSACAO")

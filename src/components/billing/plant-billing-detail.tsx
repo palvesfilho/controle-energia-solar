@@ -148,12 +148,27 @@ const MES_ABREV = [
   "Jul", "Ago", "Set", "Out", "Nov", "Dez",
 ];
 
-const PAYABLE_STATUS_BADGE: Record<string, { label: string; className: string }> = {
+const PAYABLE_STATUS_BADGE: Record<
+  string,
+  { label: string; className: string; hint?: string }
+> = {
   AGUARDANDO_COMPENSACAO: { label: "Aguardando compensação", className: "bg-amber-100 text-amber-800" },
   AGUARDANDO_PAGAMENTO: { label: "Aguardando pagamento", className: "bg-blue-100 text-blue-800" },
   EM_COBRANCA_JUDICIAL: { label: "Em cobrança judicial", className: "bg-red-100 text-red-800" },
-  DISPONIVEL: { label: "Disponível p/ pagar", className: "bg-emerald-100 text-emerald-800" },
-  PAGO: { label: "Pago ao investidor", className: "bg-emerald-200 text-emerald-900" },
+  // DISPONIVEL = o cliente final pagou; o valor já entra no bruto realizado e
+  // fica liberado pro fechamento do investidor. Do ponto de vista de quem opera
+  // esta tabela (coluna "Valor pago"), o fato relevante é simplesmente "pago" —
+  // "Disponível p/ pagar" lia como se o registro não tivesse surtido efeito.
+  DISPONIVEL: {
+    label: "Pago",
+    className: "bg-emerald-100 text-emerald-800",
+    hint: "Cliente final pagou — valor liberado para o fechamento do investidor",
+  },
+  PAGO: {
+    label: "Pago ao investidor",
+    className: "bg-emerald-200 text-emerald-900",
+    hint: "Repasse ao investidor já efetuado",
+  },
   SEM_COMPENSACAO: { label: "Sem compensação no mês", className: "bg-slate-100 text-slate-600" },
 };
 
@@ -852,7 +867,7 @@ export function PlantBillingDetail({
                 </thead>
                 <tbody>
                   {data.ucsCompensacao.map((uc) => {
-                    const badge =
+                    const badge: { label: string; className: string; hint?: string } =
                       PAYABLE_STATUS_BADGE[uc.payableStatus] ?? {
                         label: uc.payableStatus,
                         className: "bg-slate-100 text-slate-800",
@@ -941,6 +956,7 @@ export function PlantBillingDetail({
                           <div className="flex items-center gap-2">
                             <span
                               className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}
+                              title={badge.hint}
                             >
                               {badge.label}
                             </span>
