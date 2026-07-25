@@ -60,6 +60,23 @@ export interface InvestorReportData {
   // dos payables. Reflete amortizacao automatica de saldos negativos
   // anteriores (InvestorDebit) e ajustes diversos.
   valorAjustesGerais: number;
+  /**
+   * Abre a caixa-preta do abatimento: qual era a dívida em aberto, quanto
+   * coube abater neste mês (limitado pelo bruto) e quanto sobrou. Sem isso o
+   * investidor via só o desconto, sem saber de onde vinha nem se acabou.
+   *
+   * Opcional: relatórios publicados antes desta versão não têm no snapshot.
+   */
+  debitoPanel?: {
+    /** Dívida em aberto ANTES do abatimento deste relatório. */
+    aberto: number;
+    /** Quanto foi efetivamente abatido aqui (= valorAjustesGerais). */
+    abatido: number;
+    /** Saldo que segue para os próximos relatórios. */
+    restante: number;
+    /** Composição da dívida, um item por débito de origem. */
+    itens: Array<{ label: string; valor: number }>;
+  } | null;
   // Quando bruto − custos < 0, a diferenca eh registrada como InvestorDebit
   // pra ser amortizada nas proximas remuneracoes. Valor a receber clampa em 0.
   valorSaldoCarregadoProximo: number;
@@ -379,13 +396,83 @@ const s = StyleSheet.create({
 
   // Caixa "VALOR A RECEBER"
   receberBox: {
-    flexDirection: "row",
     backgroundColor: C.tealDark,
     borderRadius: 6,
     padding: 14,
     marginTop: 12,
+  },
+  receberLinha: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  receberCarry: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.25)",
+  },
+  receberCarryLbl: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 9.5,
+  },
+  receberCarryVal: {
+    color: C.cream,
+    fontSize: 12,
+    fontFamily: "Helvetica-Bold",
+  },
+  receberCarryHint: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 7.5,
+    marginTop: 3,
+    lineHeight: 1.35,
+  },
+
+  // Caixa da composição do saldo devedor
+  dividaBox: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: C.grayBorder,
+    borderRadius: 4,
+    padding: 10,
+    backgroundColor: C.creamLight,
+  },
+  dividaTitulo: {
+    fontSize: 10,
+    fontFamily: "Helvetica-Bold",
+    color: C.tealDark,
+    marginBottom: 5,
+  },
+  dividaLinha: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 2,
+  },
+  dividaLinhaTotal: {
+    borderTopWidth: 1,
+    borderTopColor: C.grayBorder,
+    marginTop: 3,
+    paddingTop: 4,
+  },
+  dividaLbl: { fontSize: 9, color: C.black },
+  dividaVal: { fontSize: 9, color: C.black, textAlign: "right" },
+  dividaLblForte: {
+    fontSize: 9,
+    fontFamily: "Helvetica-Bold",
+    color: C.tealDark,
+  },
+  dividaValForte: {
+    fontSize: 9,
+    fontFamily: "Helvetica-Bold",
+    color: C.tealDark,
+    textAlign: "right",
+  },
+  dividaHint: {
+    fontSize: 7.5,
+    color: C.gray,
+    marginTop: 5,
+    fontStyle: "italic",
+    lineHeight: 1.35,
   },
   receberLbl: {
     color: C.white,
@@ -722,7 +809,12 @@ export function InvestorReportPDF({ data }: { data: InvestorReportData }) {
     },
     {
       label: "(−) Multas, negociações, gestão, outros",
-      hint: "Amortização de saldos negativos anteriores e ajustes diversos",
+      // Com dívida, o hint diz o total em aberto e o que sobra — o valor da
+      // coluna continua sendo só o que coube abater neste mês, senão a conta
+      // da página não fecharia com o valor a receber.
+      hint: data.debitoPanel
+        ? `Dívida em aberto de ${brl(data.debitoPanel.aberto)} — abatido ${brl(data.debitoPanel.abatido)} neste mês (limite do valor bruto), restam ${brl(data.debitoPanel.restante)}`
+        : "Amortização de saldos negativos anteriores e ajustes diversos",
       value:
         data.valorAjustesGerais > 0.009
           ? `− ${brl(data.valorAjustesGerais)}`
@@ -843,29 +935,32 @@ export function InvestorReportPDF({ data }: { data: InvestorReportData }) {
             <View wrap={false}>
               <DataTable rows={financeiroRows} rightHeader="R$" />
               <View style={s.receberBox}>
-                <Text style={s.receberLbl}>VALOR A RECEBER</Text>
-                <Text style={s.receberVal}>{brl(data.valorReceber)}</Text>
+                <View style={s.receberLinha}>
+                  <Text style={s.receberLbl}>VALOR A RECEBER</Text>
+                  <Text style={s.receberVal}>{brl(data.valorReceber)}</Text>
+                </View>
+                {/* Saldo negativo dentro da própria caixa: o que vai pro mês
+                    seguinte precisa ser lido junto com o valor a receber, não
+                    num aviso separado embaixo que passa batido. */}
+                {data.valorSaldoCarregadoProximo > 0.009 && (
+                  <View style={s.receberCarry}>
+                    <View style={s.receberLinha}>
+                      <Text style={s.receberCarryLbl}>
+                        Saldo negativo lançado para o próximo mês
+                      </Text>
+                      <Text style={s.receberCarryVal}>
+                        {brl(data.valorSaldoCarregadoProximo)}
+                      </Text>
+                    </View>
+                    <Text style={s.receberCarryHint}>
+                      Os custos do mês superaram a compensação. Esse valor vira
+                      débito e será abatido automaticamente nas próximas
+                      remunerações, sempre limitado ao valor bruto de cada mês.
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
-            {data.valorSaldoCarregadoProximo > 0.009 && (
-              <View style={s.warnBox}>
-                <Text style={s.warnTitle}>
-                  Saldo negativo carregado para o próximo mês
-                </Text>
-                <View style={s.warnRow}>
-                  <Text style={s.warnLbl}>
-                    Custos do mês excederam a compensação. Saldo a amortizar:
-                  </Text>
-                  <Text style={s.warnVal}>
-                    {brl(data.valorSaldoCarregadoProximo)}
-                  </Text>
-                </View>
-                <Text style={s.warnHint}>
-                  Esse valor foi registrado como débito do investidor e será
-                  abatido automaticamente nas próximas remunerações.
-                </Text>
-              </View>
-            )}
 
             {/* Detalhamento do bruto por UC. Fica DEPOIS do valor a receber:
                 é conferência linha a linha, não altera o resultado — e assim
@@ -888,6 +983,46 @@ export function InvestorReportPDF({ data }: { data: InvestorReportData }) {
                   contrato.
                 </Text>
                 <UcCompensacaoTable ucs={data.ucsCompensacao} />
+              </View>
+            )}
+
+            {/* Composição da dívida — de onde vem a linha de abatimento. */}
+            {data.debitoPanel && (
+              <View style={s.dividaBox} wrap={false}>
+                <Text style={s.dividaTitulo}>
+                  Composição do saldo devedor
+                </Text>
+                {data.debitoPanel.itens.map((it, i) => (
+                  <View key={i} style={s.dividaLinha}>
+                    <Text style={s.dividaLbl}>{it.label}</Text>
+                    <Text style={s.dividaVal}>{brl(it.valor)}</Text>
+                  </View>
+                ))}
+                <View style={[s.dividaLinha, s.dividaLinhaTotal]}>
+                  <Text style={s.dividaLblForte}>Total em aberto</Text>
+                  <Text style={s.dividaValForte}>
+                    {brl(data.debitoPanel.aberto)}
+                  </Text>
+                </View>
+                <View style={s.dividaLinha}>
+                  <Text style={s.dividaLbl}>(−) Abatido neste relatório</Text>
+                  <Text style={s.dividaVal}>
+                    − {brl(data.debitoPanel.abatido)}
+                  </Text>
+                </View>
+                <View style={[s.dividaLinha, s.dividaLinhaTotal]}>
+                  <Text style={s.dividaLblForte}>
+                    (=) Saldo a abater nos próximos relatórios
+                  </Text>
+                  <Text style={s.dividaValForte}>
+                    {brl(data.debitoPanel.restante)}
+                  </Text>
+                </View>
+                <Text style={s.dividaHint}>
+                  O abatimento de cada mês é limitado ao valor bruto do período
+                  — nunca deixa a remuneração negativa. O que exceder segue para
+                  o mês seguinte.
+                </Text>
               </View>
             )}
           </View>
