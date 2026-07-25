@@ -807,20 +807,30 @@ export function InvestorReportPDF({ data }: { data: InvestorReportData }) {
           : "—",
       negative: data.gestaoFixaMensal != null,
     },
+    // Com dívida, esta linha mostra o valor REAL EM ABERTO (não só o que coube
+    // abater). O que exceder o bruto volta na linha seguinte, então a coluna
+    // continua somando certo: −aberto +restante = −abatido.
     {
       label: "(−) Multas, negociações, gestão, outros",
-      // Com dívida, o hint diz o total em aberto e o que sobra — o valor da
-      // coluna continua sendo só o que coube abater neste mês, senão a conta
-      // da página não fecharia com o valor a receber.
       hint: data.debitoPanel
-        ? `Dívida em aberto de ${brl(data.debitoPanel.aberto)} — abatido ${brl(data.debitoPanel.abatido)} neste mês (limite do valor bruto), restam ${brl(data.debitoPanel.restante)}`
+        ? `Dívida em aberto${data.debitoPanel.itens.length > 0 ? ` — ${data.debitoPanel.itens.map((i) => i.label.replace("Conta da usina de ", "")).join(", ")}` : ""}`
         : "Amortização de saldos negativos anteriores e ajustes diversos",
-      value:
-        data.valorAjustesGerais > 0.009
+      value: data.debitoPanel
+        ? `− ${brl(data.debitoPanel.aberto)}`
+        : data.valorAjustesGerais > 0.009
           ? `− ${brl(data.valorAjustesGerais)}`
           : "—",
-      negative: data.valorAjustesGerais > 0.009,
+      negative: !!data.debitoPanel || data.valorAjustesGerais > 0.009,
     },
+    ...(data.debitoPanel && data.debitoPanel.restante > 0.009
+      ? [
+          {
+            label: "(+) Saldo da dívida não abatido neste mês",
+            hint: "Excedeu o valor bruto do período — segue para o próximo relatório",
+            value: `+ ${brl(data.debitoPanel.restante)}`,
+          } satisfies RowSpec,
+        ]
+      : []),
   ];
 
   const temRepresado =
