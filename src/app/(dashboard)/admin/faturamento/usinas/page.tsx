@@ -107,6 +107,12 @@ const STATUS_META: Record<
     cell: "text-muted-foreground/30",
     dot: "bg-transparent",
   },
+  FUTURO: {
+    label: "Mês futuro",
+    sigla: "",
+    cell: "text-muted-foreground/20",
+    dot: "bg-transparent",
+  },
 };
 
 function meta(status: string) {
@@ -139,6 +145,11 @@ function temTrabalho(c: Celula) {
   return c.pendente && (c.billingId !== null || c.totalDevido > 0);
 }
 
+/** Célula que não abre tela nenhuma: antes do contrato ou ainda no futuro. */
+function naoAbrivel(status: string) {
+  return status === "FORA_CONTRATO" || status === "FUTURO";
+}
+
 /** Desloca uma referência ano/mês em N meses. */
 function shiftMes(ref: { ano: number; mes: number }, delta: number) {
   const d = new Date(ref.ano, ref.mes - 1, 1);
@@ -150,10 +161,8 @@ function shiftMes(ref: { ano: number; mes: number }, delta: number) {
 
 export default function FaturamentoUsinasPage() {
   const hoje = useMemo(() => new Date(), []);
-  const [fimJanela, setFimJanela] = useState(() => ({
-    ano: hoje.getFullYear(),
-    mes: hoje.getMonth() + 1,
-  }));
+  /** A grade é sempre um ano-calendário fechado: janeiro a dezembro. */
+  const [ano, setAno] = useState(() => hoje.getFullYear());
 
   const [matriz, setMatriz] = useState<Matriz | null>(null);
   const [loading, setLoading] = useState(true);
@@ -167,16 +176,26 @@ export default function FaturamentoUsinasPage() {
   const [fila, setFila] = useState<FilaItem[] | null>(null);
   const [filaTotalInicial, setFilaTotalInicial] = useState(0);
 
+  /**
+   * Mês que o usuário pediu pela seta mas está fora da janela carregada.
+   * Fica pendente até a matriz da janela nova chegar (ver efeito abaixo).
+   */
+  const [pendenteAbrir, setPendenteAbrir] = useState<
+    (FilaItem & { direcao: number }) | null
+  >(null);
+
+  const ehFuturo = useCallback(
+    (m: { ano: number; mes: number }) =>
+      m.ano > hoje.getFullYear() ||
+      (m.ano === hoje.getFullYear() && m.mes > hoje.getMonth() + 1),
+    [hoje],
+  );
+
   // Restaura ?usina=&mes= uma única vez, depois que a matriz chega.
   const restaurou = useRef(false);
 
-  const inicioJanela = useMemo(() => shiftMes(fimJanela, -11), [fimJanela]);
-
   const carregarMatriz = useCallback(async () => {
-    const qs = `de=${mesParam(inicioJanela.ano, inicioJanela.mes)}&ate=${mesParam(
-      fimJanela.ano,
-      fimJanela.mes,
-    )}`;
+    const qs = `de=${ano}-01&ate=${ano}-12`;
     const r = await fetch(`/api/billing/plants/matriz?${qs}`);
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
@@ -185,7 +204,7 @@ export default function FaturamentoUsinasPage() {
     }
     setErro(null);
     setMatriz(await r.json());
-  }, [inicioJanela.ano, inicioJanela.mes, fimJanela.ano, fimJanela.mes]);
+  }, [ano]);
 
   useEffect(() => {
     setLoading(true);
@@ -271,6 +290,32 @@ export default function FaturamentoUsinasPage() {
       : base;
     window.history.replaceState(null, "", url);
   }, [aberto]);
+
+  /**
+   * A seta pediu um mês fora da janela: assim que a matriz da janela nova
+   * chega, abre esse mês (pulando meses fora do contrato na mesma direção).
+   */
+  useEffect(() => {
+    if (!pendenteAbrir || !matriz) return;
+    const naJanela = matriz.meses.some(
+      (m) => m.ano === pendenteAbrir.ano && m.mes === pendenteAbrir.mes,
+    );
+    if (!naJanela) return; // ainda é a matriz antiga — espera a próxima
+    const u = matriz.usinas.find((x) => x.plantId === pendenteAbrir.plantId);
+    setPendenteAbrir(null);
+    if (!u) return;
+    let i = u.celulas.findIndex(
+      (c) => c.ano === pendenteAbrir.ano && c.mes === pendenteAbrir.mes,
+    );
+    while (i >= 0 && i < u.celulas.length) {
+      const c = u.celulas[i];
+      if (!naoAbrivel(c.status)) {
+        abrirComGuarda(u, c);
+        return;
+      }
+      i += pendenteAbrir.direcao;
+    }
+  }, [matriz, pendenteAbrir, abrirComGuarda]);
 
   // Abre direto o que veio na URL (link salvo/compartilhado).
   useEffect(() => {
@@ -371,12 +416,19 @@ export default function FaturamentoUsinasPage() {
     let i = idx + delta;
     while (i >= 0 && i < usinaAberta.celulas.length) {
       const c = usinaAberta.celulas[i];
-      if (c.status !== "FORA_CONTRATO") {
-        abrirCelula(aberto.plantId, c.ano, c.mes, c.billingId);
+      if (!naoAbrivel(c.status)) {
+        abrirComGuarda(usinaAberta, c);
         return;
       }
       i += delta;
     }
+    // Chegou na virada do ano (dezembro → janeiro, ou janeiro → dezembro).
+    // Em vez de morrer em silêncio, troca o ano e abre o mês adjacente
+    // assim que a matriz do ano novo chegar.
+    const alvo = shiftMes({ ano: aberto.ano, mes: aberto.mes }, delta);
+    if (delta > 0 && ehFuturo(alvo)) return;
+    setPendenteAbrir({ plantId: aberto.plantId, ...alvo, direcao: delta });
+    setAno(alvo.ano);
   };
 
   const trocarUsina = (plantId: string) => {
@@ -384,14 +436,29 @@ export default function FaturamentoUsinasPage() {
     const u = matriz.usinas.find((x) => x.plantId === plantId);
     if (!u) return;
     // Mantém o mês escolhido; se a usina não tem esse mês, cai no último válido.
+    // Preferência: o mesmo mês, desde que já exista faturamento lá. Trocar de
+    // usina não pode criar registro no banco em silêncio — se o mês escolhido
+    // nunca foi faturado nessa usina, cai no mês mais recente que já tem
+    // faturamento; só pergunta se a usina não tiver nenhum.
     const mesmo = u.celulas.find(
-      (c) => c.ano === aberto.ano && c.mes === aberto.mes && c.status !== "FORA_CONTRATO",
+      (c) => c.ano === aberto.ano && c.mes === aberto.mes && !naoAbrivel(c.status),
     );
+    if (mesmo && (mesmo.billingId || mesmo.totalDevido > 0)) {
+      abrirCelula(plantId, mesmo.ano, mesmo.mes, mesmo.billingId);
+      return;
+    }
+    const comFaturamento = [...u.celulas]
+      .reverse()
+      .find((c) => c.billingId || c.totalDevido > 0);
+    if (comFaturamento) {
+      abrirCelula(plantId, comFaturamento.ano, comFaturamento.mes, comFaturamento.billingId);
+      return;
+    }
     const alvo =
       mesmo ??
-      [...u.celulas].reverse().find((c) => c.status !== "FORA_CONTRATO") ??
+      [...u.celulas].reverse().find((c) => !naoAbrivel(c.status)) ??
       u.celulas[u.celulas.length - 1];
-    abrirCelula(plantId, alvo.ano, alvo.mes, alvo.billingId);
+    abrirComGuarda(u, alvo);
   };
 
   // Setas ←/→ trocam o mês enquanto a tela de trabalho está aberta.
@@ -444,8 +511,8 @@ export default function FaturamentoUsinasPage() {
     });
   }, [matriz, search, soPendentes]);
 
-  const naJanelaAtual =
-    fimJanela.ano === hoje.getFullYear() && fimJanela.mes === hoje.getMonth() + 1;
+  /** Mês corrente — alvo do link de validação em lote de faturas. */
+  const mesAtual = { ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 };
 
   /* ================================================================ */
   /* TELA DE TRABALHO                                                  */
@@ -453,6 +520,9 @@ export default function FaturamentoUsinasPage() {
 
   if (aberto && usinaAberta) {
     const atualResolvido = celulaAberta ? !celulaAberta.pendente : false;
+    // Só trava a seta pra frente no mês corrente — nas outras bordas ela
+    // desloca a janela de 12 meses e continua andando.
+    const semProximoMes = ehFuturo(shiftMes({ ano: aberto.ano, mes: aberto.mes }, 1));
 
     return (
       <div className="space-y-4">
@@ -505,7 +575,7 @@ export default function FaturamentoUsinasPage() {
               {usinaAberta.celulas.map((c) => {
                 const m = meta(c.status);
                 const atual = c.ano === aberto.ano && c.mes === aberto.mes;
-                const fora = c.status === "FORA_CONTRATO";
+                const fora = naoAbrivel(c.status);
                 return (
                   <button
                     key={`${c.ano}-${c.mes}`}
@@ -536,10 +606,15 @@ export default function FaturamentoUsinasPage() {
 
             <button
               type="button"
+              disabled={semProximoMes}
               onClick={() => trocarMes(1)}
-              className="p-1.5 rounded-lg border hover:bg-muted transition-colors"
+              className="p-1.5 rounded-lg border hover:bg-muted transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
               aria-label="Próximo mês"
-              title="Próximo mês (→)"
+              title={
+                semProximoMes
+                  ? "Este é o mês mais recente — não há faturamento futuro"
+                  : "Próximo mês (→)"
+              }
             >
               <ChevronRight className="h-4 w-4" />
             </button>
@@ -732,24 +807,23 @@ export default function FaturamentoUsinasPage() {
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                onClick={() => setFimJanela((f) => shiftMes(f, -12))}
+                onClick={() => setAno((a) => a - 1)}
                 className="p-1.5 rounded-lg border hover:bg-muted transition-colors"
-                title="12 meses anteriores"
-                aria-label="12 meses anteriores"
+                title={`Ver ${ano - 1}`}
+                aria-label="Ano anterior"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <span className="text-xs text-muted-foreground tabular-nums px-1">
-                {mesCurto(inicioJanela.ano, inicioJanela.mes)} —{" "}
-                {mesCurto(fimJanela.ano, fimJanela.mes)}
-              </span>
+              <span className="text-sm font-semibold tabular-nums px-2">{ano}</span>
               <button
                 type="button"
-                disabled={naJanelaAtual}
-                onClick={() => setFimJanela((f) => shiftMes(f, 12))}
+                disabled={ano >= hoje.getFullYear()}
+                onClick={() => setAno((a) => a + 1)}
                 className="p-1.5 rounded-lg border hover:bg-muted transition-colors disabled:opacity-40"
-                title="12 meses seguintes"
-                aria-label="12 meses seguintes"
+                title={
+                  ano >= hoje.getFullYear() ? "Não há faturamento futuro" : `Ver ${ano + 1}`
+                }
+                aria-label="Próximo ano"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -825,7 +899,7 @@ export default function FaturamentoUsinasPage() {
                       </td>
                       {u.celulas.map((c) => {
                         const m = meta(c.status);
-                        const fora = c.status === "FORA_CONTRATO";
+                        const fora = naoAbrivel(c.status);
                         const chave = `${u.plantId}|${c.ano}|${c.mes}`;
                         const posFila = fila
                           ? fila.findIndex(
@@ -883,6 +957,7 @@ export default function FaturamentoUsinasPage() {
               "PENDENTE",
               "NAO_FATURADO",
               "FORA_CONTRATO",
+              "FUTURO",
             ].map((s) => (
               <span key={s} className="inline-flex items-center gap-1.5">
                 <span className={`h-3.5 w-3.5 rounded ${meta(s).cell}`} />
@@ -890,11 +965,11 @@ export default function FaturamentoUsinasPage() {
               </span>
             ))}
             <Link
-              href={`/admin/faturamento/usinas/${mesParam(fimJanela.ano, fimJanela.mes)}`}
+              href={`/admin/faturamento/usinas/${mesParam(mesAtual.ano, mesAtual.mes)}`}
               className="ml-auto inline-flex items-center gap-1 hover:text-foreground transition-colors underline decoration-dotted underline-offset-2"
               title="Lista do mês com a validação inversor × medidor de todas as usinas"
             >
-              Validar faturas de {formatMonthYear(fimJanela.mes, fimJanela.ano)}
+              Validar faturas de {formatMonthYear(mesAtual.mes, mesAtual.ano)}
               <ChevronRight className="h-3 w-3" />
             </Link>
           </div>

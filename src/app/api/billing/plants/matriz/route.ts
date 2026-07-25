@@ -15,6 +15,8 @@ import { isAdminRole } from "@/lib/roles";
  *   PAGO | AGUARDANDO_PAGAMENTO | AGUARDANDO_DOCUMENTOS | PENDENTE  → tem PlantBilling
  *   NAO_FATURADO  → mês dentro do contrato mas sem PlantBilling criado
  *   FORA_CONTRATO → mês anterior à assinatura do contrato do investidor
+ *   FUTURO        → mês posterior ao mês corrente (a grade é o ano inteiro,
+ *                   então dez/2026 aparece já em julho — mas não é pendência)
  */
 
 type Celula = {
@@ -179,6 +181,9 @@ export async function GET(req: NextRequest) {
     if (restante > 0) devidoMap.set(k, (devidoMap.get(k) ?? 0) + restante);
   }
 
+  const anoCorrente = hoje.getFullYear();
+  const mesCorrente = hoje.getMonth() + 1;
+
   const usinas = plants.map((p) => {
     const inicio = p.dataAssinaturaContrato;
     const investorNames = p.investors
@@ -200,8 +205,14 @@ export async function GET(req: NextRequest) {
         (ano < inicio.getFullYear() ||
           (ano === inicio.getFullYear() && mes < inicio.getMonth() + 1));
 
+      const futuro =
+        !b &&
+        totalDevido === 0 &&
+        (ano > anoCorrente || (ano === anoCorrente && mes > mesCorrente));
+
       let status: string;
       if (b) status = b.status;
+      else if (futuro) status = "FUTURO";
       else if (foraContrato) status = "FORA_CONTRATO";
       else status = "NAO_FATURADO";
 
@@ -213,7 +224,8 @@ export async function GET(req: NextRequest) {
         valorTotal: b?.valorTotal ?? null,
         totalDevido,
         encerrado: !!b?.encerradoEm,
-        pendente: status !== "PAGO" && status !== "FORA_CONTRATO",
+        pendente:
+          status !== "PAGO" && status !== "FORA_CONTRATO" && status !== "FUTURO",
       };
     });
 
