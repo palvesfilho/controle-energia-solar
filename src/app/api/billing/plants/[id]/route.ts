@@ -327,6 +327,13 @@ export async function GET(_req: NextRequest, ctx: RouteCtx) {
       kwhCompensadoBase: p.kwhCompensadoBase,
       kwhCreditoLegadoAbatido: kwhLegado,
       valorBruto: p.valorBruto,
+      valorAjuste: p.valorAjuste,
+      // Valor da compensação da UC (= o faturamento da UC no rateio) = bruto +
+      // ajuste manual. NÃO desconta InvestorDebit: o abatimento da dívida do
+      // DONO da usina é um acerto no nível do investidor (valorAjustesGerais),
+      // não pertence à linha da UC. Sem isso, uma UC cujo bruto foi comido pela
+      // amortização do débito aparecia zerada no resumo (bug do card).
+      valorCompensacao: (p.valorBruto ?? 0) + (p.valorAjuste ?? 0),
       valorLiquido: p.valorLiquido,
       valorPago: clientePagou ? p.valorLiquido : 0,
       payableStatus: p.status,
@@ -360,6 +367,8 @@ export async function GET(_req: NextRequest, ctx: RouteCtx) {
       kwhCompensadoBase: 0,
       kwhCreditoLegadoAbatido: 0,
       valorBruto: 0,
+      valorAjuste: 0,
+      valorCompensacao: 0,
       valorLiquido: 0,
       valorPago: 0,
       payableStatus: "SEM_COMPENSACAO",
