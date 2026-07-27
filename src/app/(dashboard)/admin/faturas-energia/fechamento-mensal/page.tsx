@@ -118,6 +118,9 @@ export default function FechamentoMensalPage() {
           errorCount: number;
           skippedCount?: number;
           syncedTotal: number;
+          /** Preenchido quando o disjuntor cortou o lote (origem fora do ar). */
+          aborted?: string | null;
+          naoConsultadas?: number;
         }
       | { type: "error"; message: string };
 
@@ -173,8 +176,14 @@ export default function FechamentoMensalPage() {
             );
           } else if (evt.type === "progress") {
             collected.push(evt.result);
+            // Mostra faturas baixadas e erros, não só o contador de UCs — que
+            // sobe igual quando a consulta falha e passa a impressão de que
+            // tudo veio.
+            const baixadas = collected.reduce((acc, r) => acc + (r.synced ?? 0), 0);
+            const comErro = collected.filter((r) => !r.success && !r.skipped).length;
             toast.loading(
-              `Sincronizando ${evt.index}/${evt.total} UCs — última: ${formatCodigoUc(evt.result.codigoUc)}`,
+              `UC ${evt.index}/${evt.total} — ${baixadas} fatura(s) baixada(s)` +
+                (comErro > 0 ? `, ${comErro} com erro` : ""),
               { id: loadingToast },
             );
             scheduleReload();
@@ -224,7 +233,15 @@ export default function FechamentoMensalPage() {
           .filter((r) => !r.success && !r.skipped)
           .map((r) => `❌ ${formatCodigoUc(r.codigoUc)}: ${r.error ?? "erro desconhecido"}`),
       ].join("\n");
-      if (finalSummary.errorCount === 0) {
+      const aborted = (finalSummary as { aborted?: string | null }).aborted;
+      if (aborted) {
+        // Disjuntor cortou o lote: destaca o motivo acima da lista de erros,
+        // senão o operador acha que o sync varreu tudo.
+        toast.error("Sincronização interrompida", {
+          description: [aborted, descLines].filter(Boolean).join("\n\n"),
+          duration: 20000,
+        });
+      } else if (finalSummary.errorCount === 0) {
         toast.success(
           summaryStr,
           descLines ? { description: descLines, duration: 10000 } : undefined,

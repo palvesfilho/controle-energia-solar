@@ -23,10 +23,18 @@ interface SyncResultItem {
   error: string | null;
   skipped?: boolean;
   skipReason?: string;
+  /** True quando a consulta chegou a bater na Infosimples (consome saldo). */
+  apiCalled?: boolean;
 }
 
 // Dias de folga apÃ³s a data da prÃ³xima leitura antes da fatura aparecer no portal.
 const DIAS_APOS_LEITURA = 2;
+
+// Disjuntor: aborta o lote apÃ³s N consultas seguidas que bateram na Infosimples
+// e falharam. Quando a origem (RGE) estÃ¡ fora do ar, todas as UCs falham em
+// sequÃªncia com o mesmo cÃ³digo e o lote inteiro vira saldo queimado sem
+// nenhuma fatura baixada.
+const MAX_FALHAS_CONSECUTIVAS = 5;
 
 async function persistPdf(
   consumerUnitId: string,
@@ -64,6 +72,7 @@ async function syncOne(
       success: false,
       synced: 0,
       error: "Sem credencial ativa",
+      apiCalled: false,
     };
   }
 
@@ -157,6 +166,7 @@ async function syncOne(
       success: true,
       synced: syncedCount,
       error: null,
+      apiCalled: true,
     };
   } catch (error) {
     const msg =
@@ -176,11 +186,12 @@ async function syncOne(
       success: false,
       synced: 0,
       error: msg,
+      apiCalled: true,
     };
   }
 }
 
-export async function POST(_req: NextRequest) {
+export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || !isAdminRole(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -249,9 +260,16 @@ export async function POST(_req: NextRequest) {
 
       const results: SyncResultItem[] = [...skippedAhead];
       let index = 0;
+      let falhasSeguidas = 0;
+      let abortadoPor: string | null = null;
 
       try {
         for (const { uc } of elegiveis) {
+          // Operador fechou a aba / cancelou: para de queimar saldo.
+          if (req.signal.aborted) {
+            abortadoPor = "Cancelado pelo operador";
+            break;
+          }
           index++;
           const result = await syncOne(uc.id, uc.codigoUc, uc.nome);
           results.push(result);
@@ -261,6 +279,21 @@ export async function POST(_req: NextRequest) {
             total: elegiveis.length,
             result,
           });
+
+          // SÃ³ conta pro disjuntor a consulta que realmente bateu na API — "sem
+          // credencial ativa" nÃ£o consome saldo e nÃ£o indica origem fora do ar.
+          if (!result.apiCalled) continue;
+          if (result.success) {
+            falhasSeguidas = 0;
+          } else if (++falhasSeguidas >= MAX_FALHAS_CONSECUTIVAS) {
+            abortadoPor =
+              `Interrompido apÃ³s ${MAX_FALHAS_CONSECUTIVAS} falhas seguidas ` +
+              `(Ãºltima: ${result.error ?? "erro desconhecido"}). ` +
+              `A origem parece estar fora do ar — as ${elegiveis.length - index} UCs ` +
+              `restantes nÃ£o foram consultadas para nÃ£o consumir saldo Ã  toa.`;
+            console.warn(`[sync-all] disjuntor acionado: ${abortadoPor}`);
+            break;
+          }
         }
 
         const skippedCount = results.filter((r) => r.skipped).length;
@@ -277,6 +310,8 @@ export async function POST(_req: NextRequest) {
           errorCount,
           skippedCount,
           syncedTotal,
+          aborted: abortadoPor,
+          naoConsultadas: abortadoPor ? elegiveis.length - index : 0,
         });
       } catch (e) {
         send({
