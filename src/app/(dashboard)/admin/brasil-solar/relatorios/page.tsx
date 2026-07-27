@@ -8,6 +8,7 @@ import type {
   RelatorioVisaoGeralRow,
   RelatorioCell,
 } from "@/app/api/brasil-solar/relatorios/visao-geral/route";
+import { formatCodigoUc, matchCodigoUc } from "@/lib/uc-codigo";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -128,7 +129,7 @@ export default function RelatoriosVisaoGeralPage() {
       return (
         r.proprietarioNome.toLowerCase().includes(term) ||
         (r.cpfCnpj ?? "").toLowerCase().includes(term) ||
-        (r.codigoUc ?? "").toLowerCase().includes(term) ||
+        matchCodigoUc(r.codigoUc, term) ||
         (r.ucNome ?? "").toLowerCase().includes(term) ||
         (r.distribuidora ?? "").toLowerCase().includes(term)
       );
@@ -307,7 +308,7 @@ export default function RelatoriosVisaoGeralPage() {
                       </td>
                       <td className="px-3 py-2 font-mono text-xs">
                         {r.codigoUc ? (
-                          r.codigoUc
+                          formatCodigoUc(r.codigoUc)
                         ) : (
                           <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
                             sem UC

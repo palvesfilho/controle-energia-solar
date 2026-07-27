@@ -19,6 +19,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 const STATUS_APLICAVEIS = new Set(["AGUARDANDO_PAGAMENTO", "DISPONIVEL"]);
 
@@ -300,7 +301,7 @@ export async function markInvestorPayableAsPaid(
           valorOriginal: delta,
           valorRestante: delta,
           payableOrigemId: payableId,
-          motivo: `Pagamento a maior de R$ ${delta.toFixed(2)} na payable ${mesRef} (usina ${usinaLabel}, UC ${payable.consumerUnit.codigoUc ?? "—"})`,
+          motivo: `Pagamento a maior de R$ ${delta.toFixed(2)} na payable ${mesRef} (usina ${usinaLabel}, UC ${formatCodigoUc(payable.consumerUnit.codigoUc) ?? "—"})`,
           criadoPorUserId: input.userId ?? null,
         },
         select: { id: true },

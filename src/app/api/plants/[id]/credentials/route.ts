@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 import { encrypt } from "@/lib/crypto";
+import { normalizeCodigoUc } from "@/lib/uc-codigo";
 
 export async function GET(
   _req: NextRequest,
@@ -55,7 +56,10 @@ export async function POST(
   }
 
   const body = await req.json();
-  const { emailCpfl, senhaCpfl, instalacao, distribuidora } = body;
+  const { emailCpfl, senhaCpfl, distribuidora } = body;
+  // A tela exibe o código no padrão da concessionária (3.562.981.001-26); o
+  // portal/Infosimples é chaveado por dígitos.
+  const instalacao = normalizeCodigoUc(body.instalacao);
 
   if (!emailCpfl || !instalacao) {
     return NextResponse.json(

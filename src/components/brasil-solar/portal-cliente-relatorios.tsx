@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { FileDown, FileBarChart2, Loader2, ShieldOff } from "lucide-react";
 import { brand } from "@/lib/brand-colors";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface MesRef {
   ano: number;
@@ -151,7 +152,7 @@ export function PortalClienteRelatorios({
             <RelatorioCard
               key={uc.ucId}
               titulo={uc.nome}
-              subtitulo={`UC ${uc.codigoUc}${uc.distribuidora ? ` · ${uc.distribuidora}` : ""}`}
+              subtitulo={`UC ${formatCodigoUc(uc.codigoUc)}${uc.distribuidora ? ` · ${uc.distribuidora}` : ""}`}
               meses={uc.meses}
               acessoAtivo={data.acessoAtivo}
               pdfUrl={(m) => pdfUcUrl(uc.ucId, m)}

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatBRL, formatMonthYear } from "@/lib/formatters";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface PayableRow {
   id: string;
@@ -396,7 +397,7 @@ export default function FechamentoDetalhePage() {
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {p.consumerUnit.nome ?? "—"} · UC{" "}
-                            {p.consumerUnit.codigoUc ?? "—"}
+                            {formatCodigoUc(p.consumerUnit.codigoUc) ?? "—"}
                           </div>
                         </td>
                         <td className="px-3 py-2 text-xs text-muted-foreground">

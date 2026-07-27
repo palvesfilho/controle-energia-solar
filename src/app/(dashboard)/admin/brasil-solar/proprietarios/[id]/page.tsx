@@ -41,6 +41,7 @@ import {
 } from "@/components/brasil-solar/monitoring-plan-modal";
 import { ConviteAcessoModal } from "@/components/brasil-solar/convite-acesso-modal";
 import { ShieldCheck, ShieldAlert, ShieldOff, Clock, CheckCircle2 } from "lucide-react";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface Planta {
   id: string;
@@ -168,7 +169,8 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
   const [billsRefreshKey, setBillsRefreshKey] = useState(0);
 
   const startEditUc = () => {
-    setUcDraft(data?.codigoUc ?? "");
+    // Edita no padrão da concessionária; a API normaliza pra dígitos.
+    setUcDraft(formatCodigoUc(data?.codigoUc) ?? "");
     setUcAntigoDraft(data?.codigoUcAntigo ?? "");
     setEditingUc(true);
   };
@@ -748,7 +750,7 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
                   ) : (
                     <>
                       {data.codigoUc ? (
-                        <span className="font-mono">{data.codigoUc}</span>
+                        <span className="font-mono">{formatCodigoUc(data.codigoUc)}</span>
                       ) : (
                         <span className="italic text-muted-foreground">não informado</span>
                       )}
@@ -849,7 +851,7 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
           <CardContent className="p-4 flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium">
-                UC <span className="font-mono">{data.codigoUc}</span> ainda não está cadastrada como Unidade Consumidora.
+                UC <span className="font-mono">{formatCodigoUc(data.codigoUc)}</span> ainda não está cadastrada como Unidade Consumidora.
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 Cadastre a UC pra liberar acesso à distribuidora (Infosimples) e ver as faturas.

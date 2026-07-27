@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import type { FaturasEnergiaRow, FaturaCell } from "@/app/api/admin/faturas-energia/route";
+import { formatCodigoUc, matchCodigoUc } from "@/lib/uc-codigo";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -260,7 +261,7 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
       if (term) {
         const match =
           r.nome.toLowerCase().includes(term) ||
-          r.codigoUc.toLowerCase().includes(term) ||
+          matchCodigoUc(r.codigoUc, term) ||
           r.proprietario.toLowerCase().includes(term) ||
           (r.distribuidora ?? "").toLowerCase().includes(term);
         if (!match) return false;
@@ -299,7 +300,7 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
       if (!term) return true;
       return (
         r.nome.toLowerCase().includes(term) ||
-        r.codigoUc.toLowerCase().includes(term) ||
+        matchCodigoUc(r.codigoUc, term) ||
         r.proprietario.toLowerCase().includes(term) ||
         (r.distribuidora ?? "").toLowerCase().includes(term)
       );
@@ -532,7 +533,7 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
                 <tbody>
                   {filtered.map((r) => (
                     <tr key={r.ucId} className={`border-b last:border-0 hover:bg-muted/30 transition-colors ${r.active ? "" : "opacity-60"}`}>
-                      <td className="sticky left-0 z-10 bg-background px-3 py-2 font-mono text-xs">{r.codigoUc}</td>
+                      <td className="sticky left-0 z-10 bg-background px-3 py-2 font-mono text-xs">{formatCodigoUc(r.codigoUc)}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-2">
                           <span>{r.nome}</span>
@@ -633,7 +634,7 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
                         className={`border-b last:border-0 hover:bg-muted/30 transition-colors ${r.active ? "" : "opacity-60"}`}
                       >
                         <td className="sticky left-0 z-10 bg-background px-3 py-2 font-mono text-xs">
-                          {r.codigoUc}
+                          {formatCodigoUc(r.codigoUc)}
                         </td>
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-2">
@@ -701,7 +702,7 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">UC:</span>
                   <span className="font-medium">
-                    {faturaParaPagar.uc.codigoUc} — {faturaParaPagar.uc.nome}
+                    {formatCodigoUc(faturaParaPagar.uc.codigoUc)} — {faturaParaPagar.uc.nome}
                   </span>
                 </div>
                 <div className="flex justify-between">

@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { isAdminRole } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 /**
  * GET /api/plants/[id]/uc-geradora-bill?ano=YYYY&mes=MM
@@ -107,7 +108,7 @@ export async function GET(
   if (!bill) {
     return NextResponse.json({
       bill: null,
-      reason: `UC geradora ${uc.codigoUc} não tem fatura de ${String(mes).padStart(2, "0")}/${ano}`,
+      reason: `UC geradora ${formatCodigoUc(uc.codigoUc)} não tem fatura de ${String(mes).padStart(2, "0")}/${ano}`,
       uc,
     });
   }

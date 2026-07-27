@@ -296,8 +296,11 @@ export async function POST(req: NextRequest) {
         typeof portal.distribuidora === "string" ? portal.distribuidora.trim() : "";
       const email = typeof portal.email === "string" ? portal.email.trim() : "";
       const senha = typeof portal.senha === "string" ? portal.senha : "";
+      // Pode chegar pontuado da tela; o portal/Infosimples é chaveado por dígitos.
       const instalacao =
-        (typeof portal.instalacao === "string" && portal.instalacao.trim()) ||
+        normalizeCodigoUc(
+          (typeof portal.instalacao === "string" && portal.instalacao.trim()) || null,
+        ) ||
         codigoUcInput ||
         "";
 

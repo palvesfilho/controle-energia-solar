@@ -14,6 +14,7 @@ import {
   generateDueDates,
   splitValueEvenly,
 } from "@/lib/billing-installments";
+import { formatCodigoUc, matchCodigoUc } from "@/lib/uc-codigo";
 
 interface Row {
   consumerUnit: {
@@ -375,7 +376,7 @@ export default function FaturamentoUCMesPage() {
     const q = search.toLowerCase();
     return (
       r.consumerUnit.nome.toLowerCase().includes(q) ||
-      r.consumerUnit.codigoUc.toLowerCase().includes(q) ||
+      matchCodigoUc(r.consumerUnit.codigoUc, q) ||
       (r.consumerUnit.consumer?.name.toLowerCase().includes(q) ?? false)
     );
   });
@@ -579,7 +580,7 @@ export default function FaturamentoUCMesPage() {
                     const st = STATUS_LABELS[r.status] ?? STATUS_LABELS.PENDENTE;
                     return (
                       <tr key={r.consumerUnit.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                        <td className="px-3 py-2.5 font-mono text-xs">{r.consumerUnit.codigoUc}</td>
+                        <td className="px-3 py-2.5 font-mono text-xs">{formatCodigoUc(r.consumerUnit.codigoUc)}</td>
                         <td className="px-3 py-2.5 font-medium">{r.consumerUnit.nome}</td>
                         <td className="px-3 py-2.5 text-muted-foreground">
                           {r.consumerUnit.distribuidora ?? "-"}
@@ -785,7 +786,7 @@ export default function FaturamentoUCMesPage() {
               <div>
                 <h2 className="text-base font-semibold">Realizar Cobrança</h2>
                 <p className="text-xs text-muted-foreground">
-                  UC {cobrancaModal.codigoUc} — {cobrancaModal.consumerUnitNome}
+                  UC {formatCodigoUc(cobrancaModal.codigoUc)} — {cobrancaModal.consumerUnitNome}
                 </p>
               </div>
               <button
@@ -1037,7 +1038,7 @@ export default function FaturamentoUCMesPage() {
               <div>
                 <h2 className="text-sm font-semibold">Rascunho da Cobrança</h2>
                 <p className="text-xs text-muted-foreground">
-                  UC {previewModal.codigoUc} — {previewModal.nome}
+                  UC {formatCodigoUc(previewModal.codigoUc)} — {previewModal.nome}
                 </p>
               </div>
               <div className="flex items-center gap-2">

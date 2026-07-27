@@ -15,6 +15,7 @@ import {
   Eye,
   History,
 } from "lucide-react";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 import {
   FaturaPreviewDialog,
   type FaturaPreviewData,
@@ -313,7 +314,7 @@ export function StatusFaturasCard({ proprietarioId }: { proprietarioId: string }
               {data.ucs.map((u) => (
                 <tr key={u.consumerUnitId} className="border-t align-top">
                   <td className="px-3 py-2">
-                    <div className="font-mono text-xs">{u.codigoUc}</div>
+                    <div className="font-mono text-xs">{formatCodigoUc(u.codigoUc)}</div>
                     <div className="text-xs text-muted-foreground">
                       {u.nome}
                     </div>

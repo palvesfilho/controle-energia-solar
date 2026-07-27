@@ -16,6 +16,7 @@ import type {
   RelatorioAgregadoData,
   RelatorioAgregadoMonthRow,
 } from "@/lib/brasil-solar-relatorio";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 const C = {
   teal: "#2E9B87",
@@ -241,7 +242,7 @@ export function SolarPaybackReportProprietarioPDF({
               <Text style={s.heroTitle}>{data.proprietario.nome}</Text>
               <Text style={s.heroSub}>
                 {data.beneficiarias.length} beneficiária(s)
-                {data.titular ? ` · Titular UC ${data.titular.codigoUc}` : ""}
+                {data.titular ? ` · Titular UC ${formatCodigoUc(data.titular.codigoUc)}` : ""}
                 {data.titular?.distribuidora
                   ? ` · ${data.titular.distribuidora}`
                   : ""}
@@ -355,7 +356,7 @@ export function SolarPaybackReportProprietarioPDF({
             {/* Dados da UC titular */}
             <Text style={s.sectionTitle}>
               Usina (UC titular
-              {data.titular ? ` ${data.titular.codigoUc}` : ""})
+              {data.titular ? ` ${formatCodigoUc(data.titular.codigoUc)}` : ""})
             </Text>
             {semFaturaTitular && (
               <Text
@@ -422,7 +423,7 @@ export function SolarPaybackReportProprietarioPDF({
                 <View key={b.ucId} style={s.tableRow}>
                   <View style={{ flex: 2.4 }}>
                     <Text style={s.tableCellBold}>{b.nome}</Text>
-                    <Text style={s.textMuted}>UC {b.codigoUc}</Text>
+                    <Text style={s.textMuted}>UC {formatCodigoUc(b.codigoUc)}</Text>
                   </View>
                   <Text style={[s.tableCell, { flex: 0.7, textAlign: "right" }]}>
                     {b.percentual.toFixed(0)}%
@@ -556,7 +557,7 @@ export function SolarPaybackReportProprietarioPDF({
         <View style={s.footer} fixed>
           <Text>
             {data.proprietario.nome}
-            {data.titular ? ` · Titular UC ${data.titular.codigoUc}` : ""}
+            {data.titular ? ` · Titular UC ${formatCodigoUc(data.titular.codigoUc)}` : ""}
           </Text>
           <Text
             render={({ pageNumber, totalPages }) =>

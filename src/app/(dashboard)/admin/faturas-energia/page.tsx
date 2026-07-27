@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Loader2, Minus, X, Receipt, Upload, CheckCircle2, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import type { FaturasEnergiaRow, FaturaCell } from "@/app/api/admin/faturas-energia/route";
+import { formatCodigoUc, matchCodigoUc } from "@/lib/uc-codigo";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -152,7 +153,7 @@ export default function FaturasEnergiaVisaoGeralPage() {
       if (!term) return true;
       return (
         r.nome.toLowerCase().includes(term) ||
-        r.codigoUc.toLowerCase().includes(term) ||
+        matchCodigoUc(r.codigoUc, term) ||
         r.proprietario.toLowerCase().includes(term) ||
         (r.distribuidora ?? "").toLowerCase().includes(term)
       );
@@ -303,7 +304,7 @@ export default function FaturasEnergiaVisaoGeralPage() {
                 <tbody>
                   {filtered.map((r) => (
                     <tr key={r.ucId} className={`border-b last:border-0 hover:bg-muted/30 transition-colors ${r.active ? "" : "opacity-60"}`}>
-                      <td className="sticky left-0 z-10 bg-background px-3 py-2 font-mono text-xs">{r.codigoUc}</td>
+                      <td className="sticky left-0 z-10 bg-background px-3 py-2 font-mono text-xs">{formatCodigoUc(r.codigoUc)}</td>
                       <td className="px-3 py-2">{r.nome}</td>
                       <td className="px-3 py-2">
                         <OrigemBadge origem={r.origem} />
@@ -457,11 +458,11 @@ function UploadFaturasDialog({
                                 <>
                                   <span className="font-medium text-foreground">{r.ucNome}</span>
                                   {r.codigoInstalacao && (
-                                    <span className="ml-1 font-mono">({r.codigoInstalacao})</span>
+                                    <span className="ml-1 font-mono">({formatCodigoUc(r.codigoInstalacao)})</span>
                                   )}
                                 </>
                               ) : r.codigoInstalacao ? (
-                                <span className="font-mono">Instalação {r.codigoInstalacao} — UC não cadastrada</span>
+                                <span className="font-mono">Instalação {formatCodigoUc(r.codigoInstalacao)} — UC não cadastrada</span>
                               ) : null}
                               {ref && (
                                 <span className="ml-2 inline-flex items-center rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]">

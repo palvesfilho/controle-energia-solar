@@ -14,6 +14,7 @@ import {
   Zap,
   Building,
 } from "lucide-react";
+import { formatCodigoUc, matchCodigoUc } from "@/lib/uc-codigo";
 
 interface UCData {
   id: string;
@@ -71,7 +72,7 @@ export default function UnidadesConsumidorasPage() {
       if (!term) return true;
       return (
         u.nome.toLowerCase().includes(term) ||
-        u.codigoUc.toLowerCase().includes(term) ||
+        matchCodigoUc(u.codigoUc, term) ||
         (u.consumer?.name ?? "").toLowerCase().includes(term) ||
         (u.plant?.name ?? "").toLowerCase().includes(term)
       );
@@ -191,7 +192,7 @@ export default function UnidadesConsumidorasPage() {
                   {filtered.map((uc) => (
                     <tr key={uc.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                       <td className="py-2.5 px-3 font-medium">{uc.nome}</td>
-                      <td className="py-2.5 px-3 font-mono text-xs">{uc.codigoUc || "-"}</td>
+                      <td className="py-2.5 px-3 font-mono text-xs">{formatCodigoUc(uc.codigoUc) || "-"}</td>
                       <td className="py-2.5 px-3">
                         {uc.consumer?.name ?? <span className="text-muted-foreground">-</span>}
                       </td>

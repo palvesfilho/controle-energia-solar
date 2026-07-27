@@ -14,6 +14,7 @@ import {
   Users,
   Factory,
 } from "lucide-react";
+import { formatCodigoUc, matchCodigoUc } from "@/lib/uc-codigo";
 
 interface PlantData {
   id: string;
@@ -68,7 +69,7 @@ export default function UsinasPage() {
       return (
         p.name.toLowerCase().includes(term) ||
         (p.numeroUsina ?? "").toLowerCase().includes(term) ||
-        (p.unidadeConsumidora ?? "").toLowerCase().includes(term) ||
+        matchCodigoUc(p.unidadeConsumidora, term) ||
         (p.cpfCnpj ?? "").toLowerCase().includes(term) ||
         (p.distribuidora ?? "").toLowerCase().includes(term)
       );
@@ -175,7 +176,7 @@ export default function UsinasPage() {
                     <tr key={plant.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                       <td className="py-2.5 px-3 font-medium">{plant.name}</td>
                       <td className="py-2.5 px-3 font-mono text-xs">
-                        {plant.unidadeConsumidora ?? plant.numeroUsina ?? "-"}
+                        {formatCodigoUc(plant.unidadeConsumidora) ?? plant.numeroUsina ?? "-"}
                       </td>
                       <td className="py-2.5 px-3 text-muted-foreground">{plant.cpfCnpj ?? "-"}</td>
                       <td className="py-2.5 px-3 text-right">

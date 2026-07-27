@@ -10,6 +10,7 @@ import { ProprietarioSelect } from "@/components/brasil-solar/proprietario-selec
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isValidPhone } from "@/lib/phone";
 import { CONCESSIONARIAS } from "@/lib/concessionarias";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 const PLATAFORMAS = [
   "GROWATT", "SOLIS", "FRONIUS", "CANADIAN", "ABB", "DEYE",
@@ -86,7 +87,8 @@ export default function EditarClienteBrasilSolarPage() {
           monitoramentoUrl: data.monitoramentoUrl || "",
           monitoramentoPlantId: data.monitoramentoPlantId || "",
           concessionaria: data.concessionaria || "",
-          codigoUc: data.codigoUc || "",
+          // Exibe no padrão da concessionária; a API normaliza pra dígitos.
+          codigoUc: formatCodigoUc(data.codigoUc) || "",
           codigoUcAntigo: data.codigoUcAntigo || "",
           statusContrato: data.statusContrato || "ATIVO",
           dataContrato: formatDateForInput(data.dataContrato),

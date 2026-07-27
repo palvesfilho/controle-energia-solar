@@ -189,6 +189,7 @@ export function UCForm({
               id="codigoUc"
               value={form.codigoUc}
               onChange={(e) => update("codigoUc", e.target.value)}
+              placeholder="3.562.981.001-26"
               required
             />
             <p className="text-xs text-muted-foreground">

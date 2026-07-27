@@ -1,6 +1,7 @@
 import React from "react";
 import { Document, Page, Text, View } from "@react-pdf/renderer";
 import { styles, fmtDate, C } from "./obra-pdf-shared";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 export interface DocumentoObraData {
   numeroOs: string;
@@ -135,7 +136,7 @@ export function DocumentoObraPDF({ data }: { data: DocumentoObraData }) {
           </View>
           <View style={styles.infoBox}>
             <Text style={styles.infoLabel}>Código UC</Text>
-            <Text style={styles.infoValue}>{p?.codigoUc || "—"}</Text>
+            <Text style={styles.infoValue}>{formatCodigoUc(p?.codigoUc) || "—"}</Text>
           </View>
         </View>
 

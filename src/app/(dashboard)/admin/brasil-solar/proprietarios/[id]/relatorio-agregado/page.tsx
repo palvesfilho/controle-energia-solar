@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { brand } from "@/lib/brand-colors";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface BeneficiariaRow {
   ucId: string;
@@ -200,7 +201,7 @@ export default function RelatorioAgregadoPage() {
             <h1 className="text-2xl font-bold">{data.proprietario.nome}</h1>
             <p className="text-sm text-white/85">
               {data.beneficiarias.length} beneficiária(s)
-              {data.titular && ` · Titular UC ${data.titular.codigoUc}`}
+              {data.titular && ` · Titular UC ${formatCodigoUc(data.titular.codigoUc)}`}
               {data.titular?.distribuidora && ` · ${data.titular.distribuidora}`}
               {!semMonitoramento &&
                 ` · ${data.potenciaTotalKwp.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kWp`}
@@ -298,7 +299,7 @@ export default function RelatorioAgregadoPage() {
           </div>
 
           <h2 className="text-sm font-semibold uppercase tracking-wide mt-4" style={{ color: brand.tealDark }}>
-            Usina (UC titular{data.titular ? ` ${data.titular.codigoUc}` : ""})
+            Usina (UC titular{data.titular ? ` ${formatCodigoUc(data.titular.codigoUc)}` : ""})
           </h2>
           {semFaturaTitular && (
             <p className="text-xs text-muted-foreground italic">
@@ -352,7 +353,7 @@ export default function RelatorioAgregadoPage() {
                     <tr key={b.ucId} className="border-b last:border-0">
                       <td className="py-2 px-2">
                         <div className="font-medium">{b.nome}</div>
-                        <div className="text-[10px] text-muted-foreground">UC {b.codigoUc}</div>
+                        <div className="text-[10px] text-muted-foreground">UC {formatCodigoUc(b.codigoUc)}</div>
                       </td>
                       <td className="py-2 px-2 text-right tabular-nums">{b.percentual.toFixed(0)}%</td>
                       <td className="py-2 px-2 text-right tabular-nums">{formatKwh(b.consumoRedeKwh)}</td>

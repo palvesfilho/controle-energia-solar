@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -176,7 +177,7 @@ export function PagarFaturaDialog({ billId, open, canEditPaid, onOpenChange, onS
               <div className="flex justify-between">
                 <span className="text-muted-foreground">UC:</span>
                 <span className="font-medium">
-                  {fatura.uc.codigoUc} — {fatura.uc.nome}
+                  {formatCodigoUc(fatura.uc.codigoUc)} — {fatura.uc.nome}
                 </span>
               </div>
               <div className="flex justify-between">

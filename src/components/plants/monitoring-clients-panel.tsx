@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatKWh } from "@/lib/formatters";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface LinkedClient {
   id: string;
@@ -164,7 +165,7 @@ export function MonitoringClientsPanel({ plantId, embedded }: Props) {
                       <td className="py-2.5 px-3">
                         <div className="font-medium">{c.nome}</div>
                         {c.codigoUc && (
-                          <div className="text-xs text-muted-foreground">UC {c.codigoUc}</div>
+                          <div className="text-xs text-muted-foreground">UC {formatCodigoUc(c.codigoUc)}</div>
                         )}
                       </td>
                       <td className="py-2.5 px-3 text-xs">{c.plataformaMonitoramento ?? "-"}</td>
@@ -330,7 +331,7 @@ function ClientPicker({
                       <div className="font-medium text-sm truncate">{c.nome}</div>
                       <div className="text-xs text-muted-foreground flex gap-2 flex-wrap">
                         {c.plataformaMonitoramento && <span>[{c.plataformaMonitoramento}]</span>}
-                        {c.codigoUc && <span>UC {c.codigoUc}</span>}
+                        {c.codigoUc && <span>UC {formatCodigoUc(c.codigoUc)}</span>}
                         {c.cidade && <span>{c.cidade}/{c.uf ?? ""}</span>}
                         {c.cpfCnpj && <span>{c.cpfCnpj}</span>}
                       </div>

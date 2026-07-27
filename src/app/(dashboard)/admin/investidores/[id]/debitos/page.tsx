@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -359,7 +360,7 @@ function DebitCard({
                 {debit.applications.map((a) => (
                   <tr key={a.id} className="border-b last:border-0">
                     <td className="px-2 py-1">
-                      {a.payable.consumerUnit.codigoUc} — {a.payable.consumerUnit.nome}
+                      {formatCodigoUc(a.payable.consumerUnit.codigoUc)} — {a.payable.consumerUnit.nome}
                     </td>
                     <td className="px-2 py-1 text-muted-foreground">
                       {String(a.payable.mesReferencia).padStart(2, "0")}/

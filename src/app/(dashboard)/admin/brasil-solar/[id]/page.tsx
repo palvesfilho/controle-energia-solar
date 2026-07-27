@@ -34,6 +34,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface MonitoringLog {
   id: string;
@@ -531,7 +532,7 @@ export default function ClientDetailPage() {
                 </div>
               )}
               <InfoRow icon={FileText} label="Concessionaria" value={client.concessionaria} />
-              <InfoRow icon={FileText} label="Codigo UC" value={client.codigoUc} />
+              <InfoRow icon={FileText} label="Codigo UC" value={formatCodigoUc(client.codigoUc)} />
               <InfoRow icon={Calendar} label="Contrato" value={formatDate(client.dataContrato)} />
               <InfoRow icon={FileText} label="Consultor" value={client.consultor} />
               <InfoRow icon={Calendar} label="Garantia ate" value={formatDate(client.garantiaAte)} />

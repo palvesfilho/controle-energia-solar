@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { brand } from "@/lib/brand-colors";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 import {
   Bar,
   BarChart,
@@ -222,7 +223,7 @@ export default function RelatorioDetalhePage() {
             </p>
             <h1 className="text-2xl font-bold">{data.uc.nome}</h1>
             <p className="text-sm text-white/85">
-              UC {data.uc.codigoUc}
+              UC {formatCodigoUc(data.uc.codigoUc)}
               {data.uc.distribuidora && ` · ${data.uc.distribuidora}`}
               {!semMonitoramento &&
                 ` · ${data.usinasMonitoradas.length} usina(s) monitorada(s) · ${data.potenciaTotalKwp.toLocaleString(

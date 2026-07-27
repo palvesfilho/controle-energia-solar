@@ -30,6 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatBRL, formatMonthYear, formatNumber } from "@/lib/formatters";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 type TipoPeriodo = "mensal" | "trimestral" | "semestral" | "anual";
 
@@ -886,7 +887,7 @@ export default function FechamentoFinanceiroPage() {
                       {dre.inadimplencia.faturas.map((f) => (
                         <TableRow key={f.id}>
                           <TableCell className="font-mono text-xs">
-                            {f.ucCodigo ?? "—"}
+                            {formatCodigoUc(f.ucCodigo) ?? "—"}
                           </TableCell>
                           <TableCell className="truncate">
                             {f.consumidorNome ?? "—"}

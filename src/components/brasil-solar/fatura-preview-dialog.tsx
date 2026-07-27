@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ExternalLink, FileText } from "lucide-react";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 export interface FaturaPreviewData {
   ucNome: string;
@@ -63,7 +64,7 @@ export function FaturaPreviewDialog({
             </DialogTitle>
           </div>
           <p className="text-xs text-muted-foreground font-mono">
-            UC {fatura.ucCodigo}
+            UC {formatCodigoUc(fatura.ucCodigo)}
           </p>
         </DialogHeader>
 
@@ -108,7 +109,7 @@ export function FaturaPreviewDialog({
           {fatura.pdfUrl ? (
             <iframe
               src={fatura.pdfUrl}
-              title={`Fatura ${fatura.ucCodigo} ${fatura.mes}/${fatura.ano}`}
+              title={`Fatura ${formatCodigoUc(fatura.ucCodigo)} ${fatura.mes}/${fatura.ano}`}
               className="w-full h-full border-0"
             />
           ) : (

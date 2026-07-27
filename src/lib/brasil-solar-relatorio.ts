@@ -12,6 +12,7 @@ import { getRangeTotal as huaweiRangeTotal } from "@/lib/huawei";
 import { getRangeTotal as sungrowRangeTotal } from "@/lib/sungrow";
 import { getRangeTotal as solaredgeRangeTotal } from "@/lib/solaredge";
 import { getRelatorioParametros } from "@/lib/app-settings";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 /**
  * Carga tributária efetiva estimada para gross-up da tarifa de consumo
@@ -367,7 +368,7 @@ export async function getProprietarioRelatorio(
   }
   if (!ehTitular && !ehBeneficiaria) {
     return {
-      error: `UC ${uc.codigoUc} não pertence ao proprietário`,
+      error: `UC ${formatCodigoUc(uc.codigoUc)} não pertence ao proprietário`,
       status: 403,
     };
   }

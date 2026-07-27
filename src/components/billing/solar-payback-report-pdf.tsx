@@ -18,6 +18,7 @@ import type {
   RelatorioData,
   RelatorioMonthRow,
 } from "@/lib/brasil-solar-relatorio";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 const C = {
   teal: "#2E9B87",
@@ -521,7 +522,7 @@ export function SolarPaybackReportPDF({
                 <Text style={s.heroSub}>{data.uc.nome}</Text>
               )}
               <Text style={s.heroMeta}>
-                UC {data.uc.codigoUc}
+                UC {formatCodigoUc(data.uc.codigoUc)}
                 {data.uc.distribuidora ? ` · ${data.uc.distribuidora}` : ""}
                 {!semMonitoramento
                   ? ` · ${data.usinasMonitoradas.length} usina(s) · ${data.potenciaTotalKwp.toLocaleString(
@@ -950,7 +951,7 @@ export function SolarPaybackReportPDF({
         {/* Footer */}
         <View style={s.footer} fixed>
           <Text>
-            {data.proprietario.nome} · UC {data.uc.codigoUc}
+            {data.proprietario.nome} · UC {formatCodigoUc(data.uc.codigoUc)}
           </Text>
           <Text
             render={({ pageNumber, totalPages }) =>

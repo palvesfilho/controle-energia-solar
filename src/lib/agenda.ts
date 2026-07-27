@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { formatCodigoUc } from "./uc-codigo";
 
 /**
  * Tarefas PENDING/OVERDUE com `scheduledFor` anterior a esta data não
@@ -135,14 +136,14 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
     const isOverdue = !isDone && b.vencimento < today;
     const nomeRef =
       b.consumerUnit?.nome ??
-      b.consumerUnit?.codigoUc ??
+      formatCodigoUc(b.consumerUnit?.codigoUc) ??
       b.plant?.name ??
-      b.plant?.unidadeConsumidora ??
+      formatCodigoUc(b.plant?.unidadeConsumidora) ??
       "";
     const labelUc = b.consumerUnit
-      ? `${b.consumerUnit.codigoUc} — ${b.consumerUnit.nome}`
+      ? `${formatCodigoUc(b.consumerUnit.codigoUc)} — ${b.consumerUnit.nome}`
       : b.plant
-        ? `${b.plant.unidadeConsumidora ?? "—"} — ${b.plant.name} (usina)`
+        ? `${formatCodigoUc(b.plant.unidadeConsumidora) ?? "—"} — ${b.plant.name} (usina)`
         : null;
     const pagaInvestidor = b.plant?.pagadorFaturaEnergia === "INVESTIDORES";
     tasks.push({
@@ -213,7 +214,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
     tasks.push({
       id: `COBRAR_CLIENTE-${b.id}`,
       type: "COBRAR_CLIENTE_DESCONTO",
-      title: `Cobrar ${b.consumerUnit.nome ?? b.consumerUnit.codigoUc}`,
+      title: `Cobrar ${b.consumerUnit.nome ?? formatCodigoUc(b.consumerUnit.codigoUc)}`,
       subtitle: `Ref. ${String(b.mesReferencia).padStart(2, "0")}/${b.anoReferencia}`,
       scheduledFor: scheduled,
       dueDate: null,
@@ -224,7 +225,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       mesReferencia: b.mesReferencia,
       anoReferencia: b.anoReferencia,
       consumerUnitId: b.consumerUnitId,
-      consumerUnitLabel: `${b.consumerUnit.codigoUc} — ${b.consumerUnit.nome}`,
+      consumerUnitLabel: `${formatCodigoUc(b.consumerUnit.codigoUc)} — ${b.consumerUnit.nome}`,
       valor: billing?.valorCobranca ?? null,
       pagaInvestidor: false,
     });
@@ -360,14 +361,14 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
     const isOverdue = !isDone && scheduled < today;
     const nomeRef =
       b.consumerUnit?.nome ??
-      b.consumerUnit?.codigoUc ??
+      formatCodigoUc(b.consumerUnit?.codigoUc) ??
       b.plant?.name ??
-      b.plant?.unidadeConsumidora ??
+      formatCodigoUc(b.plant?.unidadeConsumidora) ??
       "";
     const labelUc = b.consumerUnit
-      ? `${b.consumerUnit.codigoUc} — ${b.consumerUnit.nome}`
+      ? `${formatCodigoUc(b.consumerUnit.codigoUc)} — ${b.consumerUnit.nome}`
       : b.plant
-        ? `${b.plant.unidadeConsumidora ?? "—"} — ${b.plant.name} (usina)`
+        ? `${formatCodigoUc(b.plant.unidadeConsumidora) ?? "—"} — ${b.plant.name} (usina)`
         : null;
     tasks.push({
       id: `CONFERIR_RGE-${b.id}`,
@@ -421,7 +422,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
     tasks.push({
       id: `INFORMAR_LEITURA-${uc.id}-${ymd(latest.proximaLeitura)}`,
       type: "INFORMAR_LEITURA_RGE",
-      title: `Informar leitura — ${uc.nome ?? uc.codigoUc}`,
+      title: `Informar leitura — ${uc.nome ?? formatCodigoUc(uc.codigoUc)}`,
       subtitle: `Leitura prevista ${latest.proximaLeitura.toLocaleDateString("pt-BR")}`,
       scheduledFor: scheduled,
       dueDate: latest.proximaLeitura,
@@ -432,7 +433,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       mesReferencia: latest.mesReferencia,
       anoReferencia: latest.anoReferencia,
       consumerUnitId: uc.id,
-      consumerUnitLabel: `${uc.codigoUc} — ${uc.nome}`,
+      consumerUnitLabel: `${formatCodigoUc(uc.codigoUc)} — ${uc.nome}`,
       valor: null,
       pagaInvestidor: false,
     });

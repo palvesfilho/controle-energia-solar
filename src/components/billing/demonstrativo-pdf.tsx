@@ -13,6 +13,7 @@ import {
   Rect,
 } from "@react-pdf/renderer";
 import type { DemonstrativoData, HistoricoMes } from "@/lib/demonstrativo";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 // Paleta espelha src/lib/brand-colors.ts e a capa do PDF do investidor.
 // Aliases legacy (green*, blue*) preservados para minimizar churn no resto do arquivo.
@@ -340,7 +341,7 @@ export function DemonstrativoPDF({
         <View style={s.ucStrip}>
           <View style={s.ucCell}>
             <Text style={s.ucLbl}>UNID. CONSUMIDORA</Text>
-            <Text style={s.ucVal}>{data.codigoUc}</Text>
+            <Text style={s.ucVal}>{formatCodigoUc(data.codigoUc)}</Text>
           </View>
           <View style={s.ucCell}>
             <Text style={s.ucLbl}>DOCUMENTO</Text>

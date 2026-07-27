@@ -3,7 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
-import { normalizeCodigoUc } from "@/lib/uc-codigo";
+import { formatCodigoUc, normalizeCodigoUc } from "@/lib/uc-codigo";
 
 // GET /api/brasil-solar/proprietarios/[id]/beneficiarias
 // Lista todas as beneficiárias ativas do proprietário.
@@ -89,7 +89,7 @@ export async function PUT(
         : parseFloat(String(percentualRaw ?? ""));
     if (!Number.isFinite(percentual) || percentual < 0 || percentual > 100) {
       return NextResponse.json(
-        { error: `Percentual inválido para UC ${codigoUc} (use 0 a 100)` },
+        { error: `Percentual inválido para UC ${formatCodigoUc(codigoUc)} (use 0 a 100)` },
         { status: 400 }
       );
     }
@@ -113,7 +113,7 @@ export async function PUT(
   for (const e of entries) {
     if (seen.has(e.codigoUc)) {
       return NextResponse.json(
-        { error: `UC duplicada: ${e.codigoUc}` },
+        { error: `UC duplicada: ${formatCodigoUc(e.codigoUc)}` },
         { status: 400 }
       );
     }
@@ -184,7 +184,7 @@ export async function PUT(
       if (!uc) {
         uc = await tx.consumerUnit.create({
           data: {
-            nome: e.nome ?? `UC ${e.codigoUc}`,
+            nome: e.nome ?? `UC ${formatCodigoUc(e.codigoUc)}`,
             codigoUc: e.codigoUc,
             codigoUcAntigo: e.codigoUcAntigo,
             cpfCnpj: propFull?.cpfCnpj ?? null,

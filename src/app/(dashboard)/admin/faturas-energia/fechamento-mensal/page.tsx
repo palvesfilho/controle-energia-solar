@@ -18,6 +18,7 @@ import type {
   FechamentoMensalRow,
   FechamentoStatus,
 } from "@/app/api/admin/faturas-energia/fechamento-mensal/route";
+import { formatCodigoUc, matchCodigoUc } from "@/lib/uc-codigo";
 
 const MESES = [
   { v: 1, l: "Janeiro" }, { v: 2, l: "Fevereiro" }, { v: 3, l: "Março" },
@@ -173,7 +174,7 @@ export default function FechamentoMensalPage() {
           } else if (evt.type === "progress") {
             collected.push(evt.result);
             toast.loading(
-              `Sincronizando ${evt.index}/${evt.total} UCs — última: ${evt.result.codigoUc}`,
+              `Sincronizando ${evt.index}/${evt.total} UCs — última: ${formatCodigoUc(evt.result.codigoUc)}`,
               { id: loadingToast },
             );
             scheduleReload();
@@ -218,10 +219,10 @@ export default function FechamentoMensalPage() {
       const descLines = [
         ...collected
           .filter((r) => r.skipped)
-          .map((r) => `⏳ ${r.codigoUc}: ${r.skipReason ?? "aguardando leitura"}`),
+          .map((r) => `⏳ ${formatCodigoUc(r.codigoUc)}: ${r.skipReason ?? "aguardando leitura"}`),
         ...collected
           .filter((r) => !r.success && !r.skipped)
-          .map((r) => `❌ ${r.codigoUc}: ${r.error ?? "erro desconhecido"}`),
+          .map((r) => `❌ ${formatCodigoUc(r.codigoUc)}: ${r.error ?? "erro desconhecido"}`),
       ].join("\n");
       if (finalSummary.errorCount === 0) {
         toast.success(
@@ -263,7 +264,7 @@ export default function FechamentoMensalPage() {
       if (!term) return true;
       return (
         r.nome.toLowerCase().includes(term) ||
-        r.codigoUc.toLowerCase().includes(term) ||
+        matchCodigoUc(r.codigoUc, term) ||
         r.proprietario.toLowerCase().includes(term) ||
         (r.distribuidora ?? "").toLowerCase().includes(term)
       );
@@ -421,7 +422,7 @@ export default function FechamentoMensalPage() {
                     const isSyncing = !!syncing[r.ucId];
                     return (
                       <tr key={r.ucId} className={`border-b last:border-0 hover:bg-muted/30 transition-colors ${r.active ? "" : "opacity-60"}`}>
-                        <td className="px-3 py-2.5 font-mono text-xs">{r.codigoUc}</td>
+                        <td className="px-3 py-2.5 font-mono text-xs">{formatCodigoUc(r.codigoUc)}</td>
                         <td className="px-3 py-2.5">{r.nome}</td>
                         <td className="px-3 py-2.5">
                           <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs ${r.origem === "cliente" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"}`}>

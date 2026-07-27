@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   AlertCircle,
 } from "lucide-react";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 const MESES_LABEL = [
   "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
@@ -275,13 +276,13 @@ export function UploadFaturasButton({
                                       </span>
                                       {r.codigoInstalacao && (
                                         <span className="ml-1 font-mono">
-                                          ({r.codigoInstalacao})
+                                          ({formatCodigoUc(r.codigoInstalacao)})
                                         </span>
                                       )}
                                     </>
                                   ) : r.codigoInstalacao ? (
                                     <span className="font-mono">
-                                      Instalação {r.codigoInstalacao} — UC não cadastrada
+                                      Instalação {formatCodigoUc(r.codigoInstalacao)} — UC não cadastrada
                                     </span>
                                   ) : null}
                                   {ref && (

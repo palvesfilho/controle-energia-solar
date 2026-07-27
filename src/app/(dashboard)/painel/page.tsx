@@ -9,6 +9,7 @@ import { EnergyChart } from "@/components/dashboard/energy-chart";
 import { FinancialChart } from "@/components/dashboard/financial-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 export default async function PainelPage() {
   const session = await getServerSession(authOptions);
@@ -113,7 +114,7 @@ export default async function PainelPage() {
                 ["Gestao Fixa", formatBRL(ip.gestaoFixaContrato ?? 0)],
                 ["Valor kWh Contrato", formatBRL(ip.valorKwhContrato ?? 0)],
                 ["Enquadramento", ip.plant.enquadramento ?? "-"],
-                ["Unidade Consumidora", ip.plant.unidadeConsumidora ?? "-"],
+                ["Unidade Consumidora", formatCodigoUc(ip.plant.unidadeConsumidora) ?? "-"],
                 ["Concessionaria", ip.plant.concessionaria ?? "-"],
               ].map(([label, value]) => (
                 <div key={label}>

@@ -7,6 +7,7 @@ import { saveBufferToStorage } from "@/lib/file-storage";
 import { parseFaturaPdf } from "@/lib/fatura-pdf-parser";
 import { populateBillingFromBill } from "@/lib/billing-populate";
 import { syncInvestorPayablesFromBill } from "@/lib/investor-payables";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 export const runtime = "nodejs";
 
@@ -169,9 +170,9 @@ export async function POST(req: NextRequest) {
           });
         }
         if (plantIdDaUsina) {
-          item.warning = `Fatura registrada como da usina (cÃ³digo ${parsed.codigoInstalacao}).`;
+          item.warning = `Fatura registrada como da usina (código ${formatCodigoUc(parsed.codigoInstalacao)}).`;
         } else {
-          item.warning = `UC nÃ£o cadastrada â€” fatura salva como pendente. Cadastre a UC com cÃ³digo ${parsed.codigoInstalacao} para vincular.`;
+          item.warning = `UC não cadastrada — fatura salva como pendente. Cadastre a UC com código ${formatCodigoUc(parsed.codigoInstalacao)} para vincular.`;
         }
       }
 

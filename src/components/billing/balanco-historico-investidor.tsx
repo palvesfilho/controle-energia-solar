@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 import { Textarea } from "@/components/ui/textarea";
 
 interface Linha {
@@ -222,7 +223,7 @@ export function BalancoHistoricoInvestidor({
                               {MES_LABEL[l.mesReferencia - 1]}/{l.anoReferencia}
                             </td>
                             <td className="py-2 px-2">
-                              <div className="font-mono text-xs">{l.ucCodigo ?? "—"}</div>
+                              <div className="font-mono text-xs">{formatCodigoUc(l.ucCodigo) ?? "—"}</div>
                               <div className="text-xs text-muted-foreground">
                                 {l.ucNome}
                               </div>
@@ -294,7 +295,7 @@ export function BalancoHistoricoInvestidor({
             <DialogHeader>
               <DialogTitle>
                 {editLinha
-                  ? `${MES_LABEL[editLinha.mesReferencia - 1]}/${editLinha.anoReferencia} — UC ${editLinha.ucCodigo}`
+                  ? `${MES_LABEL[editLinha.mesReferencia - 1]}/${editLinha.anoReferencia} — UC ${formatCodigoUc(editLinha.ucCodigo)}`
                   : "Marcar pago"}
               </DialogTitle>
             </DialogHeader>

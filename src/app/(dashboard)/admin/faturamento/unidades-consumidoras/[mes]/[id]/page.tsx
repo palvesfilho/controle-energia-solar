@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { formatMonthYear, formatBRL } from "@/lib/formatters";
 import { brand, brandGradient } from "@/lib/brand-colors";
 import { parseInstallments, type BillingInstallment } from "@/lib/billing-installments";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface BillingDetail {
   id: string;
@@ -221,7 +222,7 @@ export default function CobrancaUCDetalhePage() {
               {data.consumerUnit.nome}
             </h1>
             <p className="text-sm text-white/85">
-              UC {data.consumerUnit.codigoUc}
+              UC {formatCodigoUc(data.consumerUnit.codigoUc)}
               {data.consumerUnit.consumer?.name &&
                 ` · ${data.consumerUnit.consumer.name}`}
             </p>

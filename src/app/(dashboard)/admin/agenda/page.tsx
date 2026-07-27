@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth-options";
 import { getTasksForWeek, startOfWeekMonday, endOfWeekSunday } from "@/lib/agenda";
 import { AgendaWeekGrid } from "@/components/agenda/agenda-week-grid";
 import { prisma } from "@/lib/prisma";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface AgendaPageProps {
   searchParams: Promise<{ semana?: string }>;
@@ -46,7 +47,7 @@ export default async function AgendaPage({ searchParams }: AgendaPageProps) {
         }))}
         allUcs={ucs.map((u) => ({
           id: u.id,
-          label: `${u.codigoUc}${u.nome ? ` â€” ${u.nome}` : ""}`,
+          label: `${formatCodigoUc(u.codigoUc)}${u.nome ? ` — ${u.nome}` : ""}`,
         }))}
       />
     </div>

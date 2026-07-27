@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 export type RelatorioCellStatus = "ok" | "error" | "missing";
 
@@ -218,8 +219,8 @@ export async function GET(req: NextRequest) {
         meses[mes] = {
           status: "missing",
           motivo: p.codigoUc
-            ? `CÃ³digo UC ${p.codigoUc} nÃ£o cadastrado em ConsumerUnit`
-            : "ProprietÃ¡rio sem UC vinculada",
+            ? `Código UC ${formatCodigoUc(p.codigoUc)} não cadastrado em ConsumerUnit`
+            : "Proprietário sem UC vinculada",
           mes,
           geracaoInversorKwh: null,
           consumoInstantaneoKwh: null,

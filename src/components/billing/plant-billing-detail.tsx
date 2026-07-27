@@ -36,6 +36,7 @@ import { UploadSlot } from "@/components/billing/upload-slot";
 import { BalancoHistoricoInvestidor } from "@/components/billing/balanco-historico-investidor";
 import { formatMonthYear, formatBRL } from "@/lib/formatters";
 import { isFinanceRole } from "@/lib/roles";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface UcCompensacao {
   payableId: string;
@@ -907,7 +908,7 @@ export function PlantBillingDetail({
                         <td className="px-3 py-2">
                           <div className="font-medium">{uc.nome ?? "—"}</div>
                           <div className="text-xs text-muted-foreground">
-                            {uc.codigoUc ?? "—"}
+                            {formatCodigoUc(uc.codigoUc) ?? "—"}
                             <span className="ml-1.5 text-muted-foreground/70">
                               · compensou em {MES_ABREV[uc.compensouMes - 1]}/{String(uc.compensouAno).slice(-2)}
                             </span>
@@ -1362,7 +1363,7 @@ export function PlantBillingDetail({
                 : "Registrar pagamento manual"}
             </DialogTitle>
             <DialogDescription>
-              {pagamentoUc?.nome ?? "—"} ({pagamentoUc?.codigoUc ?? "—"}) —{" "}
+              {pagamentoUc?.nome ?? "—"} ({formatCodigoUc(pagamentoUc?.codigoUc) ?? "—"}) —{" "}
               {pagamentoUc?.valorLiquido != null
                 ? formatBRL(pagamentoUc.valorLiquido)
                 : "—"}
@@ -2009,7 +2010,7 @@ function GeracaoInversorCard({
           <div>
             <h2 className="text-sm font-semibold flex items-center gap-2">
               <Zap className="h-4 w-4 text-emerald-600" />
-              UC geradora — {data.uc?.codigoUc} {data.uc?.nome}
+              UC geradora — {formatCodigoUc(data.uc?.codigoUc)} {data.uc?.nome}
             </h2>
             <p className="text-xs text-muted-foreground">
               DESCONTADO: a cobrança inclui consumo compensado + consumo instantâneo.

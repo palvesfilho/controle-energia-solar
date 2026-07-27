@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft, FileBarChart2, Sun } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { brand } from "@/lib/brand-colors";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface UC {
   ucId: string;
@@ -137,7 +138,7 @@ export default function RelatoriosListPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                          UC {uc.codigoUc}
+                          UC {formatCodigoUc(uc.codigoUc)}
                         </p>
                         <span
                           className="text-[10px] font-medium uppercase rounded-full px-2 py-0.5"

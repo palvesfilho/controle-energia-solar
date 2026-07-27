@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { KeyRound, RefreshCw, Trash2, Mail, Hash, Building2, Clock, Pencil, Eye, EyeOff } from "lucide-react";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface Credential {
   id: string;
@@ -45,7 +46,8 @@ export function UcCredentialsForm({ consumerUnitId, defaultInstalacao, onSyncCom
 
   const [emailCpfl, setEmailCpfl] = useState("");
   const [senhaCpfl, setSenhaCpfl] = useState("");
-  const [instalacao, setInstalacao] = useState(defaultInstalacao ?? "");
+  // Exibido no padrão da concessionária; a API normaliza pra dígitos ao salvar.
+  const [instalacao, setInstalacao] = useState(formatCodigoUc(defaultInstalacao) ?? "");
   const [distribuidora, setDistribuidora] = useState("RGE");
   const [showPassword, setShowPassword] = useState(false);
 
@@ -60,7 +62,7 @@ export function UcCredentialsForm({ consumerUnitId, defaultInstalacao, onSyncCom
     if (data) {
       setCredential(data);
       setEmailCpfl(data.emailCpfl);
-      setInstalacao(data.instalacao);
+      setInstalacao(formatCodigoUc(data.instalacao));
       setDistribuidora(data.distribuidora);
     } else {
       setCredential(null);
@@ -194,7 +196,7 @@ export function UcCredentialsForm({ consumerUnitId, defaultInstalacao, onSyncCom
                   <Hash className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                   <div className="min-w-0">
                     <p className="text-xs text-muted-foreground">Instalação</p>
-                    <p className="text-sm font-medium">{credential.instalacao}</p>
+                    <p className="text-sm font-medium">{formatCodigoUc(credential.instalacao)}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">

@@ -12,6 +12,7 @@ import {
   LinearGradient,
   Stop,
 } from "@react-pdf/renderer";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 export interface InvestorReportData {
   plantName: string;
@@ -743,9 +744,9 @@ function UcCompensacaoTable({
           style={i % 2 === 1 ? [s.ucRow, s.tableRowAlt] : s.ucRow}
         >
           <Text style={s.ucCellNome}>
-            {uc.nome ?? uc.codigoUc ?? "—"}
+            {uc.nome ?? formatCodigoUc(uc.codigoUc) ?? "—"}
             {uc.nome && uc.codigoUc && (
-              <Text style={s.ucCellCodigo}> · UC {uc.codigoUc}</Text>
+              <Text style={s.ucCellCodigo}> · UC {formatCodigoUc(uc.codigoUc)}</Text>
             )}
           </Text>
           <Text style={[s.ucCellNum, s.ucColKwh]}>{num(uc.kwh)}</Text>
@@ -1115,7 +1116,7 @@ export function InvestorReportPDF({ data }: { data: InvestorReportData }) {
                       <Text style={s.warnHint}>UCs em aberto:</Text>
                       {data.ucsRepresadasInadimplencia.map((uc, i) => (
                         <Text key={i} style={s.ucListItem}>
-                          • {uc.codigoUc ?? "—"}
+                          • {formatCodigoUc(uc.codigoUc) ?? "—"}
                           {uc.nome ? ` (${uc.nome})` : ""} — {kwh(uc.kwh)} ·{" "}
                           {brl(uc.valor)}
                         </Text>

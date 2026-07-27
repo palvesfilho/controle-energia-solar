@@ -22,6 +22,7 @@ import {
   FileDown,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface MesData {
   ano: number;
@@ -180,7 +181,7 @@ export default function RelatorioMesPage() {
               {data.uc.nome} — {MESES_LONGO[mes - 1]}/{ano}
             </h1>
             <p className="text-sm text-muted-foreground">
-              UC {data.uc.codigoUc} · Nenhum dado calculável ainda para este mês.
+              UC {formatCodigoUc(data.uc.codigoUc)} · Nenhum dado calculável ainda para este mês.
             </p>
           </div>
         </div>
@@ -217,7 +218,7 @@ export default function RelatorioMesPage() {
             {data.uc.nome} — {MESES_LONGO[m.mes - 1]}/{m.ano}
           </h1>
           <p className="text-sm text-muted-foreground">
-            UC {data.uc.codigoUc} · {data.uc.distribuidora ?? "—"} · Proprietário:{" "}
+            UC {formatCodigoUc(data.uc.codigoUc)} · {data.uc.distribuidora ?? "—"} · Proprietário:{" "}
             <Link
               href={`/admin/brasil-solar/proprietarios/${data.proprietario.id}`}
               className="text-primary hover:underline"

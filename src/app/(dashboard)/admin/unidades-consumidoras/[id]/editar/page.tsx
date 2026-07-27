@@ -19,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 export default function EditarUCPage() {
   const router = useRouter();
@@ -42,7 +43,8 @@ export default function EditarUCPage() {
       .then((uc) => {
         setInitialData({
           nome: uc.nome ?? "",
-          codigoUc: uc.codigoUc ?? "",
+          // Exibe no padrão da concessionária; a API normaliza pra dígitos ao salvar.
+          codigoUc: formatCodigoUc(uc.codigoUc) ?? "",
           codigoUcAntigo: uc.codigoUcAntigo ?? "",
           consumerId: uc.consumerId ?? "",
           plantId: uc.plantId ?? "",

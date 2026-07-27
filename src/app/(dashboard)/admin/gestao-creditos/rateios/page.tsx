@@ -33,6 +33,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface PlantOption {
   id: string;
@@ -762,7 +763,7 @@ function RateioTable({
                   {item.consumerUnit.nome}
                 </td>
                 <td className="py-2.5 px-3 text-xs">
-                  {item.consumerUnit.codigoUc ?? "-"}
+                  {formatCodigoUc(item.consumerUnit.codigoUc) ?? "-"}
                 </td>
                 <td className="py-2.5 px-3 text-right font-medium">
                   {item.percentual.toFixed(2)}%
@@ -1013,7 +1014,7 @@ function CreateRateioDialog({
                           </p>
                         )}
                       </td>
-                      <td className="py-2 px-3 text-xs">{u.codigoUc ?? "-"}</td>
+                      <td className="py-2 px-3 text-xs">{formatCodigoUc(u.codigoUc) ?? "-"}</td>
                       <td className="py-2 px-3">
                         <Input
                           type="text"
@@ -1248,7 +1249,7 @@ function EditRateioDialog({
                         )}
                       </div>
                     </td>
-                    <td className="py-2 px-3 text-xs">{u.codigoUc ?? "-"}</td>
+                    <td className="py-2 px-3 text-xs">{formatCodigoUc(u.codigoUc) ?? "-"}</td>
                     <td className="py-2 px-3">
                       <Input
                         type="text"

@@ -42,6 +42,7 @@ import {
 } from "recharts";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatBRL, formatKWh } from "@/lib/formatters";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 import type {
   AcaoRecomendada,
   AcaoTipo,
@@ -483,7 +484,7 @@ export default function AnaliseCreditosPage() {
         a.titulo,
         a.descricao,
         a.plantName ?? "",
-        a.consumerUnitCodigo ?? "",
+        formatCodigoUc(a.consumerUnitCodigo) ?? "",
         a.metricaValor != null ? String(a.metricaValor.toFixed(2)) : "",
         a.metricaLabel ?? "",
       ]),
@@ -1391,7 +1392,7 @@ function SimulacaoBloco({
                 {sim.ucsSobrando.map((u) => (
                   <tr key={u.consumerUnitId}>
                     <td className="text-left truncate max-w-[120px]" title={u.nome}>
-                      {u.codigoUc}
+                      {formatCodigoUc(u.codigoUc)}
                     </td>
                     <td className="text-right">{u.percentualAtual.toFixed(0)}%</td>
                     <td className="text-right">
@@ -1428,7 +1429,7 @@ function SimulacaoBloco({
                 {sim.ucsNoLimite.map((u) => (
                   <tr key={u.consumerUnitId}>
                     <td className="text-left truncate max-w-[120px]" title={u.nome}>
-                      {u.codigoUc}
+                      {formatCodigoUc(u.codigoUc)}
                     </td>
                     <td className="text-right">{u.percentualAtual.toFixed(0)}%</td>
                     <td className="text-right">
@@ -1565,7 +1566,7 @@ function BannerCompletude({
                 >
                   <td className="px-3 py-1.5">{f.plantName ?? "—"}</td>
                   <td className="px-3 py-1.5 font-mono tabular-nums">
-                    {f.codigoUc}
+                    {formatCodigoUc(f.codigoUc)}
                   </td>
                   <td className="px-3 py-1.5">{f.nome}</td>
                 </tr>

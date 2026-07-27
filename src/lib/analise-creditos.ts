@@ -4,6 +4,7 @@ import {
   gerarSugestoesParaAcao,
   type Sugestao,
 } from "@/lib/sugestoes-acoes";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 // Severidade visual: info (informativo, não bloqueia), atencao (precisa
 // olhar essa semana), critico (perda de receita iminente).
@@ -577,7 +578,7 @@ export async function computeAnaliseCreditos(
     acoes.push({
       tipo: "UC_SEM_FATURA_MES",
       severidade: "atencao",
-      titulo: `UC ${f.codigoUc} (${f.nome}) sem fatura de ${String(mes).padStart(2, "0")}/${ano}`,
+      titulo: `UC ${formatCodigoUc(f.codigoUc)} (${f.nome}) sem fatura de ${String(mes).padStart(2, "0")}/${ano}`,
       descricao:
         "Subir a fatura (upload manual) ou rodar sync com a distribuidora pra fechar o mês.",
       prazoDias: 30,
@@ -711,7 +712,7 @@ export async function computeAnaliseCreditos(
     acoes.push({
       tipo: "CONSUMO_ANOMALO",
       severidade: Math.abs(delta) > 1 ? "critico" : "atencao",
-      titulo: `UC ${uc.codigoUc} (${uc.nome}): consumo ${subiu ? "subiu" : "caiu"} ${(Math.abs(delta) * 100).toFixed(0)}%`,
+      titulo: `UC ${formatCodigoUc(uc.codigoUc)} (${uc.nome}): consumo ${subiu ? "subiu" : "caiu"} ${(Math.abs(delta) * 100).toFixed(0)}%`,
       descricao: `Mês: ${billAtual.consumoKwh.toFixed(0)} kWh · Referência (${baselineLabel}): ${referencia.toFixed(0)} kWh${
         baselineAmostra === 1 ? " — comparação sazonal" : ""
       }. ${

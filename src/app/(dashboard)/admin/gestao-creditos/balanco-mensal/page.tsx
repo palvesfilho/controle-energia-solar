@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowUpDown, Search } from "lucide-react";
 import { formatBRL, formatKWh, formatMonthYear } from "@/lib/formatters";
+import { formatCodigoUc, matchCodigoUc } from "@/lib/uc-codigo";
 
 interface BalancoRow {
   id: string;
@@ -58,7 +59,7 @@ export default function BalancoMensalPage() {
       if (!term) return true;
       return (
         r.nome.toLowerCase().includes(term) ||
-        r.codigoUc.toLowerCase().includes(term) ||
+        matchCodigoUc(r.codigoUc, term) ||
         (r.consumerName ?? "").toLowerCase().includes(term)
       );
     });
@@ -222,7 +223,7 @@ export default function BalancoMensalPage() {
                       className="border-b last:border-0 hover:bg-muted/30 transition-colors"
                     >
                       <td className="py-2.5 px-3 font-mono text-xs">
-                        {r.codigoUc || "-"}
+                        {formatCodigoUc(r.codigoUc) || "-"}
                       </td>
                       <td className="py-2.5 px-3 font-medium">
                         {r.nome}

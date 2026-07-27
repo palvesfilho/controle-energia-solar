@@ -28,6 +28,7 @@ import {
   Copy,
   Trash2,
 } from "lucide-react";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface ConsumerData {
   id: string;
@@ -581,7 +582,7 @@ export default function DetalhesInvestidorPage() {
                                   {cp.consumer.name}
                                 </td>
                                 <td className="py-2.5 px-3 text-muted-foreground">
-                                  {cp.consumer.unidadeConsumidora ?? "-"}
+                                  {formatCodigoUc(cp.consumer.unidadeConsumidora) ?? "-"}
                                 </td>
                                 <td className="py-2.5 px-3 text-muted-foreground">
                                   {cp.consumer.email ?? cp.consumer.phone ?? "-"}

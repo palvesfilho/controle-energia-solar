@@ -12,6 +12,7 @@ import {
   type BillingInstallment,
 } from "@/lib/billing-installments";
 import { fragmentPayablesForInstallments } from "@/lib/investor-payables";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 export interface EmitResult {
   billingId: string;
@@ -106,7 +107,7 @@ export async function emitBillingToAsaas(
   const dueDate = billing.dataVencimento
     ? billing.dataVencimento.toISOString().slice(0, 10)
     : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const description = `Energia solar - UC ${uc.codigoUc} - ${formatMonthYear(billing.mes, billing.ano)}`;
+  const description = `Energia solar - UC ${formatCodigoUc(uc.codigoUc)} - ${formatMonthYear(billing.mes, billing.ano)}`;
 
   try {
     const customer = await getOrCreateCustomer({

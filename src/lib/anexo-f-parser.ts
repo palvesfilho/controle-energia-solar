@@ -256,6 +256,14 @@ function parseIntSafe(v: string | undefined): number | undefined {
   return m ? parseInt(m[0], 10) : undefined;
 }
 
+// Código de UC é sempre dígitos — aceita a forma pontuada da concessionária e
+// devolve só os dígitos, que é o formato canônico no banco.
+function onlyDigitsOrUndefined(v: string | undefined): string | undefined {
+  if (!v) return undefined;
+  const d = v.replace(/\D/g, "");
+  return d || undefined;
+}
+
 function parseFloatBR(v: string | undefined): number | undefined {
   if (!v) return undefined;
   const m = v.match(/-?\d+(?:[.,]\d+)?/);
@@ -290,7 +298,9 @@ export async function parseAnexoF(buffer: Uint8Array): Promise<AnexoFData> {
 
   data.nome = findByLabel(lines, /Nome\s+do\s+titular/i);
   data.cpfCnpj = findByLabel(lines, /CNPJ\s*ou\s*CPF\s*\(titular\)/i);
-  data.codigoUc = parseIntSafe(findByLabel(lines, /N[úu]mero\s+da\s+UC/i))?.toString();
+  // Formato novo da RGE (jul/2026) vem pontuado — `3.562.981.001-26`. Um
+  // parseInt pegaria só o "3": tira os separadores e guarda em dígitos.
+  data.codigoUc = onlyDigitsOrUndefined(findByLabel(lines, /N[úu]mero\s+da\s+UC/i));
   data.endereco = findByLabel(lines, /Endere[çc]o\s+do\s+titular/i);
   data.cep = findByLabel(lines, /CEP\s+do\s+titular/i);
 

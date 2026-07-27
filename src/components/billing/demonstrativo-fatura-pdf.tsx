@@ -15,6 +15,7 @@ import type {
   DemonstrativoFaturaData,
   DemonstrativoFaturaBoleto,
 } from "@/lib/demonstrativo-fatura";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 // Paleta do handoff Brasil Solar
 const C = {
@@ -442,7 +443,7 @@ export function DemonstrativoFaturaPdf({ data }: { data: DemonstrativoFaturaData
         <View style={s.stripband}>
           <View style={s.stripcell}>
             <Text style={s.striplbl}>UNID. CONSUMIDORA</Text>
-            <Text style={s.stripval}>{data.cliente.unidadeConsumidora}</Text>
+            <Text style={s.stripval}>{formatCodigoUc(data.cliente.unidadeConsumidora)}</Text>
           </View>
           <View style={[s.stripcell, s.stripcellBorder]}>
             <Text style={s.striplbl}>MÊS DE REFERÊNCIA</Text>
@@ -587,7 +588,7 @@ export function DemonstrativoFaturaPdf({ data }: { data: DemonstrativoFaturaData
         <View style={s.footer}>
           <Text>Associação de Energia Brasil Solar · sac@redebrasilsolar.com.br</Text>
           <Text>
-            Demonstrativo {data.cliente.unidadeConsumidora} · {data.fatura.mesReferencia} · Emitido{" "}
+            Demonstrativo {formatCodigoUc(data.cliente.unidadeConsumidora)} · {data.fatura.mesReferencia} · Emitido{" "}
             {data.fatura.emissao}
           </Text>
         </View>

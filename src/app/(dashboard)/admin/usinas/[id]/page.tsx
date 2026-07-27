@@ -26,6 +26,7 @@ import { CONCESSIONARIAS } from "@/lib/concessionarias";
 import { PlantCredentialsForm } from "@/components/plants/plant-credentials-form";
 import { PlantDocumentsCard } from "@/components/plants/plant-documents-card";
 import { MonitoringClientsPanel } from "@/components/plants/monitoring-clients-panel";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 const PlantMonitoringCharts = dynamic(
   () =>
@@ -551,7 +552,7 @@ export default function UsinaPage() {
                 ["Potência Inversor", `${plant.potenciaInversor ?? "-"} kW`],
                 ["Geração Média Mensal", plant.geracaoMediaMensal ? formatKWh(plant.geracaoMediaMensal) : "-"],
                 ["Enquadramento", plant.enquadramento ?? "-"],
-                ["Unidade Consumidora", plant.unidadeConsumidora ?? "-"],
+                ["Unidade Consumidora", formatCodigoUc(plant.unidadeConsumidora) ?? "-"],
                 ["Concessionária", plant.concessionaria ?? "-"],
                 ["Formato Leitura", plant.formatoLeitura ?? "-"],
                 ["Marca Inversor", plant.inversorMarca ?? "-"],
@@ -596,7 +597,7 @@ export default function UsinaPage() {
                     {plant.consumers.map((cp) => (
                       <tr key={cp.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                         <td className="py-2.5 px-3 font-medium">{cp.consumer.name}</td>
-                        <td className="py-2.5 px-3 text-muted-foreground">{cp.consumer.unidadeConsumidora ?? "-"}</td>
+                        <td className="py-2.5 px-3 text-muted-foreground">{formatCodigoUc(cp.consumer.unidadeConsumidora) ?? "-"}</td>
                         <td className="py-2.5 px-3 text-right">{cp.cotaPercent ?? "-"}%</td>
                         <td className="py-2.5 px-3 text-right">{cp.descontoPercent ?? "-"}%</td>
                         <td className="py-2.5 px-3 text-center">
@@ -638,7 +639,7 @@ export default function UsinaPage() {
                 <option value="GD2">GD2</option>
               </select>
             </div>
-            <Field label="Unidade Consumidora (novo)" name="unidadeConsumidora" defaultValue={plant.unidadeConsumidora} />
+            <Field label="Unidade Consumidora (novo)" name="unidadeConsumidora" defaultValue={formatCodigoUc(plant.unidadeConsumidora)} />
             <Field label="UC instalação (antigo)" name="unidadeConsumidoraAntiga" defaultValue={plant.unidadeConsumidoraAntiga} />
             <div>
               <label className="text-xs font-medium text-muted-foreground">Concessionária</label>

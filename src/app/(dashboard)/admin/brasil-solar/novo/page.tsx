@@ -270,7 +270,7 @@ export default function NovoClienteBrasilSolarPage() {
                   ))}
                 </select>
               </div>
-              <FormField label="Codigo UC (novo)" name="codigoUc" value={form.codigoUc} onChange={handleChange} placeholder="A partir de jul/2026" />
+              <FormField label="Codigo UC (novo)" name="codigoUc" value={form.codigoUc} onChange={handleChange} placeholder="3.562.981.001-26" />
               <FormField label="Codigo instalacao (antigo)" name="codigoUcAntigo" value={form.codigoUcAntigo} onChange={handleChange} placeholder="Anterior a migracao RGE" />
               <div>
                 <label className="text-xs font-medium text-muted-foreground">Status Contrato</label>

@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 export default async function ReportDetailPage({
   params,
@@ -91,7 +92,7 @@ export default async function ReportDetailPage({
               ["Valor kWh Contrato", formatBRL(investorPlant?.valorKwhContrato ?? 0)],
               ["Gestao Fixa em Contrato", formatBRL(investorPlant?.gestaoFixaContrato ?? 0)],
               ["Enquadramento", plant.enquadramento ?? "-"],
-              ["Unidade Consumidora", plant.unidadeConsumidora ?? "-"],
+              ["Unidade Consumidora", formatCodigoUc(plant.unidadeConsumidora) ?? "-"],
               ["Concessionaria", plant.concessionaria ?? "-"],
               ["Formato de Leitura", plant.formatoLeitura ?? "-"],
             ].map(([label, value]) => (

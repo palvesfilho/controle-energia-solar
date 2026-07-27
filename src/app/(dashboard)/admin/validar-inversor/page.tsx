@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, CheckCircle2, Loader2, Upload, Zap } from "lucide-react";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface Proprietario {
   id: string;
@@ -176,7 +177,7 @@ export default function ValidarInversorPage() {
                     <option key={u.id} value={u.id}>
                       {u.nome}
                       {u.plataformaMonitoramento ? ` · ${u.plataformaMonitoramento}` : ""}
-                      {u.codigoUc ? ` · UC ${u.codigoUc}` : ""}
+                      {u.codigoUc ? ` · UC ${formatCodigoUc(u.codigoUc)}` : ""}
                     </option>
                   ))}
                 </select>
@@ -251,7 +252,7 @@ export default function ValidarInversorPage() {
                   <div>Leitura ant.: {resultado.fatura.leituraAnterior ?? "—"}</div>
                   <div>Leitura atual: {resultado.fatura.leituraAtual ?? "—"}</div>
                   <div>Constante: {resultado.fatura.constante ?? "—"}</div>
-                  <div>UC: {resultado.fatura.codigoInstalacao ?? "—"}</div>
+                  <div>UC: {formatCodigoUc(resultado.fatura.codigoInstalacao) ?? "—"}</div>
                 </div>
               </div>
               <div className="rounded-lg border p-4 bg-muted/30">

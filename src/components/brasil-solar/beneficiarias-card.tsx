@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Loader2, Plus, Trash2, Users, Check } from "lucide-react";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface Beneficiaria {
   id: string;
@@ -28,7 +29,8 @@ const emptyDraft = (): Draft => ({ codigoUc: "", codigoUcAntigo: "", nome: "", p
 
 function toDraft(b: Beneficiaria): Draft {
   return {
-    codigoUc: b.codigoUc,
+    // Exibe no padrão da concessionária; a API normaliza de volta pra dígitos.
+    codigoUc: formatCodigoUc(b.codigoUc),
     codigoUcAntigo: b.codigoUcAntigo ?? "",
     nome: b.nome ?? "",
     percentual: Number.isFinite(b.percentual) ? String(b.percentual) : "",
@@ -114,7 +116,7 @@ export function BeneficiariasCard({ proprietarioId }: { proprietarioId: string }
       }
       const p = parseFloat(d.percentual);
       if (!Number.isFinite(p) || p < 0 || p > 100) {
-        toast.error(`Percentual inválido para UC ${d.codigoUc}`);
+        toast.error(`Percentual inválido para UC ${formatCodigoUc(d.codigoUc)}`);
         return;
       }
     }
@@ -212,7 +214,7 @@ export function BeneficiariasCard({ proprietarioId }: { proprietarioId: string }
                 <tbody>
                   {beneficiarias.map((b) => (
                     <tr key={b.id} className="border-t">
-                      <td className="px-3 py-2 font-mono">{b.codigoUc}</td>
+                      <td className="px-3 py-2 font-mono">{formatCodigoUc(b.codigoUc)}</td>
                       <td className="px-3 py-2">{b.nome || "—"}</td>
                       <td className="px-3 py-2 text-right font-medium">
                         {fmtPercent(b.percentual)}%

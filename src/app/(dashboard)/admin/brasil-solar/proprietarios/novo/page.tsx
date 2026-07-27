@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isValidPhone } from "@/lib/phone";
 import { CONCESSIONARIAS } from "@/lib/concessionarias";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface FormData {
   nome: string;
@@ -127,7 +128,7 @@ export default function NovoProprietarioPage() {
         endereco: data.endereco ?? prev.endereco,
         cidade: data.cidade ?? prev.cidade,
         uf: data.uf ?? prev.uf,
-        codigoUc: data.codigoUc ?? prev.codigoUc,
+        codigoUc: formatCodigoUc(data.codigoUc) ?? prev.codigoUc,
         concessionaria: data.concessionaria ?? prev.concessionaria,
       }));
 
@@ -326,7 +327,7 @@ export default function NovoProprietarioPage() {
             <div className="mt-3 p-3 border rounded-lg bg-muted/30 text-xs space-y-1">
               <div className="font-medium text-sm mb-1">Dados da planta detectados</div>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1">
-                {plantaPrefill.codigoUc && <div><span className="text-muted-foreground">UC:</span> {plantaPrefill.codigoUc}</div>}
+                {plantaPrefill.codigoUc && <div><span className="text-muted-foreground">UC:</span> {formatCodigoUc(plantaPrefill.codigoUc)}</div>}
                 {plantaPrefill.concessionaria && <div><span className="text-muted-foreground">Concessionária:</span> {plantaPrefill.concessionaria}</div>}
                 {plantaPrefill.potenciaInstalada !== undefined && <div><span className="text-muted-foreground">Potência:</span> {plantaPrefill.potenciaInstalada} kWp</div>}
                 {plantaPrefill.inversorPotencia !== undefined && <div><span className="text-muted-foreground">Inversor:</span> {plantaPrefill.inversorPotencia} kW</div>}
@@ -394,7 +395,7 @@ export default function NovoProprietarioPage() {
                   type="text"
                   value={form.codigoUc}
                   onChange={(e) => set("codigoUc", e.target.value)}
-                  placeholder="Ex.: 3095464357"
+                  placeholder="Ex.: 3.562.981.001-26"
                   className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background font-mono focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                 />
               </div>
@@ -497,7 +498,9 @@ export default function NovoProprietarioPage() {
                   value={form.instalacaoPortal}
                   onChange={(e) => set("instalacaoPortal", e.target.value)}
                   placeholder={
-                    form.codigoUc ? `Padrão: ${form.codigoUc}` : "Ex.: 1234567890"
+                    form.codigoUc
+                      ? `Padrão: ${formatCodigoUc(form.codigoUc)}`
+                      : "Ex.: 3.562.981.001-26"
                   }
                 />
               </div>
