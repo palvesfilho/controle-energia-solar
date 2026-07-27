@@ -15,6 +15,7 @@ import {
   cancelInvestorDebit,
 } from "@/lib/investor-debits";
 import { resolveDebitoPanel } from "@/lib/investor-debito-panel";
+import { injecaoDisponivelParaRateio } from "@/lib/injecao-usina";
 
 export const runtime = "nodejs";
 
@@ -75,6 +76,7 @@ export async function POST(
       name: true,
       numeroUsina: true,
       dataAssinaturaContrato: true,
+      regraInstalacao: true,
       investors: {
         select: {
           id: true,
@@ -232,6 +234,10 @@ export async function POST(
       orderBy: { syncedAt: "desc" },
       select: {
         energiaInjetadaMedidorKwh: true,
+        geracaoInversorKwh: true,
+        consumoInstantaneoKwh: true,
+        energiaInjetadaPropriaTeKwh: true,
+        energiaInjetadaPropriaTusdKwh: true,
         valorTotal: true,
       },
     }),
@@ -370,7 +376,15 @@ export async function POST(
     0,
   );
 
-  const kwhInjetado = billUsina?.energiaInjetadaMedidorKwh ?? null;
+  // Injecao DISPONIVEL PRO RATEIO — em USINA_CONSUMO_PROPRIO desconta o que a
+  // propria geradora compensou, que nunca chega as beneficiarias.
+  const kwhInjetado = billUsina
+    ? injecaoDisponivelParaRateio(
+        billUsina,
+        plant.regraInstalacao,
+        `relatorio plant ${plantId} ${mes}/${ano}`,
+      )
+    : null;
   const kwhCredito =
     kwhInjetado != null ? Math.max(0, kwhInjetado - kwhCompensado) : null;
 

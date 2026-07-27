@@ -774,7 +774,9 @@ export function InvestorReportPDF({ data }: { data: InvestorReportData }) {
     },
     {
       label: "(+) Injetado no período",
-      hint: "Medido na UC da usina",
+      // Não é mais o medidor cru: em usina com consumo próprio, o que a
+      // geradora compensou nela mesma não chega às UCs do rateio.
+      hint: "Energia da usina disponível para o rateio",
       value: kwh(data.kwhInjetado),
     },
     {

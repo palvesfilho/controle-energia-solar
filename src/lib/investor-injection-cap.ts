@@ -5,10 +5,9 @@
  * até M. O excedente representa créditos legados (anteriores ao sistema,
  * propriedade do Paulo) que não devem gerar pagamento ao investidor.
  *
- * Cap por modo (`Plant.regraInstalacao`):
- *  - USINA_DEDICADA           → Σ energiaInjetadaMedidorKwh (fallback geracaoInversorKwh)
- *  - USINA_CONSUMO_PROPRIO    → Σ (energiaInjetadaMedidorKwh + consumoInstantaneoKwh)
- *  - USINA_CONSUMO_DESCONTADO → Σ (energiaInjetadaMedidorKwh + consumoInstantaneoKwh)
+ * Cap por modo (`Plant.regraInstalacao`): ver injecaoDisponivelParaRateio()
+ * em lib/injecao-usina.ts — fonte unica compartilhada com o saldo acumulado
+ * e com o relatorio do investidor.
  *
  * Algoritmo (processa mês a mês cronologicamente, idempotente):
  *  - Para cada mês M com payables ou injeção:
@@ -26,6 +25,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { injecaoDisponivelParaRateio } from "@/lib/injecao-usina";
 
 const STATUS_FINAIS = new Set(["PAGO", "EM_COBRANCA_JUDICIAL"]);
 
@@ -63,20 +63,6 @@ async function findUcGeradoraId(plantId: string): Promise<string | null> {
   return uc?.id ?? null;
 }
 
-function injecaoDeBill(
-  bill: {
-    energiaInjetadaMedidorKwh: number | null;
-    consumoInstantaneoKwh: number | null;
-    geracaoInversorKwh: number | null;
-  },
-  isDedicada: boolean,
-): number {
-  const medidor = bill.energiaInjetadaMedidorKwh;
-  const inversor = bill.geracaoInversorKwh ?? 0;
-  if (isDedicada) return medidor ?? inversor;
-  if (medidor != null) return medidor + (bill.consumoInstantaneoKwh ?? 0);
-  return inversor;
-}
 
 function ymKey(ano: number, mes: number) {
   return ano * 100 + mes;
@@ -102,7 +88,6 @@ export async function applyInjectionCapToPlant(
     result.warnings.push("plant não encontrada");
     return result;
   }
-  const isDedicada = plant.regraInstalacao === "USINA_DEDICADA";
 
   // Bills da UC geradora (preferido) ou ConsumerBill com plantId direto e
   // sem consumerUnitId (fallback DEDICADA sem UC cadastrada).
@@ -117,6 +102,8 @@ export async function applyInjectionCapToPlant(
       energiaInjetadaMedidorKwh: true,
       consumoInstantaneoKwh: true,
       geracaoInversorKwh: true,
+      energiaInjetadaPropriaTeKwh: true,
+      energiaInjetadaPropriaTusdKwh: true,
     },
   });
 
@@ -125,7 +112,12 @@ export async function applyInjectionCapToPlant(
     const k = ymKey(b.anoReferencia, b.mesReferencia);
     injecaoPorMes.set(
       k,
-      (injecaoPorMes.get(k) ?? 0) + injecaoDeBill(b, isDedicada),
+      (injecaoPorMes.get(k) ?? 0) +
+        injecaoDisponivelParaRateio(
+          b,
+          plant.regraInstalacao,
+          `plant ${plantId} ${b.mesReferencia}/${b.anoReferencia}`,
+        ),
     );
   }
   result.capInjecaoTotalKwh = Array.from(injecaoPorMes.values()).reduce(

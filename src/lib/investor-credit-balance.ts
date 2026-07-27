@@ -18,6 +18,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { injecaoDisponivelParaRateio } from "@/lib/injecao-usina";
 
 export interface SaldoCreditoMensal {
   ano: number;
@@ -117,8 +118,19 @@ export async function calcularSaldoCredito(args: {
       anoReferencia: true,
       mesReferencia: true,
       energiaInjetadaMedidorKwh: true,
+      geracaoInversorKwh: true,
+      consumoInstantaneoKwh: true,
+      energiaInjetadaPropriaTeKwh: true,
+      energiaInjetadaPropriaTusdKwh: true,
       dataLeituraAtual: true,
     },
+  });
+
+  // Regra da injecao disponivel pro rateio depende do modo de instalacao —
+  // em USINA_CONSUMO_PROPRIO desconta o que foi compensado na propria geradora.
+  const plantRegra = await prisma.plant.findUnique({
+    where: { id: plantId },
+    select: { regraInstalacao: true },
   });
 
   const injetadoPorMes = new Map<string, number>();
@@ -133,7 +145,14 @@ export async function calcularSaldoCredito(args: {
     // (já garantido pelo filtroAnoMes acima)
     const key = `${b.anoReferencia}-${b.mesReferencia}`;
     if (!injetadoPorMes.has(key)) {
-      injetadoPorMes.set(key, b.energiaInjetadaMedidorKwh ?? 0);
+      injetadoPorMes.set(
+        key,
+        injecaoDisponivelParaRateio(
+          b,
+          plantRegra?.regraInstalacao ?? null,
+          `saldo plant ${plantId} ${b.mesReferencia}/${b.anoReferencia}`,
+        ),
+      );
     }
   }
 
