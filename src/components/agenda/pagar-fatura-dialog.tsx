@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { formatDateOnlyBR, parseDateOnlyISO } from "@/lib/date-only";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -50,11 +51,10 @@ function formatBRL(v: number | null): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+// Vencimento e pagoEm são datas-calendário: formata pelo componente UTC, não
+// pelo fuso de quem renderiza (ver date-only.ts).
 function formatDate(iso: string | null): string {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString("pt-BR");
+  return formatDateOnlyBR(parseDateOnlyISO(iso));
 }
 
 function isoToInputDate(iso: string | null): string {

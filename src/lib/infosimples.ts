@@ -11,6 +11,7 @@
  */
 
 import { EMPTY_GRUPO_A_BILL_FIELDS } from "./fatura-pdf-parser-grupo-a";
+import { parseDateOnlyBR, parseDateOnlyISO } from "./date-only";
 
 const INFOSIMPLES_BASE_URL = "https://api.infosimples.com/api/v2/consultas/contas/cpfl/download-ocr";
 
@@ -943,19 +944,16 @@ function parseReferencia(ref: string): { mes: number; ano: number } {
   return { mes: 1, ano: new Date().getFullYear() };
 }
 
+// Vencimento e leituras são datas-calendário: ancoram em 12:00 UTC (ver
+// date-only.ts). Antes usavam `new Date(y, m, d)` — meia-noite LOCAL, que
+// gravava 03:00Z rodando no Brasil e 00:00Z rodando no Railway (UTC). O
+// segundo caso exibia o dia anterior na tela do operador.
 function parseDate(dateStr: string | undefined | null): Date | null {
-  if (!dateStr) return null;
   // Formato "15/01/2026"
-  const match = dateStr.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-  if (match) {
-    return new Date(parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]));
-  }
-  return null;
+  return parseDateOnlyBR(dateStr);
 }
 
 function parseDateISO(dateStr: string | undefined | null): Date | null {
-  if (!dateStr) return null;
   // Formato "2026-03-15"
-  const d = new Date(dateStr);
-  return isNaN(d.getTime()) ? null : d;
+  return parseDateOnlyISO(dateStr);
 }

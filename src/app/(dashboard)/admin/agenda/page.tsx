@@ -4,6 +4,7 @@ import { getTasksForWeek, startOfWeekMonday, endOfWeekSunday } from "@/lib/agend
 import { AgendaWeekGrid } from "@/components/agenda/agenda-week-grid";
 import { prisma } from "@/lib/prisma";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { dateOnlyKey, parseDateOnlyISO } from "@/lib/date-only";
 
 interface AgendaPageProps {
   searchParams: Promise<{ semana?: string }>;
@@ -11,7 +12,10 @@ interface AgendaPageProps {
 
 export default async function AgendaPage({ searchParams }: AgendaPageProps) {
   const { semana } = await searchParams;
-  const ref = semana ? new Date(semana) : new Date();
+  // `semana` vem como "YYYY-MM-DD" — parseia como dia-calendário (12:00 UTC),
+  // nunca com `new Date()` direto, que ancora em meia-noite UTC e volta um dia
+  // no fuso brasileiro.
+  const ref = (semana ? parseDateOnlyISO(semana) : null) ?? new Date();
   const inicio = startOfWeekMonday(ref);
   const fim = endOfWeekSunday(ref);
 
@@ -21,9 +25,13 @@ export default async function AgendaPage({ searchParams }: AgendaPageProps) {
   const [tasks, ucs] = await Promise.all([
     getTasksForWeek(inicio, fim),
     prisma.consumerUnit.findMany({
-      where: { active: true },
+      // Mesmo recorte de `getTasksForWeek`: só UCs do fluxo investidor geram
+      // tarefa. UCs Brasil Solar (origem BRASIL_SOLAR_*) sincronizam fatura pra
+      // monitoramento mas nunca entram na agenda — listá-las no filtro só
+      // renderia semana vazia.
+      where: { active: true, origem: "PADRAO" },
       select: { id: true, codigoUc: true, nome: true },
-      orderBy: [{ codigoUc: "asc" }],
+      orderBy: [{ nome: "asc" }],
     }),
   ]);
 
@@ -36,18 +44,25 @@ export default async function AgendaPage({ searchParams }: AgendaPageProps) {
         </p>
       </div>
 
+      {/* Datas trafegam como "YYYY-MM-DD": string de dia-calendário não sofre
+          conversão de fuso no navegador, ao contrário de um ISO com hora. */}
       <AgendaWeekGrid
-        inicio={inicio.toISOString()}
-        fim={fim.toISOString()}
+        inicio={dateOnlyKey(inicio)}
+        fim={dateOnlyKey(fim)}
         userRole={userRole}
         tasks={tasks.map((t) => ({
           ...t,
-          scheduledFor: t.scheduledFor.toISOString(),
-          dueDate: t.dueDate?.toISOString() ?? null,
+          scheduledFor: dateOnlyKey(t.scheduledFor),
+          dueDate: t.dueDate ? dateOnlyKey(t.dueDate) : null,
         }))}
+        // O filtro é ordenado alfabeticamente pelo nome do cliente, então o
+        // rótulo começa pelo nome — código da UC vem depois, como referência.
         allUcs={ucs.map((u) => ({
           id: u.id,
-          label: `${formatCodigoUc(u.codigoUc)}${u.nome ? ` — ${u.nome}` : ""}`,
+          nome: u.nome ?? null,
+          label: u.nome
+            ? `${u.nome} — ${formatCodigoUc(u.codigoUc)}`
+            : (formatCodigoUc(u.codigoUc) ?? ""),
         }))}
       />
     </div>

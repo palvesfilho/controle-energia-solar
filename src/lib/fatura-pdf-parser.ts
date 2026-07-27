@@ -22,6 +22,7 @@ import {
   type GrupoAData,
   type GrupoABillFields,
 } from "./fatura-pdf-parser-grupo-a";
+import { dateOnlyUTC, parseDateOnlyBR } from "./date-only";
 
 interface TextItem {
   str: string;
@@ -119,11 +120,10 @@ function parseNumBR(raw: string | undefined | null): number | null {
   return isNaN(n) ? null : negative ? -n : n;
 }
 
+// Data-calendário ancorada em 12:00 UTC (ver date-only.ts) — não meia-noite
+// local, que gravava o dia anterior quando o processo roda em UTC.
 function parseDateBR(s: string | undefined | null): Date | null {
-  if (!s) return null;
-  const m = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-  if (!m) return null;
-  return new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
+  return parseDateOnlyBR(s);
 }
 
 function extractMesOrigem(s: string): string | null {
@@ -336,7 +336,7 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
   for (const line of lines) {
     const m = line.match(/pr[oó]xima\s+leitura[:\s]+(\d{2})\/(\d{2})\/(\d{4})/i);
     if (m) {
-      proximaLeitura = new Date(Date.UTC(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1])));
+      proximaLeitura = dateOnlyUTC(parseInt(m[3]), parseInt(m[2]), parseInt(m[1]));
       break;
     }
   }

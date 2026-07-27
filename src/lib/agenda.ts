@@ -1,5 +1,27 @@
 import { prisma } from "./prisma";
 import { formatCodigoUc } from "./uc-codigo";
+import {
+  addDaysOnly,
+  dateOnlyKey,
+  dateOnlyUTC,
+  dayInBrasil,
+  endOfDayInstant,
+  endOfWeekSundayOnly,
+  formatDateOnlyBR,
+  previousBusinessDay,
+  startOfDayInstant,
+  startOfWeekMondayOnly,
+  toDateOnly,
+  todayInBrasil,
+} from "./date-only";
+
+/**
+ * Toda data desta agenda é um **dia-calendário** ancorado em 12:00 UTC
+ * (ver date-only.ts). Antes o módulo usava `setHours`/`getDay` no fuso do
+ * processo: em produção (Railway, UTC) isso deslocava a grade inteira em um
+ * dia no navegador brasileiro, e uma tarefa de segunda aparecia no domingo
+ * — última coluna da semana, dando a impressão de estar pós-vencimento.
+ */
 
 /**
  * Tarefas PENDING/OVERDUE com `scheduledFor` anterior a esta data não
@@ -7,7 +29,7 @@ import { formatCodigoUc } from "./uc-codigo";
  * DONE passa pelo cutoff (útil pra auditar o backup do Lumi nas semanas
  * antigas). Para mostrar tudo, defina como `null`.
  */
-export const AGENDA_MIN_DATE: Date | null = new Date(2026, 3, 1); // 2026-04-01
+export const AGENDA_MIN_DATE: Date | null = dateOnlyUTC(2026, 4, 1);
 
 export type AgendaTaskType =
   | "PAGAR_FATURA"
@@ -53,22 +75,16 @@ export interface AgendaTask {
   pagaInvestidor: boolean;
 }
 
-const DAY = 24 * 60 * 60 * 1000;
+/**
+ * Folga aplicada às janelas de busca no banco. O agendamento pode andar até
+ * 2 dias para trás pela antecipação de fim de semana (domingo → sexta), e os
+ * registros legados têm hora 00:00Z/03:00Z. Buscar com folga e depois filtrar
+ * pelo dia-calendário em memória evita perder tarefa na borda da semana.
+ */
+const SLACK_DIAS = 4;
 
 function addDays(d: Date, days: number): Date {
-  return new Date(d.getTime() + days * DAY);
-}
-
-function startOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function endOfDay(d: Date): Date {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
+  return addDaysOnly(d, days);
 }
 
 function isWithin(date: Date, start: Date, end: Date): boolean {
@@ -76,11 +92,11 @@ function isWithin(date: Date, start: Date, end: Date): boolean {
 }
 
 function ymd(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return dateOnlyKey(d);
 }
 
 function lastDayOfMonth(year: number, month: number): number {
-  return new Date(year, month + 1, 0).getDate();
+  return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
 }
 
 /**
@@ -91,14 +107,15 @@ function lastDayOfMonth(year: number, month: number): number {
  *  - PENDING → caso contrário
  */
 export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTask[]> {
-  const windowStart = startOfDay(start);
-  const windowEnd = endOfDay(end);
-  const today = startOfDay(new Date());
+  const windowStart = toDateOnly(start)!;
+  const windowEnd = toDateOnly(end)!;
+  const today = todayInBrasil();
 
   const tasks: AgendaTask[] = [];
 
   // ─── 1) PAGAR_FATURA ──────────────────────────────────────────────────
-  // 2 dias antes do vencimento. Source: ConsumerBill com vencimento na janela [start+2d, end+2d].
+  // 2 dias antes do vencimento, antecipando para sexta quando cair no fim de
+  // semana. Source: ConsumerBill com vencimento perto da janela.
   // DONE se pagoEm preenchido.
   // Filtra ConsumerBill que pertence a UC de cliente Brasil Solar — só faturas
   // da usina (plantId != null) ou de UC do fluxo investidor (origem=PADRAO)
@@ -107,8 +124,8 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
   const billsForPayment = await prisma.consumerBill.findMany({
     where: {
       vencimento: {
-        gte: addDays(windowStart, 2),
-        lte: addDays(windowEnd, 2),
+        gte: startOfDayInstant(addDays(windowStart, 2 - SLACK_DIAS)),
+        lte: endOfDayInstant(addDays(windowEnd, 2 + SLACK_DIAS)),
       },
       OR: [
         { plantId: { not: null } },
@@ -129,11 +146,12 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
   });
 
   for (const b of billsForPayment) {
-    if (!b.vencimento) continue;
-    const scheduled = addDays(b.vencimento, -2);
+    const vencimento = toDateOnly(b.vencimento);
+    if (!vencimento) continue;
+    const scheduled = previousBusinessDay(addDays(vencimento, -2));
     if (!isWithin(scheduled, windowStart, windowEnd)) continue;
     const isDone = !!b.pagoEm;
-    const isOverdue = !isDone && b.vencimento < today;
+    const isOverdue = !isDone && vencimento < today;
     const nomeRef =
       b.consumerUnit?.nome ??
       formatCodigoUc(b.consumerUnit?.codigoUc) ??
@@ -150,9 +168,11 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       id: `PAGAR_FATURA-${b.id}`,
       type: "PAGAR_FATURA",
       title: `Pagar fatura ${nomeRef}`.trim(),
-      subtitle: b.valorTotal ? `R$ ${b.valorTotal.toFixed(2).replace(".", ",")} · vence ${b.vencimento.toLocaleDateString("pt-BR")}` : `Vence ${b.vencimento.toLocaleDateString("pt-BR")}`,
+      subtitle: b.valorTotal
+        ? `R$ ${b.valorTotal.toFixed(2).replace(".", ",")} · vence ${formatDateOnlyBR(vencimento)}`
+        : `Vence ${formatDateOnlyBR(vencimento)}`,
       scheduledFor: scheduled,
-      dueDate: b.vencimento,
+      dueDate: vencimento,
       status: isDone ? "DONE" : isOverdue ? "OVERDUE" : "PENDING",
       sourceEntityType: "ConsumerBill",
       sourceEntityId: b.id,
@@ -174,8 +194,8 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
   const billsForCharge = await prisma.consumerBill.findMany({
     where: {
       syncedAt: {
-        gte: addDays(windowStart, -3),
-        lte: addDays(windowEnd, -3),
+        gte: startOfDayInstant(addDays(windowStart, -3 - SLACK_DIAS)),
+        lte: endOfDayInstant(addDays(windowEnd, -3 + SLACK_DIAS)),
       },
       consumerUnitId: { not: null },
       consumerUnit: { origem: "PADRAO" },
@@ -204,7 +224,9 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
     if (!b.syncedAt) continue;
     // Só UC de cliente final com rateio (tem consumer + plant)
     if (!b.consumerUnit?.consumerId || !b.consumerUnit?.plantId) continue;
-    const scheduled = addDays(b.syncedAt, 3);
+    // syncedAt é instante real (não data-calendário): o dia vale no fuso de
+    // quem opera, então converte para o dia em Brasília antes de somar.
+    const scheduled = previousBusinessDay(addDays(dayInBrasil(b.syncedAt), 3));
     if (!isWithin(scheduled, windowStart, windowEnd)) continue;
     const billing = b.consumerUnit.billings.find(
       (x) => x.ano === b.anoReferencia && x.mes === b.mesReferencia
@@ -248,15 +270,21 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
   for (const p of plants) {
     // Testa o mês corrente da janela e o mês seguinte
     const candidates = [
-      monthDay(windowStart.getFullYear(), windowStart.getMonth(), p.diaPagamentoInvestidor),
-      monthDay(windowStart.getFullYear(), windowStart.getMonth() + 1, p.diaPagamentoInvestidor),
-      monthDay(windowStart.getFullYear(), windowStart.getMonth() - 1, p.diaPagamentoInvestidor),
+      monthDay(windowStart.getUTCFullYear(), windowStart.getUTCMonth(), p.diaPagamentoInvestidor),
+      monthDay(windowStart.getUTCFullYear(), windowStart.getUTCMonth() + 1, p.diaPagamentoInvestidor),
+      monthDay(windowStart.getUTCFullYear(), windowStart.getUTCMonth() - 1, p.diaPagamentoInvestidor),
     ];
-    for (const scheduled of candidates) {
+    for (const pagamento of candidates) {
+      // O dia configurado é o prazo (dueDate); a tarefa em si antecipa para
+      // sexta quando esse dia cai no fim de semana.
+      const scheduled = previousBusinessDay(pagamento);
       if (!isWithin(scheduled, windowStart, windowEnd)) continue;
-      // Mês de referência é o mês ANTERIOR ao do pagamento (paga em outubro o relatório de setembro)
-      const refMonth = scheduled.getMonth() === 0 ? 12 : scheduled.getMonth();
-      const refYear = scheduled.getMonth() === 0 ? scheduled.getFullYear() - 1 : scheduled.getFullYear();
+      // Mês de referência é o mês ANTERIOR ao do pagamento (paga em outubro o
+      // relatório de setembro). Deriva do dia configurado, não do antecipado —
+      // senão um pagamento no dia 1 mudaria de referência.
+      const refMonth = pagamento.getUTCMonth() === 0 ? 12 : pagamento.getUTCMonth();
+      const refYear =
+        pagamento.getUTCMonth() === 0 ? pagamento.getUTCFullYear() - 1 : pagamento.getUTCFullYear();
       const payables = await prisma.investorPayable.findMany({
         where: {
           plantId: p.id,
@@ -266,14 +294,14 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
         select: { id: true, status: true },
       });
       const isDone = payables.length > 0 && payables.every((pay) => pay.status === "PAGO");
-      const isOverdue = !isDone && scheduled < today;
+      const isOverdue = !isDone && pagamento < today;
       tasks.push({
         id: `PAGAR_INVESTIDOR-${p.id}-${refYear}-${refMonth}`,
         type: "PAGAR_INVESTIDOR",
         title: `Pagar investidor — ${p.name}`,
         subtitle: `Ref. ${String(refMonth).padStart(2, "0")}/${refYear} · ${payables.length} payable(s)`,
         scheduledFor: scheduled,
-        dueDate: scheduled,
+        dueDate: pagamento,
         status: isDone ? "DONE" : isOverdue ? "OVERDUE" : "PENDING",
         sourceEntityType: "Plant",
         sourceEntityId: p.id,
@@ -291,13 +319,14 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
     // 3 dias antes do PAGAR_INVESTIDOR daquela usina. 1 task por usina/mês.
     // DONE se MonthlyReport daquele mês/usina tem publishedAt.
     for (const scheduledPagamento of candidates) {
-      const scheduled = addDays(scheduledPagamento, -3);
+      const scheduled = previousBusinessDay(addDays(scheduledPagamento, -3));
       if (!isWithin(scheduled, windowStart, windowEnd)) continue;
-      const refMonth = scheduledPagamento.getMonth() === 0 ? 12 : scheduledPagamento.getMonth();
+      const refMonth =
+        scheduledPagamento.getUTCMonth() === 0 ? 12 : scheduledPagamento.getUTCMonth();
       const refYear =
-        scheduledPagamento.getMonth() === 0
-          ? scheduledPagamento.getFullYear() - 1
-          : scheduledPagamento.getFullYear();
+        scheduledPagamento.getUTCMonth() === 0
+          ? scheduledPagamento.getUTCFullYear() - 1
+          : scheduledPagamento.getUTCFullYear();
       const reports = await prisma.monthlyReport.findMany({
         where: { plantId: p.id, ano: refYear, mes: refMonth },
         select: { id: true, publishedAt: true },
@@ -333,8 +362,8 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
   const billsForConferRge = await prisma.consumerBill.findMany({
     where: {
       pagoEm: {
-        gte: addDays(windowStart, -DIAS_ATE_CONFERIR_RGE),
-        lte: addDays(windowEnd, -DIAS_ATE_CONFERIR_RGE),
+        gte: startOfDayInstant(addDays(windowStart, -DIAS_ATE_CONFERIR_RGE - SLACK_DIAS)),
+        lte: endOfDayInstant(addDays(windowEnd, -DIAS_ATE_CONFERIR_RGE + SLACK_DIAS)),
       },
       OR: [
         { plantId: { not: null } },
@@ -354,8 +383,9 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
   });
 
   for (const b of billsForConferRge) {
-    if (!b.pagoEm) continue;
-    const scheduled = addDays(b.pagoEm, DIAS_ATE_CONFERIR_RGE);
+    const pagoEm = toDateOnly(b.pagoEm);
+    if (!pagoEm) continue;
+    const scheduled = previousBusinessDay(addDays(pagoEm, DIAS_ATE_CONFERIR_RGE));
     if (!isWithin(scheduled, windowStart, windowEnd)) continue;
     const isDone = b.contaPaga;
     const isOverdue = !isDone && scheduled < today;
@@ -374,7 +404,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       id: `CONFERIR_RGE-${b.id}`,
       type: "CONFERIR_PAGAMENTO_RGE",
       title: `Conferir pagamento na RGE — ${nomeRef}`.trim(),
-      subtitle: `Pago em ${b.pagoEm.toLocaleDateString("pt-BR")} · Ref. ${String(b.mesReferencia).padStart(2, "0")}/${b.anoReferencia}`,
+      subtitle: `Pago em ${formatDateOnlyBR(pagoEm)} · Ref. ${String(b.mesReferencia).padStart(2, "0")}/${b.anoReferencia}`,
       scheduledFor: scheduled,
       dueDate: null,
       status: isDone ? "DONE" : isOverdue ? "OVERDUE" : "PENDING",
@@ -415,17 +445,18 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
 
   for (const uc of ucsComLeitura) {
     const latest = uc.bills[0];
-    if (!latest?.proximaLeitura) continue;
-    const scheduled = addDays(latest.proximaLeitura, -1);
+    const proximaLeitura = toDateOnly(latest?.proximaLeitura);
+    if (!proximaLeitura) continue;
+    const scheduled = previousBusinessDay(addDays(proximaLeitura, -1));
     if (!isWithin(scheduled, windowStart, windowEnd)) continue;
     const isOverdue = scheduled < today;
     tasks.push({
-      id: `INFORMAR_LEITURA-${uc.id}-${ymd(latest.proximaLeitura)}`,
+      id: `INFORMAR_LEITURA-${uc.id}-${ymd(proximaLeitura)}`,
       type: "INFORMAR_LEITURA_RGE",
       title: `Informar leitura — ${uc.nome ?? formatCodigoUc(uc.codigoUc)}`,
-      subtitle: `Leitura prevista ${latest.proximaLeitura.toLocaleDateString("pt-BR")}`,
+      subtitle: `Leitura prevista ${formatDateOnlyBR(proximaLeitura)}`,
       scheduledFor: scheduled,
-      dueDate: latest.proximaLeitura,
+      dueDate: proximaLeitura,
       status: isOverdue ? "OVERDUE" : "PENDING",
       sourceEntityType: "ConsumerUnit",
       sourceEntityId: uc.id,
@@ -453,21 +484,24 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
 
 function monthDay(year: number, monthIndex: number, day: number): Date {
   // Trata overflow do mês (-1 = dezembro do ano anterior; 12 = janeiro do próximo)
-  const d = new Date(year, monthIndex, Math.min(day, lastDayOfMonth(year, monthIndex)));
-  d.setHours(0, 0, 0, 0);
-  return d;
+  const normalizedYear = year + Math.floor(monthIndex / 12);
+  const normalizedMonth = ((monthIndex % 12) + 12) % 12;
+  return dateOnlyUTC(
+    normalizedYear,
+    normalizedMonth + 1,
+    Math.min(day, lastDayOfMonth(normalizedYear, normalizedMonth)),
+  );
 }
 
+// Aceita tanto um instante real (`new Date()`) quanto um dia-calendário já
+// ancorado em 12:00 UTC — `dayInBrasil` devolve o mesmo dia nos dois casos,
+// e é o fuso de Brasília que define de quem é a semana.
 export function startOfWeekMonday(d: Date): Date {
-  const x = startOfDay(d);
-  const dow = x.getDay(); // 0=domingo, 1=segunda... 6=sábado
-  const diff = dow === 0 ? -6 : 1 - dow;
-  return addDays(x, diff);
+  return startOfWeekMondayOnly(dayInBrasil(d));
 }
 
 export function endOfWeekSunday(d: Date): Date {
-  const start = startOfWeekMonday(d);
-  return endOfDay(addDays(start, 6));
+  return endOfWeekSundayOnly(dayInBrasil(d));
 }
 
 export const TASK_TYPE_LABEL: Record<AgendaTaskType, string> = {

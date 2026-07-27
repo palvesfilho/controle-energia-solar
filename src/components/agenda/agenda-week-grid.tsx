@@ -22,12 +22,19 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { TASK_TYPE_LABEL, type AgendaTaskType, type AgendaTaskStatus } from "@/lib/agenda";
+import {
+  addDaysOnly,
+  dateOnlyKey,
+  parseDateOnlyISO,
+  todayInBrasil,
+} from "@/lib/date-only";
 
 interface SerializedTask {
   id: string;
   type: AgendaTaskType;
   title: string;
   subtitle: string | null;
+  /** Dia-calendário "YYYY-MM-DD" — nunca ISO com hora (ver date-only.ts). */
   scheduledFor: string;
   dueDate: string | null;
   status: AgendaTaskStatus;
@@ -44,11 +51,15 @@ interface SerializedTask {
 
 interface UcOption {
   id: string;
+  /** Nome do cliente — chave de ordenação do filtro. Null quando a UC não tem nome. */
+  nome: string | null;
   label: string;
 }
 
 interface AgendaWeekGridProps {
+  /** "YYYY-MM-DD" da segunda-feira da semana. */
   inicio: string;
+  /** "YYYY-MM-DD" do domingo da semana. */
   fim: string;
   userRole: string | null;
   tasks: SerializedTask[];
@@ -105,15 +116,18 @@ function normalize(s: string): string {
     .replace(/[̀-ͯ]/g, "");
 }
 
+// Formata sempre a partir do componente UTC do dia-calendário: o rótulo tem
+// que ser o mesmo no servidor (Railway, UTC) e no navegador (BRT).
+function formatDiaMes(d: Date): string {
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: "UTC" });
+}
+
 function formatWeekRange(inicio: Date, fim: Date): string {
-  const fmt = (d: Date) => d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
-  return `${fmt(inicio)} — ${fmt(fim)}`;
+  return `${formatDiaMes(inicio)} — ${formatDiaMes(fim)}`;
 }
 
 function shiftWeekIso(currentInicio: Date, deltaWeeks: number): string {
-  const d = new Date(currentInicio);
-  d.setDate(d.getDate() + deltaWeeks * 7);
-  return d.toISOString();
+  return dateOnlyKey(addDaysOnly(currentInicio, deltaWeeks * 7));
 }
 
 const ROLES_PODEM_EDITAR_PAGAMENTO = new Set(["ADMIN", "GESTOR"]);
@@ -121,8 +135,8 @@ const ROLES_PODEM_EDITAR_PAGAMENTO = new Set(["ADMIN", "GESTOR"]);
 export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaWeekGridProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const inicioDate = useMemo(() => new Date(inicio), [inicio]);
-  const fimDate = useMemo(() => new Date(fim), [fim]);
+  const inicioDate = useMemo(() => parseDateOnlyISO(inicio)!, [inicio]);
+  const fimDate = useMemo(() => parseDateOnlyISO(fim)!, [fim]);
 
   const canEditPaidBill = userRole ? ROLES_PODEM_EDITAR_PAGAMENTO.has(userRole) : false;
 
@@ -178,9 +192,16 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
   }, [tasks]);
 
   const ucOptions = useMemo(() => {
+    // Ordem alfabética pelo NOME do cliente (ignorando acento e caixa), não pelo
+    // código da UC. UCs sem nome caem no fim da lista, ordenadas pelo rótulo.
     return allUcs
-      .map((u) => ({ value: u.id, label: u.label }))
-      .sort((a, b) => a.label.localeCompare(b.label));
+      .map((u) => ({ value: u.id, label: u.label, nome: u.nome }))
+      .sort((a, b) => {
+        if (!a.nome && !b.nome) return a.label.localeCompare(b.label, "pt-BR");
+        if (!a.nome) return 1;
+        if (!b.nome) return -1;
+        return a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" });
+      });
   }, [allUcs]);
 
   const filtered = useMemo(() => {
@@ -228,17 +249,25 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
     setFilterUc("ALL");
   };
 
-  // Agrupa por dia da semana (0=seg, 6=dom)
+  // Colunas da semana como chaves "YYYY-MM-DD" (seg → dom).
+  const dayKeys = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => dateOnlyKey(addDaysOnly(inicioDate, i))),
+    [inicioDate],
+  );
+
+  // Agrupa por dia comparando a chave de data, não o dia da semana lido no
+  // fuso do navegador — era daí que vinha a tarefa de segunda caindo na coluna
+  // de domingo quando o servidor gravava a data em meia-noite UTC.
   const tasksByDay = useMemo(() => {
     const byDay: SerializedTask[][] = [[], [], [], [], [], [], []];
+    const indexOf = new Map(dayKeys.map((k, i) => [k, i]));
     for (const t of filtered) {
-      const d = new Date(t.scheduledFor);
-      const dow = d.getDay(); // 0=dom, 1=seg
-      const idx = dow === 0 ? 6 : dow - 1; // seg=0, dom=6
+      const idx = indexOf.get(t.scheduledFor);
+      if (idx === undefined) continue; // fora da semana exibida
       byDay[idx].push(t);
     }
     return byDay;
-  }, [filtered]);
+  }, [filtered, dayKeys]);
 
   // Soma de valores a pagar em aberto (PAGAR_FATURA, status != DONE) por dia.
   // Faturas de usinas onde o investidor paga direto são puladas — aparecem
@@ -265,21 +294,14 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
     );
   }, [tasksByDay]);
 
-  const days = useMemo(() => {
-    const result: Date[] = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(inicioDate);
-      d.setDate(d.getDate() + i);
-      result.push(d);
-    }
-    return result;
-  }, [inicioDate]);
+  const days = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => addDaysOnly(inicioDate, i)),
+    [inicioDate],
+  );
 
-  const today = useMemo(() => {
-    const t = new Date();
-    t.setHours(0, 0, 0, 0);
-    return t;
-  }, []);
+  // "Hoje" é o dia em Brasília — não o do relógio do navegador, que pode estar
+  // em outro fuso e destacaria a coluna errada.
+  const todayKey = useMemo(() => dateOnlyKey(todayInBrasil()), []);
 
   const goWeek = (delta: number) => {
     const params = new URLSearchParams(searchParams);
@@ -469,7 +491,7 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
       {/* Grade Seg→Dom */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-7">
         {days.map((day, idx) => {
-          const isToday = day.getTime() === today.getTime();
+          const isToday = dayKeys[idx] === todayKey;
           const dayTasks = tasksByDay[idx];
           const valorAPagar = valorAPagarByDay[idx];
           const valorAReceber = valorAReceberByDay[idx];
@@ -492,10 +514,10 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
                 </div>
                 <div className="flex items-baseline justify-between">
                   <span className="text-lg font-semibold">
-                    {day.getDate().toString().padStart(2, "0")}
+                    {day.getUTCDate().toString().padStart(2, "0")}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {day.toLocaleDateString("pt-BR", { month: "short" })}
+                    {day.toLocaleDateString("pt-BR", { month: "short", timeZone: "UTC" })}
                   </span>
                 </div>
                 <div
