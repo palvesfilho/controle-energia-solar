@@ -822,16 +822,15 @@ export function InvestorReportPDF({ data }: { data: InvestorReportData }) {
           : "—",
       negative: !!data.debitoPanel || data.valorAjustesGerais > 0.009,
     },
-    ...(data.debitoPanel && data.debitoPanel.restante > 0.009
-      ? [
-          {
-            label: "(+) Saldo da dívida não abatido neste mês",
-            hint: "Excedeu o valor bruto do período — segue para o próximo relatório",
-            value: `+ ${brl(data.debitoPanel.restante)}`,
-          } satisfies RowSpec,
-        ]
-      : []),
   ];
+
+  // Saldo devedor total que segue para o próximo mês: o que sobrou da dívida
+  // anterior MAIS o negativo gerado por este mês (tipicamente a conta da usina
+  // que a receita não cobriu). Mostrar só a segunda parcela — como era antes —
+  // subestimava o que o dono da usina ainda deve.
+  const saldoDevedorProximo =
+    (data.debitoPanel?.restante ?? 0) + data.valorSaldoCarregadoProximo;
+  const temSaldoDevedor = saldoDevedorProximo > 0.009;
 
   const temRepresado =
     data.kwhRepresadoCompensacao > 0 || data.kwhRepresadoInadimplencia > 0;
@@ -952,20 +951,23 @@ export function InvestorReportPDF({ data }: { data: InvestorReportData }) {
                 {/* Saldo negativo dentro da própria caixa: o que vai pro mês
                     seguinte precisa ser lido junto com o valor a receber, não
                     num aviso separado embaixo que passa batido. */}
-                {data.valorSaldoCarregadoProximo > 0.009 && (
+                {temSaldoDevedor && (
                   <View style={s.receberCarry}>
                     <View style={s.receberLinha}>
                       <Text style={s.receberCarryLbl}>
-                        Saldo negativo lançado para o próximo mês
+                        Saldo devedor para o próximo mês
                       </Text>
                       <Text style={s.receberCarryVal}>
-                        {brl(data.valorSaldoCarregadoProximo)}
+                        {brl(saldoDevedorProximo)}
                       </Text>
                     </View>
                     <Text style={s.receberCarryHint}>
-                      Os custos do mês superaram a compensação. Esse valor vira
-                      débito e será abatido automaticamente nas próximas
-                      remunerações, sempre limitado ao valor bruto de cada mês.
+                      {data.debitoPanel && data.debitoPanel.restante > 0.009
+                        ? `${brl(data.debitoPanel.restante)} remanescentes da dívida anterior + ${brl(data.valorSaldoCarregadoProximo)} deste mês. `
+                        : ""}
+                      Os custos do período superaram a compensação. O saldo será
+                      abatido automaticamente nas próximas remunerações, sempre
+                      limitado ao valor bruto de cada mês.
                     </Text>
                   </View>
                 )}
@@ -1022,12 +1024,32 @@ export function InvestorReportPDF({ data }: { data: InvestorReportData }) {
                 </View>
                 <View style={[s.dividaLinha, s.dividaLinhaTotal]}>
                   <Text style={s.dividaLblForte}>
-                    (=) Saldo a abater nos próximos relatórios
+                    (=) Saldo remanescente da dívida anterior
                   </Text>
                   <Text style={s.dividaValForte}>
                     {brl(data.debitoPanel.restante)}
                   </Text>
                 </View>
+                {data.valorSaldoCarregadoProximo > 0.009 && (
+                  <>
+                    <View style={s.dividaLinha}>
+                      <Text style={s.dividaLbl}>
+                        (+) Custos deste mês não cobertos pela compensação
+                      </Text>
+                      <Text style={s.dividaVal}>
+                        {brl(data.valorSaldoCarregadoProximo)}
+                      </Text>
+                    </View>
+                    <View style={[s.dividaLinha, s.dividaLinhaTotal]}>
+                      <Text style={s.dividaLblForte}>
+                        (=) Saldo devedor para o próximo mês
+                      </Text>
+                      <Text style={s.dividaValForte}>
+                        {brl(saldoDevedorProximo)}
+                      </Text>
+                    </View>
+                  </>
+                )}
                 <Text style={s.dividaHint}>
                   O abatimento de cada mês é limitado ao valor bruto do período
                   — nunca deixa a remuneração negativa. O que exceder segue para

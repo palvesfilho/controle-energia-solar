@@ -621,6 +621,12 @@ export function PlantBillingDetail({
   const podeReencerrar =
     !!data.comprovantePagamentoUrl && !isEncerrado && isAdmin;
 
+  // Saldo devedor total que segue pro proximo mes: o que sobrou da divida
+  // anterior + o negativo gerado por este mes. Mostrar so a segunda parcela
+  // subestimava o que o dono da usina ainda deve.
+  const saldoDevedorProximo =
+    (data.debitoPanel?.restante ?? 0) + (data.valorSaldoCarregadoProximo ?? 0);
+
   return (
     <div className={embedded ? "space-y-4" : "space-y-4 max-w-5xl"}>
       {!embedded && (
@@ -1077,28 +1083,24 @@ export function PlantBillingDetail({
                 )}
               </span>
             </div>
-            {data.debitoPanel && data.debitoPanel.restante > 0.009 && (
-              <div
-                className="flex items-center justify-between text-muted-foreground"
-                title="Excedeu o valor bruto do período — segue para o próximo mês"
-              >
-                <span>+ Saldo da dívida não abatido neste mês</span>
-                <span className="tabular-nums">
-                  {formatBRL(data.debitoPanel.restante)}
-                </span>
-              </div>
-            )}
             <div className="flex items-center justify-between border-t pt-2 mt-1.5 text-base">
               <span className="font-semibold">Líquido ao investidor</span>
               <span className="font-bold tabular-nums text-emerald-700">
                 {formatBRL(data.valorLiquidoInvestidor)}
               </span>
             </div>
-            {data.valorSaldoCarregadoProximo > 0 && (
-              <div className="flex items-center justify-between text-sm text-amber-700 dark:text-amber-300">
-                <span>Saldo negativo lançado para o próximo mês</span>
+            {saldoDevedorProximo > 0.009 && (
+              <div
+                className="flex items-center justify-between text-sm text-amber-700 dark:text-amber-300"
+                title={
+                  (data.debitoPanel?.restante ?? 0) > 0.009
+                    ? `${formatBRL(data.debitoPanel!.restante)} remanescentes da dívida anterior + ${formatBRL(data.valorSaldoCarregadoProximo)} deste mês`
+                    : "Custos do mês não cobertos pela compensação"
+                }
+              >
+                <span>Saldo devedor para o próximo mês</span>
                 <span className="font-semibold tabular-nums">
-                  {formatBRL(data.valorSaldoCarregadoProximo)}
+                  {formatBRL(saldoDevedorProximo)}
                 </span>
               </div>
             )}
@@ -1129,11 +1131,27 @@ export function PlantBillingDetail({
                 </span>
               </div>
               <div className="flex items-center justify-between border-t pt-1 mt-1 font-medium">
-                <span>= Saldo a abater nos próximos meses</span>
+                <span>= Saldo remanescente da dívida anterior</span>
                 <span className="tabular-nums">
                   {formatBRL(data.debitoPanel.restante)}
                 </span>
               </div>
+              {data.valorSaldoCarregadoProximo > 0.009 && (
+                <>
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>+ Custos deste mês não cobertos pela compensação</span>
+                    <span className="tabular-nums">
+                      {formatBRL(data.valorSaldoCarregadoProximo)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between border-t pt-1 mt-1 font-semibold">
+                    <span>= Saldo devedor para o próximo mês</span>
+                    <span className="tabular-nums">
+                      {formatBRL(saldoDevedorProximo)}
+                    </span>
+                  </div>
+                </>
+              )}
               <p className="text-[11px] text-muted-foreground pt-1">
                 O abatimento de cada mês é limitado ao valor bruto do período —
                 nunca deixa a remuneração negativa. O que exceder segue para o

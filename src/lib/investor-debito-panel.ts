@@ -16,7 +16,7 @@ export interface DebitoPanel {
   aberto: number;
   /** Quanto foi efetivamente abatido aqui (= soma de valorAbatidoDebito). */
   abatido: number;
-  /** Saldo que segue para os próximos meses. */
+  /** Saldo da dívida ANTERIOR que segue para os próximos meses. */
   restante: number;
   /** Composição da dívida, um item por débito de origem, em ordem cronológica. */
   itens: Array<{ label: string; valor: number }>;
