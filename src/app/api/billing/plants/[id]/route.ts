@@ -103,11 +103,18 @@ export async function GET(_req: NextRequest, ctx: RouteCtx) {
             mesReferencia: billing.mes,
           },
         },
-        // Naturals: DISPLAY = este mes (UCs que compensaram nas suas faturas
-        // deste mes, mesmo que a kWh tenha origem em outro mes). Garante que
-        // a tabela mostre todas as UCs ativas no ciclo de faturamento.
+        // Naturals SEM origem gravada: cai no display, senao nunca apareceriam
+        // em mes nenhum.
+        //
+        // ATENCAO: o display NAO pode ser criterio quando a origem existe. O
+        // ciclo de leitura da UC (dia 21-23) vem antes do da usina (dia 24-26),
+        // entao os creditos gerados num mes so aparecem na fatura da UC do mes
+        // SEGUINTE — display = origem + 1 quase sempre. Com "origem OU display"
+        // o mesmo payable era capturado em DOIS meses: no de origem (correto) e
+        // no de display (errado), somando duas vezes nas entradas.
         {
           carriedFromPayableId: null,
+          originatedByPlantBillId: null,
           anoReferencia: billing.ano,
           mesReferencia: billing.mes,
         },

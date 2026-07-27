@@ -242,12 +242,26 @@ export async function POST(
         investorId: investorLink.investor.id,
         plantId,
         OR: [
+          // Naturals: ORIGEM = este mes. O relatorio e por mes de GERACAO da
+          // usina, entao a origem manda.
           {
             carriedFromPayableId: null,
             originatedByPlantBill: { anoReferencia: ano, mesReferencia: mes },
           },
+          // Naturals SEM origem gravada: cai no display, senao nunca
+          // apareceriam em mes nenhum.
+          //
+          // ATENCAO: o display NAO pode ser criterio quando a origem existe. O
+          // ciclo de leitura da UC (dia 21-23) vem antes do da usina (dia
+          // 24-26), entao os creditos gerados num mes so aparecem na fatura da
+          // UC do mes SEGUINTE — display = origem + 1 quase sempre. Com
+          // "origem OU display" o mesmo payable era capturado em DOIS
+          // relatorios: no de origem (correto) e no de display (errado). No de
+          // display o bruto entrava inteiro mas o abate era filtrado por
+          // origem, entao o mes seguinte remunerava de novo energia ja paga.
           {
             carriedFromPayableId: null,
+            originatedByPlantBillId: null,
             anoReferencia: ano,
             mesReferencia: mes,
           },
