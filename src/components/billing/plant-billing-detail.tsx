@@ -621,11 +621,15 @@ export function PlantBillingDetail({
   const podeReencerrar =
     !!data.comprovantePagamentoUrl && !isEncerrado && isAdmin;
 
-  // Saldo devedor total que segue pro proximo mes: o que sobrou da divida
-  // anterior + o negativo gerado por este mes. Mostrar so a segunda parcela
-  // subestimava o que o dono da usina ainda deve.
-  const saldoDevedorProximo =
-    (data.debitoPanel?.restante ?? 0) + (data.valorSaldoCarregadoProximo ?? 0);
+  // Estrutura entradas / saidas / situacao do mes. A divida entra nas saidas
+  // pelo valor EM ABERTO (nao pelo que coube abater), entao a situacao do mes
+  // ja e o numero que segue pro mes seguinte quando negativa — sem linha
+  // separada de "saldo carregado" repetindo o valor.
+  const saidaAjustes =
+    data.debitoPanel?.aberto ?? data.valorAjustesGerais ?? 0;
+  const totalSaidas =
+    (data.valorContaUcUsina ?? 0) + (data.gestaoFixaMensal ?? 0) + saidaAjustes;
+  const situacaoMes = data.valorBrutoRealizado - totalSaidas;
 
   return (
     <div className={embedded ? "space-y-4" : "space-y-4 max-w-5xl"}>
@@ -1040,77 +1044,81 @@ export function PlantBillingDetail({
           <div>
             <h2 className="text-sm font-semibold flex items-center gap-2">
               <Wallet className="h-4 w-4 text-emerald-600" />
-              Valor líquido a pagar ao investidor
+              Situação do mês — usina x investidor
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Bruto realizado (UCs com pagamento liberado) menos as despesas fixas. Mesma fórmula do PDF do investidor.
+              Entradas menos saídas do período. Mesma estrutura do PDF do
+              investidor.
             </p>
           </div>
+
           <div className="space-y-1.5 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+              + Entradas
+            </p>
             <div className="flex items-center justify-between">
               <span>Bruto realizado (UCs disponíveis ou pagas)</span>
               <span className="tabular-nums font-medium">
                 {formatBRL(data.valorBrutoRealizado)}
               </span>
             </div>
+
+            <p className="text-xs font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-400 pt-2">
+              − Saídas
+            </p>
             <div className="flex items-center justify-between text-muted-foreground">
-              <span>− Conta de energia da usina</span>
+              <span>Conta de energia da usina</span>
               <span className="tabular-nums">
                 {formatBRL(data.valorContaUcUsina ?? 0)}
               </span>
             </div>
             <div className="flex items-center justify-between text-muted-foreground">
-              <span>− Gestão de energia</span>
+              <span>Gestão de energia</span>
               <span className="tabular-nums">
                 {formatBRL(data.gestaoFixaMensal ?? 0)}
               </span>
             </div>
-            {/* Com dívida, mostra o valor REAL EM ABERTO — o que não coube
-                abater volta na linha seguinte, então a coluna soma certo:
-                −aberto +restante = −abatido. Mesma apresentação do PDF. */}
+            {/* Dívida entra pelo valor EM ABERTO, não pelo que coube abater:
+                é o que o dono da usina realmente deve no período. */}
             <div
               className="flex items-center justify-between text-muted-foreground"
               title={
                 data.debitoPanel
-                  ? `Dívida em aberto: ${data.debitoPanel.itens.map((i) => i.label).join(" · ")}`
+                  ? `Faturas em aberto: ${data.debitoPanel.itens.map((i) => i.label).join(" · ")}`
                   : "Amortização de saldos negativos anteriores e ajustes diversos"
               }
             >
-              <span>− Multas, negociações, gestão, outros</span>
-              <span className="tabular-nums">
-                {formatBRL(
-                  data.debitoPanel?.aberto ?? data.valorAjustesGerais ?? 0,
-                )}
-              </span>
+              <span>Multas, negociações, gestão, faturas antigas, outros</span>
+              <span className="tabular-nums">{formatBRL(saidaAjustes)}</span>
             </div>
+            <div className="flex items-center justify-between border-t pt-1.5 mt-1 font-medium">
+              <span>Total de saídas</span>
+              <span className="tabular-nums">{formatBRL(totalSaidas)}</span>
+            </div>
+
             <div className="flex items-center justify-between border-t pt-2 mt-1.5 text-base">
-              <span className="font-semibold">Líquido ao investidor</span>
-              <span className="font-bold tabular-nums text-emerald-700">
-                {formatBRL(data.valorLiquidoInvestidor)}
+              <span className="font-semibold">Situação do mês presente</span>
+              <span
+                className={`font-bold tabular-nums ${
+                  situacaoMes < -0.009 ? "text-red-700" : "text-emerald-700"
+                }`}
+              >
+                {situacaoMes < -0.009
+                  ? `− ${formatBRL(-situacaoMes)}`
+                  : formatBRL(situacaoMes)}
               </span>
             </div>
-            {saldoDevedorProximo > 0.009 && (
-              <div
-                className="flex items-center justify-between text-sm text-amber-700 dark:text-amber-300"
-                title={
-                  (data.debitoPanel?.restante ?? 0) > 0.009
-                    ? `${formatBRL(data.debitoPanel!.restante)} remanescentes da dívida anterior + ${formatBRL(data.valorSaldoCarregadoProximo)} deste mês`
-                    : "Custos do mês não cobertos pela compensação"
-                }
-              >
-                <span>Saldo devedor para o próximo mês</span>
-                <span className="font-semibold tabular-nums">
-                  {formatBRL(saldoDevedorProximo)}
-                </span>
-              </div>
-            )}
+            <p className="text-xs text-muted-foreground">
+              {situacaoMes < -0.009
+                ? `As saídas superaram as entradas. Não há valor a receber neste mês e o saldo de ${formatBRL(-situacaoMes)} será abatido nas próximas compensações.`
+                : "Valor a receber referente ao período, já descontadas todas as saídas."}
+            </p>
           </div>
 
-          {/* Composição da dívida: de onde vem a linha de multas/negociações. */}
           {data.debitoPanel && (
             <div className="rounded-lg border bg-background/60 p-3 space-y-1 text-xs">
               <p className="font-semibold text-foreground">
-                Composição do saldo devedor
+                Composição de &ldquo;faturas antigas&rdquo;
               </p>
               {data.debitoPanel.itens.map((it, i) => (
                 <div key={i} className="flex items-center justify-between">
@@ -1124,60 +1132,13 @@ export function PlantBillingDetail({
                   {formatBRL(data.debitoPanel.aberto)}
                 </span>
               </div>
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span>− Abatido neste mês</span>
-                <span className="tabular-nums">
-                  {formatBRL(data.debitoPanel.abatido)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between border-t pt-1 mt-1 font-medium">
-                <span>= Saldo remanescente da dívida anterior</span>
-                <span className="tabular-nums">
-                  {formatBRL(data.debitoPanel.restante)}
-                </span>
-              </div>
-              {data.valorSaldoCarregadoProximo > 0.009 && (
-                <>
-                  <div className="flex items-center justify-between text-muted-foreground">
-                    <span>+ Custos deste mês não cobertos pela compensação</span>
-                    <span className="tabular-nums">
-                      {formatBRL(data.valorSaldoCarregadoProximo)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between border-t pt-1 mt-1 font-semibold">
-                    <span>= Saldo devedor para o próximo mês</span>
-                    <span className="tabular-nums">
-                      {formatBRL(saldoDevedorProximo)}
-                    </span>
-                  </div>
-                </>
-              )}
               <p className="text-[11px] text-muted-foreground pt-1">
-                O abatimento de cada mês é limitado ao valor bruto do período —
-                nunca deixa a remuneração negativa. O que exceder segue para o
-                mês seguinte.
+                Faturas de energia da usina de meses sem compensação, lançadas
+                integralmente nas saídas deste período.
               </p>
             </div>
           )}
-          {data.valorSaldoCarregadoProximo > 0 && (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-1 text-sm">
-              <p className="font-semibold text-amber-800 dark:text-amber-200">
-                ⚠ Saldo negativo carregado para o próximo mês
-              </p>
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-amber-700 dark:text-amber-300">
-                  Custos do mês excederam a compensação. Valor a amortizar:
-                </span>
-                <span className="tabular-nums font-medium text-amber-800 dark:text-amber-200">
-                  {formatBRL(data.valorSaldoCarregadoProximo)}
-                </span>
-              </div>
-              <p className="text-xs text-amber-700 dark:text-amber-300">
-                Ao publicar o relatório, esse valor vira um débito do
-                investidor e é abatido automaticamente nas próximas remunerações.
-              </p>
-            </div>
-          )}
+
           {data.kwhCreditoLegadoTotal > 0 && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-1 text-sm">
               <p className="font-semibold text-amber-800 dark:text-amber-200">

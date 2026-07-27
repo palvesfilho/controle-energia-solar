@@ -24,7 +24,7 @@ export interface InvestorReportData {
 
   // Energia (kWh) — só do que foi efetivamente realizado (DISPONIVEL/PAGO)
   kwhInjetado: number | null;
-  /** Compensado REMUNERÁVEL (= bruto − legado abatido). É o que o investidor recebe. */
+  /** Compensado REMUNERÁVEL (= bruto - legado abatido). É o que o investidor recebe. */
   kwhCompensado: number;
   /** Compensado BRUTO (físico, antes do cap). Mostrado pra contexto. */
   kwhCompensadoBruto: number;
@@ -77,7 +77,7 @@ export interface InvestorReportData {
     /** Composição da dívida, um item por débito de origem. */
     itens: Array<{ label: string; valor: number }>;
   } | null;
-  // Quando bruto − custos < 0, a diferenca eh registrada como InvestorDebit
+  // Quando bruto - custos < 0, a diferenca eh registrada como InvestorDebit
   // pra ser amortizada nas proximas remuneracoes. Valor a receber clampa em 0.
   valorSaldoCarregadoProximo: number;
   valorReceber: number;
@@ -105,7 +105,7 @@ export interface InvestorReportData {
     valor: number;
   }>;
 
-  // Saldo acumulado de crédito (kWh) — injetado − compensado, somado mês a mês
+  // Saldo acumulado de crédito (kWh) — injetado - compensado, somado mês a mês
   // desde a primeira fatura cadastrada até o mês de referência.
   saldoCreditoAnterior: number;
   saldoCreditoFinal: number;
@@ -321,6 +321,26 @@ const s = StyleSheet.create({
   },
   tableRowAlt: {
     backgroundColor: C.creamLight,
+  },
+  tableRowStrong: {
+    backgroundColor: C.cream,
+  },
+  tableCellLblStrong: {
+    fontFamily: "Helvetica-Bold",
+    color: C.tealDark,
+  },
+
+  // Rótulos "+ ENTRADAS" / "- SAÍDAS"
+  blocoLbl: {
+    fontSize: 9,
+    fontFamily: "Helvetica-Bold",
+    color: C.tealDark,
+    letterSpacing: 0.6,
+    marginBottom: 4,
+  },
+  blocoLblSaidas: {
+    marginTop: 10,
+    color: C.orange,
   },
   tableCellLbl: {
     flex: 1,
@@ -640,28 +660,40 @@ interface RowSpec {
   hint?: string;
   value: string;
   negative?: boolean;
+  /** Linha de total: fundo destacado e negrito. */
+  strong?: boolean;
 }
 
 function DataTable({
   rows,
   rightHeader = "Valor",
+  leftHeader = "Especificação",
 }: {
   rows: RowSpec[];
   rightHeader?: string;
+  leftHeader?: string;
 }) {
   return (
     <View style={s.table}>
       <View style={s.tableHeader}>
-        <Text style={[s.tableHeaderCell, s.tableHeaderLeft]}>Especificação</Text>
+        <Text style={[s.tableHeaderCell, s.tableHeaderLeft]}>{leftHeader}</Text>
         <Text style={[s.tableHeaderCell, s.tableHeaderRight]}>{rightHeader}</Text>
       </View>
       {rows.map((row, i) => (
         <View
           key={i}
-          style={i % 2 === 1 ? [s.tableRow, s.tableRowAlt] : s.tableRow}
+          style={
+            row.strong
+              ? [s.tableRow, s.tableRowStrong]
+              : i % 2 === 1
+                ? [s.tableRow, s.tableRowAlt]
+                : s.tableRow
+          }
         >
           <View style={s.tableCellLbl}>
-            <Text>{row.label}</Text>
+            <Text style={row.strong ? s.tableCellLblStrong : undefined}>
+              {row.label}
+            </Text>
             {row.hint && <Text style={s.tableCellHint}>{row.hint}</Text>}
           </View>
           <Text
@@ -746,13 +778,13 @@ export function InvestorReportPDF({ data }: { data: InvestorReportData }) {
       value: kwh(data.kwhInjetado),
     },
     {
-      label: "(−) Compensado no período",
+      label: "(-) Compensado no período",
       hint: "Crédito destinado às UCs do rateio",
       value: kwh(data.kwhCompensado),
     },
     {
       label: "Saldo acumulado ao final do período",
-      hint: "Saldo anterior + injetado − compensado",
+      hint: "Saldo anterior + injetado - compensado",
       value: kwh(data.saldoCreditoFinal),
     },
   ];
@@ -785,52 +817,55 @@ export function InvestorReportPDF({ data }: { data: InvestorReportData }) {
     },
   ];
 
-  const financeiroRows: RowSpec[] = [
+  // Estrutura entradas / saídas / situação do mês: o dono da usina lê de cima
+  // pra baixo — o que entrou, o que saiu, e o que sobrou (ou faltou). A
+  // situação já É o número que segue pro mês seguinte quando negativa, então
+  // não existe uma linha separada de "saldo carregado" repetindo o valor.
+  const entradasRows: RowSpec[] = [
     {
-      label: "Valor bruto do período",
+      label: "Bruto realizado (UCs disponíveis ou pagas)",
       hint: `${kwh(data.kwhCompensado)} × ${tarifa(data.valorKwhContrato)}`,
       value: brl(data.valorBruto),
     },
+  ];
+
+  // Saída de dívida = valor EM ABERTO (não só o que coube abater). Assim a
+  // situação do mês reflete tudo o que o dono da usina realmente deve.
+  const saidaAjustes = data.debitoPanel
+    ? data.debitoPanel.aberto
+    : data.valorAjustesGerais;
+
+  const saidasRows: RowSpec[] = [
     {
-      label: "(−) Conta de energia da usina",
-      value:
-        data.valorContaUcUsina != null
-          ? `− ${brl(data.valorContaUcUsina)}`
-          : "—",
-      negative: data.valorContaUcUsina != null,
+      label: "Conta de energia da usina",
+      hint: "Valor pago à concessionária pela UC geradora",
+      value: brl(data.valorContaUcUsina ?? 0),
     },
     {
-      label: "(−) Gestão de energia",
-      value:
-        data.gestaoFixaMensal != null
-          ? `− ${brl(data.gestaoFixaMensal)}`
-          : "—",
-      negative: data.gestaoFixaMensal != null,
+      label: "Gestão de energia",
+      value: brl(data.gestaoFixaMensal ?? 0),
     },
-    // Com dívida, esta linha mostra o valor REAL EM ABERTO (não só o que coube
-    // abater). O que exceder o bruto volta na linha seguinte, então a coluna
-    // continua somando certo: −aberto +restante = −abatido.
     {
-      label: "(−) Multas, negociações, gestão, outros",
+      label: "Multas, negociações, gestão, faturas antigas, outros",
       hint: data.debitoPanel
-        ? `Dívida em aberto${data.debitoPanel.itens.length > 0 ? ` — ${data.debitoPanel.itens.map((i) => i.label.replace("Conta da usina de ", "")).join(", ")}` : ""}`
+        ? `Faturas de energia da usina em aberto — ${data.debitoPanel.itens.map((i) => i.label.replace("Conta da usina de ", "")).join(", ")}`
         : "Amortização de saldos negativos anteriores e ajustes diversos",
-      value: data.debitoPanel
-        ? `− ${brl(data.debitoPanel.aberto)}`
-        : data.valorAjustesGerais > 0.009
-          ? `− ${brl(data.valorAjustesGerais)}`
-          : "—",
-      negative: !!data.debitoPanel || data.valorAjustesGerais > 0.009,
+      value: brl(saidaAjustes),
     },
   ];
 
-  // Saldo devedor total que segue para o próximo mês: o que sobrou da dívida
-  // anterior MAIS o negativo gerado por este mês (tipicamente a conta da usina
-  // que a receita não cobriu). Mostrar só a segunda parcela — como era antes —
-  // subestimava o que o dono da usina ainda deve.
-  const saldoDevedorProximo =
-    (data.debitoPanel?.restante ?? 0) + data.valorSaldoCarregadoProximo;
-  const temSaldoDevedor = saldoDevedorProximo > 0.009;
+  const totalSaidas =
+    (data.valorContaUcUsina ?? 0) + (data.gestaoFixaMensal ?? 0) + saidaAjustes;
+  saidasRows.push({
+    label: "Total de saídas",
+    value: brl(totalSaidas),
+    strong: true,
+  });
+
+  // Situação do mês: entradas - saídas. Negativa = o dono da usina deve esse
+  // valor, que será abatido nas próximas compensações.
+  const situacaoMes = data.valorBruto - totalSaidas;
+  const situacaoNegativa = situacaoMes < -0.009;
 
   const temRepresado =
     data.kwhRepresadoCompensacao > 0 || data.kwhRepresadoInadimplencia > 0;
@@ -939,38 +974,29 @@ export function InvestorReportPDF({ data }: { data: InvestorReportData }) {
               <View style={s.sectionBar} />
               <Text style={s.sectionTitle}>3. RESULTADO FINANCEIRO</Text>
             </View>
-            {/* wrap={false}: a conta e o "VALOR A RECEBER" andam juntos — o
-                valor final nunca fica órfão, separado da tabela que o gera. */}
+            {/* wrap={false}: entradas, saídas e situação andam juntas — o
+                resultado nunca fica órfão, separado das linhas que o geram. */}
             <View wrap={false}>
-              <DataTable rows={financeiroRows} rightHeader="R$" />
+              <Text style={s.blocoLbl}>+ ENTRADAS</Text>
+              <DataTable rows={entradasRows} rightHeader="R$" leftHeader="Origem" />
+
+              <Text style={[s.blocoLbl, s.blocoLblSaidas]}>- SAÍDAS</Text>
+              <DataTable rows={saidasRows} rightHeader="R$" leftHeader="Destino" />
+
               <View style={s.receberBox}>
                 <View style={s.receberLinha}>
-                  <Text style={s.receberLbl}>VALOR A RECEBER</Text>
-                  <Text style={s.receberVal}>{brl(data.valorReceber)}</Text>
+                  <Text style={s.receberLbl}>SITUAÇÃO DO MÊS PRESENTE</Text>
+                  <Text style={s.receberVal}>
+                    {situacaoNegativa ? `- ${brl(-situacaoMes)}` : brl(situacaoMes)}
+                  </Text>
                 </View>
-                {/* Saldo negativo dentro da própria caixa: o que vai pro mês
-                    seguinte precisa ser lido junto com o valor a receber, não
-                    num aviso separado embaixo que passa batido. */}
-                {temSaldoDevedor && (
-                  <View style={s.receberCarry}>
-                    <View style={s.receberLinha}>
-                      <Text style={s.receberCarryLbl}>
-                        Saldo devedor para o próximo mês
-                      </Text>
-                      <Text style={s.receberCarryVal}>
-                        {brl(saldoDevedorProximo)}
-                      </Text>
-                    </View>
-                    <Text style={s.receberCarryHint}>
-                      {data.debitoPanel && data.debitoPanel.restante > 0.009
-                        ? `${brl(data.debitoPanel.restante)} remanescentes da dívida anterior + ${brl(data.valorSaldoCarregadoProximo)} deste mês. `
-                        : ""}
-                      Os custos do período superaram a compensação. O saldo será
-                      abatido automaticamente nas próximas remunerações, sempre
-                      limitado ao valor bruto de cada mês.
-                    </Text>
-                  </View>
-                )}
+                <View style={s.receberCarry}>
+                  <Text style={s.receberCarryHint}>
+                    {situacaoNegativa
+                      ? `As saídas do período superaram as entradas. Não há valor a receber neste mês e o saldo de ${brl(-situacaoMes)} será abatido automaticamente nas próximas compensações, sempre limitado ao valor bruto de cada mês.`
+                      : "Valor a receber referente ao período, já descontadas todas as saídas."}
+                  </Text>
+                </View>
               </View>
             </View>
 
@@ -1016,44 +1042,9 @@ export function InvestorReportPDF({ data }: { data: InvestorReportData }) {
                     {brl(data.debitoPanel.aberto)}
                   </Text>
                 </View>
-                <View style={s.dividaLinha}>
-                  <Text style={s.dividaLbl}>(−) Abatido neste relatório</Text>
-                  <Text style={s.dividaVal}>
-                    − {brl(data.debitoPanel.abatido)}
-                  </Text>
-                </View>
-                <View style={[s.dividaLinha, s.dividaLinhaTotal]}>
-                  <Text style={s.dividaLblForte}>
-                    (=) Saldo remanescente da dívida anterior
-                  </Text>
-                  <Text style={s.dividaValForte}>
-                    {brl(data.debitoPanel.restante)}
-                  </Text>
-                </View>
-                {data.valorSaldoCarregadoProximo > 0.009 && (
-                  <>
-                    <View style={s.dividaLinha}>
-                      <Text style={s.dividaLbl}>
-                        (+) Custos deste mês não cobertos pela compensação
-                      </Text>
-                      <Text style={s.dividaVal}>
-                        {brl(data.valorSaldoCarregadoProximo)}
-                      </Text>
-                    </View>
-                    <View style={[s.dividaLinha, s.dividaLinhaTotal]}>
-                      <Text style={s.dividaLblForte}>
-                        (=) Saldo devedor para o próximo mês
-                      </Text>
-                      <Text style={s.dividaValForte}>
-                        {brl(saldoDevedorProximo)}
-                      </Text>
-                    </View>
-                  </>
-                )}
                 <Text style={s.dividaHint}>
-                  O abatimento de cada mês é limitado ao valor bruto do período
-                  — nunca deixa a remuneração negativa. O que exceder segue para
-                  o mês seguinte.
+                  Faturas de energia da usina de meses sem compensação, lançadas
+                  integralmente nas saídas deste período.
                 </Text>
               </View>
             )}
