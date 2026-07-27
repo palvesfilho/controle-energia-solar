@@ -151,7 +151,10 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
   // Modal vincular
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [availableClients, setAvailableClients] = useState<ClienteDisponivel[]>([]);
+  const [availableTotal, setAvailableTotal] = useState(0);
+  const [availablePage, setAvailablePage] = useState(1);
   const [loadingClients, setLoadingClients] = useState(false);
+  const [loadingMoreClients, setLoadingMoreClients] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [linking, setLinking] = useState<string | null>(null);
   const [unlinking, setUnlinking] = useState<string | null>(null);
@@ -340,13 +343,17 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
     fetchAcessoConvite();
   }, [fetchData, fetchMetricas, fetchAcessoConvite]);
 
-  // Buscar clientes sem proprietário para o modal
+  // Buscar clientes sem proprietário para o modal.
+  // Página de 100 + "carregar mais": a base passa de 1.8k usinas e a lista
+  // alfabética truncada em silêncio fazia parecer que a usina não existia.
+  const CLIENTES_PAGE_SIZE = 100;
+
   const fetchAvailableClients = useCallback(async () => {
     setLoadingClients(true);
     try {
       const params = new URLSearchParams({
         semProprietario: "true",
-        limit: "200",
+        limit: String(CLIENTES_PAGE_SIZE),
       });
       if (searchTerm) params.set("search", searchTerm);
 
@@ -354,6 +361,8 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
       if (res.ok) {
         const result = await res.json();
         setAvailableClients(result.clients || []);
+        setAvailableTotal(result.pagination?.total ?? (result.clients?.length || 0));
+        setAvailablePage(1);
       }
     } catch {
       toast.error("Erro ao buscar clientes");
@@ -361,6 +370,36 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
       setLoadingClients(false);
     }
   }, [searchTerm]);
+
+  const fetchMoreAvailableClients = useCallback(async () => {
+    setLoadingMoreClients(true);
+    try {
+      const proximaPagina = availablePage + 1;
+      const params = new URLSearchParams({
+        semProprietario: "true",
+        limit: String(CLIENTES_PAGE_SIZE),
+        page: String(proximaPagina),
+      });
+      if (searchTerm) params.set("search", searchTerm);
+
+      const res = await fetch(`/api/brasil-solar?${params}`);
+      if (res.ok) {
+        const result = await res.json();
+        // Dedupe por id: vincular remove item da lista local e a paginacao do
+        // servidor desloca, entao a proxima pagina pode repetir um registro.
+        setAvailableClients((prev) => {
+          const vistos = new Set(prev.map((c) => c.id));
+          return [...prev, ...((result.clients || []) as ClienteDisponivel[]).filter((c) => !vistos.has(c.id))];
+        });
+        setAvailableTotal(result.pagination?.total ?? availableTotal);
+        setAvailablePage(proximaPagina);
+      }
+    } catch {
+      toast.error("Erro ao buscar clientes");
+    } finally {
+      setLoadingMoreClients(false);
+    }
+  }, [availablePage, availableTotal, searchTerm]);
 
   useEffect(() => {
     if (showLinkModal) {
@@ -1021,7 +1060,10 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
                 />
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                Mostrando clientes sem proprietario vinculado
+                Mostrando clientes sem proprietário vinculado
+                {!loadingClients && availableTotal > 0 && (
+                  <> — exibindo {availableClients.length} de {availableTotal}</>
+                )}
               </p>
             </div>
 
@@ -1068,6 +1110,16 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
                       </button>
                     </div>
                   ))}
+                  {availableClients.length < availableTotal && (
+                    <button
+                      onClick={fetchMoreAvailableClients}
+                      disabled={loadingMoreClients}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium border rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
+                    >
+                      {loadingMoreClients && <Loader2 className="h-3 w-3 animate-spin" />}
+                      Carregar mais ({availableTotal - availableClients.length} restantes)
+                    </button>
+                  )}
                 </div>
               )}
             </div>

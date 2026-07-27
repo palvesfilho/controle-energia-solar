@@ -14,7 +14,9 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
-  const limit = Math.min(100, Math.max(10, parseInt(searchParams.get("limit") || "50")));
+  // Teto de 500: a modal "Vincular Usina" pedia 200 e era clampada em 100 sem
+  // aviso, escondendo ~85% da base (1.8k usinas) atras de uma lista alfabetica.
+  const limit = Math.min(500, Math.max(10, parseInt(searchParams.get("limit") || "50")));
   const search = searchParams.get("search") || "";
   const status = searchParams.get("status") || "";
   const plataforma = searchParams.get("plataforma") || "";

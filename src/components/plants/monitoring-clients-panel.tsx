@@ -254,20 +254,38 @@ function ClientPicker({
   savingId: string | null;
 }) {
   const [options, setOptions] = useState<LinkableClient[]>([]);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const PAGE_SIZE = 100;
+
+  const buildUrl = useCallback(
+    (skip: number) => {
+      const url = new URL("/api/brasil-solar/linkable", window.location.origin);
+      url.searchParams.set("plantId", plantId);
+      url.searchParams.set("limit", String(PAGE_SIZE));
+      url.searchParams.set("skip", String(skip));
+      if (search) url.searchParams.set("search", search);
+      return url.toString();
+    },
+    [plantId, search],
+  );
+
   useEffect(() => {
     const ctl = new AbortController();
-    const url = new URL("/api/brasil-solar/linkable", window.location.origin);
-    url.searchParams.set("plantId", plantId);
-    if (search) url.searchParams.set("search", search);
     const timer = setTimeout(() => {
       setLoading(true);
-      fetch(url.toString(), { signal: ctl.signal })
+      fetch(buildUrl(0), { signal: ctl.signal })
         .then((r) => r.json())
-        .then((d) => setOptions(d.clients ?? []))
+        .then((d) => {
+          setOptions(d.clients ?? []);
+          setTotal(d.total ?? (d.clients?.length ?? 0));
+          setHasMore(Boolean(d.hasMore));
+        })
         .catch(() => {})
         .finally(() => setLoading(false));
     }, 200);
@@ -275,7 +293,24 @@ function ClientPicker({
       ctl.abort();
       clearTimeout(timer);
     };
-  }, [plantId, search]);
+  }, [buildUrl]);
+
+  // "Carregar mais": pagina a partir do que ja esta na tela. Sem isso a lista
+  // cortava em silencio e o operador concluia que a usina nao existia.
+  async function loadMore() {
+    setLoadingMore(true);
+    try {
+      const r = await fetch(buildUrl(options.length));
+      const d = await r.json();
+      setOptions((prev) => [...prev, ...(d.clients ?? [])]);
+      setTotal(d.total ?? total);
+      setHasMore(Boolean(d.hasMore));
+    } catch {
+      // silencioso: o rodape continua mostrando "X de Y" e o botao pra tentar de novo
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -353,6 +388,25 @@ function ClientPicker({
             })
           )}
         </div>
+        {!loading && total > 0 && (
+          <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-t text-xs text-muted-foreground">
+            <span>
+              Exibindo {options.length} de {total} usina{total === 1 ? "" : "s"}
+              {hasMore ? " — use a busca para achar mais rápido" : ""}
+            </span>
+            {hasMore && (
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 font-medium border rounded-md hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                {loadingMore && <Loader2 className="h-3 w-3 animate-spin" />}
+                Carregar mais
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

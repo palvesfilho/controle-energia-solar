@@ -13,6 +13,9 @@ import { prisma } from "@/lib/prisma";
  *  - plantId: inclui tambÃ©m os jÃ¡ vinculados A ESTA plant (permite "re-show"
  *    no seletor caso o usuÃ¡rio queira reconfirmar).
  *  - search: filtra por nome, CPF/CNPJ, codigoUc, cidade.
+ *  - skip / limit: paginaÃ§Ã£o ("carregar mais" do seletor). A resposta sempre
+ *    traz `total` â€” a base passa de 1.800 usinas monitoradas e uma pÃ¡gina
+ *    truncada em silÃªncio faz o operador achar que a usina nÃ£o existe.
  */
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -23,6 +26,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const plantId = searchParams.get("plantId") || undefined;
   const search = (searchParams.get("search") || "").trim();
+  const skip = Math.max(0, parseInt(searchParams.get("skip") || "0", 10) || 0);
+  const limit = Math.min(500, Math.max(20, parseInt(searchParams.get("limit") || "100", 10) || 100));
 
   const where: Record<string, unknown> = {
     active: true,
@@ -51,26 +56,36 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const clients = await prisma.brasilSolarClient.findMany({
-    where,
-    orderBy: { nome: "asc" },
-    take: 500,
-    select: {
-      id: true,
-      nome: true,
-      cpfCnpj: true,
-      codigoUc: true,
-      cidade: true,
-      uf: true,
-      plataformaMonitoramento: true,
-      monitoramentoPlantId: true,
-      plantId: true,
-      ultimaLeitura: true,
-      geracaoMesAtual: true,
-      potenciaInstalada: true,
-      proprietario: { select: { id: true, nome: true } },
-    },
-  });
+  const [clients, total] = await Promise.all([
+    prisma.brasilSolarClient.findMany({
+      where,
+      orderBy: { nome: "asc" },
+      skip,
+      take: limit,
+      select: {
+        id: true,
+        nome: true,
+        cpfCnpj: true,
+        codigoUc: true,
+        cidade: true,
+        uf: true,
+        plataformaMonitoramento: true,
+        monitoramentoPlantId: true,
+        plantId: true,
+        ultimaLeitura: true,
+        geracaoMesAtual: true,
+        potenciaInstalada: true,
+        proprietario: { select: { id: true, nome: true } },
+      },
+    }),
+    prisma.brasilSolarClient.count({ where }),
+  ]);
 
-  return NextResponse.json({ clients });
+  return NextResponse.json({
+    clients,
+    total,
+    skip,
+    limit,
+    hasMore: skip + clients.length < total,
+  });
 }
