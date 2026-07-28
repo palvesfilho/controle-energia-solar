@@ -17,6 +17,8 @@ import {
 import type {
   RelatorioData,
   RelatorioMonthRow,
+  SituacaoUsina,
+  SituacaoUsinaItem,
 } from "@/lib/brasil-solar-relatorio";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 
@@ -49,6 +51,39 @@ const MES_LONGO = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
+/**
+ * Respiro de 1 cm entre "Créditos" (kWh) e as barras "sem / com solar" (R$) —
+ * separa visualmente o bloco de energia do bloco financeiro. 1 cm = 72/2,54 pt.
+ * É largura FIXA (não flex) pra medir 1 cm de verdade na folha impressa.
+ */
+const GAP_1CM = 28.35;
+
+/**
+ * Larguras (flex) das colunas do "Histórico por mês". Compartilhadas por
+ * cabeçalho, linhas e rodapé — mexer aqui mantém as três alinhadas.
+ * Somam 8,25; com o GAP_1CM fixo, a coluna das barras fica com ~146 pt (a barra
+ * usa 88 pt + rótulo de R$), então não estoura a largura útil da página.
+ */
+const COL = {
+  mes: 0.95,
+  geracao: 1.3,
+  consumo: 1.25,
+  creditos: 1.0,
+  economia: 1.25,
+};
+
+/**
+ * Coluna "Sem / com solar" = barra + valor em R$, com largura FIXA (as outras
+ * colunas ficam no flex e dividem o resto). Fixa porque o título é centralizado
+ * sobre esse bloco: barra e valor precisam ter uma borda direita previsível pra
+ * "gráfico + número" ler como uma informação única.
+ */
+const BARW = 88;
+/** Caixa do valor em R$, alinhado à direita (borda direita nítida do bloco). */
+const BARRA_LABEL_W = 50;
+const BARRA_GAP = 5;
+const BLOCO_BARRAS_W = BARW + BARRA_GAP + BARRA_LABEL_W;
+
 function formatBRL(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -56,6 +91,20 @@ function formatKwh(v: number | null): string {
   return v == null
     ? "—"
     : v.toLocaleString("pt-BR", { maximumFractionDigits: 0 }) + " kWh";
+}
+/**
+ * Dias do ciclo de leitura da fatura (leitura anterior → leitura atual). É a
+ * janela usada pra apurar a geração mensal do mês; `null` quando a fatura não
+ * trouxe as datas (aí a janela é o mês calendário).
+ */
+function diasJanela(m: RelatorioMonthRow): number | null {
+  if (m.janela.fonte !== "CICLO_LEITURA" || !m.janela.inicio || !m.janela.fim)
+    return null;
+  const dias = Math.round(
+    (new Date(m.janela.fim).getTime() - new Date(m.janela.inicio).getTime()) /
+      86_400_000,
+  );
+  return dias > 0 ? dias : null;
 }
 function formatMesAno(d: { ano: number; mes: number } | null): string {
   if (!d) return "—";
@@ -452,6 +501,115 @@ function SaldoMensalBars({ data }: { data: RelatorioData }) {
   );
 }
 
+/** Cor da bolinha/rótulo de cada item conforme a urgência. */
+const NIVEL_COR: Record<SituacaoUsinaItem["nivel"], string> = {
+  OK: C.teal,
+  ATENCAO: C.orange,
+  ACAO: C.red,
+};
+const NIVEL_ROTULO: Record<SituacaoUsinaItem["nivel"], string> = {
+  OK: "tudo certo",
+  ATENCAO: "acompanhar",
+  ACAO: "precisa de decisão",
+};
+
+/**
+ * "Situação da usina": veredito + 3 números-base (geração média, consumo médio,
+ * cobertura) + itens de diagnóstico. `wrap={false}` mantém o bloco inteiro na
+ * mesma página — quebrar o diagnóstico no meio confunde o cliente.
+ */
+function SituacaoUsinaSection({ situacao }: { situacao: SituacaoUsina }) {
+  const stat = (label: string, valor: string, cor: string) => (
+    <View style={{ flex: 1 }}>
+      <Text style={s.kpiLabel}>{label}</Text>
+      <Text style={{ fontSize: 11, fontWeight: 700, color: cor }}>{valor}</Text>
+    </View>
+  );
+  return (
+    <View wrap={false}>
+      <Text style={s.sectionTitle}>Situação da usina</Text>
+      <View style={s.sectionCard}>
+        <Text style={{ fontSize: 9.5, fontWeight: 700, color: C.tealDark, marginBottom: 8 }}>
+          {situacao.resumo}
+        </Text>
+        <View
+          style={{
+            flexDirection: "row",
+            gap: 8,
+            paddingBottom: 8,
+            marginBottom: 8,
+            borderBottomWidth: 0.5,
+            borderBottomColor: C.grayBorder,
+          }}
+        >
+          {stat(
+            "Geração média",
+            situacao.geracaoMediaKwh != null
+              ? `${formatKwh(situacao.geracaoMediaKwh)}/mês`
+              : "—",
+            C.teal,
+          )}
+          {stat(
+            "Consumo médio",
+            situacao.consumoMedioKwh != null
+              ? `${formatKwh(situacao.consumoMedioKwh)}/mês`
+              : "—",
+            C.orange,
+          )}
+          {stat(
+            "Cobertura",
+            situacao.coberturaPct != null
+              ? `${situacao.coberturaPct.toFixed(0)}%`
+              : "—",
+            C.tealDark,
+          )}
+          {stat(
+            "Créditos hoje",
+            situacao.saldoCreditosKwh != null
+              ? formatKwh(situacao.saldoCreditosKwh)
+              : "—",
+            C.tealDark,
+          )}
+        </View>
+        {situacao.itens.map((item, i) => (
+          <View
+            key={item.tema}
+            style={{
+              flexDirection: "row",
+              gap: 6,
+              marginBottom: i === situacao.itens.length - 1 ? 0 : 6,
+            }}
+          >
+            <View
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: 3,
+                marginTop: 2.5,
+                backgroundColor: NIVEL_COR[item.nivel],
+              }}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 8.5, fontWeight: 700 }}>
+                {item.titulo}
+                <Text style={{ fontSize: 7, color: NIVEL_COR[item.nivel], fontWeight: 400 }}>
+                  {`  ·  ${NIVEL_ROTULO[item.nivel]}`}
+                </Text>
+              </Text>
+              <Text style={{ fontSize: 8, color: C.gray, marginTop: 1 }}>
+                {item.texto}
+              </Text>
+            </View>
+          </View>
+        ))}
+        <Text style={{ fontSize: 6.5, color: C.grayLight, marginTop: 6 }}>
+          {`Médias dos últimos ${situacao.mesesConsiderados} meses faturados. Cobertura = geração média ÷ consumo médio.`}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export interface SolarPaybackReportPDFProps {
   data: RelatorioData;
   emissao: string;
@@ -493,13 +651,15 @@ export function SolarPaybackReportPDF({
   // Totais do período (rodapé da tabela).
   const totais = data.meses.reduce(
     (a, m) => ({
+      geracao: a.geracao + (m.geracaoInversorKwh ?? 0),
       consumo: a.consumo + (m.consumoTotalKwh ?? 0),
       semSolar: a.semSolar + (m.contaSemSolarRs ?? 0),
       comSolar: a.comSolar + (m.faturadoRs ?? 0),
       economia: a.economia + (m.economiaMensalRs ?? 0),
     }),
-    { consumo: 0, semSolar: 0, comSolar: 0, economia: 0 },
+    { geracao: 0, consumo: 0, semSolar: 0, comSolar: 0, economia: 0 },
   );
+  const algumMesEstimado = data.meses.some((m) => m.economiaEstimada);
   // Créditos é SALDO acumulado (não soma): no rodapé mostra o saldo final.
   const saldoCreditosFinal =
     data.meses.length > 0
@@ -844,24 +1004,34 @@ export function SolarPaybackReportPDF({
                 </View>
               </View>
               <View style={[s.tableHead, { borderBottomColor: C.orange, borderBottomWidth: 1.5 }]}>
-                <Text style={[s.tableHeadCell, { flex: 1.1 }]}>Mês</Text>
-                <Text style={[s.tableHeadCell, { flex: 1.4, textAlign: "right" }]}>
+                <Text style={[s.tableHeadCell, { flex: COL.mes }]}>Mês</Text>
+                {!semMonitoramento && (
+                  <Text style={[s.tableHeadCell, { flex: COL.geracao, textAlign: "right" }]}>
+                    Geração mensal
+                  </Text>
+                )}
+                <Text style={[s.tableHeadCell, { flex: COL.consumo, textAlign: "right" }]}>
                   Consumo total
                 </Text>
-                <Text style={[s.tableHeadCell, { flex: 1.2, textAlign: "right" }]}>
+                <Text style={[s.tableHeadCell, { flex: COL.creditos, textAlign: "right" }]}>
                   Créditos
                 </Text>
-                <Text style={[s.tableHeadCell, { flex: 2.6, paddingLeft: 6 }]}>
+                <View style={{ width: GAP_1CM }} />
+                <Text
+                  style={[
+                    s.tableHeadCell,
+                    { width: BLOCO_BARRAS_W, textAlign: "center" },
+                  ]}
+                >
                   Sem / com solar
                 </Text>
-                <Text style={[s.tableHeadCell, { flex: 1.4, textAlign: "right" }]}>
+                <Text style={[s.tableHeadCell, { flex: COL.economia, textAlign: "right" }]}>
                   Economia
                 </Text>
               </View>
               {/* Mais recente primeiro (última conta emitida → meses anteriores).
                   Cópia com reverse pra não mutar data.meses, usado no gráfico. */}
               {[...data.meses].reverse().map((m) => {
-                const BARW = 96;
                 const sem = m.contaSemSolarRs;
                 const com = m.faturadoRs;
                 const semW =
@@ -877,37 +1047,76 @@ export function SolarPaybackReportPDF({
                     key={`${m.ano}-${m.mes}`}
                     style={[s.tableRow, { borderBottomColor: C.orange, alignItems: "center" }]}
                   >
-                    <Text style={[s.tableCell, { flex: 1.1 }]}>
-                      {MES_ABREV[m.mes - 1]}/{m.ano}
-                    </Text>
-                    <Text style={[s.tableCell, { flex: 1.4, textAlign: "right" }]}>
+                    <View style={{ flex: COL.mes }}>
+                      <Text style={s.tableCell}>
+                        {MES_ABREV[m.mes - 1]}/{m.ano}
+                      </Text>
+                      {!semMonitoramento && diasJanela(m) != null && (
+                        <Text style={{ fontSize: 6.5, color: C.grayLight }}>
+                          {diasJanela(m)} dias
+                        </Text>
+                      )}
+                    </View>
+                    {!semMonitoramento && (
+                      <Text
+                        style={[
+                          s.tableCell,
+                          { flex: COL.geracao, textAlign: "right", color: C.teal, fontWeight: 700 },
+                        ]}
+                      >
+                        {formatKwh(m.geracaoInversorKwh)}
+                      </Text>
+                    )}
+                    <Text style={[s.tableCell, { flex: COL.consumo, textAlign: "right" }]}>
                       {formatKwh(m.consumoTotalKwh)}
                     </Text>
-                    <Text style={[s.tableCell, { flex: 1.2, textAlign: "right" }]}>
+                    <Text style={[s.tableCell, { flex: COL.creditos, textAlign: "right" }]}>
                       {formatKwh(m.saldoCreditosKwh)}
                     </Text>
-                    <View style={{ flex: 2.6, flexDirection: "column", gap: 3, paddingLeft: 6 }}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                    <View style={{ width: GAP_1CM }} />
+                    <View style={{ width: BLOCO_BARRAS_W, flexDirection: "column", gap: 3 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: BARRA_GAP }}>
                         <View style={{ width: BARW, height: 7, backgroundColor: C.barTrack, borderRadius: 2 }}>
                           <View style={{ width: semW, height: 7, backgroundColor: C.orangePale, borderRadius: 2 }} />
                         </View>
-                        <Text style={{ fontSize: 7, color: C.gray }}>
+                        <Text
+                          style={{
+                            width: BARRA_LABEL_W,
+                            textAlign: "right",
+                            fontSize: 7,
+                            color: C.gray,
+                          }}
+                        >
                           {sem != null ? formatBRL(sem) : "—"}
                         </Text>
                       </View>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: BARRA_GAP }}>
                         <View style={{ width: BARW, height: 7, backgroundColor: C.barTrack, borderRadius: 2 }}>
                           <View style={{ width: comW, height: 7, backgroundColor: C.orange, borderRadius: 2 }} />
                         </View>
-                        <Text style={{ fontSize: 7, color: C.orangeDark, fontWeight: 700 }}>
+                        <Text
+                          style={{
+                            width: BARRA_LABEL_W,
+                            textAlign: "right",
+                            fontSize: 7,
+                            color: C.orangeDark,
+                            fontWeight: 700,
+                          }}
+                        >
                           {com != null ? formatBRL(com) : "—"}
                         </Text>
                       </View>
                     </View>
-                    <Text style={[s.tableCellBold, { flex: 1.4, textAlign: "right", color: C.teal }]}>
+                    <Text
+                      style={[
+                        s.tableCellBold,
+                        { flex: COL.economia, textAlign: "right", color: C.teal },
+                      ]}
+                    >
                       {m.economiaMensalRs != null
                         ? formatBRL(m.economiaMensalRs)
                         : "—"}
+                      {m.economiaEstimada ? "*" : ""}
                     </Text>
                   </View>
                 );
@@ -923,30 +1132,73 @@ export function SolarPaybackReportPDF({
                   borderTopColor: C.orange,
                 }}
               >
-                <Text style={[s.tableCellBold, { flex: 1.1 }]}>
+                <Text style={[s.tableCellBold, { flex: COL.mes }]}>
                   {data.meses.length} meses
                 </Text>
-                <Text style={[s.tableCellBold, { flex: 1.4, textAlign: "right" }]}>
+                {!semMonitoramento && (
+                  <Text
+                    style={[
+                      s.tableCellBold,
+                      { flex: COL.geracao, textAlign: "right", color: C.teal },
+                    ]}
+                  >
+                    {formatKwh(totais.geracao)}
+                  </Text>
+                )}
+                <Text style={[s.tableCellBold, { flex: COL.consumo, textAlign: "right" }]}>
                   {formatKwh(totais.consumo)}
                 </Text>
-                <Text style={[s.tableCellBold, { flex: 1.2, textAlign: "right" }]}>
+                <Text style={[s.tableCellBold, { flex: COL.creditos, textAlign: "right" }]}>
                   {formatKwh(saldoCreditosFinal)}
                 </Text>
-                <View style={{ flex: 2.6, flexDirection: "row", gap: 8, paddingLeft: 6 }}>
-                  <Text style={{ fontSize: 7.5, color: C.gray }}>
+                <View style={{ width: GAP_1CM }} />
+                <View
+                  style={{
+                    width: BLOCO_BARRAS_W,
+                    flexDirection: "row",
+                    justifyContent: "center",
+                    gap: 4,
+                  }}
+                >
+                  <Text style={{ fontSize: 7, color: C.gray }}>
                     sem {formatBRL(totais.semSolar)}
                   </Text>
-                  <Text style={{ fontSize: 7.5, color: C.orangeDark, fontWeight: 700 }}>
+                  <Text style={{ fontSize: 7, color: C.orangeDark, fontWeight: 700 }}>
                     com {formatBRL(totais.comSolar)}
                   </Text>
                 </View>
-                <Text style={[s.tableCellBold, { flex: 1.4, textAlign: "right", color: C.teal }]}>
+                <Text
+                  style={[
+                    s.tableCellBold,
+                    { flex: COL.economia, textAlign: "right", color: C.teal },
+                  ]}
+                >
                   {formatBRL(totais.economia)}
                 </Text>
               </View>
+              {/* Metodologia — o cliente confere a conta na mão.
+                  Sem "−" (U+2212): a fonte Helvetica do PDF não tem esse glifo
+                  e ele sai invisível; usar hífen ASCII. */}
+              <Text style={{ fontSize: 6.5, color: C.gray, marginTop: 6 }}>
+                {"Economia = conta sem energia solar - fatura paga à concessionária (créditos compensados em R$" +
+                  (semMonitoramento ? ")." : " + autoconsumo instantâneo).") +
+                  (semMonitoramento
+                    ? ""
+                    : " Geração mensal apurada no intervalo entre a leitura anterior e a leitura atual informadas na fatura.")}
+              </Text>
+              {algumMesEstimado && (
+                <Text style={{ fontSize: 6.5, color: C.orangeDark, marginTop: 2 }}>
+                  * Mês sem o detalhamento em R$ na fatura — economia estimada
+                  pelos kWh compensados × tarifa.
+                </Text>
+              )}
             </View>
           </>
         )}
+
+        {/* Situação da usina — diagnóstico automático (dimensionamento,
+            créditos, desempenho). Vem logo abaixo do histórico por mês. */}
+        {data.situacao && <SituacaoUsinaSection situacao={data.situacao} />}
 
         {/* Footer */}
         <View style={s.footer} fixed>

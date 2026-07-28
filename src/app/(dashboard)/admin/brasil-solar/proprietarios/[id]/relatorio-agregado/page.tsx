@@ -74,6 +74,17 @@ const MESES_LONGO = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
+/** Dias do ciclo de leitura da fatura — janela em que a geração é apurada. */
+function diasJanela(m: MonthRow): number | null {
+  if (m.janela.fonte !== "CICLO_LEITURA" || !m.janela.inicio || !m.janela.fim)
+    return null;
+  const dias = Math.round(
+    (new Date(m.janela.fim).getTime() - new Date(m.janela.inicio).getTime()) /
+      86_400_000,
+  );
+  return dias > 0 ? dias : null;
+}
+
 function formatBRL(v: number | null) {
   if (v == null) return "—";
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -437,6 +448,12 @@ export default function RelatorioAgregadoPage() {
               <thead>
                 <tr className="text-muted-foreground border-b">
                   <th className="text-left py-2 px-2">Mês</th>
+                  <th
+                    className="text-right py-2 px-2"
+                    title="Geração da usina no intervalo entre a leitura anterior e a leitura atual da fatura"
+                  >
+                    Geração mensal
+                  </th>
                   <th className="text-right py-2 px-2" title="Soma do consumo das beneficiárias (sem consumo instantâneo — beneficiárias não têm geração própria)">Consumo total</th>
                   <th className="text-right py-2 px-2">Compensado</th>
                   <th className="text-right py-2 px-2">Economia</th>
@@ -449,6 +466,14 @@ export default function RelatorioAgregadoPage() {
                   <tr key={`${m.ano}-${m.mes}`} className="border-b last:border-0">
                     <td className="py-2 px-2 font-medium">
                       {MES_ABREV[m.mes - 1]}/{m.ano}
+                      {diasJanela(m) != null && (
+                        <div className="text-[10px] font-normal text-muted-foreground">
+                          {diasJanela(m)} dias
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-2 px-2 text-right tabular-nums" style={{ color: brand.teal }}>
+                      {formatKwh(m.geracaoInversorKwh)}
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums">{formatKwh(m.consumoRedeKwhTotal)}</td>
                     <td className="py-2 px-2 text-right tabular-nums">{formatKwh(m.energiaCompensadaKwhTotal)}</td>

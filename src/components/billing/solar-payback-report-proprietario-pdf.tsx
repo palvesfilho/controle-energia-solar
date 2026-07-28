@@ -52,6 +52,20 @@ function formatKwh(v: number | null): string {
     ? "—"
     : v.toLocaleString("pt-BR", { maximumFractionDigits: 0 }) + " kWh";
 }
+/**
+ * Dias do ciclo de leitura do período (leitura anterior → leitura atual da
+ * fatura). É a janela usada pra apurar a geração mensal; `null` quando a fatura
+ * não trouxe as datas (janela = mês calendário).
+ */
+function diasJanela(m: RelatorioAgregadoMonthRow): number | null {
+  if (m.janela.fonte !== "CICLO_LEITURA" || !m.janela.inicio || !m.janela.fim)
+    return null;
+  const dias = Math.round(
+    (new Date(m.janela.fim).getTime() - new Date(m.janela.inicio).getTime()) /
+      86_400_000,
+  );
+  return dias > 0 ? dias : null;
+}
 
 const s = StyleSheet.create({
   page: {
@@ -514,42 +528,80 @@ export function SolarPaybackReportProprietarioPDF({
             <Text style={s.sectionTitle}>Histórico consolidado por mês</Text>
             <View style={s.sectionCard}>
               <View style={s.tableHead}>
-                <Text style={[s.tableHeadCell, { flex: 1.2 }]}>Mês</Text>
-                <Text style={[s.tableHeadCell, { flex: 1.4, textAlign: "right" }]}>
+                <Text style={[s.tableHeadCell, { flex: 1.1 }]}>Mês</Text>
+                {!semMonitoramento && (
+                  <Text style={[s.tableHeadCell, { flex: 1.4, textAlign: "right" }]}>
+                    Geração mensal
+                  </Text>
+                )}
+                <Text style={[s.tableHeadCell, { flex: 1.3, textAlign: "right" }]}>
                   Consumo total
                 </Text>
-                <Text style={[s.tableHeadCell, { flex: 1.4, textAlign: "right" }]}>
+                <Text style={[s.tableHeadCell, { flex: 1.3, textAlign: "right" }]}>
                   Compensado
                 </Text>
-                <Text style={[s.tableHeadCell, { flex: 1.6, textAlign: "right" }]}>
+                <Text style={[s.tableHeadCell, { flex: 1.5, textAlign: "right" }]}>
                   Economia
                 </Text>
-                <Text style={[s.tableHeadCell, { flex: 1.6, textAlign: "right" }]}>
+                <Text style={[s.tableHeadCell, { flex: 1.5, textAlign: "right" }]}>
                   Fatura RGE
                 </Text>
               </View>
               {/* Mais recente primeiro. Cópia com reverse pra não mutar data.meses. */}
               {[...data.meses].reverse().map((m) => (
                 <View key={`${m.ano}-${m.mes}`} style={s.tableRow}>
-                  <Text style={[s.tableCell, { flex: 1.2 }]}>
-                    {MES_ABREV[m.mes - 1]}/{m.ano}
-                  </Text>
-                  <Text style={[s.tableCell, { flex: 1.4, textAlign: "right" }]}>
+                  <View style={{ flex: 1.1 }}>
+                    <Text style={s.tableCell}>
+                      {MES_ABREV[m.mes - 1]}/{m.ano}
+                    </Text>
+                    {!semMonitoramento && diasJanela(m) != null && (
+                      <Text style={{ fontSize: 6.5, color: C.grayLight }}>
+                        {diasJanela(m)} dias
+                      </Text>
+                    )}
+                  </View>
+                  {!semMonitoramento && (
+                    <Text
+                      style={[
+                        s.tableCellBold,
+                        { flex: 1.4, textAlign: "right", color: C.teal },
+                      ]}
+                    >
+                      {formatKwh(m.geracaoInversorKwh)}
+                    </Text>
+                  )}
+                  <Text style={[s.tableCell, { flex: 1.3, textAlign: "right" }]}>
                     {formatKwh(m.consumoRedeKwhTotal)}
                   </Text>
-                  <Text style={[s.tableCell, { flex: 1.4, textAlign: "right" }]}>
+                  <Text style={[s.tableCell, { flex: 1.3, textAlign: "right" }]}>
                     {formatKwh(m.energiaCompensadaKwhTotal)}
                   </Text>
                   <Text
-                    style={[s.tableCellBold, { flex: 1.6, textAlign: "right", color: C.teal }]}
+                    style={[s.tableCellBold, { flex: 1.5, textAlign: "right", color: C.teal }]}
                   >
                     {formatBRL(m.economiaMensalRs)}
+                    {m.economiaEstimada ? "*" : ""}
                   </Text>
-                  <Text style={[s.tableCell, { flex: 1.6, textAlign: "right" }]}>
+                  <Text style={[s.tableCell, { flex: 1.5, textAlign: "right" }]}>
                     {formatBRL(m.faturadoRs)}
                   </Text>
                 </View>
               ))}
+              {/* Metodologia — o cliente confere a conta na mão.
+                  Sem "−" (U+2212): a fonte Helvetica do PDF não tem esse glifo
+                  e ele sai invisível; usar hífen ASCII. */}
+              <Text style={{ fontSize: 6.5, color: C.gray, marginTop: 6 }}>
+                {"Economia = conta sem energia solar - fatura paga à concessionária (créditos compensados em R$, somados nas beneficiárias)." +
+                  (semMonitoramento
+                    ? ""
+                    : " Geração mensal apurada no intervalo entre a leitura anterior e a leitura atual informadas na fatura.")}
+              </Text>
+              {data.meses.some((m) => m.economiaEstimada) && (
+                <Text style={{ fontSize: 6.5, color: C.orange, marginTop: 2 }}>
+                  * Mês sem o detalhamento em R$ na fatura — economia estimada
+                  pelos kWh compensados × tarifa.
+                </Text>
+              )}
             </View>
           </>
         )}

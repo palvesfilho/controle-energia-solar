@@ -51,51 +51,122 @@ export interface ContaSemSolarInput {
 }
 
 /**
- * Conta que o cliente teria SEM energia solar — fórmula canônica (Paulo,
- * 2026-07-21). É o valor de referência do KPI "Sem energia solar":
+ * Campos opcionais usados APENAS como fallback quando a fatura não trouxe o
+ * detalhamento das linhas de crédito em R$ (faturas antigas / parser incompleto).
+ */
+export interface EconomiaMensalInput extends ContaSemSolarInput {
+  /** kWh compensados pelos créditos GD (própria + rateio) */
+  energiaCompensada?: number | null;
+  /** Tarifa TE sem tributos (R$/kWh) */
+  tarifaTE?: number | null;
+  /** Tarifa TUSD sem tributos (R$/kWh) */
+  tarifaTUSD?: number | null;
+}
+
+/**
+ * Economia do mês e conta sem energia solar, calculadas JUNTAS pra garantir a
+ * identidade que o cliente confere na mão (Paulo, 2026-07-28):
  *
- *   contaSemSolar = valorTotal_RGE
- *     + |rateio oUC TE| + |rateio oUC TUSD|              ← créditos da usina
- *     + |injeção própria TE| + |injeção própria TUSD|    ← geração do painel
- *     + |ajuste de saldo| + |créditos de bandeira|       ← demais compensações
- *     + consumo_instantaneo_kWh × (tarifaTeComTributos + tarifaTusdComTributos)
+ *   economia = conta_sem_energia_solar − conta_com_energia_solar
+ *   conta_com_energia_solar = valorTotal_RGE (o que a UC pagou de fato)
  *
- * Os componentes de compensação são somados em módulo (as linhas de crédito
- * vêm negativas na fatura). O autoconsumo instantâneo (energia consumida direto
- * do painel, que nunca passou pela concessionária) é valorado pela tarifa cheia
- * REAL da fatura (com tributos), não por um gross-up estimado.
+ * As duas parcelas da economia são exatamente o que o solar deixou de cobrar:
+ *
+ *   compensacaoRs = |rateio oUC TE| + |rateio oUC TUSD|          ← créditos da usina
+ *     + |injeção própria TE| + |injeção própria TUSD|            ← geração do painel
+ *     + |ajuste de saldo| + |créditos de bandeira|               ← demais compensações
+ *   autoconsumoRs = consumo_instantaneo_kWh
+ *     × (tarifaTeComTributos + tarifaTusdComTributos)
+ *
+ * Os componentes de compensação vêm em R$ direto da fatura, somados em módulo
+ * (as linhas de crédito vêm negativas). O autoconsumo instantâneo (energia
+ * consumida direto do painel, que nunca passou pela concessionária) é valorado
+ * pela tarifa cheia REAL da fatura, não por gross-up estimado.
+ *
+ * ⚠️ Fallback marcado como `estimada`: se a fatura não trouxe NENHUMA linha de
+ * crédito em R$ (campos todos null) mas tem `energiaCompensada` > 0, valora os
+ * kWh compensados por (tarifaTE + tarifaTUSD); se faltar a tarifa com tributos,
+ * aplica o gross-up `TRIBUTOS_EFETIVOS_PADRAO` no autoconsumo. Sem isso a
+ * economia apareceria como ~zero em fatura incompleta — anomalia deve ser
+ * sinalizada, não silenciada.
  *
  * ⚠️ Os mesmos dados podem vir do Infosimples num formato diferente (outros
  * nomes de campo / agrupamento de linhas). Ao integrar por essa via, mapear as
  * grandezas para os campos de `ContaSemSolarInput` ANTES de chamar esta função.
- *
- * Retorna `null` quando não há `valorTotal` (sem base pra somar).
+ */
+export interface EconomiaMensalDetalhe {
+  /** Créditos solares que abateram a fatura, em R$ */
+  compensacaoRs: number;
+  /** Autoconsumo instantâneo × tarifa cheia da fatura, em R$ */
+  autoconsumoRs: number;
+  /** compensacaoRs + autoconsumoRs. `null` só quando não há dado nenhum. */
+  economiaMensalRs: number | null;
+  /** valorTotal + economia. `null` quando a fatura não tem `valorTotal`. */
+  contaSemSolarRs: number | null;
+  /** Alguma parcela veio de estimativa (fatura sem detalhamento em R$). */
+  estimada: boolean;
+}
+
+export function calcularEconomiaMensal(
+  bill: EconomiaMensalInput,
+  consumoInstantaneoKwh: number | null,
+): EconomiaMensalDetalhe {
+  const mod = (v: number | null | undefined) => Math.abs(v ?? 0);
+  const linhasCredito: (number | null)[] = [
+    bill.injetadaOucTeValor,
+    bill.injetadaOucTusdValor,
+    bill.energiaInjetadaPropriaTeValor,
+    bill.energiaInjetadaPropriaTusdValor,
+    bill.ajusteSaldoCredito,
+    bill.bandeiraAmarelaCreditoValor,
+    bill.bandeiraVermelhaCreditoValor,
+    bill.bandeiraVermelha2CreditoValor,
+  ];
+  const temDetalheEmReais = linhasCredito.some((v) => v != null);
+  const tarifaBase = (bill.tarifaTE ?? 0) + (bill.tarifaTUSD ?? 0);
+
+  let estimada = false;
+  let compensacaoRs = linhasCredito.reduce<number>(
+    (sum, v) => sum + mod(v),
+    0,
+  );
+  if (!temDetalheEmReais && (bill.energiaCompensada ?? 0) > 0 && tarifaBase > 0) {
+    compensacaoRs = (bill.energiaCompensada as number) * tarifaBase;
+    estimada = true;
+  }
+
+  let autoconsumoRs = 0;
+  if (consumoInstantaneoKwh != null && consumoInstantaneoKwh > 0) {
+    const tarifaCheia =
+      (bill.tarifaTeComTributos ?? 0) + (bill.tarifaTusdComTributos ?? 0);
+    if (tarifaCheia > 0) {
+      autoconsumoRs = consumoInstantaneoKwh * tarifaCheia;
+    } else if (tarifaBase > 0) {
+      autoconsumoRs =
+        consumoInstantaneoKwh * (tarifaBase / (1 - TRIBUTOS_EFETIVOS_PADRAO));
+      estimada = true;
+    }
+  }
+
+  const semDadoAlgum =
+    bill.valorTotal == null && compensacaoRs === 0 && autoconsumoRs === 0;
+  const economiaMensalRs = semDadoAlgum ? null : compensacaoRs + autoconsumoRs;
+  const contaSemSolarRs =
+    bill.valorTotal == null ? null : bill.valorTotal + compensacaoRs + autoconsumoRs;
+
+  return { compensacaoRs, autoconsumoRs, economiaMensalRs, contaSemSolarRs, estimada };
+}
+
+/**
+ * Conta que o cliente teria SEM energia solar — atalho pra
+ * `calcularEconomiaMensal(...).contaSemSolarRs`. Mantido como fonte da verdade
+ * do KPI "Sem energia solar". Retorna `null` sem `valorTotal`.
  */
 export function calcularContaSemSolar(
-  bill: ContaSemSolarInput,
+  bill: EconomiaMensalInput,
   consumoInstantaneoKwh: number | null,
 ): number | null {
-  if (bill.valorTotal == null) return null;
-  const mod = (v: number | null | undefined) => Math.abs(v ?? 0);
-
-  const compensado =
-    mod(bill.injetadaOucTeValor) +
-    mod(bill.injetadaOucTusdValor) +
-    mod(bill.energiaInjetadaPropriaTeValor) +
-    mod(bill.energiaInjetadaPropriaTusdValor) +
-    mod(bill.ajusteSaldoCredito) +
-    mod(bill.bandeiraAmarelaCreditoValor) +
-    mod(bill.bandeiraVermelhaCreditoValor) +
-    mod(bill.bandeiraVermelha2CreditoValor);
-
-  const tarifaCheia =
-    (bill.tarifaTeComTributos ?? 0) + (bill.tarifaTusdComTributos ?? 0);
-  const instantaneoRs =
-    consumoInstantaneoKwh != null && consumoInstantaneoKwh > 0 && tarifaCheia > 0
-      ? consumoInstantaneoKwh * tarifaCheia
-      : 0;
-
-  return bill.valorTotal + compensado + instantaneoRs;
+  return calcularEconomiaMensal(bill, consumoInstantaneoKwh).contaSemSolarRs;
 }
 
 export interface RelatorioMonthRow {
@@ -121,12 +192,17 @@ export interface RelatorioMonthRow {
   tarifaTotal: number | null;
   /** tarifa_base / (1 − aliquota_efetiva) — usada no consumo instantâneo */
   tarifaCompletaComTributos: number | null;
-  /** energia_compensada × tarifa_TE_TUSD */
+  /** Créditos solares abatidos na fatura, em R$ (linhas de crédito em módulo) */
   economiaCompensadaRs: number | null;
-  /** consumo_instantaneo × tarifa_completa_com_tributos (null quando anomalia) */
+  /** consumo_instantaneo × tarifa cheia da fatura (null quando anomalia) */
   economiaInstantaneaRs: number | null;
-  /** soma das parcelas (compensada + instantânea, ignorando NaN) */
+  /**
+   * Economia do mês = contaSemSolarRs − faturadoRs (identidade exata, por
+   * construção). Some as duas parcelas acima. Ver `calcularEconomiaMensal`.
+   */
   economiaMensalRs: number | null;
+  /** Economia derivada de estimativa (fatura sem detalhamento em R$) */
+  economiaEstimada: boolean;
   economiaAcumuladaRs: number;
   saldoPaybackRs: number;
   /** Faturado RGE (valor líquido pago à concessionária) */
@@ -188,6 +264,340 @@ export interface RelatorioData {
    * até o de referência, não só os 12 exibidos). Usado nos cards de somatório.
    */
   mesesComFatura?: number;
+  /**
+   * Diagnóstico "Situação da usina" (dimensionamento, créditos, desempenho).
+   * `null` quando não há geração medida no período (relatório lite / usina sem
+   * monitoramento) — sem geração não há o que diagnosticar.
+   */
+  situacao: SituacaoUsina | null;
+}
+
+// =============================================================================
+// SITUAÇÃO DA USINA (diagnóstico automático)
+// =============================================================================
+//
+// Resumo em linguagem de cliente respondendo: a usina atende meu consumo? sobra
+// crédito? preciso ampliar? preciso fazer manutenção? Tudo derivado das médias
+// do próprio histórico do relatório — nenhuma entrada manual.
+//
+// Faixas (decididas com Paulo em 2026-07-28; ajustar aqui, num lugar só):
+
+/** Cobertura (geração ÷ consumo) considerada equilibrada. */
+const COBERTURA_MIN_EQUILIBRIO = 0.9;
+const COBERTURA_MAX_EQUILIBRIO = 1.15;
+/** Abaixo disso a usina é claramente pequena pro consumo. */
+const COBERTURA_DEFICIT_FORTE = 0.85;
+/** Saldo de créditos acima de N meses de consumo = excedente ocioso. */
+const SALDO_MESES_EXCEDENTE = 3;
+/** Saldo abaixo de N meses de consumo = sem reserva pro inverno. */
+const SALDO_MESES_RESERVA_MINIMA = 0.5;
+/** Desempenho médio (real ÷ prognóstico) abaixo disso pede vistoria. */
+const DESEMPENHO_BAIXO_PCT = 80;
+const DESEMPENHO_BOM_PCT = 95;
+/** Queda ano-a-ano (mesmos meses) que pede vistoria. */
+const QUEDA_ANUAL_ALERTA_PCT = 15;
+/** Mínimo de pares mês×mesmo-mês-ano-anterior pra opinar sobre queda. */
+const MIN_PARES_ANO_ANTERIOR = 3;
+/** Créditos de GD expiram em 60 meses (Lei 14.300). */
+const VALIDADE_CREDITOS_MESES = 60;
+/** Janela das médias: últimos 12 meses com fatura (ou todos, se menos). */
+const JANELA_MEDIAS_MESES = 12;
+
+export interface SituacaoUsinaItem {
+  tema: "DIMENSIONAMENTO" | "CREDITOS" | "DESEMPENHO" | "MONITORAMENTO";
+  /** OK = nada a fazer · ATENCAO = acompanhar · ACAO = precisa de decisão/vistoria */
+  nivel: "OK" | "ATENCAO" | "ACAO";
+  titulo: string;
+  texto: string;
+}
+
+export interface SituacaoUsina {
+  /** Meses usados nas médias (últimos 12 com fatura, ou todos se menos). */
+  mesesConsiderados: number;
+  /** Média mensal de geração do inversor no período (kWh) */
+  geracaoMediaKwh: number | null;
+  /** Média mensal de consumo TOTAL do cliente no período (kWh) */
+  consumoMedioKwh: number | null;
+  /** geracaoMedia ÷ consumoMedio × 100 */
+  coberturaPct: number | null;
+  /** Saldo de créditos GD da última fatura (kWh) */
+  saldoCreditosKwh: number | null;
+  /** Saldo ÷ consumo médio — "quantos meses de consumo o saldo cobre" */
+  saldoEmMesesDeConsumo: number | null;
+  /**
+   * Geração mensal que FALTA pra empatar com o consumo (kWh/mês); `null` quando
+   * a geração já cobre o consumo.
+   *
+   * ⚠️ Deliberadamente em kWh, NUNCA em kWp (Paulo, 2026-07-28): kWp depende de
+   * orientação, inclinação, sombreamento e modelo de módulo — dimensionar é
+   * trabalho do projeto, não do relatório. O relatório informa a lacuna de
+   * energia; a potência necessária quem define é a engenharia.
+   */
+  deficitMensalKwh: number | null;
+  /** Média do desempenho vs. prognóstico (null sem geracaoMediaEsperada) */
+  desempenhoMedioPct: number | null;
+  /** Variação % da geração vs. os MESMOS meses do ano anterior */
+  variacaoAnoAnteriorPct: number | null;
+  /** Veredito de uma linha, pra abrir a seção */
+  resumo: string;
+  itens: SituacaoUsinaItem[];
+}
+
+function media(valores: number[]): number | null {
+  if (valores.length === 0) return null;
+  return valores.reduce((a, b) => a + b, 0) / valores.length;
+}
+
+const fmtKwh = (v: number) =>
+  `${Math.round(v).toLocaleString("pt-BR")} kWh`;
+
+/** 5,5 (vírgula decimal) — texto vai direto pro cliente. */
+const fmt1 = (v: number) =>
+  v.toLocaleString("pt-BR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+
+/**
+ * Monta o diagnóstico da usina a partir do histórico do relatório.
+ *
+ * Só considera meses com geração medida (> 0) nas médias de geração — mês em
+ * que a usina não operava não deve puxar a média pra baixo. Retorna `null`
+ * quando não há geração alguma (nada a diagnosticar).
+ */
+export function avaliarSituacaoUsina(
+  meses: RelatorioMonthRow[],
+  geracaoEsperadaMensalKwh: number,
+): SituacaoUsina | null {
+  if (meses.length === 0) return null;
+
+  const janela = meses.slice(-JANELA_MEDIAS_MESES);
+  const geracoes = janela
+    .map((m) => m.geracaoInversorKwh)
+    .filter((v): v is number => v != null && v > 0);
+  if (geracoes.length === 0) return null;
+
+  const consumos = janela
+    .map((m) => m.consumoTotalKwh)
+    .filter((v): v is number => v != null && v > 0);
+
+  const geracaoMediaKwh = media(geracoes);
+  const consumoMedioKwh = media(consumos);
+  const coberturaPct =
+    geracaoMediaKwh != null && consumoMedioKwh != null && consumoMedioKwh > 0
+      ? (geracaoMediaKwh / consumoMedioKwh) * 100
+      : null;
+
+  const saldoCreditosKwh = meses[meses.length - 1].saldoCreditosKwh;
+  const saldoEmMesesDeConsumo =
+    saldoCreditosKwh != null && consumoMedioKwh != null && consumoMedioKwh > 0
+      ? saldoCreditosKwh / consumoMedioKwh
+      : null;
+
+  // Lacuna de energia: quanto falta gerar por mês pra empatar com o consumo.
+  // Em kWh — a conversão pra kWp é decisão de projeto (ver deficitMensalKwh).
+  const diferencaKwh =
+    geracaoMediaKwh != null && consumoMedioKwh != null
+      ? consumoMedioKwh - geracaoMediaKwh
+      : null;
+  const deficitMensalKwh =
+    diferencaKwh != null && diferencaKwh > 0 ? diferencaKwh : null;
+
+  const desempenhoMedioPct =
+    geracaoEsperadaMensalKwh > 0
+      ? media(
+          janela
+            .map((m) => m.desempenhoPct)
+            .filter((v): v is number => v != null),
+        )
+      : null;
+
+  // Variação ano-a-ano: só compara mês com o MESMO mês do ano anterior, senão a
+  // sazonalidade (verão × inverno) viraria "queda de desempenho".
+  const porMes = new Map<string, number>();
+  for (const m of meses) {
+    if (m.geracaoInversorKwh != null && m.geracaoInversorKwh > 0)
+      porMes.set(`${m.ano}-${m.mes}`, m.geracaoInversorKwh);
+  }
+  let somaAtual = 0;
+  let somaAnterior = 0;
+  let pares = 0;
+  for (const m of janela) {
+    const atual = porMes.get(`${m.ano}-${m.mes}`);
+    const anterior = porMes.get(`${m.ano - 1}-${m.mes}`);
+    if (atual != null && anterior != null) {
+      somaAtual += atual;
+      somaAnterior += anterior;
+      pares++;
+    }
+  }
+  const variacaoAnoAnteriorPct =
+    pares >= MIN_PARES_ANO_ANTERIOR && somaAnterior > 0
+      ? ((somaAtual - somaAnterior) / somaAnterior) * 100
+      : null;
+
+  const itens: SituacaoUsinaItem[] = [];
+
+  // --- 1. Dimensionamento -----------------------------------------------------
+  if (coberturaPct != null && geracaoMediaKwh != null && consumoMedioKwh != null) {
+    const base = `A usina gerou em média ${fmtKwh(geracaoMediaKwh)}/mês e o consumo médio foi de ${fmtKwh(consumoMedioKwh)}/mês nos últimos ${janela.length} meses (cobertura de ${coberturaPct.toFixed(0)}%).`;
+    if (coberturaPct < COBERTURA_DEFICIT_FORTE * 100) {
+      itens.push({
+        tema: "DIMENSIONAMENTO",
+        nivel: "ACAO",
+        titulo: "A usina é menor que o seu consumo",
+        texto:
+          `${base} ` +
+          (deficitMensalKwh != null
+            ? `Faltam em média ${fmtKwh(deficitMensalKwh)}/mês de geração para cobrir todo o consumo. `
+            : "") +
+          "Enquanto essa diferença existir, parte do consumo continua sendo paga à concessionária. Vale avaliar uma ampliação da usina com a nossa equipe técnica.",
+      });
+    } else if (coberturaPct < COBERTURA_MIN_EQUILIBRIO * 100) {
+      itens.push({
+        tema: "DIMENSIONAMENTO",
+        nivel: "ATENCAO",
+        titulo: "A usina está um pouco abaixo do consumo",
+        texto:
+          `${base} ` +
+          (deficitMensalKwh != null
+            ? `Faltam em média ${fmtKwh(deficitMensalKwh)}/mês de geração para zerar a diferença; `
+            : "") +
+          "nos meses de menor sol a fatura fica acima do mínimo.",
+      });
+    } else if (coberturaPct <= COBERTURA_MAX_EQUILIBRIO * 100) {
+      itens.push({
+        tema: "DIMENSIONAMENTO",
+        nivel: "OK",
+        titulo: "Usina bem dimensionada para o seu consumo",
+        texto: `${base} Não há necessidade de ampliar: mantenha a usina como está.`,
+      });
+    } else {
+      itens.push({
+        tema: "DIMENSIONAMENTO",
+        nivel: "OK",
+        titulo: "A usina gera mais do que você consome",
+        texto: `${base} A sobra de cerca de ${fmtKwh(geracaoMediaKwh - consumoMedioKwh)}/mês vira crédito de energia.`,
+      });
+    }
+  }
+
+  // --- 2. Créditos ------------------------------------------------------------
+  if (saldoCreditosKwh != null && saldoEmMesesDeConsumo != null) {
+    if (saldoEmMesesDeConsumo > SALDO_MESES_EXCEDENTE) {
+      itens.push({
+        tema: "CREDITOS",
+        nivel: "ATENCAO",
+        titulo: "Créditos acumulados acima do necessário",
+        texto: `Há ${fmtKwh(saldoCreditosKwh)} de créditos acumulados — o equivalente a ${fmt1(saldoEmMesesDeConsumo)} meses do seu consumo. Créditos não utilizados expiram em ${VALIDADE_CREDITOS_MESES} meses. Vale destinar o excedente a outra unidade consumidora (rateio) ou passar mais consumo para a energia elétrica (climatização, aquecimento de água, carro elétrico).`,
+      });
+    } else if (saldoEmMesesDeConsumo < SALDO_MESES_RESERVA_MINIMA) {
+      itens.push({
+        tema: "CREDITOS",
+        nivel: "ATENCAO",
+        titulo: "Sem reserva de créditos",
+        texto: `O saldo de créditos está em ${fmtKwh(saldoCreditosKwh)}. Sem reserva acumulada, os meses de menor geração (outono e inverno) chegam com a fatura mais alta.`,
+      });
+    } else {
+      itens.push({
+        tema: "CREDITOS",
+        nivel: "OK",
+        titulo: "Reserva de créditos saudável",
+        texto: `Há ${fmtKwh(saldoCreditosKwh)} de créditos acumulados (${fmt1(saldoEmMesesDeConsumo)} meses de consumo), reserva adequada para os meses de menor geração.`,
+      });
+    }
+  }
+
+  // --- 3. Desempenho / manutenção --------------------------------------------
+  if (desempenhoMedioPct != null) {
+    if (desempenhoMedioPct < DESEMPENHO_BAIXO_PCT) {
+      itens.push({
+        tema: "DESEMPENHO",
+        nivel: "ACAO",
+        titulo: "Geração abaixo do previsto para a usina",
+        texto: `A geração média ficou em ${desempenhoMedioPct.toFixed(0)}% do previsto (${fmtKwh(geracaoEsperadaMensalKwh)}/mês). Recomendamos vistoria: limpeza dos módulos, sombreamento novo (árvores, construções) e verificação do inversor.`,
+      });
+    } else if (desempenhoMedioPct < DESEMPENHO_BOM_PCT) {
+      itens.push({
+        tema: "DESEMPENHO",
+        nivel: "ATENCAO",
+        titulo: "Geração ligeiramente abaixo do previsto",
+        texto: `A geração média ficou em ${desempenhoMedioPct.toFixed(0)}% do previsto. Uma limpeza dos módulos costuma recuperar boa parte dessa diferença.`,
+      });
+    } else {
+      itens.push({
+        tema: "DESEMPENHO",
+        nivel: "OK",
+        titulo: "Geração em linha com o previsto",
+        texto: `A geração média ficou em ${desempenhoMedioPct.toFixed(0)}% do previsto para a usina — sem indício de perda de rendimento.`,
+      });
+    }
+  } else if (variacaoAnoAnteriorPct != null) {
+    if (variacaoAnoAnteriorPct < -QUEDA_ANUAL_ALERTA_PCT) {
+      itens.push({
+        tema: "DESEMPENHO",
+        nivel: "ACAO",
+        titulo: "Queda de geração frente ao ano anterior",
+        texto: `Comparando os mesmos meses do ano anterior, a geração caiu ${Math.abs(variacaoAnoAnteriorPct).toFixed(0)}%. Recomendamos vistoria: limpeza dos módulos, sombreamento novo e verificação do inversor.`,
+      });
+    } else {
+      itens.push({
+        tema: "DESEMPENHO",
+        nivel: "OK",
+        titulo: "Geração estável frente ao ano anterior",
+        texto: `Comparando os mesmos meses do ano anterior, a geração variou ${variacaoAnoAnteriorPct >= 0 ? "+" : ""}${variacaoAnoAnteriorPct.toFixed(0)}% — dentro do esperado para a sazonalidade.`,
+      });
+    }
+  }
+
+  // --- 4. Monitoramento (falha de comunicação nos meses recentes) ------------
+  const recentesComAnomalia = janela.slice(-3).filter((m) => m.anomalia != null);
+  if (recentesComAnomalia.length > 0) {
+    itens.push({
+      tema: "MONITORAMENTO",
+      nivel: "ACAO",
+      titulo: "Falha na comunicação do monitoramento",
+      texto: `Em ${recentesComAnomalia.length} dos últimos 3 meses a geração reportada ficou abaixo da energia registrada pelo medidor da concessionária — sinal de que o inversor perdeu conexão. Os números de geração desses meses podem estar subestimados.`,
+    });
+  }
+
+  // --- Veredito ---------------------------------------------------------------
+  const temAcao = itens.some((i) => i.nivel === "ACAO");
+  const vistoria = itens.find(
+    (i) => i.nivel === "ACAO" && (i.tema === "DESEMPENHO" || i.tema === "MONITORAMENTO"),
+  );
+  const dimensionamento = itens.find((i) => i.tema === "DIMENSIONAMENTO");
+  let resumo: string;
+  if (vistoria) {
+    resumo = "A usina precisa de uma vistoria — a geração está abaixo do que deveria.";
+  } else if (dimensionamento?.nivel === "ACAO") {
+    resumo = `A usina atende parte do consumo${deficitMensalKwh != null ? `: faltam cerca de ${fmtKwh(deficitMensalKwh)}/mês de geração para cobrir tudo` : ""}.`;
+  } else if (
+    coberturaPct != null &&
+    coberturaPct > COBERTURA_MAX_EQUILIBRIO * 100 &&
+    (saldoEmMesesDeConsumo ?? 0) > SALDO_MESES_EXCEDENTE
+  ) {
+    resumo =
+      "A usina tem folga sobre o seu consumo: vale aproveitar o excedente em outra unidade.";
+  } else if (temAcao) {
+    resumo = "A usina está operando bem, com um ponto que pede atenção.";
+  } else {
+    resumo = "A usina está adequada ao seu consumo — siga como está.";
+  }
+
+  return {
+    mesesConsiderados: janela.length,
+    geracaoMediaKwh,
+    consumoMedioKwh,
+    coberturaPct,
+    saldoCreditosKwh,
+    saldoEmMesesDeConsumo,
+    deficitMensalKwh,
+    desempenhoMedioPct,
+    variacaoAnoAnteriorPct,
+    resumo,
+    itens,
+  };
 }
 
 /**
@@ -515,23 +925,18 @@ export async function getProprietarioRelatorio(
         ? consumoRedeKwh + (consumoInstantaneoKwh ?? 0)
         : null;
 
-    // === Economia ===
-    // Compensada paga ICMS (legislação atual em RS) → tarifa só TE+TUSD.
-    // Instantânea nunca passou pela rede → cliente economiza tributos completos.
+    // === Economia + conta sem energia solar (mesma fonte) ===
+    // economia = conta sem solar − fatura paga. As duas parcelas vêm em R$ da
+    // própria fatura: créditos compensados + autoconsumo instantâneo valorado
+    // pela tarifa cheia. Ver `calcularEconomiaMensal`.
     const energiaCompensadaKwh = bill.energiaCompensada ?? null;
+    const eco = calcularEconomiaMensal(bill, consumoInstantaneoKwh);
+    const economiaMensalRs = eco.economiaMensalRs;
     const economiaCompensadaRs =
-      energiaCompensadaKwh != null && tarifaTotal != null
-        ? energiaCompensadaKwh * tarifaTotal
-        : null;
+      economiaMensalRs == null ? null : eco.compensacaoRs;
     const economiaInstantaneaRs =
-      consumoInstantaneoKwh != null && tarifaCompletaComTributos != null
-        ? consumoInstantaneoKwh * tarifaCompletaComTributos
-        : null;
-
-    const economiaMensalRs =
-      economiaCompensadaRs == null && economiaInstantaneaRs == null
-        ? null
-        : (economiaCompensadaRs ?? 0) + (economiaInstantaneaRs ?? 0);
+      economiaMensalRs == null ? null : eco.autoconsumoRs;
+    const contaSemSolarRs = eco.contaSemSolarRs;
 
     economiaAcumulada += economiaMensalRs ?? 0;
     const saldoPaybackRs = investimentoTotal - economiaAcumulada;
@@ -544,11 +949,6 @@ export async function getProprietarioRelatorio(
       economiaMensalRs != null && investimentoTotal > 0
         ? (economiaMensalRs / investimentoTotal) * 100
         : null;
-
-    // Conta que o cliente teria sem energia solar (fórmula canônica):
-    // fatura RGE + todos os créditos de compensação (em módulo) + autoconsumo
-    // instantâneo valorado pela tarifa cheia real. Ver calcularContaSemSolar.
-    const contaSemSolarRs = calcularContaSemSolar(bill, consumoInstantaneoKwh);
 
     mesesAll.push({
       ano: bill.anoReferencia,
@@ -570,6 +970,7 @@ export async function getProprietarioRelatorio(
       economiaCompensadaRs,
       economiaInstantaneaRs,
       economiaMensalRs,
+      economiaEstimada: eco.estimada,
       economiaAcumuladaRs: economiaAcumulada,
       saldoPaybackRs,
       faturadoRs: bill.valorTotal,
@@ -645,6 +1046,7 @@ export async function getProprietarioRelatorio(
     paybackQuitado,
     meses,
     mesesComFatura,
+    situacao: avaliarSituacaoUsina(meses, geracaoEsperadaMensalKwh),
   };
 }
 
@@ -688,8 +1090,13 @@ export interface RelatorioAgregadoMonthRow {
   consumoRedeKwhTotal: number | null;
   /** Soma das beneficiárias — kWh compensados pelos créditos GD */
   energiaCompensadaKwhTotal: number | null;
-  /** Soma das beneficiárias — energiaCompensada × (tarifaTE+TUSD) */
+  /**
+   * Soma das beneficiárias de (conta sem solar − fatura paga) = total de
+   * créditos solares abatidos em R$. Ver `calcularEconomiaMensal`.
+   */
   economiaMensalRs: number | null;
+  /** Alguma beneficiária caiu no fallback estimado (fatura sem detalhe em R$) */
+  economiaEstimada: boolean;
   economiaAcumuladaRs: number;
   /** Soma das faturas RGE das beneficiárias */
   faturadoRs: number | null;
@@ -957,6 +1364,7 @@ export async function getProprietarioRelatorioAgregado(
     let faturadoTotal: number | null = null;
     let saldoBeneficiariasTotal: number | null = null;
     let contaSemSolarTotal: number | null = null;
+    let algumaEstimada = false;
     const beneficiariasRows: RelatorioAgregadoBeneficiariaRow[] = [];
 
     for (const benef of beneficiarias) {
@@ -975,16 +1383,12 @@ export async function getProprietarioRelatorioAgregado(
         });
         continue;
       }
-      const tarifaTotal =
-        bill.tarifaTE != null && bill.tarifaTUSD != null
-          ? bill.tarifaTE + bill.tarifaTUSD
-          : null;
-      const economiaCompensadaRs =
-        bill.energiaCompensada != null && tarifaTotal != null
-          ? bill.energiaCompensada * tarifaTotal
-          : null;
-      // Beneficiária não tem geração própria → sem autoconsumo instantâneo.
-      const contaSemSolarRs = calcularContaSemSolar(bill, null);
+      // Beneficiária não tem geração própria → sem autoconsumo instantâneo;
+      // economia = conta sem solar − fatura paga (créditos abatidos em R$).
+      const eco = calcularEconomiaMensal(bill, null);
+      const economiaCompensadaRs = eco.economiaMensalRs;
+      const contaSemSolarRs = eco.contaSemSolarRs;
+      if (eco.estimada) algumaEstimada = true;
       beneficiariasRows.push({
         ucId: benef.ucId,
         codigoUc: benef.codigoUc,
@@ -1020,6 +1424,7 @@ export async function getProprietarioRelatorioAgregado(
       consumoRedeKwhTotal: consumoRedeTotal,
       energiaCompensadaKwhTotal: compensadoTotal,
       economiaMensalRs: economiaTotal,
+      economiaEstimada: algumaEstimada,
       economiaAcumuladaRs: economiaAcumulada,
       faturadoRs: faturadoTotal,
       contaSemSolarRsTotal: contaSemSolarTotal,
