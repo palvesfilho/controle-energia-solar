@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { normalizeCodigoUc } from "@/lib/uc-codigo";
+import { buscarIds } from "@/lib/busca-sql";
 
 // GET /api/brasil-solar - Lista paginada de clientes Brasil Solar
 export async function GET(req: NextRequest) {
@@ -31,13 +32,24 @@ export async function GET(req: NextRequest) {
   const where: Record<string, unknown> = { active: true };
 
   if (search) {
+    // Busca acento/caixa/pontuacao-insensivel (ver src/lib/busca-sql.ts): o
+    // `contains` do Prisma nao acha "JOAO" em "JOÃO" nem casa CPF pontuado com
+    // o que esta gravado em digitos.
+    const [idsCliente, idsProprietario] = await Promise.all([
+      buscarIds({
+        tabela: "brasil_solar_clients",
+        colunas: ["nome", "cpf_cnpj", "email", "codigo_uc", "codigo_uc_antigo", "cidade"],
+        termo: search,
+      }),
+      buscarIds({
+        tabela: "brasil_solar_proprietarios",
+        colunas: ["nome"],
+        termo: search,
+      }),
+    ]);
     where.OR = [
-      { nome: { contains: search, mode: "insensitive" } },
-      { cpfCnpj: { contains: search, mode: "insensitive" } },
-      { email: { contains: search, mode: "insensitive" } },
-      { codigoUc: { contains: search, mode: "insensitive" } },
-      { cidade: { contains: search, mode: "insensitive" } },
-      { proprietario: { nome: { contains: search, mode: "insensitive" } } },
+      { id: { in: idsCliente ?? [] } },
+      { proprietarioId: { in: idsProprietario ?? [] } },
     ];
   }
 

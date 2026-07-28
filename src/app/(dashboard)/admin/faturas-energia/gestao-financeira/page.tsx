@@ -24,7 +24,8 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import type { FaturasEnergiaRow, FaturaCell } from "@/app/api/admin/faturas-energia/route";
-import { formatCodigoUc, matchCodigoUc } from "@/lib/uc-codigo";
+import { formatCodigoUc } from "@/lib/uc-codigo";
+import { matchBusca } from "@/lib/busca";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -256,15 +257,9 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
 
   // Filtra rows pro modal: search local + opção de mostrar só UCs com aberta.
   const pagarRows = useMemo(() => {
-    const term = pagarSearch.trim().toLowerCase();
     return rows.filter((r) => {
-      if (term) {
-        const match =
-          r.nome.toLowerCase().includes(term) ||
-          matchCodigoUc(r.codigoUc, term) ||
-          r.proprietario.toLowerCase().includes(term) ||
-          (r.distribuidora ?? "").toLowerCase().includes(term);
-        if (!match) return false;
+      if (!matchBusca(pagarSearch, [r.nome, r.codigoUc, r.proprietario, r.distribuidora])) {
+        return false;
       }
       if (pagarApenasAbertas) {
         const temAberta = Object.values(r.meses).some(
@@ -293,17 +288,10 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
   }, [currentYear]);
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
     return rows.filter((r) => {
       if (apenasAtivas && !r.active) return false;
       if (origemFilter !== "all" && r.origem !== origemFilter) return false;
-      if (!term) return true;
-      return (
-        r.nome.toLowerCase().includes(term) ||
-        matchCodigoUc(r.codigoUc, term) ||
-        r.proprietario.toLowerCase().includes(term) ||
-        (r.distribuidora ?? "").toLowerCase().includes(term)
-      );
+      return matchBusca(search, [r.nome, r.codigoUc, r.proprietario, r.distribuidora]);
     });
   }, [rows, search, origemFilter, apenasAtivas]);
 

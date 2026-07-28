@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Pencil, Eye, Trash2, Search, ArrowUpDown, Users, UserCheck, UserX, Sun, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { matchBusca } from "@/lib/busca";
 import {
   Dialog,
   DialogContent,
@@ -95,17 +96,15 @@ export default function InvestidoresPage() {
   }, [investors]);
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
     const rows = investors.filter((inv) => {
       if (statusFilter === "ativo" && !inv.user.active) return false;
       if (statusFilter === "inativo" && inv.user.active) return false;
-      if (!term) return true;
-      return (
-        inv.user.name.toLowerCase().includes(term) ||
-        inv.user.email.toLowerCase().includes(term) ||
-        (inv.phone ?? "").toLowerCase().includes(term) ||
-        (inv.document ?? "").toLowerCase().includes(term)
-      );
+      return matchBusca(search, [
+        inv.user.name,
+        inv.user.email,
+        inv.phone,
+        inv.document,
+      ]);
     });
 
     rows.sort((a, b) => {

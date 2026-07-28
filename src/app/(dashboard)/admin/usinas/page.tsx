@@ -14,7 +14,8 @@ import {
   Users,
   Factory,
 } from "lucide-react";
-import { formatCodigoUc, matchCodigoUc } from "@/lib/uc-codigo";
+import { formatCodigoUc } from "@/lib/uc-codigo";
+import { matchBusca } from "@/lib/busca";
 
 interface PlantData {
   id: string;
@@ -61,18 +62,16 @@ export default function UsinasPage() {
   }, [plants]);
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
     const rows = plants.filter((p) => {
       if (statusFilter === "ativo" && p.statusContrato !== "Ativo") return false;
       if (statusFilter === "inativo" && p.statusContrato === "Ativo") return false;
-      if (!term) return true;
-      return (
-        p.name.toLowerCase().includes(term) ||
-        (p.numeroUsina ?? "").toLowerCase().includes(term) ||
-        matchCodigoUc(p.unidadeConsumidora, term) ||
-        (p.cpfCnpj ?? "").toLowerCase().includes(term) ||
-        (p.distribuidora ?? "").toLowerCase().includes(term)
-      );
+      return matchBusca(search, [
+        p.name,
+        p.numeroUsina,
+        p.unidadeConsumidora,
+        p.cpfCnpj,
+        p.distribuidora,
+      ]);
     });
 
     rows.sort((a, b) => {

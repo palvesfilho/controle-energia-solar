@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { matchBusca } from "@/lib/busca";
 import {
   ACAO_REQUERIDA_LABEL,
   ACOES_REQUERIDAS,
@@ -132,15 +133,10 @@ export default function CodigosErroInversorPage() {
   }, []);
 
   const filtrados = useMemo(() => {
-    const buscaNorm = busca.trim().toLowerCase();
     return codigos.filter((c) => {
       if (fabricanteFiltro !== "TODOS" && c.fabricante !== fabricanteFiltro)
         return false;
-      if (buscaNorm) {
-        const blob = `${c.codigo} ${c.titulo} ${c.descricao ?? ""}`.toLowerCase();
-        if (!blob.includes(buscaNorm)) return false;
-      }
-      return true;
+      return matchBusca(busca, [c.codigo, c.titulo, c.descricao]);
     });
   }, [codigos, busca, fabricanteFiltro]);
 

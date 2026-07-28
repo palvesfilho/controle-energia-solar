@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowUpDown, Search } from "lucide-react";
 import { formatBRL, formatKWh, formatMonthYear } from "@/lib/formatters";
-import { formatCodigoUc, matchCodigoUc } from "@/lib/uc-codigo";
+import { formatCodigoUc } from "@/lib/uc-codigo";
+import { matchBusca } from "@/lib/busca";
 
 interface BalancoRow {
   id: string;
@@ -54,15 +55,9 @@ export default function BalancoMensalPage() {
   }, [ano, mes]);
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const list = rows.filter((r) => {
-      if (!term) return true;
-      return (
-        r.nome.toLowerCase().includes(term) ||
-        matchCodigoUc(r.codigoUc, term) ||
-        (r.consumerName ?? "").toLowerCase().includes(term)
-      );
-    });
+    const list = rows.filter((r) =>
+      matchBusca(search, [r.nome, r.codigoUc, r.consumerName])
+    );
 
     const dir = sort.dir === "asc" ? 1 : -1;
     list.sort((a, b) => {

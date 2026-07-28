@@ -14,7 +14,8 @@ import {
   Zap,
   Building,
 } from "lucide-react";
-import { formatCodigoUc, matchCodigoUc } from "@/lib/uc-codigo";
+import { formatCodigoUc } from "@/lib/uc-codigo";
+import { matchBusca } from "@/lib/busca";
 
 interface UCData {
   id: string;
@@ -67,16 +68,9 @@ export default function UnidadesConsumidorasPage() {
   }, [ucs, distribuidoras]);
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const rows = ucs.filter((u) => {
-      if (!term) return true;
-      return (
-        u.nome.toLowerCase().includes(term) ||
-        matchCodigoUc(u.codigoUc, term) ||
-        (u.consumer?.name ?? "").toLowerCase().includes(term) ||
-        (u.plant?.name ?? "").toLowerCase().includes(term)
-      );
-    });
+    const rows = ucs.filter((u) =>
+      matchBusca(search, [u.nome, u.codigoUc, u.consumer?.name, u.plant?.name])
+    );
 
     rows.sort((a, b) => {
       const dir = sort.dir === "asc" ? 1 : -1;

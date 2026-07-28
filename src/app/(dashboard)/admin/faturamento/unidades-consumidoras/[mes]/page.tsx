@@ -14,7 +14,8 @@ import {
   generateDueDates,
   splitValueEvenly,
 } from "@/lib/billing-installments";
-import { formatCodigoUc, matchCodigoUc } from "@/lib/uc-codigo";
+import { formatCodigoUc } from "@/lib/uc-codigo";
+import { matchBusca } from "@/lib/busca";
 
 interface Row {
   consumerUnit: {
@@ -372,13 +373,11 @@ export default function FaturamentoUCMesPage() {
 
   const filtered = rows.filter((r) => {
     if (statusFilter !== "all" && r.status !== statusFilter) return false;
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      r.consumerUnit.nome.toLowerCase().includes(q) ||
-      matchCodigoUc(r.consumerUnit.codigoUc, q) ||
-      (r.consumerUnit.consumer?.name.toLowerCase().includes(q) ?? false)
-    );
+    return matchBusca(search, [
+      r.consumerUnit.nome,
+      r.consumerUnit.codigoUc,
+      r.consumerUnit.consumer?.name,
+    ]);
   });
 
   const hoje = new Date();

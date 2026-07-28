@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { CalendarRange, Plus, Eye, Pencil, Search } from "lucide-react";
+import { matchBusca } from "@/lib/busca";
 
 interface ObraRow {
   id: string;
@@ -66,16 +67,9 @@ export default function CronogramaObrasPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const term = search.trim().toLowerCase();
-  const filtered = term
-    ? obras.filter(
-        (o) =>
-          o.nome.toLowerCase().includes(term) ||
-          (o.cliente ?? "").toLowerCase().includes(term) ||
-          (o.responsavel ?? "").toLowerCase().includes(term) ||
-          (o.local ?? "").toLowerCase().includes(term)
-      )
-    : obras;
+  const filtered = obras.filter((o) =>
+    matchBusca(search, [o.nome, o.cliente, o.responsavel, o.local])
+  );
 
   return (
     <div className="space-y-6 p-6">

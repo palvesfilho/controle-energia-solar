@@ -7,6 +7,7 @@ import { serializeObraObservacoes } from "@/lib/obra-meta";
 import { parseDateOnly } from "@/lib/obra-calendario";
 import { encrypt } from "@/lib/crypto";
 import { normalizeCodigoUc } from "@/lib/uc-codigo";
+import { buscarIds } from "@/lib/busca-sql";
 
 const DISTRIBUIDORAS_PORTAL = new Set([
   "RGE",
@@ -57,12 +58,13 @@ export async function GET(req: NextRequest) {
   const where: Record<string, unknown> = { active: true };
 
   if (search) {
-    where.OR = [
-      { nome: { contains: search, mode: "insensitive" } },
-      { cpfCnpj: { contains: search, mode: "insensitive" } },
-      { email: { contains: search, mode: "insensitive" } },
-      { cidade: { contains: search, mode: "insensitive" } },
-    ];
+    // Acento/caixa/pontuacao-insensivel (ver src/lib/busca-sql.ts).
+    const ids = await buscarIds({
+      tabela: "brasil_solar_proprietarios",
+      colunas: ["nome", "cpf_cnpj", "email", "telefone", "cidade", "codigo_uc", "codigo_uc_antigo"],
+      termo: search,
+    });
+    where.id = { in: ids ?? [] };
   }
 
   // Modo "all" para o combobox de selecao (retorna id + nome apenas)

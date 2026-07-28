@@ -12,6 +12,7 @@ import {
   Search,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { matchBusca } from "@/lib/busca";
 import type {
   GestaoObraRow,
   ObraStatus,
@@ -143,18 +144,16 @@ export default function ObrasFinalizadasPage() {
   useEffect(load, []);
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
     return rows
       .filter((r) => {
         if (statusFilter !== "all" && r.status !== statusFilter) return false;
-        if (!term) return true;
-        return (
-          r.nome.toLowerCase().includes(term) ||
-          (r.cliente ?? "").toLowerCase().includes(term) ||
-          (r.proprietarioNome ?? "").toLowerCase().includes(term) ||
-          (r.local ?? "").toLowerCase().includes(term) ||
-          (r.responsavel ?? "").toLowerCase().includes(term)
-        );
+        return matchBusca(search, [
+          r.nome,
+          r.cliente,
+          r.proprietarioNome,
+          r.local,
+          r.responsavel,
+        ]);
       })
       .sort((a, b) => {
         const da = a.dataFimReal ? new Date(a.dataFimReal).getTime() : 0;

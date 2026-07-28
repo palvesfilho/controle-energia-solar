@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { ChevronDown, X, Search, Loader2 } from "lucide-react";
+import { matchBusca } from "@/lib/busca";
 
 interface Proprietario {
   id: string;
@@ -51,13 +52,7 @@ export function ProprietarioSelect({ value, onChange, label = "Proprietario" }: 
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const filtered = search
-    ? options.filter(
-        (p) =>
-          p.nome.toLowerCase().includes(search.toLowerCase()) ||
-          (p.cpfCnpj && p.cpfCnpj.includes(search))
-      )
-    : options;
+  const filtered = options.filter((p) => matchBusca(search, [p.nome, p.cpfCnpj]));
 
   function handleSelect(p: Proprietario) {
     setSelected(p);

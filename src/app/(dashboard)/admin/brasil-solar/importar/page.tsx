@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { matchBusca } from "@/lib/busca";
 
 interface ImportRow {
   nome: string;
@@ -148,13 +149,7 @@ function ProprietarioInlineSelect({
   }, []);
 
   const selected = value ? proprietarios.find((p) => p.id === value) : null;
-  const filtered = search
-    ? proprietarios.filter(
-        (p) =>
-          p.nome.toLowerCase().includes(search.toLowerCase()) ||
-          (p.cpfCnpj && p.cpfCnpj.includes(search))
-      )
-    : proprietarios;
+  const filtered = proprietarios.filter((p) => matchBusca(search, [p.nome, p.cpfCnpj]));
 
   return (
     <div ref={ref} className="relative">
@@ -688,13 +683,7 @@ function GlobalProprietarioSelect({
   }, []);
 
   const selected = value ? proprietarios.find((p) => p.id === value) : null;
-  const filtered = search
-    ? proprietarios.filter(
-        (p) =>
-          p.nome.toLowerCase().includes(search.toLowerCase()) ||
-          (p.cpfCnpj && p.cpfCnpj.includes(search))
-      )
-    : proprietarios;
+  const filtered = proprietarios.filter((p) => matchBusca(search, [p.nome, p.cpfCnpj]));
 
   return (
     <div ref={ref} className="relative">

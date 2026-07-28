@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ClipboardCheck, Check, X, Search } from "lucide-react";
+import { matchBusca } from "@/lib/busca";
 
 interface ObraPendente {
   id: string;
@@ -81,15 +82,7 @@ export default function AprovacaoObrasPage() {
     }
   }
 
-  const term = search.trim().toLowerCase();
-  const filtered = term
-    ? obras.filter(
-        (o) =>
-          o.nome.toLowerCase().includes(term) ||
-          (o.cliente ?? "").toLowerCase().includes(term) ||
-          (o.local ?? "").toLowerCase().includes(term)
-      )
-    : obras;
+  const filtered = obras.filter((o) => matchBusca(search, [o.nome, o.cliente, o.local]));
 
   return (
     <div className="space-y-6 p-6">

@@ -22,6 +22,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { TASK_TYPE_LABEL, type AgendaTaskType, type AgendaTaskStatus } from "@/lib/agenda";
+import { matchBusca } from "@/lib/busca";
 import {
   addDaysOnly,
   dateOnlyKey,
@@ -107,14 +108,6 @@ const STATUS_META: Record<AgendaTaskStatus, { icon: React.ElementType; cls: stri
   DONE: { icon: CheckCircle2, cls: "text-emerald-600", label: "Feito" },
   OVERDUE: { icon: AlertCircle, cls: "text-red-600", label: "Atrasada" },
 };
-
-// Normaliza texto para busca: minúsculas e sem acentos (Postgres/JS acento-insensível).
-function normalize(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "");
-}
 
 // Formata sempre a partir do componente UTC do dia-calendário: o rótulo tem
 // que ser o mesmo no servidor (Railway, UTC) e no navegador (BRT).
@@ -205,15 +198,12 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
   }, [allUcs]);
 
   const filtered = useMemo(() => {
-    const q = normalize(filterQuery.trim());
     return tasks.filter((t) => {
-      if (q) {
-        // Busca por nome do cliente ou código da UC — casa contra título,
-        // subtítulo e o rótulo "codigoUc — nome".
-        const haystack = normalize(
-          `${t.title} ${t.subtitle ?? ""} ${t.consumerUnitLabel ?? ""}`
-        );
-        if (!haystack.includes(q)) return false;
+      // Busca por nome do cliente ou código da UC — casa contra título,
+      // subtítulo e o rótulo "codigoUc — nome". O código pode vir pontuado no
+      // rótulo e em dígitos no que o operador digita (ou o contrário).
+      if (!matchBusca(filterQuery, [t.title, t.subtitle, t.consumerUnitLabel])) {
+        return false;
       }
       if (filterType !== "ALL" && t.type !== filterType) return false;
       if (filterStatus !== "ALL" && t.status !== filterStatus) return false;

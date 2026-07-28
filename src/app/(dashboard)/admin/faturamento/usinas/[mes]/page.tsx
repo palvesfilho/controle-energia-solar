@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, CheckCircle2, FileText, Loader2, Minus, Search, ShieldCheck, XCircle } from "lucide-react";
 import { formatMonthYear, formatBRL } from "@/lib/formatters";
+import { matchBusca } from "@/lib/busca";
 
 interface Row {
   plant: {
@@ -148,15 +149,9 @@ export default function FaturamentoMesPage() {
     return <div className="p-8 text-center text-sm text-muted-foreground">Mês inválido</div>;
   }
 
-  const filtered = rows.filter((r) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      r.plant.name.toLowerCase().includes(q) ||
-      (r.plant.numeroUsina?.toLowerCase().includes(q) ?? false) ||
-      (r.plant.cpfCnpj?.toLowerCase().includes(q) ?? false)
-    );
-  });
+  const filtered = rows.filter((r) =>
+    matchBusca(search, [r.plant.name, r.plant.numeroUsina, r.plant.cpfCnpj])
+  );
 
   return (
     <div className="space-y-4">

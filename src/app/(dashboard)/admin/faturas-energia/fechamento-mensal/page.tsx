@@ -18,7 +18,8 @@ import type {
   FechamentoMensalRow,
   FechamentoStatus,
 } from "@/app/api/admin/faturas-energia/fechamento-mensal/route";
-import { formatCodigoUc, matchCodigoUc } from "@/lib/uc-codigo";
+import { formatCodigoUc } from "@/lib/uc-codigo";
+import { matchBusca } from "@/lib/busca";
 
 const MESES = [
   { v: 1, l: "Janeiro" }, { v: 2, l: "Fevereiro" }, { v: 3, l: "Março" },
@@ -275,16 +276,9 @@ export default function FechamentoMensalPage() {
   }
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
     return rows.filter((r) => {
       if (statusFilter !== "all" && r.status !== statusFilter) return false;
-      if (!term) return true;
-      return (
-        r.nome.toLowerCase().includes(term) ||
-        matchCodigoUc(r.codigoUc, term) ||
-        r.proprietario.toLowerCase().includes(term) ||
-        (r.distribuidora ?? "").toLowerCase().includes(term)
-      );
+      return matchBusca(search, [r.nome, r.codigoUc, r.proprietario, r.distribuidora]);
     });
   }, [rows, statusFilter, search]);
 

@@ -11,6 +11,7 @@
  * - `normalizeCodigoUc` → entrada do usuário/planilha/API vira dígitos.
  * - `formatCodigoUc` → dígitos viram o formato impresso pela concessionária.
  */
+import { matchBusca } from "./busca";
 
 // Forma longa (12 dígitos): 3.562.981.001-26
 // Forma curta (11 dígitos): 429.474.001-20 — sem o primeiro grupo. Confirmada no
@@ -65,13 +66,13 @@ export function formatCodigoUc<T extends string | null | undefined>(v: T): T {
 /**
  * Termo de busca casa tanto com o código em dígitos quanto com o pontuado que
  * aparece na tela — o operador copia da tela e cola no filtro.
+ *
+ * Hoje é só um atalho de um campo para `matchBusca` (`src/lib/busca.ts`), que
+ * é a regra única de busca do sistema. As telas usam `matchBusca` direto,
+ * passando o código junto dos demais campos; esta função fica para quem só
+ * precisa comparar o código isolado.
  */
 export function matchCodigoUc(codigo: string | null | undefined, termo: string): boolean {
   if (!codigo) return false;
-  const t = termo.trim().toLowerCase();
-  if (!t) return true;
-  if (codigo.toLowerCase().includes(t)) return true;
-  if (String(formatCodigoUc(codigo)).toLowerCase().includes(t)) return true;
-  const digitos = t.replace(/\D/g, "");
-  return digitos.length > 0 && /^[\d.\-\s]+$/.test(t) && codigo.replace(/\D/g, "").includes(digitos);
+  return matchBusca(termo, [codigo]);
 }

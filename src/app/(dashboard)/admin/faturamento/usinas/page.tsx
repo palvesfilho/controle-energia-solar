@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { PlantBillingDetail } from "@/components/billing/plant-billing-detail";
 import { formatBRL, formatMonthYear, shortMonth } from "@/lib/formatters";
+import { matchBusca } from "@/lib/busca";
 
 /* ------------------------------------------------------------------ */
 /* Tipos — espelham GET /api/billing/plants/matriz                      */
@@ -499,15 +500,9 @@ export default function FaturamentoUsinasPage() {
 
   const usinasFiltradas = useMemo(() => {
     if (!matriz) return [];
-    const q = search.trim().toLowerCase();
     return matriz.usinas.filter((u) => {
       if (soPendentes && u.qtdPendentes === 0) return false;
-      if (!q) return true;
-      return (
-        u.name.toLowerCase().includes(q) ||
-        (u.numeroUsina?.toLowerCase().includes(q) ?? false) ||
-        u.investorNames.some((n) => n.toLowerCase().includes(q))
-      );
+      return matchBusca(search, [u.name, u.numeroUsina, ...u.investorNames]);
     });
   }, [matriz, search, soPendentes]);
 

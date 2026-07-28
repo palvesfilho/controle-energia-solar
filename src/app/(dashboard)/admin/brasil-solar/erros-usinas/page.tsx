@@ -25,6 +25,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { matchBusca } from "@/lib/busca";
 import {
   ACAO_REQUERIDA_LABEL,
   ACOES_REQUERIDAS,
@@ -250,7 +251,6 @@ export default function ErrosUsinasPage() {
 
   const filtrados = useMemo(() => {
     if (!data) return [] as AlertaItem[];
-    const buscaNorm = busca.trim().toLowerCase();
     return data.alertas.filter((a) => {
       if (!severidadesAtivas.has(a.severidade as Severidade)) return false;
       if (tiposAtivos.size > 0 && !tiposAtivos.has(a.tipo)) return false;
@@ -258,13 +258,13 @@ export default function ErrosUsinasPage() {
         const key = a.acaoRequerida ?? "SEM_ACAO";
         if (!acoesAtivas.has(key)) return false;
       }
-      if (buscaNorm) {
-        const blob = `${a.usina.nome} ${a.usina.cidade ?? ""} ${a.usina.uf ?? ""} ${
-          a.titulo
-        } ${a.descricao ?? ""}`.toLowerCase();
-        if (!blob.includes(buscaNorm)) return false;
-      }
-      return true;
+      return matchBusca(busca, [
+        a.usina.nome,
+        a.usina.cidade,
+        a.usina.uf,
+        a.titulo,
+        a.descricao,
+      ]);
     });
   }, [data, busca, severidadesAtivas, tiposAtivos, acoesAtivas]);
 

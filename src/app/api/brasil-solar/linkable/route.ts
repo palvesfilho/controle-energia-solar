@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
+import { buscarIds } from "@/lib/busca-sql";
 
 /**
  * GET /api/brasil-solar/linkable â€” lista leve de BrasilSolarClient com
@@ -41,12 +42,22 @@ export async function GET(req: NextRequest) {
   }
 
   if (search) {
+    // Acento/caixa/pontuacao-insensivel (ver src/lib/busca-sql.ts).
+    const [idsCliente, idsProprietario] = await Promise.all([
+      buscarIds({
+        tabela: "brasil_solar_clients",
+        colunas: ["nome", "cpf_cnpj", "codigo_uc", "codigo_uc_antigo", "cidade"],
+        termo: search,
+      }),
+      buscarIds({
+        tabela: "brasil_solar_proprietarios",
+        colunas: ["nome"],
+        termo: search,
+      }),
+    ]);
     const filters = [
-      { nome: { contains: search, mode: "insensitive" } },
-      { cpfCnpj: { contains: search, mode: "insensitive" } },
-      { codigoUc: { contains: search, mode: "insensitive" } },
-      { cidade: { contains: search, mode: "insensitive" } },
-      { proprietario: { nome: { contains: search, mode: "insensitive" } } },
+      { id: { in: idsCliente ?? [] } },
+      { proprietarioId: { in: idsProprietario ?? [] } },
     ];
     if (Array.isArray(where.OR)) {
       where.AND = [{ OR: where.OR }, { OR: filters }];

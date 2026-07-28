@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { matchBusca } from "@/lib/busca";
 import {
   Plus,
   Pencil,
@@ -52,18 +53,16 @@ export default function ConsumidoresPage() {
   }, [consumers]);
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
     const rows = consumers.filter((c) => {
       if (statusFilter === "ativo" && !c.active) return false;
       if (statusFilter === "inativo" && c.active) return false;
-      if (!term) return true;
-      return (
-        c.name.toLowerCase().includes(term) ||
-        (c.cpfCnpj ?? "").toLowerCase().includes(term) ||
-        (c.document ?? "").toLowerCase().includes(term) ||
-        (c.phone ?? "").toLowerCase().includes(term) ||
-        (c.emailsRecebimento ?? "").toLowerCase().includes(term)
-      );
+      return matchBusca(search, [
+        c.name,
+        c.cpfCnpj,
+        c.document,
+        c.phone,
+        c.emailsRecebimento,
+      ]);
     });
 
     rows.sort((a, b) => {

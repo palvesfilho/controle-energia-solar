@@ -8,7 +8,8 @@ import type {
   RelatorioVisaoGeralRow,
   RelatorioCell,
 } from "@/app/api/brasil-solar/relatorios/visao-geral/route";
-import { formatCodigoUc, matchCodigoUc } from "@/lib/uc-codigo";
+import { formatCodigoUc } from "@/lib/uc-codigo";
+import { matchBusca } from "@/lib/busca";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -120,19 +121,17 @@ export default function RelatoriosVisaoGeralPage() {
   }, [currentYear]);
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
     return rows.filter((r) => {
       if (plano === "ativos" && !r.acessoAtivo) return false;
       if (escopo === "comUc" && !r.ucId) return false;
       if (escopo === "semUc" && r.ucId) return false;
-      if (!term) return true;
-      return (
-        r.proprietarioNome.toLowerCase().includes(term) ||
-        (r.cpfCnpj ?? "").toLowerCase().includes(term) ||
-        matchCodigoUc(r.codigoUc, term) ||
-        (r.ucNome ?? "").toLowerCase().includes(term) ||
-        (r.distribuidora ?? "").toLowerCase().includes(term)
-      );
+      return matchBusca(search, [
+        r.proprietarioNome,
+        r.cpfCnpj,
+        r.codigoUc,
+        r.ucNome,
+        r.distribuidora,
+      ]);
     });
   }, [rows, search, escopo, plano]);
 

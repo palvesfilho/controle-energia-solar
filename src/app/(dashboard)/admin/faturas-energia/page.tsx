@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Loader2, Minus, X, Receipt, Upload, CheckCircle2, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import type { FaturasEnergiaRow, FaturaCell } from "@/app/api/admin/faturas-energia/route";
-import { formatCodigoUc, matchCodigoUc } from "@/lib/uc-codigo";
+import { formatCodigoUc } from "@/lib/uc-codigo";
+import { matchBusca } from "@/lib/busca";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -146,17 +147,10 @@ export default function FaturasEnergiaVisaoGeralPage() {
   }, [currentYear]);
 
   const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
     return rows.filter((r) => {
       if (apenasAtivas && !r.active) return false;
       if (origemFilter !== "all" && r.origem !== origemFilter) return false;
-      if (!term) return true;
-      return (
-        r.nome.toLowerCase().includes(term) ||
-        matchCodigoUc(r.codigoUc, term) ||
-        r.proprietario.toLowerCase().includes(term) ||
-        (r.distribuidora ?? "").toLowerCase().includes(term)
-      );
+      return matchBusca(search, [r.nome, r.codigoUc, r.proprietario, r.distribuidora]);
     });
   }, [rows, search, origemFilter, apenasAtivas]);
 
