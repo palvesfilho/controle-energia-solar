@@ -78,7 +78,10 @@ async function main() {
           const dailyData = await getDailyGeneration(pvId, year, month);
 
           for (const day of dailyData) {
-            const date = new Date(year, month - 1, day.day, 12, 0, 0);
+            // Meio-dia UTC — igual a todas as rotas de sync. Hora local aqui
+            // gravava 15:00Z em BRT e criava uma 2a linha pro mesmo dia,
+            // dobrando a geração no relatório (ver feedback_monitoring_log_date_utc).
+            const date = new Date(Date.UTC(year, month - 1, day.day, 12, 0, 0));
             await prisma.monitoringLog.upsert({
               where: { clientId_data: { clientId: client.id, data: date } },
               update: { geracaoDiaria: day.energyKwh },
