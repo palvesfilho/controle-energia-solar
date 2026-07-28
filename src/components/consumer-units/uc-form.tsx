@@ -85,6 +85,10 @@ export const METODOS_PAGAMENTO: { value: string; label: string }[] = [
 
 export const REGRAS_REMUNERACAO: { value: string; label: string }[] = [
   { value: "FAT_UNICA_COMPENSADA_BANDEIRAS", label: "Fatura Única Compensada Bandeiras" },
+  {
+    value: "FAT_UNICA_COMPENSADA_BANDEIRAS_DIMARZARI",
+    label: "Fatura Única Compensada Bandeiras — DIMARZARI",
+  },
   { value: "PERCENTUAL_SOBRE_COMPENSADO", label: "Percentual Sobre Compensado" },
   { value: "DESC_COMPENSADA", label: "Desconto sobre Energia Compensada" },
   { value: "DESC_FATURA_COMPENSADA_DOMMO", label: "Desconto sobre Fatura Compensada DOMMO" },

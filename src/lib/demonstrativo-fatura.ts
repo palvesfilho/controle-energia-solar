@@ -11,6 +11,7 @@
 import { prisma } from "@/lib/prisma";
 import { getPayment, getIdentificationField } from "@/lib/asaas";
 import { computarAcumulados } from "@/lib/acumulados";
+import { resolverCustoSemDesconto } from "@/lib/billing-calculator";
 
 export interface DemonstrativoFaturaBoleto {
   tipo: "rge" | "associacao";
@@ -151,19 +152,34 @@ export async function loadDemonstrativoFaturaData(
   // Tarifa bruta (R$/kWh) — TE + TUSD (sem desconto)
   const tarifaBruta = billMes ? (billMes.tarifaTE ?? 0) + (billMes.tarifaTUSD ?? 0) : 0;
 
-  // % de desconto do contrato (apenas exibição)
-  const descontoPct = (uc.percentCompensado ?? 0) * 100;
-
   // Resumo do mês:
   //   custoTotalSemDesconto = quanto pagaria sem solar
   //   custoEnergiaComDesconto = valorCobranca (nossa cobrança) — em FAT_UNICA inclui RGE
   //   economiaMensal = valorEconomia
   const valorTotalRge = billMes?.valorTotal ?? billing.valorFatura ?? 0;
   const valorCompensado = billing.valorCompensado ?? 0;
-  const custoTotalSemDesconto = valorTotalRge + valorCompensado;
   const custoEnergiaComDesconto = billing.valorCobranca ?? 0;
-  const economiaMensal = billing.valorEconomia ?? 0;
+  // Regras com multiplicador de exibição (ex.: DIMARZARI) mostram o "sem
+  // desconto" como um múltiplo da própria cobrança; as demais somam
+  // fatura da RGE + créditos. Não afeta o valor a pagar.
+  const semDesconto = resolverCustoSemDesconto(
+    uc.regraRemuneracao,
+    custoEnergiaComDesconto,
+    valorTotalRge + valorCompensado,
+    billing.valorEconomia ?? 0,
+  );
+  const custoTotalSemDesconto = semDesconto.custoSemDesconto;
+  const economiaMensal = semDesconto.economia;
   const valorAPagar = billing.valorCobranca ?? 0;
+
+  // % de desconto exibido ao cliente. Nas regras com multiplicador é o desconto
+  // real da tela (economia ÷ valor sem desconto — 20% quando o fator é 1,25);
+  // nas demais mantém o percentual de contrato da UC.
+  // Não confundir com `percentCompensado`, que é a fatia cobrada sobre o crédito.
+  const descontoPct =
+    semDesconto.viaMultiplicador && custoTotalSemDesconto > 0
+      ? (economiaMensal / custoTotalSemDesconto) * 100
+      : (uc.percentCompensado ?? 0) * 100;
 
   const mesLabel = mesAnoCurto(billing.mes, billing.ano);
 
@@ -260,7 +276,9 @@ export async function loadDemonstrativoFaturaData(
     resumoDoMes: {
       custoTotalSemDesconto: {
         valor: custoTotalSemDesconto,
-        obs: valorCompensado > 0
+        obs: semDesconto.viaMultiplicador
+          ? "Referência contratual"
+          : valorCompensado > 0
           ? `R$ ${valorCompensado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} em crédito`
           : "Sem créditos no mês",
       },

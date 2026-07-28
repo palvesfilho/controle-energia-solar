@@ -75,3 +75,6 @@ scripts/_*
 /temp/
 /TODO_*.md
 /unidades-consumidoras.xlsx
+
+# script local de configuracao do Asaas — contem credencial, nao versionar
+configurar-asaas.ps1

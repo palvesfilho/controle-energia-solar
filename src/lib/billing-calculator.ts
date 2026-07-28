@@ -9,6 +9,12 @@
  *                + parcelaInstantâneo                  (se UC geradora descontado)
  *                + valorTotal RGE                      (pass-through — fatura única)
  *
+ *   - FAT_UNICA_COMPENSADA_BANDEIRAS_DIMARZARI:
+ *       cobrança idêntica à FAT_UNICA — trafega como `valorCobradoDimarzari` /
+ *       `valorCobrancaDimarzari`. O que muda é só a EXIBIÇÃO: o "valor sem
+ *       desconto" do demonstrativo vira `valorCobranca × 1,25`
+ *       (ver MULTIPLICADOR_SEM_DESCONTO), e a economia é a diferença.
+ *
  *   - PERCENTUAL_SOBRE_COMPENSADO:
  *       igual ao FAT_UNICA, **sem** somar o valorTotal da RGE.
  *       (cliente paga a RGE direto; a gente cobra só o percentual)
@@ -19,6 +25,7 @@
 
 export type RegraRemuneracao =
   | "FAT_UNICA_COMPENSADA_BANDEIRAS"
+  | "FAT_UNICA_COMPENSADA_BANDEIRAS_DIMARZARI"
   | "PERCENTUAL_SOBRE_COMPENSADO"
   | "DESC_COMPENSADA"
   | "DESC_FATURA_COMPENSADA_DOMMO";
@@ -65,6 +72,14 @@ export interface UnitInput {
 
 export interface CalcResultado {
   valorCobrado: number | null;
+  /**
+   * SÓ EXIBIÇÃO — exclusivo da regra FAT_UNICA_COMPENSADA_BANDEIRAS_DIMARZARI.
+   * É o `valorCobrado` multiplicado por MULTIPLICADOR_SEM_DESCONTO (1,25),
+   * usado como "quanto a conta seria sem o desconto" na tela/PDF.
+   * NÃO é cobrado do cliente e NÃO é gravado em ConsumerUnitBilling.
+   * Nas demais regras vem null.
+   */
+  valorCobradoDimarzari?: number | null;
   regra: string | null;
   detalhamento: {
     injetadaOucTeValor: number | null;
@@ -255,6 +270,59 @@ function notImplementedResult(regra: string | null, msg: string): CalcResultado 
   };
 }
 
+/**
+ * Multiplicador de EXIBIÇÃO por regra.
+ *
+ * Não altera em nada o que o cliente paga (`valorCobranca`). Só define o valor
+ * "como se a conta fosse sem o desconto" mostrado no demonstrativo:
+ *
+ *     custoTotalSemDesconto = valorCobranca × multiplicador
+ *     economia              = custoTotalSemDesconto − valorCobranca
+ *
+ * Regras ausentes deste mapa mantêm o cálculo somatório (fatura RGE + créditos).
+ */
+export const MULTIPLICADOR_SEM_DESCONTO: Record<string, number> = {
+  FAT_UNICA_COMPENSADA_BANDEIRAS_DIMARZARI: 1.25,
+};
+
+export interface CustoSemDesconto {
+  custoSemDesconto: number;
+  economia: number;
+  /** true = veio do multiplicador da regra; false = somatório padrão */
+  viaMultiplicador: boolean;
+  multiplicador: number | null;
+}
+
+/**
+ * Resolve o par (custo sem desconto, economia) exibido no demonstrativo.
+ *
+ * @param custoSomatorio  cálculo padrão (valorTotalRGE + valorCompensado)
+ * @param economiaPadrao  economia padrão (ConsumerUnitBilling.valorEconomia)
+ */
+export function resolverCustoSemDesconto(
+  regraRemuneracao: string | null,
+  valorCobranca: number,
+  custoSomatorio: number,
+  economiaPadrao: number,
+): CustoSemDesconto {
+  const mult = regraRemuneracao ? MULTIPLICADOR_SEM_DESCONTO[regraRemuneracao] : undefined;
+  if (mult == null) {
+    return {
+      custoSemDesconto: custoSomatorio,
+      economia: economiaPadrao,
+      viaMultiplicador: false,
+      multiplicador: null,
+    };
+  }
+  const custoSemDesconto = valorCobranca * mult;
+  return {
+    custoSemDesconto,
+    economia: custoSemDesconto - valorCobranca,
+    viaMultiplicador: true,
+    multiplicador: mult,
+  };
+}
+
 export function calcularValorCobrado(
   bill: BillInput,
   unit: UnitInput,
@@ -267,6 +335,23 @@ export function calcularValorCobrado(
         /* somarValorTotal */ true,
         "FAT_UNICA_COMPENSADA_BANDEIRAS",
       );
+    // Variante DIMARZARI — a COBRANÇA é idêntica à FAT_UNICA. O multiplicador
+    // do contrato não entra aqui: ele só infla o "sem desconto" exibido no
+    // demonstrativo (ver resolverCustoSemDesconto).
+    case "FAT_UNICA_COMPENSADA_BANDEIRAS_DIMARZARI": {
+      const base = calcularPercentualSobreCompensadoBase(
+        bill,
+        unit,
+        /* somarValorTotal */ true,
+        "FAT_UNICA_COMPENSADA_BANDEIRAS_DIMARZARI",
+      );
+      const mult = MULTIPLICADOR_SEM_DESCONTO["FAT_UNICA_COMPENSADA_BANDEIRAS_DIMARZARI"];
+      return {
+        ...base,
+        // valorCobrado (o que o cliente paga) NÃO muda.
+        valorCobradoDimarzari: base.valorCobrado != null ? base.valorCobrado * mult : null,
+      };
+    }
     case "PERCENTUAL_SOBRE_COMPENSADO":
       return calcularPercentualSobreCompensadoBase(
         bill,

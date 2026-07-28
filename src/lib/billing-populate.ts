@@ -24,6 +24,8 @@ export interface PopulateResult {
   valorFatura: number | null;
   valorCompensado: number | null;
   valorCobranca: number | null;
+  /** Só exibição (regra DIMARZARI): valorCobranca × 1,25. null nas demais. */
+  valorCobrancaDimarzari?: number | null;
   valorEconomia: number | null;
   dataVencimento: Date | null;
   problemas: string[];
@@ -211,7 +213,11 @@ export async function populateBillingFromBill(
     ? componentesCompensado.reduce<number>((acc, v) => acc + (v ?? 0), 0)
     : null;
 
+  // O que é cobrado do cliente — inalterado por qualquer regra.
   const valorCobranca = calc.valorCobrado;
+  // Só exibição (regra DIMARZARI): valorCobranca × 1,25. Não é persistido;
+  // o demonstrativo recalcula pelo resolverCustoSemDesconto.
+  const valorCobrancaDimarzari = calc.valorCobradoDimarzari ?? null;
 
   // Economia do cliente: o que deixou de pagar vs. cenário "sem solar".
   // - Em PERCENTUAL_SOBRE_COMPENSADO: cliente paga RGE direto + nosso %, então
@@ -291,6 +297,7 @@ export async function populateBillingFromBill(
     valorFatura: bill.valorTotal,
     valorCompensado,
     valorCobranca,
+    valorCobrancaDimarzari,
     valorEconomia,
     dataVencimento,
     problemas: calc.problemas,
