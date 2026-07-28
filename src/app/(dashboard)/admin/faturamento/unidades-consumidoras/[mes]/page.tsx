@@ -85,6 +85,17 @@ const MESES_OPTS = [
   { v: 10, l: "Outubro" }, { v: 11, l: "Novembro" }, { v: 12, l: "Dezembro" },
 ];
 
+// Emissão em LOTE desativada em 2026-07-28, quando o Asaas passou de sandbox para
+// produção. Um clique aqui dispara boleto REAL para todas as faturas do mês que
+// ainda não têm cobrança — sem prévia, sem limite, e a rota aceita meses passados
+// (03/2026 = 74 boletos / R$ 159 mil). As cobranças passam a ser feitas uma a uma
+// pela tela de detalhe da fatura.
+//
+// Para reativar, antes é preciso, em batch/asaas/route.ts: (1) confirmar na tela a
+// quantidade e o valor total, (2) bloquear meses anteriores ao corrente, e
+// (3) filtrar por status (hoje a query pega até fatura CANCELADA sem asaasChargeId).
+const LOTE_ASAAS_DESATIVADO = true;
+
 export default function FaturamentoUCMesPage() {
   const params = useParams();
   const router = useRouter();
@@ -146,6 +157,9 @@ export default function FaturamentoUCMesPage() {
   };
 
   const handleBatchAsaas = async () => {
+    // Trava redundante ao `disabled` do botão: garante que nem um clique programático
+    // nem um render antigo consigam disparar a emissão em lote.
+    if (LOTE_ASAAS_DESATIVADO) return;
     if (!parsed) return;
     const pendentes = rows.filter(
       (r) => r.billing && !!r.billing.valorCobranca && r.status === "PENDENTE",
@@ -538,8 +552,8 @@ export default function FaturamentoUCMesPage() {
             <select
               value={batchType}
               onChange={(e) => setBatchType(e.target.value as typeof batchType)}
-              disabled={batchSending}
-              className={selectClass}
+              disabled={LOTE_ASAAS_DESATIVADO || batchSending}
+              className={`${selectClass} disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               <option value="PIX">PIX</option>
               <option value="BOLETO">Boleto</option>
@@ -549,11 +563,20 @@ export default function FaturamentoUCMesPage() {
             <button
               type="button"
               onClick={handleBatchAsaas}
-              disabled={batchSending || rows.length === 0}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              disabled={LOTE_ASAAS_DESATIVADO || batchSending || rows.length === 0}
+              title={
+                LOTE_ASAAS_DESATIVADO
+                  ? "Envio em lote desativado. Com o Asaas em produção, um clique aqui emitiria boleto real para todas as faturas do mês. Emita uma a uma pela tela de detalhe da fatura."
+                  : undefined
+              }
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
             >
               <Send className="h-4 w-4" />
-              {batchSending ? "Enviando..." : "Enviar pendentes ao Asaas"}
+              {LOTE_ASAAS_DESATIVADO
+                ? "Envio em lote desativado"
+                : batchSending
+                  ? "Enviando..."
+                  : "Enviar pendentes ao Asaas"}
             </button>
           </div>
 
