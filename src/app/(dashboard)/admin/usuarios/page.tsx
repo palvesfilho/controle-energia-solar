@@ -16,8 +16,17 @@ import {
   Zap,
   Headphones,
   HardHat,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface UserData {
   id: string;
@@ -58,6 +67,10 @@ const ROLE_ICONS: Record<string, React.ElementType> = {
   CONSUMER: Zap,
 };
 
+// Trava do "Desativar": exige digitar a palavra exata (case-sensitive) antes
+// de liberar a ação. Só vale pra desativação — ativar segue clique direto.
+const PALAVRA_DESATIVAR = "Desativar";
+
 const ROLE_OPTIONS = [
   "ADMIN",
   "GESTOR",
@@ -74,6 +87,12 @@ export default function UsuariosPage() {
   const [filterRole, setFilterRole] = useState("");
   const [filterActive, setFilterActive] = useState("");
   const [toggling, setToggling] = useState<string | null>(null);
+  const [desativarTarget, setDesativarTarget] = useState<UserData | null>(null);
+  const [desativarText, setDesativarText] = useState("");
+
+  // Comparação exata (case-sensitive); só o trim das bordas é tolerado.
+  const palavraBate = desativarText.trim() === PALAVRA_DESATIVAR;
+  const desativando = desativarTarget !== null && toggling === desativarTarget.id;
 
   const fetchUsers = () => {
     setLoading(true);
@@ -101,6 +120,8 @@ export default function UsuariosPage() {
       });
       if (res.ok) {
         toast.success(user.active ? "Usuário desativado" : "Usuário ativado");
+        setDesativarTarget(null);
+        setDesativarText("");
         fetchUsers();
       } else {
         const data = await res.json();
@@ -109,6 +130,27 @@ export default function UsuariosPage() {
     } finally {
       setToggling(null);
     }
+  };
+
+  // Ativar é clique direto; desativar passa pela trava textual.
+  const handleToggleClick = (user: UserData) => {
+    if (!user.active) {
+      toggleActive(user);
+      return;
+    }
+    setDesativarText("");
+    setDesativarTarget(user);
+  };
+
+  const fecharDesativar = () => {
+    if (desativando) return;
+    setDesativarTarget(null);
+    setDesativarText("");
+  };
+
+  const confirmarDesativacao = () => {
+    if (!desativarTarget || !palavraBate || desativando) return;
+    toggleActive(desativarTarget);
   };
 
   return (
@@ -234,7 +276,7 @@ export default function UsuariosPage() {
                             <button
                               type="button"
                               title={user.active ? "Desativar" : "Ativar"}
-                              onClick={() => toggleActive(user)}
+                              onClick={() => handleToggleClick(user)}
                               disabled={toggling === user.id}
                               className="p-1.5 rounded hover:bg-muted transition-colors disabled:opacity-50"
                             >
@@ -255,6 +297,83 @@ export default function UsuariosPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Trava do "Desativar" — exige digitar a palavra exata */}
+      <Dialog
+        open={desativarTarget !== null}
+        onOpenChange={(open) => !open && fecharDesativar()}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+              <AlertTriangle className="h-6 w-6 text-red-600" />
+            </div>
+            <DialogTitle className="text-center text-lg">
+              Desativar usuário?
+            </DialogTitle>
+            <DialogDescription className="text-center">
+              Você está prestes a desativar{" "}
+              <span className="font-semibold text-foreground">
+                {desativarTarget?.name}
+              </span>{" "}
+              <span className="text-muted-foreground">
+                ({desativarTarget?.email})
+              </span>
+              .
+              <br />
+              O usuário perderá o acesso ao sistema.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 mt-2">
+            <label className="block text-sm font-medium">
+              Para confirmar, digite a palavra abaixo:
+            </label>
+            <div className="rounded-md bg-muted px-3 py-2 text-sm font-mono select-all">
+              {PALAVRA_DESATIVAR}
+            </div>
+            <input
+              type="text"
+              value={desativarText}
+              onChange={(e) => setDesativarText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && palavraBate) confirmarDesativacao();
+              }}
+              placeholder="Digite a palavra exata aqui"
+              autoFocus
+              disabled={desativando}
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all"
+            />
+            {desativarText.length > 0 && !palavraBate && (
+              <p className="text-xs text-red-600">
+                A palavra precisa ser exatamente &quot;{PALAVRA_DESATIVAR}&quot;
+                (com D maiúsculo).
+              </p>
+            )}
+          </div>
+
+          <DialogFooter className="mt-4 gap-2 sm:gap-2">
+            <button
+              type="button"
+              onClick={fecharDesativar}
+              disabled={desativando}
+              className="px-4 py-2 text-sm font-medium border rounded-lg hover:bg-muted transition-colors disabled:opacity-40"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={confirmarDesativacao}
+              disabled={!palavraBate || desativando}
+              className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {desativando ? "Desativando..." : "Desativar"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -24,8 +24,17 @@ import {
   Check,
   FileBarChart2,
   Send,
+  AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { MonitoringStatusBadge } from "@/components/brasil-solar/status-badge";
 import { GenerationChart, MonthlyComparisonChart } from "@/components/brasil-solar/generation-chart";
 import { formatNumber } from "@/lib/formatters";
@@ -125,6 +134,10 @@ const SYNC_ROUTES: Record<string, string> = {
   SOLAREDGE: "solaredge-sync",
 };
 
+// Trava do botão "Desativar": exige digitar a palavra exata (case-sensitive)
+// antes de liberar a ação. Mesmo padrão da exclusão de investidor.
+const PALAVRA_DESATIVAR = "Desativar";
+
 export default function ProprietarioDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
@@ -133,6 +146,11 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
   const [metricas, setMetricas] = useState<Metricas | null>(null);
   const [loadingMetricas, setLoadingMetricas] = useState(true);
   const [syncingAll, setSyncingAll] = useState(false);
+  const [desativarOpen, setDesativarOpen] = useState(false);
+  const [desativarText, setDesativarText] = useState("");
+  const [desativando, setDesativando] = useState(false);
+  // Comparação exata (case-sensitive); só o trim das bordas é tolerado.
+  const palavraBate = desativarText.trim() === PALAVRA_DESATIVAR;
 
   // Modal plano de monitoramento
   const [planoModal, setPlanoModal] = useState<{ clientId: string; nome: string } | null>(
@@ -452,14 +470,34 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
     }
   }
 
-  async function handleDelete() {
-    if (!confirm("Tem certeza que deseja desativar este proprietario? As usinas serao desvinculadas.")) return;
-    const res = await fetch(`/api/brasil-solar/proprietarios/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      toast.success("Proprietario desativado");
-      router.push("/admin/brasil-solar/proprietarios");
-    } else {
-      toast.error("Erro ao desativar");
+  function abrirDesativar() {
+    setDesativarText("");
+    setDesativarOpen(true);
+  }
+
+  function fecharDesativar() {
+    if (desativando) return;
+    setDesativarOpen(false);
+    setDesativarText("");
+  }
+
+  async function confirmarDesativacao() {
+    if (!palavraBate || desativando) return;
+    setDesativando(true);
+    try {
+      const res = await fetch(`/api/brasil-solar/proprietarios/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Proprietário desativado");
+        setDesativarOpen(false);
+        router.push("/admin/brasil-solar/proprietarios");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error ?? "Erro ao desativar");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro inesperado");
+    } finally {
+      setDesativando(false);
     }
   }
 
@@ -579,7 +617,7 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
             );
           })()}
           <button
-            onClick={handleDelete}
+            onClick={abrirDesativar}
             className="flex items-center gap-1.5 px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
           >
             <Trash2 className="h-4 w-4" />
@@ -1155,6 +1193,77 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
         onClose={() => setConviteOpen(false)}
         onChanged={fetchAcessoConvite}
       />
+
+      {/* Trava do "Desativar" — exige digitar a palavra exata */}
+      <Dialog
+        open={desativarOpen}
+        onOpenChange={(open) => !open && fecharDesativar()}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+              <AlertTriangle className="h-6 w-6 text-red-600" />
+            </div>
+            <DialogTitle className="text-center text-lg">
+              Desativar proprietário?
+            </DialogTitle>
+            <DialogDescription className="text-center">
+              Você está prestes a desativar{" "}
+              <span className="font-semibold text-foreground">{data.nome}</span>.
+              <br />
+              As usinas vinculadas serão desvinculadas.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 mt-2">
+            <label className="block text-sm font-medium">
+              Para confirmar, digite a palavra abaixo:
+            </label>
+            <div className="rounded-md bg-muted px-3 py-2 text-sm font-mono select-all">
+              {PALAVRA_DESATIVAR}
+            </div>
+            <input
+              type="text"
+              value={desativarText}
+              onChange={(e) => setDesativarText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && palavraBate) confirmarDesativacao();
+              }}
+              placeholder="Digite a palavra exata aqui"
+              autoFocus
+              disabled={desativando}
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full px-3 py-2 text-sm border rounded-lg bg-background focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all"
+            />
+            {desativarText.length > 0 && !palavraBate && (
+              <p className="text-xs text-red-600">
+                A palavra precisa ser exatamente &quot;{PALAVRA_DESATIVAR}&quot;
+                (com D maiúsculo).
+              </p>
+            )}
+          </div>
+
+          <DialogFooter className="mt-4 gap-2 sm:gap-2">
+            <button
+              type="button"
+              onClick={fecharDesativar}
+              disabled={desativando}
+              className="px-4 py-2 text-sm font-medium border rounded-lg hover:bg-muted transition-colors disabled:opacity-40"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={confirmarDesativacao}
+              disabled={!palavraBate || desativando}
+              className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {desativando ? "Desativando..." : "Desativar"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
