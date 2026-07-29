@@ -13,6 +13,7 @@ import {
   Bar,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { esperadaDoDiaKwh, esperadaDoMesKwh } from "@/lib/geracao-esperada";
 import {
   Select,
   SelectContent,
@@ -73,6 +74,11 @@ export function GenerationChart({
   geracaoMediaEsperada,
 }: {
   logs: MonitoringLog[];
+  /**
+   * Prognóstico mensal MÉDIO da usina (kWh/mês) — não dividido por dia. A
+   * conversão pra dia é feita aqui, com o fator sazonal do mês exibido, senão
+   * a linha "esperada" fica alta demais no inverno e baixa demais no verão.
+   */
   geracaoMediaEsperada?: number | null;
 }) {
   const [chartType, setChartType] = useState<"bar" | "area">("bar");
@@ -112,12 +118,23 @@ export function GenerationChart({
       .map((log) => ({
         data: formatDate(log.data),
         geracao: log.geracaoDiaria,
-        esperada: log.geracaoEsperada ?? (geracaoMediaEsperada ? geracaoMediaEsperada / 30 : null),
+        esperada:
+          log.geracaoEsperada ??
+          (geracaoMediaEsperada
+            ? esperadaDoDiaKwh(geracaoMediaEsperada, new Date(log.data))
+            : null),
         pico: log.picoMaximo,
       }));
   }, [logs, selectedYear, selectedMonth, geracaoMediaEsperada]);
 
-  const mediaEsperadaDia = geracaoMediaEsperada ? geracaoMediaEsperada / 30 : null;
+  // Referência do mês exibido, com sazonalidade (jun ≈ 55% da média do ano).
+  const mediaEsperadaDia = useMemo(() => {
+    if (!geracaoMediaEsperada) return null;
+    const ano = Number(selectedYear);
+    const mes = Number(selectedMonth);
+    const dias = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+    return esperadaDoMesKwh(geracaoMediaEsperada, mes) / dias;
+  }, [geracaoMediaEsperada, selectedYear, selectedMonth]);
 
   // Meses disponiveis para o ano selecionado
   const monthsForYear = useMemo(() => {

@@ -14,11 +14,24 @@ import * as solaredge from "@/lib/solaredge";
 import * as sungrow from "@/lib/sungrow";
 import * as huawei from "@/lib/huawei";
 import type { InverterErrorEvent } from "@/lib/inverter-errors";
+import {
+  esperadaAcumuladaNoMesKwh,
+  esperadaMensalBaseKwh,
+} from "@/lib/geracao-esperada";
+
+/**
+ * Fração mínima dos dias já decorridos do mês que a usina precisa ter no
+ * `MonitoringLog` para o alerta de baixa geração ser confiável. Abaixo disso o
+ * PR está medindo buraco de sincronização, não desempenho.
+ */
+const COBERTURA_LOG_MINIMA = 0.8;
 
 export interface AlertSyncResult {
   alertsCreated: number;
   offlineDetected: number;
   lowPerformanceDetected: number;
+  /** Candidatos a baixa geração descartados por log incompleto no mês. */
+  lowPerformanceSkippedNoLog: number;
   tensaoDetected: number;
   temperaturaDetected: number;
   frequenciaDetected: number;
@@ -101,13 +114,19 @@ export async function runAlertSync(): Promise<AlertSyncResult> {
   }
 
   let baixaGeracaoDetected = 0;
+  let baixaGeracaoSemLog = 0;
   if (cfg.BAIXA_GERACAO.enabled) {
     const limiteSuperior = cfg.BAIXA_GERACAO.thresholdMedio ?? 90;
+    // O prognóstico pode estar só na coluna anual (é o caso de toda a base):
+    // exigir `geracaoMediaEsperada > 0` aqui zerava o alerta para todo mundo.
     const candidates = await prisma.brasilSolarClient.findMany({
       where: {
         active: true,
         performanceRatio: { lte: limiteSuperior, gt: 0 },
-        geracaoMediaEsperada: { gt: 0 },
+        OR: [
+          { geracaoMediaEsperada: { gt: 0 } },
+          { geracaoAnualEsperada: { gt: 0 } },
+        ],
         statusMonitoramento: "ONLINE",
       },
       select: {
@@ -116,10 +135,43 @@ export async function runAlertSync(): Promise<AlertSyncResult> {
         performanceRatio: true,
         geracaoMesAtual: true,
         geracaoMediaEsperada: true,
+        geracaoAnualEsperada: true,
       },
     });
 
+    // Sem log completo do mês, PR baixo significa dado faltando, não usina
+    // ruim. Medido em 2026-07-29: das 150 usinas ONLINE com prognóstico, só 6
+    // tinham o log do mês praticamente completo — alertar todas produziria 147
+    // alertas falsos. Buraco de sincronização é assunto do alerta de
+    // comunicação/OFFLINE, não deste.
+    const inicioMesAtual = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    );
+    const diasDecorridos = now.getUTCDate();
+    // MonitoringLog é único por (clientId, data) → contar linhas = contar dias.
+    const diasPorCliente = new Map<string, number>();
+    if (candidates.length > 0) {
+      const agrupado = await prisma.monitoringLog.groupBy({
+        by: ["clientId"],
+        where: {
+          clientId: { in: candidates.map((c) => c.id) },
+          data: { gte: inicioMesAtual },
+        },
+        _count: { _all: true },
+      });
+      for (const g of agrupado) diasPorCliente.set(g.clientId, g._count._all);
+    }
+
     for (const client of candidates) {
+      const cobertura =
+        diasDecorridos > 0
+          ? (diasPorCliente.get(client.id) ?? 0) / diasDecorridos
+          : 0;
+      if (cobertura < COBERTURA_LOG_MINIMA) {
+        baixaGeracaoSemLog++;
+        continue;
+      }
+
       const pr = client.performanceRatio ?? 0;
       const severidade = classifyBaixaGeracao(pr, cfg.BAIXA_GERACAO);
       if (!severidade) continue;
@@ -141,7 +193,7 @@ export async function runAlertSync(): Promise<AlertSyncResult> {
           severidade,
           acaoRequerida: getAcaoRequeridaDefault("BAIXA_GERACAO"),
           titulo: `Geração em ${pr.toFixed(0)}% do esperado`,
-          descricao: `${client.nome} gerou ${(client.geracaoMesAtual ?? 0).toFixed(0)} kWh este mês, mas o esperado é ${(client.geracaoMediaEsperada ?? 0).toFixed(0)} kWh/mês (PR: ${pr.toFixed(1)}%).`,
+          descricao: `${client.nome} gerou ${(client.geracaoMesAtual ?? 0).toFixed(0)} kWh este mês, mas o esperado até aqui era ${esperadaAcumuladaNoMesKwh(esperadaMensalBaseKwh(client), now).toFixed(0)} kWh (PR: ${pr.toFixed(1)}%).`,
         },
       });
 
@@ -733,6 +785,7 @@ export async function runAlertSync(): Promise<AlertSyncResult> {
     alertsCreated,
     offlineDetected,
     lowPerformanceDetected: baixaGeracaoDetected,
+    lowPerformanceSkippedNoLog: baixaGeracaoSemLog,
     tensaoDetected,
     temperaturaDetected: tempDetected,
     frequenciaDetected: freqDetected,

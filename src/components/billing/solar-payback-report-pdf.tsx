@@ -798,10 +798,19 @@ export function SolarPaybackReportPDF({
                       ? `${mes.desempenhoPct.toFixed(0)}%`
                       : "—"}
                   </Text>
-                  {data.geracaoEsperadaMensalKwh > 0 && (
+                  {/* Esperado DO MÊS (com sazonalidade), não a média do ano —
+                      senão o cliente compara junho com a média e acha que a
+                      usina está com defeito. */}
+                  {(mes.geracaoEsperadaPeriodoKwh ?? 0) > 0 ? (
                     <Text style={s.kpiSub}>
-                      Esperado: {formatKwh(data.geracaoEsperadaMensalKwh)}
+                      Esperado no mês: {formatKwh(mes.geracaoEsperadaPeriodoKwh!)}
                     </Text>
+                  ) : (
+                    data.geracaoEsperadaMensalKwh > 0 && (
+                      <Text style={s.kpiSub}>
+                        Esperado: {formatKwh(data.geracaoEsperadaMensalKwh)}
+                      </Text>
+                    )
                   )}
                 </View>
               )}

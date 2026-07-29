@@ -15,6 +15,8 @@ import {
 import type {
   RelatorioAgregadoData,
   RelatorioAgregadoMonthRow,
+  SituacaoRateio,
+  SituacaoRateioItem,
 } from "@/lib/brasil-solar-relatorio";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 
@@ -181,6 +183,134 @@ const s = StyleSheet.create({
     color: C.gray,
   },
 });
+
+const NIVEL_COR: Record<SituacaoRateioItem["nivel"], string> = {
+  OK: C.teal,
+  ATENCAO: C.orange,
+  ACAO: C.red,
+};
+const NIVEL_ROTULO: Record<SituacaoRateioItem["nivel"], string> = {
+  OK: "tudo certo",
+  ATENCAO: "acompanhar",
+  ACAO: "precisa de decisão",
+};
+
+/**
+ * "Situação do rateio": conclusão do relatório agregado — veredito + números do
+ * grupo + itens de diagnóstico (atendimento, distribuição entre as unidades,
+ * usina e leitura da concessionária). `wrap={false}` no bloco de abertura
+ * mantém veredito e números juntos; os itens podem quebrar de página.
+ */
+function SituacaoRateioSection({ situacao }: { situacao: SituacaoRateio }) {
+  const stat = (label: string, valor: string, cor: string) => (
+    <View style={{ flex: 1 }}>
+      <Text style={s.kpiLabel}>{label}</Text>
+      <Text style={{ fontSize: 11, fontWeight: 700, color: cor }}>{valor}</Text>
+    </View>
+  );
+  return (
+    <View>
+      <Text style={s.sectionTitle}>Situação do rateio</Text>
+      <View style={s.sectionCard}>
+        <View wrap={false}>
+          <Text
+            style={{
+              fontSize: 9.5,
+              fontWeight: 700,
+              color: C.tealDark,
+              marginBottom: 8,
+            }}
+          >
+            {situacao.resumo}
+          </Text>
+          <View
+            style={{
+              flexDirection: "row",
+              gap: 8,
+              paddingBottom: 8,
+              marginBottom: 8,
+              borderBottomWidth: 0.5,
+              borderBottomColor: C.grayBorder,
+            }}
+          >
+            {stat(
+              "Consumo do grupo",
+              situacao.consumoMedioTotalKwh != null
+                ? `${formatKwh(situacao.consumoMedioTotalKwh)}/mês`
+                : "—",
+              C.orange,
+            )}
+            {stat(
+              "Compensado",
+              situacao.compensadoMedioTotalKwh != null
+                ? `${formatKwh(situacao.compensadoMedioTotalKwh)}/mês`
+                : "—",
+              C.teal,
+            )}
+            {stat(
+              "Cobertura",
+              situacao.coberturaPct != null
+                ? `${situacao.coberturaPct.toFixed(0)}%`
+                : "—",
+              C.tealDark,
+            )}
+            {stat(
+              "Injetado na rede",
+              situacao.injetadaMediaKwh != null
+                ? `${formatKwh(situacao.injetadaMediaKwh)}/mês`
+                : situacao.geracaoMediaKwh != null
+                  ? `${formatKwh(situacao.geracaoMediaKwh)}/mês`
+                  : "—",
+              C.tealDark,
+            )}
+          </View>
+        </View>
+        {situacao.itens.map((item, i) => (
+          <View
+            key={`${item.tema}-${i}`}
+            wrap={false}
+            style={{
+              flexDirection: "row",
+              gap: 6,
+              marginBottom: i === situacao.itens.length - 1 ? 0 : 6,
+            }}
+          >
+            <View
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: 3,
+                marginTop: 2.5,
+                backgroundColor: NIVEL_COR[item.nivel],
+              }}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 8.5, fontWeight: 700 }}>
+                {item.titulo}
+                <Text
+                  style={{
+                    fontSize: 7,
+                    color: NIVEL_COR[item.nivel],
+                    fontWeight: 400,
+                  }}
+                >
+                  {`  ·  ${NIVEL_ROTULO[item.nivel]}`}
+                </Text>
+              </Text>
+              <Text style={{ fontSize: 8, color: C.gray, marginTop: 1 }}>
+                {item.texto}
+              </Text>
+            </View>
+          </View>
+        ))}
+        {/* Sem "−" (U+2212): a Helvetica do PDF não tem o glifo. */}
+        <Text style={{ fontSize: 6.5, color: C.grayLight, marginTop: 6 }}>
+          {`Médias dos últimos ${situacao.mesesConsiderados} meses faturados. Cobertura = energia compensada nas unidades ÷ consumo total do grupo.`}
+        </Text>
+      </View>
+    </View>
+  );
+}
 
 function HeroBackground() {
   return (
@@ -605,6 +735,11 @@ export function SolarPaybackReportProprietarioPDF({
             </View>
           </>
         )}
+
+        {/* Situação do rateio — conclusão automática (atendimento do grupo,
+            distribuição entre as unidades, usina e leitura da concessionária).
+            Fecha o relatório, logo abaixo do histórico consolidado. */}
+        {data.situacao && <SituacaoRateioSection situacao={data.situacao} />}
 
         <View style={s.footer} fixed>
           <Text>

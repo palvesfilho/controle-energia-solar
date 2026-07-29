@@ -44,6 +44,7 @@ interface MesData {
   saldoPaybackRs: number;
   faturadoRs: number | null;
   contaSemSolarRs: number | null;
+  geracaoEsperadaPeriodoKwh: number | null;
   desempenhoPct: number | null;
   retornoPct: number | null;
   anomalia: string | null;
@@ -306,7 +307,13 @@ export default function RelatorioMesPage() {
           label="Desempenho"
           value={formatPct(m.desempenhoPct)}
           color="sky"
-          hint={data.geracaoEsperadaMensalKwh > 0 ? `Esperado: ${formatKwh(data.geracaoEsperadaMensalKwh)}` : "Sem prognóstico"}
+          hint={
+            (m.geracaoEsperadaPeriodoKwh ?? 0) > 0
+              ? `Esperado no mês: ${formatKwh(m.geracaoEsperadaPeriodoKwh)}`
+              : data.geracaoEsperadaMensalKwh > 0
+                ? `Esperado: ${formatKwh(data.geracaoEsperadaMensalKwh)}`
+                : "Sem prognóstico"
+          }
         />
         <Kpi
           icon={<Zap className="h-4 w-4" />}

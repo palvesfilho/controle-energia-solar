@@ -4,6 +4,13 @@ import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getDailyGeneration } from "@/lib/solaredge";
+import {
+  esperadaDoDiaDaUsina,
+  esperadaDoMesKwh,
+  esperadaMensalBaseKwh,
+  performanceRatioMesAtual,
+  type FonteGeracaoEsperada,
+} from "@/lib/geracao-esperada";
 
 // Aumentar timeout para operacao longa (10 minutos)
 export const maxDuration = 600;
@@ -40,6 +47,7 @@ export async function POST(req: NextRequest) {
         monitoramentoPlantId: true,
         dataInstalacao: true,
         geracaoMediaEsperada: true,
+        geracaoAnualEsperada: true,
         potenciaInstalada: true,
       },
     });
@@ -113,9 +121,7 @@ export async function POST(req: NextRequest) {
                 clientId: client.id,
                 data: date,
                 geracaoDiaria: day.energyKwh,
-                geracaoEsperada: client.geracaoMediaEsperada
-                  ? client.geracaoMediaEsperada / 30
-                  : null,
+                geracaoEsperada: esperadaDoDiaDaUsina(client, date),
               },
             });
             clientLogs++;
@@ -129,7 +135,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Recalcular Performance Ratio geral da usina
-      const prGeral = await recalcularPR(client.id, client.geracaoMediaEsperada);
+      const prGeral = await recalcularPR(client.id, client);
 
       totalLogs += clientLogs;
       totalClients++;
@@ -157,7 +163,10 @@ export async function POST(req: NextRequest) {
  * Recalcula o Performance Ratio de uma usina com base em todo o historico.
  * PR = (geracao real total / geracao esperada total) * 100
  */
-async function recalcularPR(clientId: string, geracaoMediaEsperada: number | null): Promise<number | null> {
+async function recalcularPR(
+  clientId: string,
+  esperada: FonteGeracaoEsperada,
+): Promise<number | null> {
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
 
@@ -175,10 +184,8 @@ async function recalcularPR(clientId: string, geracaoMediaEsperada: number | nul
     select: { geracaoDiaria: true, data: true },
   });
 
-  // PR do mes atual
-  const prMes = geracaoMediaEsperada && geracaoMediaEsperada > 0
-    ? (geracaoMesAtual / geracaoMediaEsperada) * 100
-    : null;
+  // PR do mes atual (esperado pro-rateado pelos dias ja decorridos)
+  const prMes = performanceRatioMesAtual(esperada, geracaoMesAtual, now);
 
   // Contar meses distintos com dados para PR geral
   const mesesComDados = await prisma.monitoringLog.findMany({
@@ -191,7 +198,7 @@ async function recalcularPR(clientId: string, geracaoMediaEsperada: number | nul
       const d = new Date(l.data);
       return `${d.getFullYear()}-${d.getMonth()}`;
     })
-  ).size;
+  );
 
   // Total gerado no historico
   const allLogs = await prisma.monitoringLog.aggregate({
@@ -199,12 +206,17 @@ async function recalcularPR(clientId: string, geracaoMediaEsperada: number | nul
     _sum: { geracaoDiaria: true },
   });
 
-  // PR geral = total gerado / (esperado mensal * num meses)
+  // PR geral = total gerado / soma do esperado de CADA mes com dados, cada um
+  // com seu fator sazonal.
+  const baseMensal = esperadaMensalBaseKwh(esperada);
   let prGeral: number | null = null;
-  if (geracaoMediaEsperada && geracaoMediaEsperada > 0 && mesesDistintos > 0) {
+  if (baseMensal > 0 && mesesDistintos.size > 0) {
     const totalGerado = allLogs._sum.geracaoDiaria ?? 0;
-    const totalEsperado = geracaoMediaEsperada * mesesDistintos;
-    prGeral = (totalGerado / totalEsperado) * 100;
+    const totalEsperado = [...mesesDistintos].reduce(
+      (s, k) => s + esperadaDoMesKwh(baseMensal, Number(k.split("-")[1]) + 1),
+      0,
+    );
+    prGeral = totalEsperado > 0 ? (totalGerado / totalEsperado) * 100 : null;
   }
 
   await prisma.brasilSolarClient.update({

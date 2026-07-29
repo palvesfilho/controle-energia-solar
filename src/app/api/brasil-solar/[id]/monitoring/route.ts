@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
+import { performanceRatioMesAtual } from "@/lib/geracao-esperada";
 
 // POST /api/brasil-solar/[id]/monitoring - Registrar leitura de geracao
 export async function POST(
@@ -59,12 +60,12 @@ export async function POST(
 
   const client = await prisma.brasilSolarClient.findUnique({
     where: { id },
-    select: { geracaoMediaEsperada: true },
+    select: { geracaoMediaEsperada: true, geracaoAnualEsperada: true },
   });
 
   const geracaoMes = monthLogs._sum.geracaoDiaria ?? 0;
-  const pr = client?.geracaoMediaEsperada
-    ? (geracaoMes / client.geracaoMediaEsperada) * 100
+  const pr = client
+    ? performanceRatioMesAtual(client, geracaoMes, new Date())
     : null;
 
   await prisma.brasilSolarClient.update({

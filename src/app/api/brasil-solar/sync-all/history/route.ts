@@ -7,6 +7,13 @@ import { getDailyGeneration as getHuaweiDaily } from "@/lib/huawei";
 import { getDailyGeneration as getSungrowDaily } from "@/lib/sungrow";
 import { getDailyGeneration as getFroniusDaily } from "@/lib/fronius";
 import { getDailyGeneration as getSolarEdgeDaily } from "@/lib/solaredge";
+import {
+  esperadaDoDiaDaUsina,
+  esperadaDoMesKwh,
+  esperadaMensalBaseKwh,
+  performanceRatioMesAtual,
+  type FonteGeracaoEsperada,
+} from "@/lib/geracao-esperada";
 
 export const maxDuration = 600;
 
@@ -94,6 +101,7 @@ export async function POST(req: NextRequest) {
         plataformaMonitoramento: true,
         dataInstalacao: true,
         geracaoMediaEsperada: true,
+        geracaoAnualEsperada: true,
       },
     });
 
@@ -167,9 +175,7 @@ export async function POST(req: NextRequest) {
                 data: date,
                 geracaoDiaria: day.energyKwh,
                 irradiacao: day.irradiacao ?? null,
-                geracaoEsperada: client.geracaoMediaEsperada
-                  ? client.geracaoMediaEsperada / 30
-                  : null,
+                geracaoEsperada: esperadaDoDiaDaUsina(client, date),
               },
             });
             clientLogs++;
@@ -183,7 +189,7 @@ export async function POST(req: NextRequest) {
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
 
-      const prGeral = await recalcularPR(client.id, client.geracaoMediaEsperada);
+      const prGeral = await recalcularPR(client.id, client);
 
       totalLogs += clientLogs;
       resultsByPlatform[plataforma].clientes++;
@@ -212,7 +218,10 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function recalcularPR(clientId: string, geracaoMediaEsperada: number | null): Promise<number | null> {
+async function recalcularPR(
+  clientId: string,
+  esperada: FonteGeracaoEsperada,
+): Promise<number | null> {
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
 
@@ -228,9 +237,7 @@ async function recalcularPR(clientId: string, geracaoMediaEsperada: number | nul
     select: { geracaoDiaria: true, data: true },
   });
 
-  const prMes = geracaoMediaEsperada && geracaoMediaEsperada > 0
-    ? (geracaoMesAtual / geracaoMediaEsperada) * 100
-    : null;
+  const prMes = performanceRatioMesAtual(esperada, geracaoMesAtual, now);
 
   const mesesComDados = await prisma.monitoringLog.findMany({
     where: { clientId, geracaoDiaria: { gt: 0 } },
@@ -241,18 +248,25 @@ async function recalcularPR(clientId: string, geracaoMediaEsperada: number | nul
       const d = new Date(l.data);
       return `${d.getFullYear()}-${d.getMonth()}`;
     }),
-  ).size;
+  );
 
   const allLogs = await prisma.monitoringLog.aggregate({
     where: { clientId, geracaoDiaria: { gt: 0 } },
     _sum: { geracaoDiaria: true },
   });
 
+  // O esperado do período acumulado soma o prognóstico de CADA mês com dados,
+  // cada um com seu fator sazonal — uma usina que só tem log de maio a agosto
+  // não deve ser cobrada pela média do ano.
+  const baseMensal = esperadaMensalBaseKwh(esperada);
   let prGeral: number | null = null;
-  if (geracaoMediaEsperada && geracaoMediaEsperada > 0 && mesesDistintos > 0) {
+  if (baseMensal > 0 && mesesDistintos.size > 0) {
     const totalGerado = allLogs._sum.geracaoDiaria ?? 0;
-    const totalEsperado = geracaoMediaEsperada * mesesDistintos;
-    prGeral = (totalGerado / totalEsperado) * 100;
+    const totalEsperado = [...mesesDistintos].reduce(
+      (s, k) => s + esperadaDoMesKwh(baseMensal, Number(k.split("-")[1]) + 1),
+      0,
+    );
+    prGeral = totalEsperado > 0 ? (totalGerado / totalEsperado) * 100 : null;
   }
 
   await prisma.brasilSolarClient.update({

@@ -13,6 +13,10 @@ import { getRangeTotal as sungrowRangeTotal } from "@/lib/sungrow";
 import { getRangeTotal as solaredgeRangeTotal } from "@/lib/solaredge";
 import { getRelatorioParametros } from "@/lib/app-settings";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import {
+  esperadaDoPeriodoKwh,
+  esperadaMensalBaseTotalKwh,
+} from "@/lib/geracao-esperada";
 
 /**
  * Carga tributária efetiva estimada para gross-up da tarifa de consumo
@@ -214,7 +218,12 @@ export interface RelatorioMonthRow {
    * faturado + economia = conta sem solar. `null` quando faltam dados.
    */
   contaSemSolarRs: number | null;
-  /** Desempenho % = geracaoInversor / geracaoEsperadaMensal × 100 */
+  /**
+   * Prognóstico de geração DESTE período (kWh), já corrigido pela curva
+   * sazonal e pelo tamanho do ciclo de leitura. `null` sem prognóstico.
+   */
+  geracaoEsperadaPeriodoKwh: number | null;
+  /** Desempenho % = geracaoInversor / geracaoEsperadaPeriodo × 100 */
   desempenhoPct: number | null;
   /** Retorno % no mês = economiaMensalRs / investimentoTotal × 100 */
   retornoPct: number | null;
@@ -245,7 +254,12 @@ export interface RelatorioData {
   }[];
   investimentoTotal: number;
   potenciaTotalKwp: number;
-  /** Soma do prognóstico mensal das usinas (BSC.geracaoMediaEsperada) */
+  /**
+   * Soma do prognóstico mensal MÉDIO das usinas — `geracaoMediaEsperada`, ou
+   * `geracaoAnualEsperada ÷ 12` quando a mensal não foi cadastrada. É a média
+   * do ano: o esperado de cada mês sai em `RelatorioMonthRow.geracaoEsperadaPeriodoKwh`,
+   * já com sazonalidade.
+   */
   geracaoEsperadaMensalKwh: number;
   /** Soma do prognóstico anual das usinas (BSC.geracaoAnualEsperada) */
   geracaoEsperadaAnualKwh: number;
@@ -334,7 +348,10 @@ export interface SituacaoUsina {
    * energia; a potência necessária quem define é a engenharia.
    */
   deficitMensalKwh: number | null;
-  /** Média do desempenho vs. prognóstico (null sem geracaoMediaEsperada) */
+  /**
+   * Média do desempenho vs. prognóstico do período, só de meses em que a
+   * usina gerou. `null` quando não há prognóstico (nem mensal nem anual).
+   */
   desempenhoMedioPct: number | null;
   /** Variação % da geração vs. os MESMOS meses do ano anterior */
   variacaoAnoAnteriorPct: number | null;
@@ -403,10 +420,15 @@ export function avaliarSituacaoUsina(
   const deficitMensalKwh =
     diferencaKwh != null && diferencaKwh > 0 ? diferencaKwh : null;
 
+  // Mesma regra da média de geração: mês em que a usina não operou (geração 0,
+  // ou monitoramento ainda não vinculado) não entra. Senão o mês anterior à
+  // entrada em operação entra como 0% e derruba a média — foi o caso do TANER,
+  // com out/25 zerado puxando 100% para 90% e acusando "abaixo do previsto".
   const desempenhoMedioPct =
     geracaoEsperadaMensalKwh > 0
       ? media(
           janela
+            .filter((m) => (m.geracaoInversorKwh ?? 0) > 0)
             .map((m) => m.desempenhoPct)
             .filter((v): v is number => v != null),
         )
@@ -811,10 +833,9 @@ export async function getProprietarioRelatorio(
     (sum, c) => sum + (c.potenciaInstalada ?? 0),
     0,
   );
-  const geracaoEsperadaMensalKwh = monitoringClients.reduce(
-    (sum, c) => sum + (c.geracaoMediaEsperada ?? 0),
-    0,
-  );
+  // Prognóstico mensal médio: cai pra `anual ÷ 12` quando a mensal não foi
+  // cadastrada (é o caso de toda a base hoje). Ver `geracao-esperada.ts`.
+  const geracaoEsperadaMensalKwh = esperadaMensalBaseTotalKwh(monitoringClients);
   const geracaoEsperadaAnualKwh = monitoringClients.reduce(
     (sum, c) => sum + (c.geracaoAnualEsperada ?? 0),
     0,
@@ -941,9 +962,17 @@ export async function getProprietarioRelatorio(
     economiaAcumulada += economiaMensalRs ?? 0;
     const saldoPaybackRs = investimentoTotal - economiaAcumulada;
 
+    // Prognóstico DO PERÍODO da fatura, não da média anual: o ciclo de leitura
+    // tem 28–33 dias e a geração no RS varia mais de 2,5× entre junho e
+    // janeiro. Comparar junho com a média anual reprovaria toda usina saudável
+    // no inverno. Ver `geracao-esperada.ts`.
+    const geracaoEsperadaPeriodoKwh =
+      geracaoEsperadaMensalKwh > 0
+        ? esperadaDoPeriodoKwh(geracaoEsperadaMensalKwh, inicio, fim)
+        : 0;
     const desempenhoPct =
-      geracaoInversorKwh != null && geracaoEsperadaMensalKwh > 0
-        ? (geracaoInversorKwh / geracaoEsperadaMensalKwh) * 100
+      geracaoInversorKwh != null && geracaoEsperadaPeriodoKwh > 0
+        ? (geracaoInversorKwh / geracaoEsperadaPeriodoKwh) * 100
         : null;
     const retornoPct =
       economiaMensalRs != null && investimentoTotal > 0
@@ -975,6 +1004,7 @@ export async function getProprietarioRelatorio(
       saldoPaybackRs,
       faturadoRs: bill.valorTotal,
       contaSemSolarRs,
+      geracaoEsperadaPeriodoKwh: geracaoEsperadaPeriodoKwh > 0 ? geracaoEsperadaPeriodoKwh : null,
       desempenhoPct,
       retornoPct,
       anomalia,
@@ -1076,6 +1106,12 @@ export interface RelatorioAgregadoBeneficiariaRow {
   faturadoRs: number | null;
   /** Conta que a beneficiária teria sem energia solar (ver calcularContaSemSolar) */
   contaSemSolarRs: number | null;
+  /**
+   * Saldo de créditos GD remanescente na fatura DESTA beneficiária. É o que
+   * permite ver crédito parado numa UC enquanto outra passa aperto — sem ele
+   * só existiria o total do grupo, que esconde o desequilíbrio.
+   */
+  saldoCreditosKwh: number | null;
 }
 
 export interface RelatorioAgregadoMonthRow {
@@ -1150,6 +1186,527 @@ export interface RelatorioAgregadoData {
   paybackQuitacaoPrevista: { ano: number; mes: number } | null;
   paybackQuitado: boolean;
   meses: RelatorioAgregadoMonthRow[];
+  /**
+   * Diagnóstico "Situação do rateio" — conclusão do relatório agregado.
+   * `null` quando não há consumo faturado no período (nada a concluir).
+   */
+  situacao: SituacaoRateio | null;
+}
+
+// =============================================================================
+// SITUAÇÃO DO RATEIO (diagnóstico do relatório agregado)
+// =============================================================================
+//
+// O equivalente do "Situação da usina" para autoconsumo remoto. As perguntas
+// mudam: com N beneficiárias não basta saber se a usina é grande o bastante —
+// a energia pode ser suficiente e mesmo assim não chegar, porque o rateio está
+// desbalanceado, porque a geradora consumiu tudo antes de injetar, ou porque a
+// concessionária faturou errado. Cada item abaixo é uma dessas hipóteses.
+//
+// Mesmas regras do diagnóstico por UC: texto determinístico (mesma entrada →
+// mesmo texto), linguagem de cliente, lacuna sempre em kWh e nunca em kWp.
+
+/** Cobertura do grupo (compensado ÷ consumo) abaixo disso = não foi atendido. */
+const RATEIO_COBERTURA_DEFICIT = 0.85;
+/**
+ * Diferença, em pontos percentuais, entre o rateio de uma UC e sua participação
+ * no consumo do grupo que já justifica revisar os percentuais.
+ */
+const RATEIO_DESVIO_PP = 10;
+/**
+ * Fração da geração que precisa ser injetada pra o rateio fazer sentido. Abaixo
+ * disso a própria geradora consumiu quase tudo e sobrou pouco crédito.
+ */
+const INJECAO_MINIMA_FRACAO = 0.5;
+/** Folga aceita antes de acusar leitura inconsistente (5% acima do teto físico). */
+const TOLERANCIA_LEITURA = 1.05;
+/** Meses recentes considerados nos itens de usina/leitura. */
+const JANELA_RECENTE_MESES = 3;
+/** Máximo de ocorrências citadas nominalmente antes de virar "e mais N". */
+const MAX_OCORRENCIAS_CITADAS = 3;
+
+const MES_ABREV_DIAG = [
+  "jan", "fev", "mar", "abr", "mai", "jun",
+  "jul", "ago", "set", "out", "nov", "dez",
+];
+const rotuloMes = (ano: number, mes: number) =>
+  `${MES_ABREV_DIAG[mes - 1]}/${ano}`;
+
+/** "a, b e c" — o texto vai direto pro cliente. */
+function listar(itens: string[]): string {
+  if (itens.length === 0) return "";
+  if (itens.length === 1) return itens[0];
+  return `${itens.slice(0, -1).join(", ")} e ${itens[itens.length - 1]}`;
+}
+
+/** Junta as primeiras N ocorrências e resume o resto em "e mais X". */
+function resumirOcorrencias(ocorrencias: string[]): string {
+  const citadas = ocorrencias.slice(0, MAX_OCORRENCIAS_CITADAS);
+  const resto = ocorrencias.length - citadas.length;
+  return listar(citadas) + (resto > 0 ? `, e mais ${resto} caso(s)` : "");
+}
+
+export interface SituacaoRateioItem {
+  tema:
+    | "ATENDIMENTO"
+    | "DISTRIBUICAO"
+    | "USINA"
+    | "LEITURA"
+    | "DADOS";
+  /** OK = nada a fazer · ATENCAO = acompanhar · ACAO = precisa de decisão */
+  nivel: "OK" | "ATENCAO" | "ACAO";
+  titulo: string;
+  texto: string;
+}
+
+/** Retrato de uma beneficiária na janela analisada. */
+export interface SituacaoRateioUc {
+  ucId: string;
+  codigoUc: string;
+  nome: string;
+  /** Percentual de rateio cadastrado na concessionária */
+  percentual: number;
+  consumoMedioKwh: number | null;
+  compensadoMedioKwh: number | null;
+  /** Participação da UC no consumo do grupo (%) — comparável ao rateio */
+  participacaoConsumoPct: number | null;
+  /** Saldo de créditos da fatura mais recente da UC */
+  saldoCreditosKwh: number | null;
+  /** Saldo ÷ consumo médio da própria UC — "meses de consumo em caixa" */
+  saldoEmMesesDeConsumo: number | null;
+}
+
+export interface SituacaoRateio {
+  mesesConsiderados: number;
+  /** Soma das beneficiárias, média dos meses */
+  consumoMedioTotalKwh: number | null;
+  compensadoMedioTotalKwh: number | null;
+  /** compensado ÷ consumo do grupo × 100 — quanto do consumo virou crédito */
+  coberturaPct: number | null;
+  /**
+   * kWh/mês que faltaram pra cobrir o consumo do grupo. Em kWh, NUNCA em kWp:
+   * dimensionar é trabalho do projeto (ver `SituacaoUsina.deficitMensalKwh`).
+   */
+  deficitMensalKwh: number | null;
+  /** Média injetada na rede pela UC titular (fatura da titular) */
+  injetadaMediaKwh: number | null;
+  /** Média gerada pelo(s) inversor(es) */
+  geracaoMediaKwh: number | null;
+  ucs: SituacaoRateioUc[];
+  resumo: string;
+  itens: SituacaoRateioItem[];
+}
+
+/**
+ * Monta a conclusão do relatório agregado a partir do histórico consolidado.
+ *
+ * Retorna `null` quando nenhum mês da janela tem consumo faturado — sem consumo
+ * medido não há como afirmar se o grupo foi atendido.
+ */
+export function avaliarSituacaoRateio(
+  meses: RelatorioAgregadoMonthRow[],
+): SituacaoRateio | null {
+  if (meses.length === 0) return null;
+
+  const janela = meses.slice(-JANELA_MEDIAS_MESES);
+  const consumosTotais = janela
+    .map((m) => m.consumoRedeKwhTotal)
+    .filter((v): v is number => v != null && v > 0);
+  if (consumosTotais.length === 0) return null;
+
+  const consumoMedioTotalKwh = media(consumosTotais);
+  // Mês com zero compensado ENTRA na média — é justamente o sintoma de crédito
+  // que não chegou. Só mês sem fatura (null) fica de fora.
+  const compensadoMedioTotalKwh = media(
+    janela
+      .map((m) => m.energiaCompensadaKwhTotal)
+      .filter((v): v is number => v != null),
+  );
+  const injetadaMediaKwh = media(
+    janela
+      .map((m) => m.injetadaMedidorKwh)
+      .filter((v): v is number => v != null && v > 0),
+  );
+  const geracaoMediaKwh = media(
+    janela
+      .map((m) => m.geracaoInversorKwh)
+      .filter((v): v is number => v != null && v > 0),
+  );
+
+  const coberturaPct =
+    compensadoMedioTotalKwh != null &&
+    consumoMedioTotalKwh != null &&
+    consumoMedioTotalKwh > 0
+      ? (compensadoMedioTotalKwh / consumoMedioTotalKwh) * 100
+      : null;
+  const faltaKwh =
+    compensadoMedioTotalKwh != null && consumoMedioTotalKwh != null
+      ? consumoMedioTotalKwh - compensadoMedioTotalKwh
+      : null;
+  const deficitMensalKwh = faltaKwh != null && faltaKwh > 0 ? faltaKwh : null;
+
+  // --- Retrato por beneficiária ----------------------------------------------
+  const acc = new Map<
+    string,
+    {
+      codigoUc: string;
+      nome: string;
+      percentual: number;
+      consumos: number[];
+      compensados: number[];
+      saldo: number | null;
+      /** Meses (rótulo) em que a UC já operava mas não veio fatura */
+      mesesSemFatura: string[];
+      viuFatura: boolean;
+    }
+  >();
+  for (const m of janela) {
+    for (const b of m.beneficiarias) {
+      let a = acc.get(b.ucId);
+      if (!a) {
+        a = {
+          codigoUc: b.codigoUc,
+          nome: b.nome,
+          percentual: b.percentual,
+          consumos: [],
+          compensados: [],
+          saldo: null,
+          mesesSemFatura: [],
+          viuFatura: false,
+        };
+        acc.set(b.ucId, a);
+      }
+      const temFatura = b.consumoRedeKwh != null || b.faturadoRs != null;
+      if (temFatura) a.viuFatura = true;
+      // Só conta lacuna DEPOIS da primeira fatura da UC: beneficiária que
+      // entrou no rateio no meio do período não tem "fatura faltando" antes.
+      else if (a.viuFatura) a.mesesSemFatura.push(rotuloMes(m.ano, m.mes));
+      if (b.consumoRedeKwh != null && b.consumoRedeKwh > 0)
+        a.consumos.push(b.consumoRedeKwh);
+      if (b.energiaCompensadaKwh != null) a.compensados.push(b.energiaCompensadaKwh);
+      // janela é cronológica → a última atribuição é a fatura mais recente
+      if (b.saldoCreditosKwh != null) a.saldo = b.saldoCreditosKwh;
+    }
+  }
+
+  const ucsBase = Array.from(acc.entries()).map(([ucId, a]) => {
+    const consumoMedioKwh = media(a.consumos);
+    const saldoEmMesesDeConsumo =
+      a.saldo != null && consumoMedioKwh != null && consumoMedioKwh > 0
+        ? a.saldo / consumoMedioKwh
+        : null;
+    return {
+      ucId,
+      codigoUc: a.codigoUc,
+      nome: a.nome,
+      percentual: a.percentual,
+      consumoMedioKwh,
+      compensadoMedioKwh: media(a.compensados),
+      saldoCreditosKwh: a.saldo,
+      saldoEmMesesDeConsumo,
+      mesesSemFatura: a.mesesSemFatura,
+    };
+  });
+  const somaConsumoMedio = ucsBase.reduce(
+    (t, u) => t + (u.consumoMedioKwh ?? 0),
+    0,
+  );
+  const ucs: SituacaoRateioUc[] = ucsBase.map((u) => ({
+    ucId: u.ucId,
+    codigoUc: u.codigoUc,
+    nome: u.nome,
+    percentual: u.percentual,
+    consumoMedioKwh: u.consumoMedioKwh,
+    compensadoMedioKwh: u.compensadoMedioKwh,
+    participacaoConsumoPct:
+      u.consumoMedioKwh != null && somaConsumoMedio > 0
+        ? (u.consumoMedioKwh / somaConsumoMedio) * 100
+        : null,
+    saldoCreditosKwh: u.saldoCreditosKwh,
+    saldoEmMesesDeConsumo: u.saldoEmMesesDeConsumo,
+  }));
+
+  const itens: SituacaoRateioItem[] = [];
+  const recentes = janela.slice(-JANELA_RECENTE_MESES);
+
+  // --- 1. Usina: gerou e virou crédito pras beneficiárias? --------------------
+  // Vem antes do atendimento porque, quando a energia não sai da geradora, é
+  // essa a causa raiz — dizer "faltou geração" seria diagnóstico errado.
+  const recentesComEnergia = recentes.filter(
+    (m) => (m.geracaoInversorKwh ?? 0) > 0 || (m.injetadaMedidorKwh ?? 0) > 0,
+  );
+  const recentesSemCredito = recentesComEnergia.filter(
+    (m) => (m.energiaCompensadaKwhTotal ?? 0) <= 0,
+  );
+  const paresGeracaoInjecao = janela.filter(
+    (m) =>
+      m.geracaoInversorKwh != null &&
+      m.geracaoInversorKwh > 0 &&
+      m.injetadaMedidorKwh != null,
+  );
+  const somaGeracao = paresGeracaoInjecao.reduce(
+    (t, m) => t + (m.geracaoInversorKwh ?? 0),
+    0,
+  );
+  const somaInjecao = paresGeracaoInjecao.reduce(
+    (t, m) => t + (m.injetadaMedidorKwh ?? 0),
+    0,
+  );
+  const fracaoInjetada =
+    paresGeracaoInjecao.length > 0 && somaGeracao > 0
+      ? somaInjecao / somaGeracao
+      : null;
+  const poucaInjecao =
+    fracaoInjetada != null && fracaoInjetada < INJECAO_MINIMA_FRACAO;
+
+  if (recentesSemCredito.length > 0) {
+    itens.push({
+      tema: "USINA",
+      nivel: "ACAO",
+      titulo: "A usina gerou, mas os créditos não chegaram às unidades",
+      texto:
+        `Em ${recentesSemCredito.length} dos últimos ${recentes.length} meses (${listar(recentesSemCredito.map((m) => rotuloMes(m.ano, m.mes)))}) a usina registrou geração e nenhuma unidade beneficiária teve energia compensada. ` +
+        (poucaInjecao
+          ? `No período, apenas ${(fracaoInjetada! * 100).toFixed(0)}% da energia gerada foi injetada na rede — o restante foi consumido na própria unidade geradora, e energia consumida na hora não vira crédito. `
+          : "A energia foi injetada na rede, mas não foi distribuída às beneficiárias. ") +
+        "As causas mais comuns são rateio não cadastrado ou desatualizado junto à concessionária. Vamos verificar o cadastro do rateio e regularizar.",
+    });
+  } else if (poucaInjecao) {
+    itens.push({
+      tema: "USINA",
+      nivel: "ATENCAO",
+      titulo: "Boa parte da energia ficou na própria unidade geradora",
+      texto: `Do total gerado no período (${fmtKwh(somaGeracao)}), ${fmtKwh(somaInjecao)} (${(fracaoInjetada! * 100).toFixed(0)}%) foram injetados na rede. O restante foi consumido na hora pela própria unidade geradora — energia consumida no local não gera crédito para as beneficiárias, o que reduz o que sobra para o rateio.`,
+    });
+  }
+
+  // --- 2. Atendimento do grupo -----------------------------------------------
+  // Quando o item da usina já apontou a causa, aqui só entra o tamanho da
+  // lacuna — repetir a explicação faria o cliente ler a mesma coisa duas vezes.
+  const causaJaExplicada = itens.some(
+    (i) => i.tema === "USINA" && i.nivel === "ACAO",
+  );
+  if (coberturaPct != null && consumoMedioTotalKwh != null && compensadoMedioTotalKwh != null) {
+    const base = `Nos últimos ${janela.length} meses, as ${ucs.length} unidades consumiram em média ${fmtKwh(consumoMedioTotalKwh)}/mês e tiveram ${fmtKwh(compensadoMedioTotalKwh)}/mês compensados por créditos (cobertura de ${coberturaPct.toFixed(0)}%).`;
+    const energiaDisponivel = injetadaMediaKwh ?? geracaoMediaKwh;
+    // Distingue as duas causas: energia insuficiente × energia suficiente que
+    // não chegou. A recomendação é oposta em cada caso.
+    const usinaCurta =
+      energiaDisponivel != null && energiaDisponivel < consumoMedioTotalKwh * 0.95;
+    if (coberturaPct < RATEIO_COBERTURA_DEFICIT * 100) {
+      itens.push({
+        tema: "ATENDIMENTO",
+        nivel: "ACAO",
+        titulo: "As unidades não foram totalmente atendidas pelos créditos",
+        texto:
+          `${base} ` +
+          (deficitMensalKwh != null
+            ? `Faltaram em média ${fmtKwh(deficitMensalKwh)}/mês de energia compensada para cobrir todo o consumo. `
+            : "") +
+          (causaJaExplicada
+            ? "Esse é o efeito, na conta das unidades, do ponto apontado acima."
+            : usinaCurta
+            ? `A energia disponível da usina (${fmtKwh(energiaDisponivel!)}/mês${injetadaMediaKwh != null ? " injetados na rede" : " gerados"}) já é menor que o consumo do grupo: a diferença não se resolve só com rateio. Vale avaliar uma ampliação da usina com a nossa equipe técnica.`
+            : energiaDisponivel != null
+              ? `A usina disponibilizou ${fmtKwh(energiaDisponivel)}/mês — energia suficiente para o grupo. A diferença está na distribuição dos créditos entre as unidades ou no faturamento da concessionária.`
+              : "Enquanto essa diferença existir, parte do consumo continua sendo paga à concessionária."),
+      });
+    } else if (coberturaPct < 100) {
+      itens.push({
+        tema: "ATENDIMENTO",
+        nivel: "ATENCAO",
+        titulo: "Quase todo o consumo do grupo foi coberto",
+        texto:
+          `${base} ` +
+          (deficitMensalKwh != null
+            ? `Faltaram ${fmtKwh(deficitMensalKwh)}/mês para zerar a diferença; `
+            : "") +
+          "nos meses de menor sol a fatura das unidades fica acima do mínimo.",
+      });
+    } else {
+      itens.push({
+        tema: "ATENDIMENTO",
+        nivel: "OK",
+        titulo: "Todo o consumo do grupo foi coberto por créditos",
+        texto: `${base} As unidades pagaram apenas o custo de disponibilidade e os encargos que não são compensáveis.`,
+      });
+    }
+  }
+
+  // --- 3. Distribuição entre as unidades -------------------------------------
+  const comSaldo = ucs.filter((u) => u.saldoEmMesesDeConsumo != null);
+  const sobrando = comSaldo
+    .filter((u) => u.saldoEmMesesDeConsumo! > SALDO_MESES_EXCEDENTE)
+    .sort((a, b) => b.saldoEmMesesDeConsumo! - a.saldoEmMesesDeConsumo!);
+  const faltando = comSaldo
+    .filter((u) => u.saldoEmMesesDeConsumo! < SALDO_MESES_RESERVA_MINIMA)
+    .sort((a, b) => a.saldoEmMesesDeConsumo! - b.saldoEmMesesDeConsumo!);
+  const desalinhadas = ucs
+    .filter(
+      (u) =>
+        u.participacaoConsumoPct != null &&
+        Math.abs(u.percentual - u.participacaoConsumoPct) >= RATEIO_DESVIO_PP,
+    )
+    .sort(
+      (a, b) =>
+        Math.abs(b.percentual - b.participacaoConsumoPct!) -
+        Math.abs(a.percentual - a.participacaoConsumoPct!),
+    );
+  const frasesDesalinhadas = desalinhadas
+    .slice(0, 2)
+    .map(
+      (u) =>
+        `a UC ${formatCodigoUc(u.codigoUc)} responde por ${u.participacaoConsumoPct!.toFixed(0)}% do consumo do grupo e recebe ${u.percentual.toFixed(0)}% do rateio`,
+    );
+  const sugestaoRateio = frasesDesalinhadas.length
+    ? ` Comparando o rateio com o consumo real, ${listar(frasesDesalinhadas)}.`
+    : "";
+
+  if (comSaldo.length >= 2 && sobrando.length > 0 && faltando.length > 0) {
+    const a = sobrando[0];
+    const b = faltando[0];
+    itens.push({
+      tema: "DISTRIBUICAO",
+      nivel: "ACAO",
+      titulo: "Créditos concentrados em uma unidade e faltando em outra",
+      texto:
+        `A UC ${formatCodigoUc(a.codigoUc)} (${a.nome}) acumula ${fmtKwh(a.saldoCreditosKwh!)} de créditos — ${fmt1(a.saldoEmMesesDeConsumo!)} meses do próprio consumo — enquanto a UC ${formatCodigoUc(b.codigoUc)} (${b.nome}) está com ${fmtKwh(b.saldoCreditosKwh!)}, praticamente sem reserva.` +
+        sugestaoRateio +
+        ` Vale rever os percentuais de rateio junto à concessionária para direcionar o excedente a quem consome mais — créditos parados expiram em ${VALIDADE_CREDITOS_MESES} meses.`,
+    });
+  } else if (sobrando.length > 0 && sobrando.length === comSaldo.length) {
+    itens.push({
+      tema: "DISTRIBUICAO",
+      nivel: "ATENCAO",
+      titulo: "Créditos acumulados acima do necessário",
+      texto: `Todas as unidades estão com reserva acima de ${SALDO_MESES_EXCEDENTE} meses de consumo (maior saldo: UC ${formatCodigoUc(sobrando[0].codigoUc)}, ${fmtKwh(sobrando[0].saldoCreditosKwh!)}). Créditos não utilizados expiram em ${VALIDADE_CREDITOS_MESES} meses — vale incluir outra unidade consumidora no rateio ou migrar mais consumo para a energia elétrica.`,
+    });
+  } else if (faltando.length > 0 && faltando.length === comSaldo.length) {
+    // Todas zeradas: dizer "unidade X está sem reserva" não distingue nada e
+    // repete o item de atendimento. O fato aqui é a ausência de reserva no grupo.
+    itens.push({
+      tema: "DISTRIBUICAO",
+      nivel: "ATENCAO",
+      titulo: "Nenhuma unidade acumulou reserva de créditos",
+      texto:
+        `Todo o crédito recebido foi consumido no próprio mês — as ${comSaldo.length} unidades terminaram o período com saldo próximo de zero. Sem reserva acumulada, qualquer queda de geração (outono e inverno, chuva prolongada) aparece direto na fatura.` +
+        sugestaoRateio,
+    });
+  } else if (faltando.length > 0) {
+    itens.push({
+      tema: "DISTRIBUICAO",
+      nivel: "ATENCAO",
+      titulo: "Unidades sem reserva de créditos",
+      texto:
+        `${resumirOcorrencias(faltando.map((u) => `UC ${formatCodigoUc(u.codigoUc)} (${fmtKwh(u.saldoCreditosKwh!)})`))} estão sem reserva acumulada, enquanto as demais terminaram o período com saldo. Nos meses de menor geração essas unidades chegam com a fatura mais alta.` +
+        sugestaoRateio,
+    });
+  } else if (frasesDesalinhadas.length > 0) {
+    itens.push({
+      tema: "DISTRIBUICAO",
+      nivel: "ATENCAO",
+      titulo: "Rateio diferente do consumo real das unidades",
+      texto: `O rateio cadastrado não acompanha o consumo:${sugestaoRateio.replace(" Comparando o rateio com o consumo real,", "")} Revisar os percentuais faz os créditos chegarem onde são consumidos.`,
+    });
+  } else if (comSaldo.length > 0) {
+    itens.push({
+      tema: "DISTRIBUICAO",
+      nivel: "OK",
+      titulo: "Créditos bem distribuídos entre as unidades",
+      texto: `Todas as unidades terminaram o período com reserva de créditos compatível com o próprio consumo — o rateio está equilibrado.`,
+    });
+  }
+
+  // --- 4. Possível erro de leitura / faturamento ------------------------------
+  // Situações fisicamente impossíveis ou improváveis na fatura. Sinalizar, não
+  // silenciar: o cliente enxerga o mesmo número e precisa saber que vamos
+  // contestar (ver feedback_anomalias_sinalizar).
+  const suspeitas: string[] = [];
+  for (const m of janela) {
+    const rot = rotuloMes(m.ano, m.mes);
+    if (
+      m.injetadaMedidorKwh != null &&
+      m.geracaoInversorKwh != null &&
+      m.geracaoInversorKwh > 0 &&
+      m.injetadaMedidorKwh > m.geracaoInversorKwh * TOLERANCIA_LEITURA
+    ) {
+      suspeitas.push(
+        `em ${rot} o medidor registrou ${fmtKwh(m.injetadaMedidorKwh)} injetados, acima dos ${fmtKwh(m.geracaoInversorKwh)} gerados pelo inversor`,
+      );
+    }
+    if (m.faturadoRs != null && (m.consumoRedeKwhTotal ?? 0) === 0) {
+      suspeitas.push(
+        `em ${rot} houve faturamento sem nenhum consumo medido nas unidades`,
+      );
+    }
+    for (const b of m.beneficiarias) {
+      if (
+        b.consumoRedeKwh != null &&
+        b.consumoRedeKwh > 0 &&
+        b.energiaCompensadaKwh != null &&
+        b.energiaCompensadaKwh > b.consumoRedeKwh * TOLERANCIA_LEITURA
+      ) {
+        suspeitas.push(
+          `em ${rot} a UC ${formatCodigoUc(b.codigoUc)} teve ${fmtKwh(b.energiaCompensadaKwh)} compensados para um consumo de ${fmtKwh(b.consumoRedeKwh)}`,
+        );
+      }
+    }
+  }
+  if (suspeitas.length > 0) {
+    itens.push({
+      tema: "LEITURA",
+      nivel: "ATENCAO",
+      titulo: "Possível erro de leitura na concessionária",
+      texto: `Encontramos registros que não fecham entre si: ${resumirOcorrencias(suspeitas)}. Normalmente é leitura estimada, leitura fora do ciclo ou lançamento incorreto de créditos. Vamos conferir essas faturas junto à concessionária e, se confirmado, pedir a revisão do faturamento.`,
+    });
+  }
+
+  // --- 5. Faturas ainda não recebidas ----------------------------------------
+  const lacunas = ucsBase.filter((u) => u.mesesSemFatura.length > 0);
+  if (lacunas.length > 0) {
+    itens.push({
+      tema: "DADOS",
+      nivel: "ATENCAO",
+      titulo: "Faturas ainda não recebidas",
+      texto: `${resumirOcorrencias(lacunas.map((u) => `UC ${formatCodigoUc(u.codigoUc)} (${listar(u.mesesSemFatura)})`))} — os totais desses meses estão incompletos e serão atualizados quando as faturas chegarem.`,
+    });
+  }
+
+  // --- Veredito ---------------------------------------------------------------
+  const item = (tema: SituacaoRateioItem["tema"]) =>
+    itens.find((i) => i.tema === tema);
+  let resumo: string;
+  if (item("USINA")?.nivel === "ACAO") {
+    resumo =
+      "A energia gerada não está chegando às unidades — precisamos regularizar o rateio junto à concessionária.";
+  } else if (item("ATENDIMENTO")?.nivel === "ACAO") {
+    resumo = `Os créditos cobriram parte do consumo do grupo${deficitMensalKwh != null ? `: faltaram cerca de ${fmtKwh(deficitMensalKwh)}/mês` : ""}.`;
+  } else if (item("DISTRIBUICAO")?.nivel === "ACAO") {
+    resumo =
+      "A energia atendeu o grupo, mas está mal distribuída: sobra crédito numa unidade e falta em outra.";
+  } else if (item("LEITURA")) {
+    resumo =
+      "As unidades foram atendidas, mas há números da concessionária que não fecham — vamos conferir esse faturamento.";
+  } else if (itens.some((i) => i.nivel === "ATENCAO")) {
+    resumo =
+      "O rateio está atendendo as unidades, com um ponto que pede atenção.";
+  } else {
+    resumo =
+      "O rateio está equilibrado e as unidades foram atendidas pelos créditos.";
+  }
+
+  return {
+    mesesConsiderados: janela.length,
+    consumoMedioTotalKwh,
+    compensadoMedioTotalKwh,
+    coberturaPct,
+    deficitMensalKwh,
+    injetadaMediaKwh,
+    geracaoMediaKwh,
+    ucs,
+    resumo,
+    itens,
+  };
 }
 
 export async function getProprietarioRelatorioAgregado(
@@ -1236,10 +1793,7 @@ export async function getProprietarioRelatorioAgregado(
     (s, c) => s + (c.potenciaInstalada ?? 0),
     0,
   );
-  const geracaoEsperadaMensalKwh = monitoringClients.reduce(
-    (s, c) => s + (c.geracaoMediaEsperada ?? 0),
-    0,
-  );
+  const geracaoEsperadaMensalKwh = esperadaMensalBaseTotalKwh(monitoringClients);
   const geracaoEsperadaAnualKwh = monitoringClients.reduce(
     (s, c) => s + (c.geracaoAnualEsperada ?? 0),
     0,
@@ -1380,6 +1934,7 @@ export async function getProprietarioRelatorioAgregado(
           economiaMensalRs: null,
           faturadoRs: null,
           contaSemSolarRs: null,
+          saldoCreditosKwh: null,
         });
         continue;
       }
@@ -1399,6 +1954,7 @@ export async function getProprietarioRelatorioAgregado(
         economiaMensalRs: economiaCompensadaRs,
         faturadoRs: bill.valorTotal,
         contaSemSolarRs,
+        saldoCreditosKwh: bill.saldoCreditos,
       });
       if (bill.consumoKwh != null)
         consumoRedeTotal = (consumoRedeTotal ?? 0) + bill.consumoKwh;
@@ -1497,6 +2053,7 @@ export async function getProprietarioRelatorioAgregado(
     paybackQuitacaoPrevista,
     paybackQuitado,
     meses,
+    situacao: avaliarSituacaoRateio(meses),
   };
 }
 

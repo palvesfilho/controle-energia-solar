@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getDailyGeneration, getFlowData } from "@/lib/fronius";
+import { esperadaDoDiaDaUsina, performanceRatioMesAtual } from "@/lib/geracao-esperada";
 
 /**
  * POST /api/brasil-solar/[id]/fronius-sync
@@ -28,6 +29,7 @@ export async function POST(
       monitoramentoPlantId: true,
       plataformaMonitoramento: true,
       geracaoMediaEsperada: true,
+      geracaoAnualEsperada: true,
     },
   });
 
@@ -73,9 +75,7 @@ export async function POST(
               clientId: id,
               data: date,
               geracaoDiaria: day.energyKwh,
-              geracaoEsperada: client.geracaoMediaEsperada
-                ? client.geracaoMediaEsperada / 30
-                : null,
+              geracaoEsperada: esperadaDoDiaDaUsina(client, date),
             },
           });
           logsUpserted++;
@@ -115,9 +115,7 @@ export async function POST(
 
     const geracaoMes = monthAgg._sum.geracaoDiaria ?? 0;
     const pr =
-      client.geracaoMediaEsperada && client.geracaoMediaEsperada > 0
-        ? (geracaoMes / client.geracaoMediaEsperada) * 100
-        : null;
+      performanceRatioMesAtual(client, geracaoMes, new Date());
 
     const ultimaGeracao = last30Logs.length > 0 ? last30Logs[0].geracaoDiaria : null;
 

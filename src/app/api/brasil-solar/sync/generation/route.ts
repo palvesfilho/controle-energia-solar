@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getDailyGenerationBatch } from "@/lib/fronius";
+import { esperadaDoDiaDaUsina, performanceRatioMesAtual } from "@/lib/geracao-esperada";
 
 // POST /api/brasil-solar/sync/generation - Sincronizar geraÃ§Ã£o diÃ¡ria do mÃªs
 export async function POST(req: NextRequest) {
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
         id: true,
         monitoramentoPlantId: true,
         geracaoMediaEsperada: true,
+        geracaoAnualEsperada: true,
       },
     });
 
@@ -76,9 +78,7 @@ export async function POST(req: NextRequest) {
                 clientId: clientInfo.id,
                 data: date,
                 geracaoDiaria: day.energyKwh,
-                geracaoEsperada: clientInfo.geracaoMediaEsperada
-                  ? clientInfo.geracaoMediaEsperada / 30
-                  : null,
+                geracaoEsperada: esperadaDoDiaDaUsina(clientInfo, date),
               },
             });
             logsCreated++;
@@ -90,9 +90,7 @@ export async function POST(req: NextRequest) {
             ? dailyData[dailyData.length - 1]
             : null;
 
-          const pr = clientInfo.geracaoMediaEsperada && clientInfo.geracaoMediaEsperada > 0
-            ? (totalMes / clientInfo.geracaoMediaEsperada) * 100
-            : null;
+          const pr = performanceRatioMesAtual(clientInfo, totalMes, new Date());
 
           await prisma.brasilSolarClient.update({
             where: { id: clientInfo.id },

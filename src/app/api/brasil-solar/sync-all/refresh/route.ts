@@ -19,6 +19,7 @@ import {
   getDailyGenerationBatch as getSolarEdgeDailyBatch,
   getPlantStatusBatch as getSolarEdgeStatusBatch,
 } from "@/lib/solaredge";
+import { esperadaDoDiaDaUsina, performanceRatioMesAtual } from "@/lib/geracao-esperada";
 
 export const maxDuration = 600;
 
@@ -164,9 +165,7 @@ async function processPlatform(
             data: date,
             geracaoDiaria: day.energyKwh,
             irradiacao: day.irradiacao ?? null,
-            geracaoEsperada: client.geracaoMediaEsperada
-              ? client.geracaoMediaEsperada / 30
-              : null,
+            geracaoEsperada: esperadaDoDiaDaUsina(client, date),
           },
         });
         summary.logsUpsert++;
@@ -175,9 +174,7 @@ async function processPlatform(
       const totalMes = daily.reduce((sum, d) => sum + d.energyKwh, 0);
       const ultimoDia = daily.length > 0 ? daily[daily.length - 1] : null;
       const pr =
-        client.geracaoMediaEsperada && client.geracaoMediaEsperada > 0
-          ? (totalMes / client.geracaoMediaEsperada) * 100
-          : null;
+        performanceRatioMesAtual(client, totalMes, new Date());
 
       const temDados = daily.length > 0;
       const novoStatus = status?.isOnline
@@ -228,6 +225,7 @@ export async function POST(_req: NextRequest) {
         monitoramentoPlantId: true,
         plataformaMonitoramento: true,
         geracaoMediaEsperada: true,
+        geracaoAnualEsperada: true,
       },
     });
 

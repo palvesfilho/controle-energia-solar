@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { esperadaMensalBaseKwh } from "@/lib/geracao-esperada";
 
 interface MonitoringLog {
   id: string;
@@ -427,7 +428,7 @@ export default function ClientDetailPage() {
           )}
           <GenerationChart
             logs={client.monitoringLogs}
-            geracaoMediaEsperada={client.geracaoMediaEsperada}
+            geracaoMediaEsperada={esperadaMensalBaseKwh(client) || null}
           />
           <MonthlyComparisonChart logs={client.monitoringLogs} />
         </div>
@@ -501,7 +502,14 @@ export default function ClientDetailPage() {
                   : null
               } />
               <InfoRow icon={Zap} label="Pot. Inversor" value={client.inversorPotencia ? `${formatNumber(client.inversorPotencia)} kW` : null} />
-              <InfoRow icon={TrendingUp} label="Geracao Esperada" value={client.geracaoMediaEsperada ? `${formatNumber(client.geracaoMediaEsperada)} kWh/mes` : null} />
+              {/* sem valor mensal proprio, mostra o derivado da anual — e diz de onde veio */}
+              <InfoRow icon={TrendingUp} label="Geracao Esperada" value={
+                client.geracaoMediaEsperada
+                  ? `${formatNumber(client.geracaoMediaEsperada)} kWh/mes`
+                  : esperadaMensalBaseKwh(client) > 0
+                    ? `${formatNumber(Math.round(esperadaMensalBaseKwh(client)))} kWh/mes (da anual)`
+                    : null
+              } />
               <InfoRow icon={TrendingUp} label="Geracao Anual Esperada" value={client.geracaoAnualEsperada ? `${formatNumber(client.geracaoAnualEsperada)} kWh/ano` : null} />
               <InfoRow icon={FileText} label="Geracao de Contrato" value={client.geracaoContrato ? `${formatNumber(client.geracaoContrato)} kWh` : null} />
               <InfoRow icon={Zap} label="Investimento" value={client.investimento ? `R$ ${formatNumber(client.investimento)}` : null} />

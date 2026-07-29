@@ -53,6 +53,7 @@ interface MonthRow {
   saldoPaybackRs: number;
   faturadoRs: number | null;
   contaSemSolarRs: number | null;
+  geracaoEsperadaPeriodoKwh: number | null;
   desempenhoPct: number | null;
   retornoPct: number | null;
   anomalia: string | null;
@@ -307,9 +308,11 @@ export default function RelatorioDetalhePage() {
                     : "—"
                 }
                 sublabel={
-                  data.geracaoEsperadaMensalKwh > 0
-                    ? `Esperado: ${formatKwh(data.geracaoEsperadaMensalKwh)}`
-                    : undefined
+                  (mesSelecionado.geracaoEsperadaPeriodoKwh ?? 0) > 0
+                    ? `Esperado no mês: ${formatKwh(mesSelecionado.geracaoEsperadaPeriodoKwh!)}`
+                    : data.geracaoEsperadaMensalKwh > 0
+                      ? `Esperado: ${formatKwh(data.geracaoEsperadaMensalKwh)}`
+                      : undefined
                 }
                 icon={<Activity className="h-4 w-4" />}
                 color={brand.tealDark}

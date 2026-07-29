@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
+import { esperadaMensalBaseTotalKwh } from "@/lib/geracao-esperada";
 
 // GET /api/brasil-solar/proprietarios/[id]/metricas
 // Agrega MonitoringLog de todas as usinas do proprietário (últimos 12 meses)
@@ -33,6 +34,7 @@ export async function GET(
       potenciaInstalada: true,
       geracaoMesAtual: true,
       geracaoMediaEsperada: true,
+      geracaoAnualEsperada: true,
       performanceRatio: true,
       statusMonitoramento: true,
     },
@@ -155,10 +157,7 @@ export async function GET(
   // Agregações sobre as plantas
   const potenciaTotal = plantas.reduce((s, p) => s + (p.potenciaInstalada ?? 0), 0);
   const geracaoMesAtual = plantas.reduce((s, p) => s + (p.geracaoMesAtual ?? 0), 0);
-  const geracaoMediaEsperada = plantas.reduce(
-    (s, p) => s + (p.geracaoMediaEsperada ?? 0),
-    0,
-  );
+  const geracaoMediaEsperada = esperadaMensalBaseTotalKwh(plantas);
   const onlineCount = plantas.filter((p) => p.statusMonitoramento === "ONLINE").length;
 
   // PR ponderado pela potência instalada (ignora plantas sem potência ou sem PR)
