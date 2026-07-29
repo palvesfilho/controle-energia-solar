@@ -25,6 +25,7 @@ import {
   FileBarChart2,
   Send,
   AlertTriangle,
+  Target,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -49,6 +50,7 @@ import {
   type MonitoringPlanStatus,
 } from "@/components/brasil-solar/monitoring-plan-modal";
 import { ConviteAcessoModal } from "@/components/brasil-solar/convite-acesso-modal";
+import { AcaoComercialModal } from "@/components/brasil-solar/acao-comercial-modal";
 import { ShieldCheck, ShieldAlert, ShieldOff, Clock, CheckCircle2 } from "lucide-react";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 
@@ -156,6 +158,9 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
   const [planoModal, setPlanoModal] = useState<{ clientId: string; nome: string } | null>(
     null,
   );
+
+  // Painel de ação comercial (oportunidades derivadas do relatório)
+  const [acaoComercialOpen, setAcaoComercialOpen] = useState(false);
 
   // Modal convite de acesso ao portal do cliente + estado do acesso (pro botão)
   const [conviteOpen, setConviteOpen] = useState(false);
@@ -544,6 +549,13 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setAcaoComercialOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+          >
+            <Target className="h-4 w-4" />
+            Ação Comercial
+          </button>
           <Link
             href={`/admin/brasil-solar/proprietarios/${id}/relatorios`}
             className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
@@ -1192,6 +1204,15 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
         onChanged={fetchAcessoConvite}
       />
 
+      {/* Só monta ao abrir: a análise varre faturas + geração de todas as UCs */}
+      {acaoComercialOpen && (
+        <AcaoComercialModal
+          proprietarioId={id}
+          proprietarioNome={data.nome}
+          open={true}
+          onClose={() => setAcaoComercialOpen(false)}
+        />
+      )}
 
       {/* Trava do "Desativar" — exige digitar a palavra exata */}
       <Dialog

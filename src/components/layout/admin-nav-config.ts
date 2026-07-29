@@ -210,10 +210,40 @@ export function getAdminItems(role: UserRole, currentModule: "assoc" | "bs"): Na
   return base;
 }
 
+/**
+ * Todos os hrefs do menu admin, do mais específico pro mais genérico.
+ *
+ * Existe porque alguns itens são prefixo de outros: "Plantas Fotovoltaicas"
+ * mora em `/admin/brasil-solar`, que é prefixo de `/admin/brasil-solar/proprietarios`
+ * ("Clientes Brasil Solar"). Sem desempate, um `startsWith` acende os dois.
+ */
+const TODOS_OS_HREFS: string[] = (() => {
+  const hrefs = new Set<string>([userManagementItem.href]);
+  for (const item of adminNavItems) {
+    if (item.kind === "leaf") hrefs.add(item.href);
+    else for (const child of item.children) hrefs.add(child.href);
+  }
+  return Array.from(hrefs).sort((a, b) => b.length - a.length);
+})();
+
+/** Casamento por segmento: `/admin/obra` não pode casar com `/admin/obras`. */
+function cobre(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * Um item fica aceso só quando é o href MAIS ESPECÍFICO que cobre a rota atual.
+ * Em `/admin/brasil-solar/proprietarios/123` quem acende é "Clientes Brasil
+ * Solar" — não "Plantas Fotovoltaicas", que só cobre o prefixo.
+ */
 export function isLeafActive(pathname: string, href: string): boolean {
   if (pathname === href) return true;
   if (href === "/admin" || href === "/painel") return false;
-  return pathname.startsWith(href);
+  if (!cobre(pathname, href)) return false;
+  // Perde pra qualquer href mais longo que também cubra a rota.
+  return !TODOS_OS_HREFS.some(
+    (outro) => outro.length > href.length && cobre(pathname, outro),
+  );
 }
 
 export function isGroupActive(pathname: string, group: NavGroup): boolean {

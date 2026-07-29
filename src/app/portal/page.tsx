@@ -116,7 +116,9 @@ export default async function PortalPage() {
             )}
             {acesso.bs && (
               <CardModulo
-                href="/admin/brasil-solar"
+                // Entra pelo dashboard, não pela lista de plantas — é o
+                // primeiro item do menu e a visão que abre o módulo.
+                href="/admin/brasil-solar/mapa"
                 titulo="Gestão de Clientes"
                 subtitulo="Brasil Solar"
                 descricao="Monitoramento de plantas, cronograma de obras e atendimento aos clientes da rede."
