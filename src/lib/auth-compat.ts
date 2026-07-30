@@ -122,6 +122,11 @@ async function resolveProprietarioId(clerkUser: ClerkUser, email: string): Promi
  * por `clerkUserId` mesmo sem o webhook. Se vinculou um proprietário e a conta
  * não é privilegiada, promove o login a `CLIENTE_BS`. Idempotente e seguro em
  * corrida com o webhook.
+ *
+ * Ordem de resolução do `User` local: (1) por `clerkId`; (2) por e-mail, quando
+ * a linha existe mas nunca foi vinculada (`clerkId` NULL) — adota e preserva o
+ * role; (3) cria do zero. Sem o passo 2, funcionário cadastrado no banco antes
+ * de ter conta Clerk quebrava o login com P2002 em `users.email`.
  */
 export async function ensureLocalUser(clerkUser: ClerkUser): Promise<LocalUser | null> {
   const email = primaryEmail(clerkUser);
@@ -131,10 +136,40 @@ export async function ensureLocalUser(clerkUser: ClerkUser): Promise<LocalUser |
     [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ").trim() ||
     email.split("@")[0];
 
-  const existing = await prisma.user.findUnique({
+  let existing = await prisma.user.findUnique({
     where: { clerkId: clerkUser.id },
     select: { id: true, role: true, email: true, name: true, active: true },
   });
+
+  // Adoção por e-mail: a linha local pode ter sido criada ANTES da conta Clerk
+  // (cadastro manual de funcionário, seed, importação) e ficado com `clerkId`
+  // NULL. Nesse caso o lookup por `clerkId` não acha e o upsert lá embaixo
+  // tentaria um INSERT com um e-mail que já existe — `users.email` é @unique,
+  // então dava P2002 e o login inteiro quebrava (o erro sobe e derruba a
+  // request, não vira "não autorizado"). Aqui a linha existente é adotada:
+  // recebe o `clerkId` e PRESERVA o role já cadastrado.
+  if (!existing) {
+    const porEmail = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+      select: { id: true, role: true, email: true, name: true, active: true, clerkId: true },
+    });
+
+    if (porEmail && porEmail.clerkId === null) {
+      existing = await prisma.user.update({
+        where: { id: porEmail.id },
+        data: { clerkId: clerkUser.id },
+        select: { id: true, role: true, email: true, name: true, active: true },
+      });
+    } else if (porEmail) {
+      // E-mail já pertence a OUTRA identidade Clerk. Não dá pra adotar sem
+      // arriscar entregar a conta errada — devolve null (vira "sem sessão",
+      // não 500) pra um humano resolver a duplicidade.
+      console.error(
+        `[auth-compat] e-mail ${email} já vinculado ao clerkId ${porEmail.clerkId}; login ${clerkUser.id} recusado`,
+      );
+      return null;
+    }
+  }
 
   const proprietarioId = await resolveProprietarioId(clerkUser, email);
 
