@@ -400,29 +400,61 @@ interface PVInverterRealTimeResponse {
  * 1 chamada cobre todos os ps_keys.
  */
 async function fetchInvertersRealtime(
-  psKeys: string[],
+  inverters: PlantInverter[],
 ): Promise<Map<string, { p1Wh: number | null; p2Wh: number | null }>> {
   const out = new Map<string, { p1Wh: number | null; p2Wh: number | null }>();
-  if (psKeys.length === 0) return out;
-  try {
-    const data = await sungrowFetch<PVInverterRealTimeResponse>(
-      "/openapi/getPVInverterRealTimeData",
-      { ps_key_list: psKeys },
-    );
-    for (const item of data.result_data?.device_point_list ?? []) {
-      const dp = item.device_point;
-      const psKey = String(dp.ps_key ?? "");
-      if (!psKey) continue;
-      const p1 = dp.p1 != null ? Number(dp.p1) : null;
-      const p2 = dp.p2 != null ? Number(dp.p2) : null;
-      out.set(psKey, {
-        p1Wh: p1 != null && Number.isFinite(p1) ? p1 : null,
-        p2Wh: p2 != null && Number.isFinite(p2) ? p2 : null,
-      });
+  if (inverters.length === 0) return out;
+
+  const num = (v: unknown) => {
+    if (v == null || v === "" || v === "--") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const set = (psKey: string, dia: number | null, total: number | null) => {
+    if (psKey) out.set(psKey, { p1Wh: dia, p2Wh: total });
+  };
+
+  // Inversor string: `getPVInverterRealTimeData` devolve um conjunto FIXO de
+  // pontos de device_type 1 — não aceita lista de pontos nem device_type.
+  const strings = inverters.filter((i) => i.deviceType !== 55).map((i) => i.psKey);
+  if (strings.length > 0) {
+    try {
+      const data = await sungrowFetch<PVInverterRealTimeResponse>(
+        "/openapi/getPVInverterRealTimeData",
+        { ps_key_list: strings },
+      );
+      for (const item of data.result_data?.device_point_list ?? []) {
+        const dp = item.device_point;
+        set(String(dp.ps_key ?? ""), num(dp.p1), num(dp.p2));
+      }
+    } catch {
+      // segue sem esses inversores; getPlantStatus trata como 0
     }
-  } catch {
-    // chamada falhou — out fica vazio, getPlantStatus tratará como 0
   }
+
+  // Microinversor: precisa de `getDeviceRealTimeData`, que aceita `device_type`
+  // e `point_id_list`. ⚠️ `point_id_list` é OBRIGATÓRIO — sem ele a API responde
+  // `009 er_missing_parameter`, não um conjunto default.
+  const micros = inverters.filter((i) => i.deviceType === 55).map((i) => i.psKey);
+  if (micros.length > 0) {
+    try {
+      const data = await sungrowFetch<PVInverterRealTimeResponse>(
+        "/openapi/getDeviceRealTimeData",
+        {
+          device_type: 55,
+          point_id_list: ["51346", "51302", "51303"],
+          ps_key_list: micros,
+        },
+      );
+      for (const item of data.result_data?.device_point_list ?? []) {
+        const dp = item.device_point as unknown as Record<string, unknown>;
+        set(String(dp.ps_key ?? ""), num(dp.p51346), num(dp.p51302));
+      }
+    } catch {
+      // idem
+    }
+  }
+
   return out;
 }
 
@@ -443,7 +475,7 @@ export async function getPlantStatus(psId: string): Promise<PlantStatus> {
     getInvertersForPlant(psId),
   ]);
 
-  const realtime = await fetchInvertersRealtime(inverters.map((i) => i.psKey));
+  const realtime = await fetchInvertersRealtime(inverters);
 
   let dayEnergyWh = 0;
   let totalEnergyWh = 0;
@@ -479,14 +511,82 @@ interface MinuteDataResponse {
   result_data: Record<string, Array<Record<string, string>>> | null;
 }
 
-const SAMPLE_POINTS = "p1,p2,p14,p24";
+/**
+ * Pontos de medição POR TIPO DE DISPOSITIVO.
+ *
+ * ⚠️ Microinversor (`device_type 55`) NÃO possui os pontos do inversor string.
+ * Pedir `p1/p2/p14/p24` a um microinversor devolve `result_code: "1"` com
+ * `result_data` **vazio** — sucesso sem dado. Isso foi lido por muito tempo
+ * como "planta sem geração" e depois como "falta de escopo do appkey"; as duas
+ * leituras estavam erradas. Os pontos corretos são a faixa `513xx`.
+ * Validado em 2026-07-30 contra o nível de estação (`getPowerStationList`):
+ * p51303=488 W × curr_power=488 W, p51346=2300,01 Wh × today_energy=2,3 kWh,
+ * p51302=3.165.700 Wh × total_energy=3,166 MWh — batem exatamente.
+ *
+ * O mapeamento abaixo é SEMÂNTICO: os dois tipos alimentam os mesmos campos de
+ * `MinuteDataSample`, pra que o tipo de dispositivo não vaze pro resto do
+ * sistema (persistência, gráficos e relatórios seguem inalterados).
+ *
+ *   energia do dia (Wh)   → string `p1`      | micro `p51346`
+ *   energia lifetime (Wh) → string `p2`      | micro `p51302`
+ *   potência AC (W)       → string `p14+p24` | micro `p51303`
+ */
+const POINTS_BY_DEVICE_TYPE: Record<number, string> = {
+  1: "p1,p2,p14,p24",
+  55: "p51346,p51302,p51303",
+};
+const SAMPLE_POINTS_FALLBACK = POINTS_BY_DEVICE_TYPE[1];
+
+function pointsForDeviceType(deviceType: number): string {
+  return POINTS_BY_DEVICE_TYPE[deviceType] ?? SAMPLE_POINTS_FALLBACK;
+}
+
+/**
+ * Converte uma amostra crua da API no formato semântico interno.
+ * `p51346` zera quando o microinversor desliga à noite — quem consome deve
+ * ignorar zeros (ver `dailyKwhFromSamples`).
+ */
+function mapSample(s: Record<string, string>, deviceType: number): MinuteDataSample {
+  const num = (v: string | undefined) => {
+    if (v == null || v === "" || v === "--") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  if (deviceType === 55) {
+    return {
+      timeStamp: String(s.time_stamp ?? ""),
+      p1: num(s.p51346),
+      p2: num(s.p51302),
+      pAcW: num(s.p51303),
+    };
+  }
+
+  // Inversor string: potência AC é a soma das fases reportadas em p14/p24.
+  const p14 = num(s.p14);
+  const p24 = num(s.p24);
+  const pAcW = p14 == null && p24 == null ? null : (p14 ?? 0) + (p24 ?? 0);
+  return {
+    timeStamp: String(s.time_stamp ?? ""),
+    p1: num(s.p1),
+    p2: num(s.p2),
+    pAcW,
+  };
+}
 /** Janelas UTC de 3h cobrindo 8h–00h (= 5h–21h BRT, dia útil de geração). */
 const DAY_SLICES_UTC: Array<readonly [number, number]> = [
   [8, 11], [11, 14], [14, 17], [17, 20], [20, 23], [23, 24],
 ];
 
+/** Inversor de uma planta, já com o tipo — o tipo decide quais pontos pedir. */
+interface PlantInverter {
+  psKey: string;
+  name: string;
+  deviceType: number;
+}
+
 /** Cache de inversores por planta — TTL longo, raramente mudam. */
-const invertersCache = new Map<string, { keys: { psKey: string; name: string }[]; expiresAt: number }>();
+const invertersCache = new Map<string, { keys: PlantInverter[]; expiresAt: number }>();
 const INVERTERS_CACHE_TTL_MS = 60 * 60 * 1000;
 
 // Tipos de dispositivo que geram energia (device_type da OpenAPI Sungrow):
@@ -495,21 +595,21 @@ const INVERTERS_CACHE_TTL_MS = 60 * 60 * 1000;
 //        retornavam "0 inversores" e a geração zerava.
 const INVERTER_DEVICE_TYPES = new Set([1, 55]);
 
-async function getInvertersForPlant(psId: string): Promise<{ psKey: string; name: string }[]> {
+async function getInvertersForPlant(psId: string): Promise<PlantInverter[]> {
   const cached = invertersCache.get(psId);
   if (cached && Date.now() < cached.expiresAt) return cached.keys;
 
   const devs = await getDeviceList(psId);
   const inverters = devs
-    .filter((d) => INVERTER_DEVICE_TYPES.has(Number((d as unknown as { device_type?: number }).device_type ?? d.dev_type)))
     .map((d) => {
-      const raw = d as unknown as { ps_key?: string; device_name?: string };
+      const raw = d as unknown as { ps_key?: string; device_name?: string; device_type?: number };
       return {
         psKey: String(raw.ps_key ?? ""),
         name: String(raw.device_name ?? d.dev_name ?? ""),
+        deviceType: Number(raw.device_type ?? d.dev_type),
       };
     })
-    .filter((d) => d.psKey.length > 0);
+    .filter((d) => d.psKey.length > 0 && INVERTER_DEVICE_TYPES.has(d.deviceType));
 
   invertersCache.set(psId, { keys: inverters, expiresAt: Date.now() + INVERTERS_CACHE_TTL_MS });
   return inverters;
@@ -528,10 +628,12 @@ function utcDayTimestamp(year: number, month: number, day: number, hour: number,
 /** Coleta as 6 fatias UTC de 8h–00h pra um inversor num dia. Resiliente a falha pontual. */
 async function collectInverterDay(
   psKey: string,
+  deviceType: number,
   year: number,
   month: number,
   day: number,
 ): Promise<MinuteDataSample[]> {
+  const points = pointsForDeviceType(deviceType);
   const all: MinuteDataSample[] = [];
   for (const [h0, h1] of DAY_SLICES_UTC) {
     try {
@@ -539,23 +641,14 @@ async function collectInverterDay(
         "/openapi/getDevicePointMinuteDataList",
         {
           ps_key_list: [psKey],
-          points: SAMPLE_POINTS,
+          points,
           start_time_stamp: utcDayTimestamp(year, month, day, h0),
           end_time_stamp: utcDayTimestamp(year, month, day, h1),
         },
       );
       const list = data.result_data?.[psKey] ?? [];
       for (const s of list) {
-        const p14 = s.p14 != null ? Number(s.p14) : null;
-        const p24 = s.p24 != null ? Number(s.p24) : null;
-        const hasAnyAc = (p14 != null && Number.isFinite(p14)) || (p24 != null && Number.isFinite(p24));
-        const pAcW = hasAnyAc ? (Number.isFinite(p14!) ? p14! : 0) + (Number.isFinite(p24!) ? p24! : 0) : null;
-        all.push({
-          timeStamp: String(s.time_stamp ?? ""),
-          p1: s.p1 != null ? Number(s.p1) : null,
-          p2: s.p2 != null ? Number(s.p2) : null,
-          pAcW,
-        });
+        all.push(mapSample(s, deviceType));
       }
     } catch {
       // ignora fatia que falhou — o resto do dia segue
@@ -595,7 +688,7 @@ export async function getDailySamples(
       batch.map(async (inv) => ({
         psKey: inv.psKey,
         deviceName: inv.name,
-        samples: await collectInverterDay(inv.psKey, year, month, day),
+        samples: await collectInverterDay(inv.psKey, inv.deviceType, year, month, day),
       })),
     );
     out.push(...results);
@@ -636,7 +729,7 @@ export async function getDailyGeneration(
       batch.map(async (d) => {
         let kwh = 0;
         for (const inv of inverters) {
-          const samples = await collectInverterDay(inv.psKey, year, month, d);
+          const samples = await collectInverterDay(inv.psKey, inv.deviceType, year, month, d);
           kwh += dailyKwhFromSamples(samples);
         }
         return { day: d, kwh };
