@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isValidPhone } from "@/lib/phone";
 import { CONCESSIONARIAS } from "@/lib/concessionarias";
+import { modeloDaConcessionaria, ROTULO_MODELO } from "@/lib/anexo-modelos";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface FormData {
@@ -98,6 +99,7 @@ export default function NovoProprietarioPage() {
     dataPagamento: "", prazoContratoDias: "",
   });
   const [showPortalPassword, setShowPortalPassword] = useState(false);
+  const modeloEscolhido = modeloDaConcessionaria(form.concessionaria);
 
   function set<K extends keyof FormData>(field: K, value: FormData[K]) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -108,6 +110,9 @@ export default function NovoProprietarioPage() {
     try {
       const fd = new FormData();
       fd.append("file", file);
+      // A concessionária escolhida define qual leitor roda. Em branco, o
+      // servidor cai na detecção automática pela estrutura do PDF.
+      if (form.concessionaria) fd.append("concessionaria", form.concessionaria);
       const res = await fetch("/api/brasil-solar/proprietarios/parse-anexo", {
         method: "POST",
         body: fd,
@@ -129,7 +134,9 @@ export default function NovoProprietarioPage() {
         cidade: data.cidade ?? prev.cidade,
         uf: data.uf ?? prev.uf,
         codigoUc: formatCodigoUc(data.codigoUc) ?? prev.codigoUc,
-        concessionaria: data.concessionaria ?? prev.concessionaria,
+        // A escolha do operador vence: foi ela que decidiu o leitor. Só usa a
+        // concessionária vinda do PDF quando o campo ficou em branco.
+        concessionaria: prev.concessionaria || (data.concessionaria ?? ""),
       }));
 
       setPlantaPrefill({
@@ -149,7 +156,14 @@ export default function NovoProprietarioPage() {
         tipoAtendimento: data.tipoAtendimento,
       });
 
-      toast.success("Dados extraídos do Anexo F");
+      toast.success("Dados extraídos do anexo");
+
+      // Anomalias do próprio documento (CNPJ com dígitos a menos, potência
+      // divergente). Preenchem o formulário do mesmo jeito, mas o operador
+      // precisa ver antes de salvar — senão o erro entra calado no cadastro.
+      for (const aviso of (data.avisos ?? []) as string[]) {
+        toast.warning(aviso, { duration: 12000 });
+      }
     } catch (err) {
       console.error(err);
       toast.error("Erro ao ler o PDF");
@@ -295,10 +309,29 @@ export default function NovoProprietarioPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Importar do Anexo F (CPFL/RGE)</CardTitle>
+          <CardTitle className="text-sm">Importar do documento de projeto</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+            {/* A concessionária decide qual leitor roda. Fica ANTES do botão
+                porque é escolha do operador, não adivinhação nossa. */}
+            <div className="sm:w-56">
+              <label className="text-xs font-medium text-muted-foreground">
+                Concessionária
+              </label>
+              <select
+                value={form.concessionaria}
+                onChange={(e) => set("concessionaria", e.target.value)}
+                className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              >
+                <option value="">Detectar automaticamente</option>
+                {CONCESSIONARIAS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
             <input
               ref={fileInputRef}
               type="file"
@@ -316,12 +349,17 @@ export default function NovoProprietarioPage() {
               className="flex items-center gap-2 px-4 py-2 text-sm border rounded-lg hover:bg-muted transition-colors disabled:opacity-50"
             >
               {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
-              {parsing ? "Lendo PDF..." : "Selecionar PDF do Anexo F"}
+              {parsing ? "Lendo PDF..." : "Selecionar PDF"}
             </button>
-            <p className="text-xs text-muted-foreground">
-              Os campos abaixo e os dados da planta serão preenchidos automaticamente.
-            </p>
           </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            {modeloEscolhido
+              ? `Será lido como ${ROTULO_MODELO[modeloEscolhido]}.`
+              : form.concessionaria
+                ? `Não há modelo de documento mapeado para ${form.concessionaria} — o formato será detectado pelo conteúdo do PDF.`
+                : "Escolha a concessionária para usar o leitor certo, ou deixe em branco para detectar pelo conteúdo do PDF."}{" "}
+            Os campos abaixo e os dados da planta serão preenchidos automaticamente.
+          </p>
 
           {plantaPrefill && (
             <div className="mt-3 p-3 border rounded-lg bg-muted/30 text-xs space-y-1">

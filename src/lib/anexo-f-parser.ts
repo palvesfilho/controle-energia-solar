@@ -4,7 +4,13 @@
  *
  * Extrai texto do PDF via pdfjs-dist (build legacy, roda em Node)
  * e identifica os campos relevantes para cadastro de Proprietário + Planta.
+ *
+ * `parseAnexoF` também aceita o "ANEXO 1 — Solicitação de Acesso" (obras da
+ * Nova Palma), desviando pro anexo-1-parser: mesmo conteúdo, formato diferente.
  */
+
+import { ehAnexo1, extrairAnexo1 } from "./anexo-1-parser";
+import { ROTULO_MODELO, type ModeloAnexo } from "./anexo-modelos";
 
 export interface AnexoFData {
   // Proprietário
@@ -42,6 +48,32 @@ export interface AnexoFData {
   // Auxiliares
   numeroFases?: string; // Monofásico | Bifásico | Trifásico
   tipoAtendimento?: string; // Aéreo | Subterrâneo
+
+  // ── Campos que só o ANEXO 1 traz (obras Nova Palma) ──────────────────────
+  // O Anexo F da CPFL/RGE não tem equivalente; ficam undefined nele.
+  /** Pessoa de contato do cliente — não é o titular. */
+  responsavelCliente?: string;
+  responsavelClienteCpf?: string;
+  responsavelEmail?: string;
+  /** Conselho do registro do responsável técnico: CREA, CFT ou CAU. */
+  responsavelConselho?: string;
+  /** Data do ofício de solicitação de acesso. NÃO é a entrada em operação. */
+  dataSolicitacao?: string;
+  potenciaModuloW?: number;
+  potenciaNominalDeclarada?: number;
+  potenciaMaximaGeracaoDeclarada?: number;
+  areaModulosM2?: number;
+  tensaoNominal?: string;
+  frequenciaHz?: number;
+  tipoFonte?: string;
+
+  /** Anomalias do documento (não erros de leitura) — mostrar pro operador. */
+  avisos?: string[];
+
+  /** Leitor que rodou de fato. */
+  modeloUsado?: ModeloAnexo;
+  /** O que a estrutura do PDF aparenta ser, independente do que foi escolhido. */
+  modeloDetectado?: ModeloAnexo;
 
   rawText?: string;
 }
@@ -290,11 +322,44 @@ function splitCidadeUf(raw: string | undefined): { cidade?: string; uf?: string 
   return { cidade: raw.trim() };
 }
 
-export async function parseAnexoF(buffer: Uint8Array): Promise<AnexoFData> {
+/**
+ * @param modeloEscolhido Modelo indicado pelo operador (via concessionária).
+ *   Quando informado, MANDA — é o sinal confiável, porque quem cadastra sabe de
+ *   qual distribuidora é a obra. A detecção continua rodando por baixo só pra
+ *   avisar quando o PDF aparenta ser de outro modelo (escolha errada no
+ *   formulário devolveria campos vazios sem explicação). Sem ele, vale a
+ *   detecção — é o caso das concessionárias ainda sem modelo mapeado.
+ */
+export async function parseAnexoF(
+  buffer: Uint8Array,
+  modeloEscolhido?: ModeloAnexo,
+): Promise<AnexoFData> {
   const lines = await extractLines(buffer);
   const rawText = lines.join("\n");
 
-  const data: AnexoFData = { rawText };
+  // As obras atendidas pela Nova Palma usam o "ANEXO 1 — Solicitação de Acesso":
+  // mesmo conteúdo, formato de ofício em seções numeradas.
+  const modeloDetectado: ModeloAnexo = ehAnexo1(lines) ? "ANEXO_1" : "ANEXO_F";
+  const modeloUsado = modeloEscolhido ?? modeloDetectado;
+
+  const divergencia =
+    modeloEscolhido && modeloEscolhido !== modeloDetectado
+      ? `O modelo escolhido foi "${ROTULO_MODELO[modeloEscolhido]}", mas a estrutura do PDF é de "${ROTULO_MODELO[modeloDetectado]}". Confira a concessionária selecionada — os campos podem vir vazios ou trocados.`
+      : null;
+
+  if (modeloUsado === "ANEXO_1") {
+    const extraido = extrairAnexo1(lines);
+    return {
+      ...extraido,
+      avisos: divergencia ? [divergencia, ...extraido.avisos] : extraido.avisos,
+      modeloUsado,
+      modeloDetectado,
+      rawText,
+    };
+  }
+
+  const data: AnexoFData = { rawText, modeloUsado, modeloDetectado };
+  if (divergencia) data.avisos = [divergencia];
 
   data.nome = findByLabel(lines, /Nome\s+do\s+titular/i);
   data.cpfCnpj = findByLabel(lines, /CNPJ\s*ou\s*CPF\s*\(titular\)/i);

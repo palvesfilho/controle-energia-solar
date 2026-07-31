@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { parseAnexoF } from "@/lib/anexo-f-parser";
+import { modeloDaConcessionaria, parseModeloAnexo } from "@/lib/anexo-modelos";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -34,8 +35,14 @@ export async function POST(req: NextRequest) {
 
   const bytes = new Uint8Array(await file.arrayBuffer());
 
+  // Qual leitor usar. O operador informa a concessionária no formulário e ela
+  // manda; "modelo" permite forçar direto. Nenhum dos dois → detecção automática.
+  const modelo =
+    parseModeloAnexo(form.get("modelo")?.toString()) ??
+    modeloDaConcessionaria(form.get("concessionaria")?.toString());
+
   try {
-    const parsed = await parseAnexoF(bytes);
+    const parsed = await parseAnexoF(bytes, modelo);
     const { rawText: _rawText, ...clean } = parsed;
     void _rawText;
     return NextResponse.json({ data: clean });
