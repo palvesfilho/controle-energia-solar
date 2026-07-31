@@ -176,6 +176,12 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Avisos do parser (conferências aritméticas que não fecharam, troca de
+      // medidor). Sinalizar pro operador em vez de silenciar.
+      if (parsed.avisos?.length) {
+        item.warning = [item.warning, ...parsed.avisos].filter(Boolean).join(" · ");
+      }
+
       item.success = true;
     } catch (err) {
       item.error = shortenError(err);

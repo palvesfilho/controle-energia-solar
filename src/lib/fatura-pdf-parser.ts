@@ -22,6 +22,7 @@ import {
   type GrupoAData,
   type GrupoABillFields,
 } from "./fatura-pdf-parser-grupo-a";
+import { ehNovaPalma, parseNovaPalma } from "./fatura-pdf-parser-nova-palma";
 import { dateOnlyUTC, parseDateOnlyBR } from "./date-only";
 
 interface TextItem {
@@ -231,10 +232,23 @@ export interface ParsedFaturaPdf {
 
   /** Texto extraído (debug). */
   rawText: string;
+
+  /**
+   * Anomalias encontradas na extração (conferências que não fecharam). Sinalizar
+   * pro operador em vez de silenciar — ver feedback_anomalias_sinalizar.
+   * Só o parser da Nova Palma preenche hoje; na RGE vem undefined.
+   */
+  avisos?: string[];
 }
 
 export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPdf> {
   const lines = await extractLines(buffer);
+
+  // A Nova Palma Energia (Faxinal do Soturno/RS) emite DANF3E com layout e
+  // vocabulário próprios — desvia pro parser dedicado, que devolve o MESMO
+  // ParsedFaturaPdf e portanto persiste pelo mesmo upsert.
+  if (ehNovaPalma(lines)) return parseNovaPalma(lines);
+
   const rawText = lines.join("\n");
 
   // === Referência mês/ano ===
