@@ -825,7 +825,9 @@ model CpflCredential {
   emailCpfl     String @map("email_cpfl") // Login no portal CPFL
   senhaCpfl     String @map("senha_cpfl") // Senha no portal CPFL (criptografada)
   instalacao    String // Numero da instalacao
-  distribuidora String @default("RGE") // RGE | CPFL_PAULISTA | CPFL_PIRATININGA
+  // Derivada do cadastro (ConsumerUnit.distribuidora / Plant.concessionaria),
+  // nunca escolhida a parte. Valores em src/lib/concessionarias.ts.
+  distribuidora String @default("RGE/CPFL")
 
   ultimaSync DateTime? @map("ultima_sync")
   statusSync String?   @map("status_sync") // "SUCCESS" | "ERROR" | "PENDING"
@@ -1059,11 +1061,22 @@ model BrasilSolarProprietario {
   // nem tarefas automáticas).
   executadoPor String @default("BRASIL_SOLAR") @map("executado_por")
 
+  // Obra da Brasil Solar que JÁ foi executada antes do cadastro entrar no
+  // sistema. Não cria Obra nem tarefas — não faz sentido agendar o que já
+  // aconteceu. Diferente de executadoPor=TERCEIRO: aqui a Brasil Solar fez a
+  // obra, só não há cronograma a acompanhar.
+  obraJaExecutada Boolean @default(false) @map("obra_ja_executada")
+
   // Dados de gestão do contrato/obra. Coletados na criação do proprietário
   // quando executadoPor=BRASIL_SOLAR (obrigatórios via API nesse caso).
   // Sempre nullable no banco — TERCEIRO não preenche e o histórico anterior
   // à migração também pode estar vazio.
-  // tipoTelhado: FIBROCIMENTO | CERAMICO | LAJE | CARPORT | USINA_DE_SOLO |
+  // tipoTelhado: lista canônica em src/lib/tipos-telhado.ts —
+  // TELHADO_METALICO | CERAMICO_CONCRETO | FIBROCIMENTO | CALHETAO_METALICO |
+  // CALHETAO_FIBROCIMENTO | LAJE | ESTRUTURA_SOLO | ESTRUTURA_ESTACIONAMENTO |
+  // PERSONALIZADA_MISTA. Códigos antigos (CERAMICO, CARPORT, USINA_DE_SOLO,
+  // MISTO) migrados em 2026-08-02.
+  // tipoTelhado LEGADO: FIBROCIMENTO | CERAMICO | LAJE | CARPORT | USINA_DE_SOLO |
   //              CALHETAO_FIBROCIMENTO | CALHETAO_METALICO | MISTO
   // tipoTelhadoOutro: descrição livre quando tipoTelhado = MISTO
   tipoTelhado       String?   @map("tipo_telhado")

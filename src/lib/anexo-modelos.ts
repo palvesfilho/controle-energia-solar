@@ -8,16 +8,16 @@
  * Concessionária sem entrada neste mapa cai na detecção automática — nunca
  * trava o cadastro por falta de mapeamento.
  */
-import { CONCESSIONARIAS, type Concessionaria } from "./concessionarias";
+import { normalizeConcessionaria, type Concessionaria } from "./concessionarias";
 
 export type ModeloAnexo = "ANEXO_F" | "ANEXO_1";
 
 export const MODELO_POR_CONCESSIONARIA: Partial<Record<Concessionaria, ModeloAnexo>> = {
   // Formulário padrão ANEEL da CPFL/RGE.
-  RGE: "ANEXO_F",
+  "RGE/CPFL": "ANEXO_F",
   // Ofício em seções numeradas usado nas obras atendidas pela Nova Palma.
-  "NOVA PALMA": "ANEXO_1",
-  // CELETRO, COPREL e CERILUZ ainda não têm modelo conhecido → detecção automática.
+  "NOVA PALMA ENERGIA": "ANEXO_1",
+  // As demais ainda não têm modelo conhecido → detecção automática.
 };
 
 export const ROTULO_MODELO: Record<ModeloAnexo, string> = {
@@ -27,8 +27,9 @@ export const ROTULO_MODELO: Record<ModeloAnexo, string> = {
 
 /** Modelo esperado para uma concessionária, ou undefined se não houver mapeamento. */
 export function modeloDaConcessionaria(nome: string | null | undefined): ModeloAnexo | undefined {
-  if (!nome) return undefined;
-  const achado = CONCESSIONARIAS.find((c) => c.toLowerCase() === nome.trim().toLowerCase());
+  // Normaliza antes de olhar o mapa para que cadastro legado ("RGE",
+  // "NOVA PALMA") continue achando o modelo certo.
+  const achado = normalizeConcessionaria(nome);
   return achado ? MODELO_POR_CONCESSIONARIA[achado] : undefined;
 }
 

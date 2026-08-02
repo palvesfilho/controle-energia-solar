@@ -6,6 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Save } from "lucide-react";
+import {
+  CONCESSIONARIAS,
+  isConcessionariaValida,
+  normalizeConcessionaria,
+} from "@/lib/concessionarias";
 
 export interface UCFormData {
   nome: string;
@@ -132,9 +137,15 @@ export function UCForm({
   cancelHref,
   submitLabel = "Salvar",
 }: Props) {
-  const [form, setForm] = useState<UCFormData>({
-    ...EMPTY_UC_FORM,
-    ...initialData,
+  const [form, setForm] = useState<UCFormData>(() => {
+    const base = { ...EMPTY_UC_FORM, ...initialData };
+    // O campo era texto livre e virou lista fechada. Sem normalizar, cadastro
+    // legado ("RGE", "NOVA PALMA") não casaria com nenhuma opção, o select
+    // apareceria vazio e o salvar apagaria o valor em silêncio.
+    return {
+      ...base,
+      distribuidora: normalizeConcessionaria(base.distribuidora) ?? base.distribuidora,
+    };
   });
   const [consumers, setConsumers] = useState<Option[]>([]);
   const [plants, setPlants] = useState<Option[]>([]);
@@ -275,13 +286,30 @@ export function UCForm({
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">
-            <Label htmlFor="distribuidora">Distribuidora</Label>
-            <Input
+            <Label htmlFor="distribuidora">Concessionária</Label>
+            {/* Lista fechada: este valor é a fonte da concessionária da
+                credencial de acesso ao portal, que não pergunta de novo. */}
+            <select
               id="distribuidora"
               value={form.distribuidora}
               onChange={(e) => update("distribuidora", e.target.value)}
-              placeholder="RGE, CPFL, CEEE..."
-            />
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-9"
+            >
+              <option value="">—</option>
+              {CONCESSIONARIAS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+              {/* Valor de cadastro antigo que a lista não reconhece: fica
+                  visível e selecionado em vez de sumir calado (o operador troca
+                  quando quiser). Ver feedback_anomalias_sinalizar. */}
+              {form.distribuidora && !isConcessionariaValida(form.distribuidora) && (
+                <option value={form.distribuidora}>
+                  {form.distribuidora} (fora da lista)
+                </option>
+              )}
+            </select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="grupo">Grupo</Label>

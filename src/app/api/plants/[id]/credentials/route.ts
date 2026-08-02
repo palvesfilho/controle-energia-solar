@@ -5,6 +5,26 @@ import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 import { encrypt } from "@/lib/crypto";
 import { normalizeCodigoUc } from "@/lib/uc-codigo";
+import { normalizeConcessionaria } from "@/lib/concessionarias";
+
+/**
+ * A concessionária da credencial NÃO é escolhida à parte: é a mesma do cadastro
+ * da usina. `Plant.concessionaria` é o campo que as telas preenchem;
+ * `Plant.distribuidora` existe no schema mas nenhuma tela grava, então entra só
+ * como fallback. O valor da própria credencial é o último recurso (legado).
+ */
+function concessionariaDaUsina(
+  plantConcessionaria: string | null,
+  plantDistribuidora?: string | null,
+  credDistribuidora?: string | null,
+): string {
+  return (
+    normalizeConcessionaria(plantConcessionaria) ??
+    normalizeConcessionaria(plantDistribuidora) ??
+    normalizeConcessionaria(credDistribuidora) ??
+    "RGE/CPFL"
+  );
+}
 
 export async function GET(
   _req: NextRequest,
@@ -18,6 +38,9 @@ export async function GET(
 
   const credential = await prisma.cpflCredential.findUnique({
     where: { plantId: id },
+    include: {
+      plant: { select: { concessionaria: true, distribuidora: true } },
+    },
   });
 
   if (!credential) {
@@ -29,7 +52,11 @@ export async function GET(
     plantId: credential.plantId,
     emailCpfl: credential.emailCpfl,
     instalacao: credential.instalacao,
-    distribuidora: credential.distribuidora,
+    distribuidora: concessionariaDaUsina(
+      credential.plant?.concessionaria ?? null,
+      credential.plant?.distribuidora,
+      credential.distribuidora,
+    ),
     ultimaSync: credential.ultimaSync,
     statusSync: credential.statusSync,
     erroSync: credential.erroSync,
@@ -56,7 +83,12 @@ export async function POST(
   }
 
   const body = await req.json();
-  const { emailCpfl, senhaCpfl, distribuidora } = body;
+  const { emailCpfl, senhaCpfl } = body;
+  // Derivada do cadastro da usina — a tela não pergunta mais.
+  const distribuidora = concessionariaDaUsina(
+    plant.concessionaria,
+    plant.distribuidora,
+  );
   // A tela exibe o código no padrão da concessionária (3.562.981.001-26); o
   // portal/Infosimples é chaveado por dígitos.
   const instalacao = normalizeCodigoUc(body.instalacao);
@@ -76,7 +108,7 @@ export async function POST(
     const data: Record<string, unknown> = {
       emailCpfl,
       instalacao,
-      distribuidora: distribuidora || "RGE",
+      distribuidora,
     };
     if (senhaCpfl) data.senhaCpfl = encrypt(senhaCpfl);
 
@@ -107,7 +139,7 @@ export async function POST(
       emailCpfl,
       senhaCpfl: encrypt(senhaCpfl),
       instalacao,
-      distribuidora: distribuidora || "RGE",
+      distribuidora,
       statusSync: "PENDING",
     },
   });

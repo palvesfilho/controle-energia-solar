@@ -7,19 +7,19 @@ import { ArrowLeft, Save, Loader2, FileUp, Eye, EyeOff, KeyRound } from "lucide-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "sonner";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isValidPhone } from "@/lib/phone";
 import { CONCESSIONARIAS } from "@/lib/concessionarias";
 import { modeloDaConcessionaria, ROTULO_MODELO } from "@/lib/anexo-modelos";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import {
+  TIPOS_TELHADO,
+  TIPOS_COM_ESTRUTURA,
+  TIPOS_COM_DESCRICAO,
+  PRAZO_MIN_COM_ESTRUTURA,
+  rotuloTipoTelhado,
+} from "@/lib/tipos-telhado";
 
 interface FormData {
   nome: string;
@@ -31,10 +31,10 @@ interface FormData {
   uf: string;
   observacoes: string;
   executadoPor: "BRASIL_SOLAR" | "TERCEIRO";
+  obraJaExecutada: boolean;
   codigoUc: string;
   codigoUcAntigo: string;
   concessionaria: string;
-  distribuidoraPortal: "" | "RGE" | "CPFL_PAULISTA" | "CPFL_PIRATININGA";
   emailPortal: string;
   senhaPortal: string;
   instalacaoPortal: string;
@@ -44,19 +44,8 @@ interface FormData {
   prazoContratoDias: string;
 }
 
-const TIPO_TELHADO_OPTIONS: { value: string; label: string }[] = [
-  { value: "FIBROCIMENTO", label: "Fibrocimento" },
-  { value: "CERAMICO", label: "Cerâmico" },
-  { value: "LAJE", label: "Laje" },
-  { value: "CARPORT", label: "Carport" },
-  { value: "USINA_DE_SOLO", label: "Usina de Solo" },
-  { value: "CALHETAO_FIBROCIMENTO", label: "Calhetão Fibrocimento" },
-  { value: "CALHETAO_METALICO", label: "Calhetão Metálico" },
-  { value: "MISTO", label: "Misto" },
-];
-
-const TIPOS_COM_ESTRUTURA = new Set(["CARPORT", "USINA_DE_SOLO"]);
-const PRAZO_MIN_CARPORT_SOLO = 19; // 3 dias de estrutura + 15 dias de lag + 1 dia mínimo de instalação
+// Lista, regra de estrutura e prazo mínimo vêm de @/lib/tipos-telhado —
+// fonte única compartilhada com a validação da API.
 
 // Dados técnicos da planta extraídos do Anexo F, guardados para pré-preencher
 // a tela "Novo Cliente" após a criação do proprietário.
@@ -93,8 +82,9 @@ export default function NovoProprietarioPage() {
     nome: "", cpfCnpj: "", email: "", telefone: "",
     endereco: "", cidade: "", uf: "", observacoes: "",
     executadoPor: "BRASIL_SOLAR",
+    obraJaExecutada: false,
     codigoUc: "", codigoUcAntigo: "", concessionaria: "",
-    distribuidoraPortal: "", emailPortal: "", senhaPortal: "", instalacaoPortal: "",
+    emailPortal: "", senhaPortal: "", instalacaoPortal: "",
     tipoTelhado: "", tipoTelhadoOutro: "",
     dataPagamento: "", prazoContratoDias: "",
   });
@@ -187,7 +177,6 @@ export default function NovoProprietarioPage() {
     // Validação do bloco "Acesso à concessionária":
     // se qualquer campo do bloco foi preenchido, todos passam a ser obrigatórios.
     const portalAny =
-      !!form.distribuidoraPortal ||
       !!form.emailPortal.trim() ||
       !!form.senhaPortal.trim() ||
       !!form.instalacaoPortal.trim();
@@ -196,8 +185,8 @@ export default function NovoProprietarioPage() {
         toast.error("Para cadastrar o acesso à concessionária informe primeiro o Código da UC");
         return;
       }
-      if (!form.distribuidoraPortal) {
-        toast.error("Selecione a distribuidora do portal");
+      if (!form.concessionaria.trim()) {
+        toast.error("Selecione a concessionária nos dados técnicos");
         return;
       }
       if (!form.emailPortal.trim()) {
@@ -211,14 +200,16 @@ export default function NovoProprietarioPage() {
     }
 
     const isTerceiro = form.executadoPor === "TERCEIRO";
+    // Sem cronograma a montar: terceiro (só monitoramento) ou obra já feita.
+    const semObraAAgendar = isTerceiro || form.obraJaExecutada;
     let prazo: number | null = null;
-    if (!isTerceiro) {
+    if (!semObraAAgendar) {
       if (!form.tipoTelhado) {
         toast.error("Selecione o tipo de telhado");
         return;
       }
-      if (form.tipoTelhado === "MISTO" && !form.tipoTelhadoOutro.trim()) {
-        toast.error("Descreva o tipo de telhado misto");
+      if (TIPOS_COM_DESCRICAO.has(form.tipoTelhado) && !form.tipoTelhadoOutro.trim()) {
+        toast.error("Descreva a estrutura personalizada");
         return;
       }
       if (!form.dataPagamento) {
@@ -230,9 +221,9 @@ export default function NovoProprietarioPage() {
         toast.error("Informe o prazo do contrato em dias (maior que zero)");
         return;
       }
-      if (TIPOS_COM_ESTRUTURA.has(form.tipoTelhado) && p < PRAZO_MIN_CARPORT_SOLO) {
+      if (TIPOS_COM_ESTRUTURA.has(form.tipoTelhado) && p < PRAZO_MIN_COM_ESTRUTURA) {
         toast.error(
-          `Para CARPORT/USINA DE SOLO o prazo precisa ser de no mínimo ${PRAZO_MIN_CARPORT_SOLO} dias (3d estrutura + 15d intervalo + instalação)`
+          `Para ${rotuloTipoTelhado(form.tipoTelhado)} o prazo precisa ser de no mínimo ${PRAZO_MIN_COM_ESTRUTURA} dias (3d estrutura + 15d intervalo + instalação)`
         );
         return;
       }
@@ -251,23 +242,25 @@ export default function NovoProprietarioPage() {
         uf: form.uf,
         observacoes: form.observacoes,
         executadoPor: form.executadoPor,
+        obraJaExecutada: !isTerceiro && form.obraJaExecutada,
         codigoUc: form.codigoUc.trim() || null,
         codigoUcAntigo: form.codigoUcAntigo.trim() || null,
         concessionaria: form.concessionaria.trim() || null,
       };
       if (portalAny) {
         payload.portal = {
-          distribuidora: form.distribuidoraPortal,
           email: form.emailPortal.trim(),
           senha: form.senhaPortal,
           instalacao:
             form.instalacaoPortal.trim() || form.codigoUc.trim(),
         };
       }
-      if (!isTerceiro) {
+      if (!semObraAAgendar) {
         payload.tipoTelhado = form.tipoTelhado;
         payload.tipoTelhadoOutro =
-          form.tipoTelhado === "MISTO" ? form.tipoTelhadoOutro.trim() : null;
+          TIPOS_COM_DESCRICAO.has(form.tipoTelhado)
+            ? form.tipoTelhadoOutro.trim()
+            : null;
         payload.dataPagamento = form.dataPagamento;
         payload.prazoContratoDias = prazo;
       }
@@ -411,6 +404,30 @@ export default function NovoProprietarioPage() {
                 serve para monitorar a geração da usina e administrar os créditos.
               </div>
             )}
+
+            {form.executadoPor === "BRASIL_SOLAR" && (
+              <div>
+                <label className="text-sm font-medium">Obra já executada? *</label>
+                <select
+                  value={form.obraJaExecutada ? "SIM" : "NAO"}
+                  onChange={(e) => set("obraJaExecutada", e.target.value === "SIM")}
+                  className="w-full mt-1 px-3 py-2 text-sm border rounded-lg bg-background"
+                  required
+                >
+                  <option value="NAO">Não — obra a executar</option>
+                  <option value="SIM">Sim — obra já concluída</option>
+                </select>
+              </div>
+            )}
+
+            {form.executadoPor === "BRASIL_SOLAR" && form.obraJaExecutada && (
+              <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+                <strong>Obra já concluída:</strong> nenhuma obra, tarefa ou item de
+                cronograma será criado — não há o que agendar. O proprietário entra
+                direto no monitoramento e na gestão de créditos, sem passar pela
+                aprovação de obras nem aparecer no calendário.
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -542,32 +559,19 @@ export default function NovoProprietarioPage() {
                   }
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="distribuidoraPortal">Distribuidora</Label>
-                <Select
-                  value={form.distribuidoraPortal || undefined}
-                  onValueChange={(v) =>
-                    set(
-                      "distribuidoraPortal",
-                      (v as FormData["distribuidoraPortal"]) ?? "",
-                    )
-                  }
-                >
-                  <SelectTrigger id="distribuidoraPortal">
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="RGE">RGE Sul</SelectItem>
-                    <SelectItem value="CPFL_PAULISTA">CPFL Paulista</SelectItem>
-                    <SelectItem value="CPFL_PIRATININGA">CPFL Piratininga</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
+            {/* A concessionária não é perguntada de novo aqui: sai do campo
+                "Concessionária" dos dados técnicos, acima. */}
+            {form.concessionaria && (
+              <p className="mt-4 text-xs text-muted-foreground">
+                Concessionária: <span className="font-medium">{form.concessionaria}</span> — vem
+                dos dados técnicos.
+              </p>
+            )}
           </CardContent>
         </Card>
 
-        {form.executadoPor === "BRASIL_SOLAR" && (
+        {form.executadoPor === "BRASIL_SOLAR" && !form.obraJaExecutada && (
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">Dados do Contrato</CardTitle>
@@ -575,7 +579,7 @@ export default function NovoProprietarioPage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
-                <label className="text-sm font-medium">Tipo de telhado *</label>
+                <label className="text-sm font-medium">Tipo de estrutura *</label>
                 <select
                   value={form.tipoTelhado}
                   onChange={(e) => set("tipoTelhado", e.target.value)}
@@ -583,17 +587,17 @@ export default function NovoProprietarioPage() {
                   required
                 >
                   <option value="">Selecionar...</option>
-                  {TIPO_TELHADO_OPTIONS.map((opt) => (
+                  {TIPOS_TELHADO.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
                   ))}
                 </select>
               </div>
-              {form.tipoTelhado === "MISTO" && (
+              {TIPOS_COM_DESCRICAO.has(form.tipoTelhado) && (
                 <div className="md:col-span-2">
                   <label className="text-sm font-medium">
-                    Descreva os tipos de telhado *
+                    Descreva a estrutura *
                   </label>
                   <input
                     type="text"
@@ -635,7 +639,7 @@ export default function NovoProprietarioPage() {
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
                 <strong>Cronograma automático:</strong> ao salvar, serão criadas duas
                 tarefas para esta obra — (1) execução da estrutura de fixação de{" "}
-                {form.tipoTelhado === "CARPORT" ? "carport" : "usina de solo"} (3 dias) e
+                {rotuloTipoTelhado(form.tipoTelhado).toLowerCase()} (3 dias) e
                 (2) instalação do sistema fotovoltaico, no mínimo 15 dias após o término
                 da estrutura.
               </div>

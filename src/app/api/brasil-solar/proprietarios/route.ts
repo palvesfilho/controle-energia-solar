@@ -8,29 +8,17 @@ import { parseDateOnly } from "@/lib/obra-calendario";
 import { encrypt } from "@/lib/crypto";
 import { normalizeCodigoUc } from "@/lib/uc-codigo";
 import { buscarIds } from "@/lib/busca-sql";
+import { normalizeConcessionaria } from "@/lib/concessionarias";
+import {
+  TIPOS_TELHADO_VALIDOS,
+  TIPOS_COM_ESTRUTURA,
+  TIPOS_COM_DESCRICAO,
+  PRAZO_MIN_COM_ESTRUTURA,
+  rotuloTipoTelhado,
+} from "@/lib/tipos-telhado";
 
-const DISTRIBUIDORAS_PORTAL = new Set([
-  "RGE",
-  "CPFL_PAULISTA",
-  "CPFL_PIRATININGA",
-]);
-
-const TIPOS_TELHADO = new Set([
-  "FIBROCIMENTO",
-  "CERAMICO",
-  "LAJE",
-  "CARPORT",
-  "USINA_DE_SOLO",
-  "CALHETAO_FIBROCIMENTO",
-  "CALHETAO_METALICO",
-  "MISTO",
-]);
-
-const TIPOS_COM_ESTRUTURA = new Set(["CARPORT", "USINA_DE_SOLO"]);
 const ESTRUTURA_DURACAO_DIAS = 3;
 const LAG_ENTRE_TAREFAS = 15;
-const PRAZO_MIN_CARPORT_SOLO =
-  ESTRUTURA_DURACAO_DIAS + LAG_ENTRE_TAREFAS + 1; // T1 + lag + ao menos 1 dia de T2
 
 const EXECUTADO_POR_VALORES = new Set(["BRASIL_SOLAR", "TERCEIRO"]);
 
@@ -140,30 +128,37 @@ export async function POST(req: NextRequest) {
   }
   const isTerceiro = executadoPor === "TERCEIRO";
 
-  // ---- ValidaÃ§Ã£o dos campos do contrato/obra ---------------------------
-  // Quando executadoPor=TERCEIRO, Brasil Solar nÃ£o executa obra: os campos
-  // de telhado/data/prazo ficam nulos e o fluxo automÃ¡tico de Obra/tarefas
-  // Ã© pulado mais abaixo.
+  // Obra da Brasil Solar já executada antes do cadastro: não há cronograma a
+  // agendar, então pula Obra e tarefas igual ao TERCEIRO. Só faz sentido
+  // quando a Brasil Solar é a executora.
+  const obraJaExecutada = body.obraJaExecutada === true && !isTerceiro;
+
+  // Quando não há obra a agendar (TERCEIRO ou obra já executada), os campos
+  // de telhado/data/prazo existem só para montar o cronograma — ficam nulos e
+  // o fluxo automático de Obra/tarefas é pulado mais abaixo.
+  const semObraAAgendar = isTerceiro || obraJaExecutada;
+
+  // ---- Validação dos campos do contrato/obra ---------------------------
   let tipoTelhado: string | null = null;
   let tipoTelhadoOutro: string | null = null;
   let dataPagamento: Date | null = null;
   let prazoContratoDias: number | null = null;
 
-  if (!isTerceiro) {
+  if (!semObraAAgendar) {
     const t = typeof body.tipoTelhado === "string" ? body.tipoTelhado.trim() : "";
-    if (!t || !TIPOS_TELHADO.has(t)) {
+    if (!t || !TIPOS_TELHADO_VALIDOS.has(t)) {
       return NextResponse.json(
-        { error: "Tipo de telhado invÃ¡lido ou ausente" },
+        { error: "Tipo de estrutura inválido ou ausente" },
         { status: 400 }
       );
     }
 
-    if (t === "MISTO") {
+    if (TIPOS_COM_DESCRICAO.has(t)) {
       const v =
         typeof body.tipoTelhadoOutro === "string" ? body.tipoTelhadoOutro.trim() : "";
       if (!v) {
         return NextResponse.json(
-          { error: "Descreva o tipo de telhado misto" },
+          { error: "Descreva a estrutura personalizada" },
           { status: 400 }
         );
       }
@@ -187,10 +182,10 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (TIPOS_COM_ESTRUTURA.has(t) && pcd < PRAZO_MIN_CARPORT_SOLO) {
+    if (TIPOS_COM_ESTRUTURA.has(t) && pcd < PRAZO_MIN_COM_ESTRUTURA) {
       return NextResponse.json(
         {
-          error: `Para CARPORT/USINA DE SOLO o prazo precisa ser de no mÃ­nimo ${PRAZO_MIN_CARPORT_SOLO} dias (3d estrutura + 15d intervalo + instalaÃ§Ã£o)`,
+          error: `Para ${rotuloTipoTelhado(t)} o prazo precisa ser de no mínimo ${PRAZO_MIN_COM_ESTRUTURA} dias (3d estrutura + 15d intervalo + instalação)`,
         },
         { status: 400 }
       );
@@ -218,10 +213,14 @@ export async function POST(req: NextRequest) {
       (typeof planta.codigoUcAntigo === "string" && planta.codigoUcAntigo.trim()) ||
       null
     ) ?? null;
-  const concessionariaInput =
+  // Normaliza para a lista canônica: o PDF do projeto e planilhas de import
+  // trazem grafias antigas ("RGE", "NOVA PALMA") que precisam casar com a lista.
+  const concessionariaBruta =
     (typeof body.concessionaria === "string" && body.concessionaria.trim()) ||
     (typeof planta.concessionaria === "string" && planta.concessionaria.trim()) ||
     null;
+  const concessionariaInput =
+    normalizeConcessionaria(concessionariaBruta) ?? concessionariaBruta;
 
   const proprietario = await prisma.brasilSolarProprietario.create({
     data: {
@@ -234,6 +233,7 @@ export async function POST(req: NextRequest) {
       uf: body.uf?.trim() || null,
       observacoes: body.observacoes?.trim() || null,
       executadoPor,
+      obraJaExecutada,
       tipoTelhado,
       tipoTelhadoOutro,
       dataPagamento,
@@ -294,8 +294,9 @@ export async function POST(req: NextRequest) {
     body.portal && typeof body.portal === "object" ? body.portal : null;
   if (consumerUnitId && portal) {
     try {
-      const distribuidora =
-        typeof portal.distribuidora === "string" ? portal.distribuidora.trim() : "";
+      // A concessionária da credencial é a mesma dos dados técnicos — a tela não
+      // pergunta duas vezes. `portal.distribuidora` não é mais lido do body.
+      const distribuidora = normalizeConcessionaria(concessionariaInput) ?? "RGE/CPFL";
       const email = typeof portal.email === "string" ? portal.email.trim() : "";
       const senha = typeof portal.senha === "string" ? portal.senha : "";
       // Pode chegar pontuado da tela; o portal/Infosimples é chaveado por dígitos.
@@ -306,13 +307,7 @@ export async function POST(req: NextRequest) {
         codigoUcInput ||
         "";
 
-      if (
-        distribuidora &&
-        DISTRIBUIDORAS_PORTAL.has(distribuidora) &&
-        email &&
-        senha &&
-        instalacao
-      ) {
+      if (email && senha && instalacao) {
         const existingCred = await prisma.cpflCredential.findUnique({
           where: { consumerUnitId },
         });
@@ -334,17 +329,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Sistema executado por terceiro: Brasil Solar sÃ³ monitora geraÃ§Ã£o e crÃ©ditos,
-  // nÃ£o cria Obra nem tarefas de gestÃ£o de obra.
-  if (!isTerceiro && dataPagamento && prazoContratoDias && tipoTelhado) {
+  // Só gera Obra + tarefas quando há cronograma a acompanhar. Pulado quando o
+  // sistema é de terceiro (Brasil Solar apenas monitora) ou quando a obra já
+  // foi executada antes do cadastro.
+  if (!semObraAAgendar && dataPagamento && prazoContratoDias && tipoTelhado) {
   try {
     const localParts = [proprietario.endereco, proprietario.cidade, proprietario.uf].filter(Boolean);
     const dataFimPrevista = addDays(dataPagamento, prazoContratoDias);
 
     const obra = await prisma.obra.create({
       data: {
-        nome: `InstalaÃ§Ã£o â€” ${proprietario.nome}`,
-        descricao: "Obra gerada automaticamente a partir do cadastro do proprietÃ¡rio.",
+        nome: `Instalação — ${proprietario.nome}`,
+        descricao: "Obra gerada automaticamente a partir do cadastro do proprietário.",
         cliente: proprietario.nome,
         local: localParts.length ? localParts.join(", ") : null,
         status: "PLANEJAMENTO",
@@ -364,7 +360,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (TIPOS_COM_ESTRUTURA.has(tipoTelhado)) {
-      const estruturaLabel = tipoTelhado === "CARPORT" ? "CARPORT" : "USINA DE SOLO";
+      const estruturaLabel = rotuloTipoTelhado(tipoTelhado).toUpperCase();
       const tarefa1Fim = addDays(dataPagamento, ESTRUTURA_DURACAO_DIAS);
       const tarefa2Inicio = addDays(tarefa1Fim, LAG_ENTRE_TAREFAS);
       const tarefa2DuracaoDias = Math.max(
@@ -376,7 +372,7 @@ export async function POST(req: NextRequest) {
       const tarefa1 = await prisma.obraTarefa.create({
         data: {
           obraId: obra.id,
-          nome: `ExecuÃ§Ã£o da estrutura de fixaÃ§Ã£o â€” ${estruturaLabel}`,
+          nome: `Execução da estrutura de fixação — ${estruturaLabel}`,
           ordem: 0,
           dataInicioPlan: dataPagamento,
           dataFimPlan: tarefa1Fim,
@@ -388,7 +384,7 @@ export async function POST(req: NextRequest) {
       const tarefa2 = await prisma.obraTarefa.create({
         data: {
           obraId: obra.id,
-          nome: "InstalaÃ§Ã£o do sistema fotovoltaico",
+          nome: "Instalação do sistema fotovoltaico",
           ordem: 1,
           dataInicioPlan: tarefa2Inicio,
           dataFimPlan: tarefa2Fim,

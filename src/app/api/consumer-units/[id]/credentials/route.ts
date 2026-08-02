@@ -5,6 +5,24 @@ import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 import { encrypt } from "@/lib/crypto";
 import { normalizeCodigoUc } from "@/lib/uc-codigo";
+import { normalizeConcessionaria } from "@/lib/concessionarias";
+
+/**
+ * A concessionária da credencial NÃO é escolhida à parte: ela é sempre a mesma
+ * do cadastro da UC. Ler dali evita o estado que existia antes, em que a UC
+ * dizia "NOVA PALMA" e a credencial dizia "RGE" na mesma tela. O valor da
+ * própria credencial só entra como último recurso, para cadastro legado.
+ */
+function concessionariaDaUc(
+  ucDistribuidora: string | null,
+  credDistribuidora?: string | null,
+): string {
+  return (
+    normalizeConcessionaria(ucDistribuidora) ??
+    normalizeConcessionaria(credDistribuidora) ??
+    "RGE/CPFL"
+  );
+}
 
 export async function GET(
   _req: NextRequest,
@@ -18,6 +36,7 @@ export async function GET(
 
   const credential = await prisma.cpflCredential.findUnique({
     where: { consumerUnitId: id },
+    include: { consumerUnit: { select: { distribuidora: true } } },
   });
 
   if (!credential) {
@@ -29,7 +48,10 @@ export async function GET(
     consumerUnitId: credential.consumerUnitId,
     emailCpfl: credential.emailCpfl,
     instalacao: credential.instalacao,
-    distribuidora: credential.distribuidora,
+    distribuidora: concessionariaDaUc(
+      credential.consumerUnit?.distribuidora ?? null,
+      credential.distribuidora,
+    ),
     ultimaSync: credential.ultimaSync,
     statusSync: credential.statusSync,
     erroSync: credential.erroSync,
@@ -56,7 +78,9 @@ export async function POST(
   }
 
   const body = await req.json();
-  const { emailCpfl, senhaCpfl, distribuidora } = body;
+  const { emailCpfl, senhaCpfl } = body;
+  // Derivada do cadastro da UC — a tela não pergunta mais.
+  const distribuidora = concessionariaDaUc(unit.distribuidora);
   // A tela exibe o código no padrão da concessionária (3.562.981.001-26); o
   // portal/Infosimples é chaveado por dígitos.
   const instalacao = normalizeCodigoUc(body.instalacao);
@@ -76,7 +100,7 @@ export async function POST(
     const data: Record<string, unknown> = {
       emailCpfl,
       instalacao,
-      distribuidora: distribuidora || "RGE",
+      distribuidora,
     };
     if (senhaCpfl) data.senhaCpfl = encrypt(senhaCpfl);
 
@@ -107,7 +131,7 @@ export async function POST(
       emailCpfl,
       senhaCpfl: encrypt(senhaCpfl),
       instalacao,
-      distribuidora: distribuidora || "RGE",
+      distribuidora,
       statusSync: "PENDING",
     },
   });

@@ -5,13 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
@@ -65,7 +58,8 @@ export function PlantCredentialsForm({
   const [senhaCpfl, setSenhaCpfl] = useState("");
   // Exibido no padrão da concessionária; a API normaliza pra dígitos ao salvar.
   const [instalacao, setInstalacao] = useState(formatCodigoUc(defaultInstalacao) ?? "");
-  const [distribuidora, setDistribuidora] = useState("RGE");
+  // Só exibição: a API deriva do cadastro da usina e devolve pronta.
+  const [distribuidora, setDistribuidora] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
@@ -93,7 +87,7 @@ export function PlantCredentialsForm({
     e.preventDefault();
     setSaving(true);
 
-    const body: Record<string, string> = { emailCpfl, instalacao, distribuidora };
+    const body: Record<string, string> = { emailCpfl, instalacao };
     if (senhaCpfl) body.senhaCpfl = senhaCpfl;
 
     const res = await fetch(`/api/plants/${plantId}/credentials`, {
@@ -158,7 +152,7 @@ export function PlantCredentialsForm({
     setEmailCpfl("");
     setSenhaCpfl("");
     setInstalacao(defaultInstalacao ?? "");
-    setDistribuidora("RGE");
+    setDistribuidora("");
     setShowForm(true);
     setDeleting(false);
   }
@@ -223,16 +217,9 @@ export function PlantCredentialsForm({
                 <div className="flex items-start gap-3">
                   <Building2 className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-xs text-muted-foreground">Distribuidora</p>
-                    <p className="text-sm font-medium">
-                      {credential.distribuidora === "RGE"
-                        ? "RGE Sul"
-                        : credential.distribuidora === "CPFL_PAULISTA"
-                          ? "CPFL Paulista"
-                          : credential.distribuidora === "CPFL_PIRATININGA"
-                            ? "CPFL Piratininga"
-                            : credential.distribuidora}
-                    </p>
+                    <p className="text-xs text-muted-foreground">Concessionária</p>
+                    {/* Vem do cadastro da usina — não se escolhe aqui. */}
+                    <p className="text-sm font-medium">{credential.distribuidora}</p>
                   </div>
                 </div>
               </div>
@@ -334,20 +321,15 @@ export function PlantCredentialsForm({
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="distribuidora">Distribuidora</Label>
-                <Select value={distribuidora} onValueChange={(v) => setDistribuidora(v ?? "RGE")}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="RGE">RGE Sul</SelectItem>
-                    <SelectItem value="CPFL_PAULISTA">CPFL Paulista</SelectItem>
-                    <SelectItem value="CPFL_PIRATININGA">CPFL Piratininga</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
+            {/* A concessionária não é perguntada aqui: é sempre a do cadastro da
+                usina. Perguntar duas vezes deixava os dois valores discordarem. */}
+            {distribuidora && (
+              <p className="text-xs text-muted-foreground">
+                Concessionária: <span className="font-medium">{distribuidora}</span> — vem do
+                cadastro da usina.
+              </p>
+            )}
             <div className="flex gap-2 justify-end">
               {credential && (
                 <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
