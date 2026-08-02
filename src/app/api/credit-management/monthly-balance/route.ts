@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
+import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -19,7 +20,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "ano/mes invÃ¡lidos" }, { status: 400 });
   }
 
+  // Balanço Mensal é tela da Gestão de Créditos (módulo Associação): UCs do
+  // módulo Brasil Solar não entram aqui.
   const units = await prisma.consumerUnit.findMany({
+    where: { ...SEM_UC_BRASIL_SOLAR },
     include: {
       consumer: { select: { id: true, name: true } },
       bills: {

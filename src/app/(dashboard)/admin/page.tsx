@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { DashboardKpis, type KpiGroup } from "@/components/dashboard/dashboard-kpis";
 import { formatBRL, formatKWh, formatMonthYear, formatNumber } from "@/lib/formatters";
+import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
 
 export default async function AdminPage() {
   const now = new Date();
@@ -30,7 +31,9 @@ export default async function AdminPage() {
     prisma.plant.count({ where: { active: true } }),
 
     // 3. Quantidade de consumidores (unidades consumidoras ativas)
-    prisma.consumerUnit.count({ where: { active: true } }),
+    // KPI da Gestora de Energia (Associação) — UCs do módulo Brasil Solar
+    // não contam aqui.
+    prisma.consumerUnit.count({ where: { active: true, ...SEM_UC_BRASIL_SOLAR } }),
 
     // 4. kWh gerados no último mês
     prisma.plantMonthly.findMany({

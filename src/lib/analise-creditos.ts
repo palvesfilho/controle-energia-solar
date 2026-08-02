@@ -5,6 +5,7 @@ import {
   type Sugestao,
 } from "@/lib/sugestoes-acoes";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
 
 // Severidade visual: info (informativo, não bloqueia), atencao (precisa
 // olhar essa semana), critico (perda de receita iminente).
@@ -252,9 +253,11 @@ export async function computeAnaliseCreditos(
   const plantIds = plants.map((p) => p.id);
   const plantById = new Map(plants.map((p) => [p.id, p]));
 
-  // 2) UCs ativas no escopo
+  // 2) UCs ativas no escopo. UCs do módulo Brasil Solar ficam de fora — a
+  // Gestão de Créditos é da Associação de Energia. (Quase todas já caem pelo
+  // plantId nulo; o filtro de origem pega as que têm Plant vinculada.)
   const ucs = await prisma.consumerUnit.findMany({
-    where: { active: true, plantId: { in: plantIds } },
+    where: { active: true, plantId: { in: plantIds }, ...SEM_UC_BRASIL_SOLAR },
     select: { id: true, codigoUc: true, nome: true, plantId: true },
   });
   const ucIds = ucs.map((u) => u.id);

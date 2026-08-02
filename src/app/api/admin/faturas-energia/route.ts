@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { listExistingKeys } from "@/lib/file-storage";
 import { relativePathToKey } from "@/lib/r2-storage";
+import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
 
 // "ok": bill com pdfUrl e arquivo presente no storage → ícone verde
 // "error": bill com pdfUrl mas arquivo NÃO encontrado → ícone vermelho (anomalia real)
@@ -39,6 +40,10 @@ export async function GET(req: NextRequest) {
 
   const [ucs, plants, bills, existingKeys] = await Promise.all([
     prisma.consumerUnit.findMany({
+      // Tela da Gestora de Energia (Associação): UCs do módulo Brasil Solar
+      // ficam de fora — o sync de fatura delas se acompanha em
+      // Brasil Solar → Proprietários → Status e acesso.
+      where: { ...SEM_UC_BRASIL_SOLAR },
       include: {
         consumer: { select: { id: true, name: true } },
         plant: { select: { id: true, name: true } },

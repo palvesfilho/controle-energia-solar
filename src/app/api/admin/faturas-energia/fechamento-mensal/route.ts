@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calcularValorCobrado } from "@/lib/billing-calculator";
+import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
 
 export type FechamentoStatus = "pronta" | "pendente" | "erro" | "paga";
 
@@ -38,6 +39,9 @@ export async function GET(req: NextRequest) {
 
   const [ucs, plants, bills] = await Promise.all([
     prisma.consumerUnit.findMany({
+      // Fechamento é da Gestora de Energia (Associação): UCs do módulo
+      // Brasil Solar não entram no fechamento do fluxo do investidor.
+      where: { ...SEM_UC_BRASIL_SOLAR },
       include: {
         consumer: { select: { id: true, name: true } },
         plant: { select: { id: true, name: true } },

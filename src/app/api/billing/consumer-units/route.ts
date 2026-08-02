@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
+import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
 
 /**
  * GET /api/billing/consumer-units?ano=2026&mes=4  â†’ lista do mÃªs
@@ -42,7 +43,9 @@ export async function GET(req: NextRequest) {
 
   const [units, billings, consumerBills] = await Promise.all([
     prisma.consumerUnit.findMany({
-      where: { active: true },
+      // Faturamento é do fluxo do investidor (Associação): UCs do módulo
+      // Brasil Solar não são cobradas por aqui.
+      where: { active: true, ...SEM_UC_BRASIL_SOLAR },
       orderBy: { nome: "asc" },
       select: {
         id: true,
