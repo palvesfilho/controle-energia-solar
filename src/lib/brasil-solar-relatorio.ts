@@ -9,7 +9,8 @@
 import { prisma } from "@/lib/prisma";
 import { getRangeTotal as froniusRangeTotal } from "@/lib/fronius";
 import { getRangeTotal as huaweiRangeTotal } from "@/lib/huawei";
-import { getRangeTotal as sungrowRangeTotal } from "@/lib/sungrow";
+// Sungrow de propósito fora: seu getRangeTotal custa ~180 chamadas por mês.
+// Ver PLATAFORMAS_SEM_FALLBACK_AO_VIVO abaixo.
 import { getRangeTotal as solaredgeRangeTotal } from "@/lib/solaredge";
 import { getRelatorioParametros } from "@/lib/app-settings";
 import { formatCodigoUc } from "@/lib/uc-codigo";
@@ -675,6 +676,58 @@ function projetarPayback(
   return { ano, mes, mesesProjetados: mesesAvancados };
 }
 
+// ---------------------------------------------------------------------------
+// Orçamento de chamadas à API de monitoramento
+//
+// O relatório lê a geração do MonitoringLog (cache alimentado pelo cron). Em
+// cache miss ele pode buscar ao vivo — mas o custo varia MUITO por plataforma:
+//
+//   Fronius / SolarEdge / Huawei → 1 chamada por mês (endpoint agrega o mês)
+//   Sungrow                      → ~180 por mês (30 dias × 6 fatias de horário,
+//                                  reconstruído a partir de dados por minuto)
+//
+// Uma UC com 12 faturas, cuja janela de leitura cruza 2 meses de calendário,
+// gera ~4.320 chamadas na Sungrow — o relatório levava mais de 20 minutos e a
+// tela ficava presa em "Carregando...". Por isso a Sungrow nunca é consultada
+// ao vivo aqui: usa só o cache, e o mês sem cache aparece como sem dado.
+// Preencher o cache é trabalho do sync/cron, que roda fora da requisição.
+const PLATAFORMAS_SEM_FALLBACK_AO_VIVO = new Set(["SUNGROW"]);
+
+/** Teto por chamada de plataforma — rede travada não pode prender a tela. */
+const TIMEOUT_CHAMADA_API_MS = 15_000;
+
+/** Teto de tempo somado em API por relatório. Estourou, o resto vem do cache. */
+const ORCAMENTO_API_RELATORIO_MS = 30_000;
+
+interface OrcamentoApi {
+  restanteMs: number;
+}
+
+function novoOrcamentoApi(): OrcamentoApi {
+  return { restanteMs: ORCAMENTO_API_RELATORIO_MS };
+}
+
+/**
+ * Corre `p` contra um timeout. Atenção: o fetch subjacente não é cancelado —
+ * isto protege o tempo de resposta da tela, não a chamada em si.
+ */
+async function comTimeout<T>(p: Promise<T>, ms: number, rotulo: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<never>((_, rej) => {
+        timer = setTimeout(
+          () => rej(new Error(`${rotulo}: sem resposta em ${Math.round(ms / 1000)}s`)),
+          ms,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function sumGenerationForPeriod(
   monitoringClients: {
     id: string;
@@ -689,6 +742,8 @@ async function sumGenerationForPeriod(
    * o relatório. Os meses exibidos passam true (precisam do dado mais fiel).
    */
   permitirApi = true,
+  /** Orçamento compartilhado do relatório. Sem ele, não há teto de tempo. */
+  orcamento?: OrcamentoApi,
 ): Promise<{ totalKwh: number | null; erros: string[] }> {
   const erros: string[] = [];
   let total = 0;
@@ -726,22 +781,48 @@ async function sumGenerationForPeriod(
     // (só acúmulo) evita storm de chamadas → mantém o relatório rápido.
     if (!permitirApi) continue;
 
+    // Sungrow reconstrói o dia a partir de dados por minuto (~180 chamadas por
+    // mês). Buscar ao vivo aqui trava a tela por dezenas de minutos — só cache.
+    if (PLATAFORMAS_SEM_FALLBACK_AO_VIVO.has(platform)) {
+      erros.push(
+        `${c.id}: sem geração em cache para o período (${platform} não é consultada ao vivo pelo relatório — aguarde o sync)`,
+      );
+      continue;
+    }
+
+    // Orçamento de tempo estourado: o que faltar vem só do cache.
+    if (orcamento && orcamento.restanteMs <= 0) {
+      erros.push(`${c.id}: orçamento de consulta à API esgotado neste relatório`);
+      continue;
+    }
+
     // Cache miss: bate na API e (idealmente) o sync grava no banco depois
+    const t0 = Date.now();
     try {
+      const limiteMs = Math.min(
+        TIMEOUT_CHAMADA_API_MS,
+        orcamento?.restanteMs ?? TIMEOUT_CHAMADA_API_MS,
+      );
       let r: { totalKwh: number };
       if (platform === "FRONIUS") {
-        r = await froniusRangeTotal(c.monitoramentoPlantId, inicio, fim);
+        r = await comTimeout(
+          froniusRangeTotal(c.monitoramentoPlantId, inicio, fim),
+          limiteMs,
+          "Fronius",
+        );
       } else if (platform === "HUAWEI") {
-        r = await huaweiRangeTotal(c.monitoramentoPlantId, inicio, fim);
-      } else if (platform === "SUNGROW") {
-        r = await sungrowRangeTotal(c.monitoramentoPlantId, inicio, fim);
+        r = await comTimeout(
+          huaweiRangeTotal(c.monitoramentoPlantId, inicio, fim),
+          limiteMs,
+          "Huawei",
+        );
       } else if (platform === "SOLAREDGE") {
         const siteId = parseInt(c.monitoramentoPlantId, 10);
         if (Number.isNaN(siteId)) {
           erros.push(`${c.id}: SolarEdge siteId inválido`);
           continue;
         }
-        r = await solaredgeRangeTotal(siteId, inicio, fim);
+        r = await comTimeout(solaredgeRangeTotal(siteId, inicio, fim), limiteMs, "SolarEdge");
       } else {
         erros.push(`${c.id}: plataforma '${platform}' não suportada`);
         continue;
@@ -750,6 +831,8 @@ async function sumGenerationForPeriod(
       qualquerSucesso = true;
     } catch (e) {
       erros.push(`${c.id}: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      if (orcamento) orcamento.restanteMs -= Date.now() - t0;
     }
   }
   return { totalKwh: qualquerSucesso ? total : null, erros };
@@ -896,6 +979,8 @@ export async function getProprietarioRelatorio(
   // Só os meses exibidos (últimos 12) podem bater na API de monitoramento;
   // os anteriores (só acúmulo) usam apenas o cache pra não travar o relatório.
   const idxDisplayInicio = Math.max(0, bills.length - 12);
+  // Teto de tempo em API compartilhado por todos os meses deste relatório.
+  const orcamentoApi = novoOrcamentoApi();
   for (let i = 0; i < bills.length; i++) {
     const bill = bills[i];
     const permitirApiMes = i >= idxDisplayInicio;
@@ -909,7 +994,13 @@ export async function getProprietarioRelatorio(
     }
 
     const { totalKwh: geracaoInversorKwh, erros: inversoresErros } =
-      await sumGenerationForPeriod(monitoringClients, inicio, fim, permitirApiMes);
+      await sumGenerationForPeriod(
+        monitoringClients,
+        inicio,
+        fim,
+        permitirApiMes,
+        orcamentoApi,
+      );
 
     // === Tarifas ===
     const tarifaTotal =
@@ -1873,6 +1964,8 @@ export async function getProprietarioRelatorioAgregado(
 
   // Só os últimos 12 períodos podem bater na API; os anteriores usam só cache.
   const idxDisplayInicioAgg = Math.max(0, periodosUsados.length - 12);
+  // Teto de tempo em API compartilhado por todos os períodos deste relatório.
+  const orcamentoApiAgg = novoOrcamentoApi();
   for (let pi = 0; pi < periodosUsados.length; pi++) {
     const key = periodosUsados[pi];
     const permitirApiMes = pi >= idxDisplayInicioAgg;
@@ -1909,7 +2002,13 @@ export async function getProprietarioRelatorioAgregado(
     }
 
     const { totalKwh: geracaoInversorKwh, erros: inversoresErros } =
-      await sumGenerationForPeriod(monitoringClients, inicio, fim, permitirApiMes);
+      await sumGenerationForPeriod(
+        monitoringClients,
+        inicio,
+        fim,
+        permitirApiMes,
+        orcamentoApiAgg,
+      );
 
     // Agrega beneficiárias e gera breakdown
     let consumoRedeTotal: number | null = null;
