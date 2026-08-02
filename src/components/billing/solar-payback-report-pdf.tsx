@@ -21,6 +21,7 @@ import type {
   SituacaoUsinaItem,
 } from "@/lib/brasil-solar-relatorio";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { ultimosMesesCorridos } from "@/lib/serie-mensal";
 
 const C = {
   teal: "#2E9B87",
@@ -293,8 +294,13 @@ function niceCeil(v: number, step: number) {
  * rótulos por barra (os valores exatos ficam na tabela "Histórico por mês").
  */
 function GeneractionConsumptionBars({ data }: { data: RelatorioData }) {
-  // Gráfico = tendência dos últimos 12 meses (a tabela mostra o histórico todo).
-  const meses = data.meses.slice(-12);
+  // Gráfico do PDF = últimos 12 meses corridos (a tela usa ano civil — são
+  // regras diferentes de propósito, ver src/lib/serie-mensal.ts). Mês sem
+  // fatura entra zerado em vez de sumir do eixo.
+  const meses = ultimosMesesCorridos(12, data.meses, (m) => ({
+    ano: m.ano,
+    mes: m.mes,
+  }));
   if (meses.length === 0) return null;
 
   const W = 540;
@@ -307,7 +313,9 @@ function GeneractionConsumptionBars({ data }: { data: RelatorioData }) {
   const innerH = H - padT - padB;
 
   const rawMax = Math.max(
-    ...meses.map((m) => Math.max(m.geracaoInversorKwh ?? 0, m.consumoTotalKwh ?? 0)),
+    ...meses.map(({ row }) =>
+      Math.max(row?.geracaoInversorKwh ?? 0, row?.consumoTotalKwh ?? 0),
+    ),
     1,
   );
   const maxKwh = niceCeil(rawMax, 200);
@@ -342,10 +350,10 @@ function GeneractionConsumptionBars({ data }: { data: RelatorioData }) {
           </React.Fragment>
         );
       })}
-      {meses.map((m, i) => {
+      {meses.map(({ mes: mesNum, row }, i) => {
         const groupX = padL + i * groupW + pad;
-        const ger = m.geracaoInversorKwh ?? 0;
-        const cons = m.consumoTotalKwh ?? 0;
+        const ger = row?.geracaoInversorKwh ?? 0;
+        const cons = row?.consumoTotalKwh ?? 0;
         const gerH = (ger / maxKwh) * innerH;
         const consH = (cons / maxKwh) * innerH;
         const gerY = padT + innerH - gerH;
@@ -366,7 +374,7 @@ function GeneractionConsumptionBars({ data }: { data: RelatorioData }) {
               y={H - 7}
               style={{ fontSize: 7.5, fill: C.gray, fontWeight: 700, textAnchor: "middle" }}
             >
-              {MES_ABREV[m.mes - 1]}
+              {MES_ABREV[mesNum - 1]}
             </Text>
           </React.Fragment>
         );
@@ -390,12 +398,15 @@ function GeneractionConsumptionBars({ data }: { data: RelatorioData }) {
  * quando falta → usa a rede. Escala Y simétrica em torno do zero.
  */
 function SaldoMensalBars({ data }: { data: RelatorioData }) {
-  // Gráfico = tendência dos últimos 12 meses (a tabela mostra o histórico todo).
-  const meses = data.meses.slice(-12);
+  // Gráfico do PDF = últimos 12 meses corridos, com mês sem fatura zerado.
+  const meses = ultimosMesesCorridos(12, data.meses, (m) => ({
+    ano: m.ano,
+    mes: m.mes,
+  }));
   if (meses.length === 0) return null;
 
   const nets = meses.map(
-    (m) => (m.geracaoInversorKwh ?? 0) - (m.consumoTotalKwh ?? 0),
+    ({ row }) => (row?.geracaoInversorKwh ?? 0) - (row?.consumoTotalKwh ?? 0),
   );
 
   const W = 540;
@@ -457,7 +468,7 @@ function SaldoMensalBars({ data }: { data: RelatorioData }) {
       >
         usa a rede
       </Text>
-      {meses.map((m, i) => {
+      {meses.map(({ mes: mesNum }, i) => {
         const net = nets[i];
         const x = padL + i * groupW + (groupW - barW) / 2;
         const y = yFor(net);
@@ -492,7 +503,7 @@ function SaldoMensalBars({ data }: { data: RelatorioData }) {
               y={up ? zeroY + 10 : zeroY - 5}
               style={{ fontSize: 7.5, fill: C.gray, fontWeight: 700, textAnchor: "middle" }}
             >
-              {MES_ABREV[m.mes - 1]}
+              {MES_ABREV[mesNum - 1]}
             </Text>
           </React.Fragment>
         );

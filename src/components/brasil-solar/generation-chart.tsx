@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { esperadaDoDiaKwh, esperadaDoMesKwh } from "@/lib/geracao-esperada";
+import { mesesDoAno } from "@/lib/serie-mensal";
 import {
   Select,
   SelectContent,
@@ -253,6 +254,8 @@ export function GenerationChart({
   );
 }
 
+const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+
 export function MonthlyComparisonChart({ logs }: { logs: MonitoringLog[] }) {
   const [chartType, setChartType] = useState<"bar" | "area">("bar");
 
@@ -267,23 +270,21 @@ export function MonthlyComparisonChart({ logs }: { logs: MonitoringLog[] }) {
 
   const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
 
-  const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-
   const data = useMemo(() => {
     const year = Number(selectedYear);
-    const monthlyMap = new Map<string, number>();
+    const monthlyMap = new Map<number, number>();
     for (const log of logs) {
       const d = new Date(log.data);
       if (d.getFullYear() !== year) continue;
-      const key = `${String(d.getMonth() + 1).padStart(2, "0")}`;
-      monthlyMap.set(key, (monthlyMap.get(key) || 0) + log.geracaoDiaria);
+      const m = d.getMonth() + 1;
+      monthlyMap.set(m, (monthlyMap.get(m) || 0) + log.geracaoDiaria);
     }
-    return Array.from(monthlyMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, total]) => ({
-        mes: months[parseInt(key) - 1],
-        geracao: total,
-      }));
+    // Janeiro até o mês atual, com zero nos meses sem geração — mês ausente
+    // esconde falha de monitoramento. Ver src/lib/serie-mensal.ts.
+    return mesesDoAno(year).map(({ mes }) => ({
+      mes: MESES_LABEL[mes - 1],
+      geracao: monthlyMap.get(mes) ?? 0,
+    }));
   }, [logs, selectedYear]);
 
   return (

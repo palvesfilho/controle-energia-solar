@@ -18,6 +18,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { brand } from "@/lib/brand-colors";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { anoPadraoDaSerie, serieMensalDoAno } from "@/lib/serie-mensal";
 import {
   Bar,
   BarChart,
@@ -142,13 +143,23 @@ export default function RelatorioDetalhePage() {
     return <p className="p-8 text-sm text-red-600">Erro: {error}</p>;
   }
 
-  const chartData = data.meses.map((m) => ({
-    label: `${MES_ABREV[m.mes - 1]}/${String(m.ano).slice(2)}`,
-    geracao: m.geracaoInversorKwh ?? 0,
-    consumo: m.consumoTotalKwh ?? m.consumoRedeKwh ?? 0,
-    economiaAcumulada: m.economiaAcumuladaRs,
-    saldoPayback: m.saldoPaybackRs,
-    selected: `${m.ano}-${m.mes}` === mesSelecionadoKey,
+  // Gráficos de geração mensal cobrem janeiro do ano até o mês atual, com zero
+  // nos meses sem dado — mês ausente esconde falha de monitoramento.
+  // Ver src/lib/serie-mensal.ts.
+  const anoGrafico = anoPadraoDaSerie(
+    Array.from(new Set(data.meses.map((m) => m.ano))),
+  );
+  const chartData = serieMensalDoAno(
+    anoGrafico,
+    data.meses,
+    (m) => ({ ano: m.ano, mes: m.mes }),
+  ).map(({ ano, mes, label, row }) => ({
+    label,
+    geracao: row?.geracaoInversorKwh ?? 0,
+    consumo: row?.consumoTotalKwh ?? row?.consumoRedeKwh ?? 0,
+    economiaAcumulada: row?.economiaAcumuladaRs ?? 0,
+    saldoPayback: row?.saldoPaybackRs ?? 0,
+    selected: `${ano}-${mes}` === mesSelecionadoKey,
   }));
 
   const mesSelecionado =
