@@ -117,7 +117,13 @@ export class InfosimplesApiError extends Error {
   constructor(
     message: string,
     public code: number,
-    public errors: string[]
+    public errors: string[],
+    /**
+     * `header.billable` da resposta: false = a consulta falhou ANTES de ser
+     * cobrada (erro do lado da Infosimples ao raspar o portal). Serve pra
+     * separar "queimou crédito" de "falhou de graça" ao diagnosticar em lote.
+     */
+    public billable?: boolean,
   ) {
     super(message);
     this.name = "InfosimplesApiError";
@@ -162,10 +168,15 @@ export async function consultarFatura(
 
   // Codigos da Infosimples: 200 = sucesso, outros = erro
   if (result.code !== 200) {
+    const billable =
+      typeof result.header?.billable === "boolean"
+        ? (result.header.billable as boolean)
+        : undefined;
     throw new InfosimplesApiError(
       result.code_message || "Erro na consulta Infosimples",
       result.code,
-      result.errors || []
+      result.errors || [],
+      billable,
     );
   }
 
