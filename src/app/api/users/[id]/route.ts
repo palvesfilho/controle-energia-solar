@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
+import { ASSIGNABLE_ROLES } from "@/lib/roles";
 import { hashSync } from "bcryptjs";
 
 export async function GET(
@@ -79,8 +80,7 @@ export async function PUT(
     }
   }
 
-  const validRoles = ["ADMIN", "GESTOR", "FINANCEIRO", "INVESTOR", "CONSUMER"];
-  if (role && !validRoles.includes(role)) {
+  if (role && !ASSIGNABLE_ROLES.includes(role)) {
     return NextResponse.json({ error: "Perfil inválido" }, { status: 400 });
   }
 

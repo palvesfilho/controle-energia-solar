@@ -1991,3 +1991,99 @@ model ConsumoBaseline {
   @@index([consumerUnitId, validoAteAno, validoAteMes])
   @@map("consumo_baseline")
 }
+
+// ---------------------------------------------------------------------------
+// INTEGRAÇÃO COM O CRM (GERADOR_PROPOSTA / Supabase)
+//
+// O CRM comercial vive em outro banco (Supabase) e continua sendo a fonte da
+// venda. Aqui a gente só LÊ: um job puxa as vendas ganhas e as adesões e
+// enfileira o que precisa virar obra, UC ou usina neste sistema.
+//
+// Por que pull e não webhook: não exige mudança no CRM (que o time comercial
+// usa o dia inteiro), ganha retry e backfill de graça, e a latência de minutos
+// é irrelevante — o processo hoje simplesmente não existe.
+// ---------------------------------------------------------------------------
+
+// De-para PRODUTO DO CRM → o que ele gera aqui. Editável na UI de propósito:
+// o catálogo do CRM cresce (19 produtos hoje) e um produto novo NÃO pode sumir
+// em silêncio — sem linha aqui, a venda cai na caixa de "não classificado".
+model CrmProdutoDestino {
+  id String @id @default(cuid())
+
+  // `produtos.codigo` no CRM (ex.: solar_fotovoltaica, inspecao_completa).
+  codigoProduto String @unique @map("codigo_produto")
+  nomeProduto   String @map("nome_produto")
+
+  // Gera obra na fila de aprovação do gestor de obras?
+  geraObra Boolean @default(false) @map("gera_obra")
+  // INSTALACAO | MANUTENCAO — só faz sentido quando geraObra = true.
+  tipoObra String? @map("tipo_obra")
+
+  // O que a venda gera na gestão, além da obra:
+  // NENHUM | ADESAO (UC beneficiária + balanço de créditos)
+  // | USINA_UC (cliente cede o telhado: vira usina E UC)
+  // | MONITORAMENTO (plano de monitoramento pago)
+  destinoGestao String @default("NENHUM") @map("destino_gestao")
+
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("crm_produto_destino")
+}
+
+// Uma linha por PROPOSTA do CRM que entrou aqui. Serve de trava de
+// idempotência (o job roda de hora em hora e não pode duplicar) e de fila de
+// trabalho para quem cadastra UC/usina.
+//
+// `propostaIdCrm` é o rastro confiável de origem. O vínculo com cliente BS
+// fica NULO de propósito: os 1.819 brasil_solar_clients estão sem CPF/CNPJ,
+// então casar por nome geraria vínculo errado em silêncio. Quem aprova decide.
+model CrmVendaImportada {
+  id String @id @default(cuid())
+
+  // Chave no CRM (propostas.id — BIGSERIAL lá, Int aqui).
+  propostaIdCrm  Int     @unique @map("proposta_id_crm")
+  numeroProposta String? @map("numero_proposta")
+
+  codigoProduto String @map("codigo_produto")
+  nomeProduto   String @map("nome_produto")
+
+  clienteNome      String  @map("cliente_nome")
+  clienteDocumento String? @map("cliente_documento")
+  clienteIdCrm     Int?    @map("cliente_id_crm")
+  cidade           String?
+  vendedorEmail    String? @map("vendedor_email")
+
+  valorInvestimento Float?    @map("valor_investimento")
+  fechadoEm         DateTime? @map("fechado_em")
+  statusNegocio     String    @map("status_negocio")
+
+  // Preenchidos quando a venda tem Termo de Adesão gerado no CRM.
+  adesaoIdCrm    Int?    @map("adesao_id_crm")
+  concessionaria String?
+  // Códigos de UC da adesão, separados por vírgula (uma adesão pode ter
+  // várias — o RESIDENCIAL MORADA DO LESTE tem 10).
+  codigosUc      String? @map("codigos_uc")
+  mediaMensalKwh Float?  @map("media_mensal_kwh")
+
+  // PENDENTE            — classificada, esperando ação nesta ponta
+  // CONCLUIDA           — já virou obra/UC/usina aqui
+  // IGNORADA            — de-para diz que não entra no Gestor
+  // NAO_CLASSIFICADO    — produto sem linha no de-para (exige decisão)
+  // ASSINADA_SEM_VENDA  — tem adesão assinada mas a proposta não está "ganha"
+  situacao String @default("PENDENTE")
+
+  // Obra criada a partir desta venda, quando o produto gera obra.
+  obraId     String? @map("obra_id")
+  observacao String? @db.Text
+
+  primeiraLeituraEm DateTime  @default(now()) @map("primeira_leitura_em")
+  ultimaLeituraEm   DateTime  @updatedAt @map("ultima_leitura_em")
+  processadaEm      DateTime? @map("processada_em")
+  processadaPorId   String?   @map("processada_por_id")
+
+  @@index([situacao])
+  @@index([codigoProduto])
+  @@map("crm_venda_importada")
+}

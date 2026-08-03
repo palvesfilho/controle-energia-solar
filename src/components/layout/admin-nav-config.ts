@@ -31,6 +31,7 @@ import {
   BarChart3,
   Zap,
   FileBarChart,
+  Inbox,
 } from "lucide-react";
 import { canAccessSection, type AdminSection } from "@/lib/roles";
 import { UserRole } from "@/types/next-auth";
@@ -76,6 +77,19 @@ export function detectAdminModule(pathname: string): "assoc" | "bs" {
 export const adminNavItems: NavEntry[] = [
   { kind: "leaf", module: "assoc", section: "dashboard", title: "Gestora de Energia", href: "/admin", icon: LayoutDashboard },
   { kind: "leaf", module: "assoc", section: "agenda", title: "Agenda da Semana", href: "/admin/agenda", icon: CalendarClock },
+  // Folha única de propósito: quem usa é o pós-venda, que não enxerga o grupo
+  // Gestão de Créditos. Ver [[feedback_menu_hub_pattern]].
+  {
+    kind: "group",
+    module: "both",
+    section: "crmIntegracao",
+    title: "Vendas do CRM",
+    icon: Inbox,
+    children: [
+      { kind: "leaf", module: "both", section: "crmIntegracao", title: "Fila", href: "/admin/crm/fila", icon: Inbox },
+      { kind: "leaf", module: "both", section: "crmIntegracao", title: "Produtos", href: "/admin/crm/produtos", icon: Settings2 },
+    ],
+  },
   {
     kind: "group",
     module: "assoc",

@@ -23,6 +23,7 @@ export type AdminSection =
   | "faturamento"
   | "brasilSolar"
   | "obra"
+  | "crmIntegracao"
   | "usuarios"
   | "personalizacoesHub"
   | "persObras"
@@ -46,6 +47,10 @@ export const SECTION_ROLES: Record<AdminSection, UserRole[]> = {
   faturamento: FULL_ADMIN_TRIO,
   brasilSolar: [...FULL_ADMIN_TRIO, "POS_VENDA"],
   obra: [...FULL_ADMIN_TRIO, "POS_VENDA", "GESTOR_OBRA"],
+  // Fila de vendas ganhas vindas do CRM: quem cadastra UC/usina e ajusta o
+  // balanço de créditos é o pós-venda. Gestor de obras fica de fora — o que
+  // é dele já chega na aprovação de obras.
+  crmIntegracao: [...FULL_ADMIN_TRIO, "POS_VENDA"],
   usuarios: ["ADMIN"],
   // Hub das personalizações: qualquer role com acesso a ao menos um card
   personalizacoesHub: [...FULL_ADMIN_TRIO, "POS_VENDA", "GESTOR_OBRA"],
@@ -79,6 +84,20 @@ export const ADMIN_PANEL_ROLES: UserRole[] = [
   ...FULL_ADMIN_TRIO,
   "POS_VENDA",
   "GESTOR_OBRA",
+];
+
+// Roles que um ADMIN pode atribuir ao criar/editar usuário pela tela.
+// Fonte única — as rotas /api/users e /api/users/[id] validam por aqui.
+// CLIENTE_BS fica de fora de propósito: nasce pelo fluxo de acesso do portal
+// Brasil Solar, não pelo cadastro manual.
+export const ASSIGNABLE_ROLES: UserRole[] = [
+  "ADMIN",
+  "GESTOR",
+  "FINANCEIRO",
+  "POS_VENDA",
+  "GESTOR_OBRA",
+  "INVESTOR",
+  "CONSUMER",
 ];
 
 // Roles que podem gerenciar usuários
