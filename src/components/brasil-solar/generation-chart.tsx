@@ -11,6 +11,7 @@ import {
   ReferenceLine,
   BarChart,
   Bar,
+  Cell,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { esperadaDoDiaKwh, esperadaDoMesKwh } from "@/lib/geracao-esperada";
@@ -29,6 +30,25 @@ interface MonitoringLog {
   geracaoDiaria: number;
   geracaoEsperada?: number | null;
   picoMaximo?: number | null;
+  /**
+   * "MANUAL" = rateio de um total mensal digitado (plataforma sem integração);
+   * qualquer outro valor = medido pela plataforma. O gráfico PRECISA distinguir
+   * os dois: média rateada não é leitura de inversor.
+   */
+  origem?: string | null;
+}
+
+/** Verde = medido pela plataforma. Âmbar = informado à mão. */
+const COR_MEDIDO = "#10b981";
+const COR_MANUAL = "#f59e0b";
+
+function NotaManual({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[11px] text-amber-700 mt-2 flex items-center gap-1.5">
+      <span className="inline-block h-2 w-2 rounded-sm" style={{ background: COR_MANUAL }} />
+      {children}
+    </p>
+  );
 }
 
 function formatDate(dateStr: string) {
@@ -125,6 +145,7 @@ export function GenerationChart({
             ? esperadaDoDiaKwh(geracaoMediaEsperada, new Date(log.data))
             : null),
         pico: log.picoMaximo,
+        manual: log.origem === "MANUAL",
       }));
   }, [logs, selectedYear, selectedMonth, geracaoMediaEsperada]);
 
@@ -192,6 +213,7 @@ export function GenerationChart({
             Nenhum dado de geracao disponivel para {MESES_FULL[Number(selectedMonth) - 1]}/{selectedYear}
           </div>
         ) : (
+          <>
           <ResponsiveContainer width="100%" height={300}>
             {chartType === "bar" ? (
               <BarChart data={filteredData}>
@@ -200,9 +222,18 @@ export function GenerationChart({
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip
                   contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
-                  formatter={(value) => [`${Number(value).toFixed(1)} kWh`, "Geracao"]}
+                  formatter={(value, _name, item) => [
+                    `${Number(value).toFixed(1)} kWh`,
+                    (item?.payload as { manual?: boolean } | undefined)?.manual
+                      ? "Geracao (manual)"
+                      : "Geracao",
+                  ]}
                 />
-                <Bar dataKey="geracao" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="geracao" fill={COR_MEDIDO} radius={[4, 4, 0, 0]}>
+                  {filteredData.map((d, i) => (
+                    <Cell key={i} fill={d.manual ? COR_MANUAL : COR_MEDIDO} />
+                  ))}
+                </Bar>
                 {mediaEsperadaDia && (
                   <ReferenceLine y={mediaEsperadaDia} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: "Meta", fontSize: 10 }} />
                 )}
@@ -248,6 +279,13 @@ export function GenerationChart({
               </AreaChart>
             )}
           </ResponsiveContainer>
+          {filteredData.some((d) => d.manual) && (
+            <NotaManual>
+              {filteredData.filter((d) => d.manual).length} dia(s) vêm de geração informada
+              manualmente (média do total do mês), não de leitura da plataforma.
+            </NotaManual>
+          )}
+          </>
         )}
       </CardContent>
     </Card>
@@ -273,18 +311,29 @@ export function MonthlyComparisonChart({ logs }: { logs: MonitoringLog[] }) {
   const data = useMemo(() => {
     const year = Number(selectedYear);
     const monthlyMap = new Map<number, number>();
+    const manualMap = new Map<number, number>();
     for (const log of logs) {
       const d = new Date(log.data);
       if (d.getFullYear() !== year) continue;
       const m = d.getMonth() + 1;
       monthlyMap.set(m, (monthlyMap.get(m) || 0) + log.geracaoDiaria);
+      if (log.origem === "MANUAL") {
+        manualMap.set(m, (manualMap.get(m) || 0) + log.geracaoDiaria);
+      }
     }
     // Janeiro até o mês atual, com zero nos meses sem geração — mês ausente
     // esconde falha de monitoramento. Ver src/lib/serie-mensal.ts.
-    return mesesDoAno(year).map(({ mes }) => ({
-      mes: MESES_LABEL[mes - 1],
-      geracao: monthlyMap.get(mes) ?? 0,
-    }));
+    return mesesDoAno(year).map(({ mes }) => {
+      const total = monthlyMap.get(mes) ?? 0;
+      const manualKwh = manualMap.get(mes) ?? 0;
+      return {
+        mes: MESES_LABEL[mes - 1],
+        geracao: total,
+        // Mês é "manual" quando a maior parte do kWh veio de lançamento à mão.
+        manual: manualKwh > 0 && manualKwh > total / 2,
+        manualKwh,
+      };
+    });
   }, [logs, selectedYear]);
 
   return (
@@ -316,6 +365,7 @@ export function MonthlyComparisonChart({ logs }: { logs: MonitoringLog[] }) {
             Nenhum dado mensal disponivel para {selectedYear}
           </div>
         ) : (
+          <>
           <ResponsiveContainer width="100%" height={200}>
             {chartType === "bar" ? (
               <BarChart data={data}>
@@ -324,9 +374,18 @@ export function MonthlyComparisonChart({ logs }: { logs: MonitoringLog[] }) {
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip
                   contentStyle={{ fontSize: 12, borderRadius: 8 }}
-                  formatter={(value) => [`${Number(value).toFixed(0)} kWh`, "Geracao"]}
+                  formatter={(value, _name, item) => [
+                    `${Number(value).toFixed(0)} kWh`,
+                    (item?.payload as { manual?: boolean } | undefined)?.manual
+                      ? "Geracao (manual)"
+                      : "Geracao",
+                  ]}
                 />
-                <Bar dataKey="geracao" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="geracao" fill="#0ea5e9" radius={[4, 4, 0, 0]}>
+                  {data.map((d, i) => (
+                    <Cell key={i} fill={d.manual ? COR_MANUAL : "#0ea5e9"} />
+                  ))}
+                </Bar>
               </BarChart>
             ) : (
               <AreaChart data={data}>
@@ -353,6 +412,17 @@ export function MonthlyComparisonChart({ logs }: { logs: MonitoringLog[] }) {
               </AreaChart>
             )}
           </ResponsiveContainer>
+          {data.some((d) => d.manual) && (
+            <NotaManual>
+              Meses em âmbar: geração informada manualmente (
+              {data
+                .filter((d) => d.manual)
+                .map((d) => d.mes)
+                .join(", ")}
+              ).
+            </NotaManual>
+          )}
+          </>
         )}
       </CardContent>
     </Card>

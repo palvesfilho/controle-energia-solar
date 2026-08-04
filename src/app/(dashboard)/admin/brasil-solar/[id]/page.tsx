@@ -8,6 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { MonitoringStatusBadge } from "@/components/brasil-solar/status-badge";
 import { GenerationChart, MonthlyComparisonChart } from "@/components/brasil-solar/generation-chart";
 import { IntraDayChart } from "@/components/brasil-solar/intra-day-chart";
+import {
+  GeracaoManualCard,
+  LancamentoManualModal,
+} from "@/components/brasil-solar/geracao-manual-card";
 import { AlertPanel, CreateAlertForm } from "@/components/brasil-solar/alert-panel";
 import { formatNumber } from "@/lib/formatters";
 import {
@@ -32,6 +36,7 @@ import {
   Copy,
   RefreshCw,
   Loader2,
+  KeyboardIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCodigoUc } from "@/lib/uc-codigo";
@@ -44,6 +49,8 @@ interface MonitoringLog {
   geracaoEsperada?: number | null;
   picoMaximo?: number | null;
   horasSol?: number | null;
+  /** "API" = medido pela plataforma; "MANUAL" = rateio de total digitado. */
+  origem?: string | null;
 }
 
 interface Alert {
@@ -142,6 +149,10 @@ export default function ClientDetailPage() {
   const [showSenha, setShowSenha] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
+  // Modal do botão "Geração manual" do topo. `geracaoManualToken` faz o card da
+  // aba Geração reler a lista depois de um lançamento feito por ali.
+  const [geracaoManualAberta, setGeracaoManualAberta] = useState(false);
+  const [geracaoManualToken, setGeracaoManualToken] = useState(0);
 
   const fetchClient = useCallback(async () => {
     try {
@@ -332,6 +343,16 @@ export default function ClientDetailPage() {
               )}
             </>
           )}
+          {/* Sempre visível: é justamente quando a plataforma NÃO integra que
+              se precisa lançar à mão, então não pode depender de plataforma. */}
+          <button
+            onClick={() => setGeracaoManualAberta(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg hover:bg-muted transition-colors"
+            title="Informar o total de geração de um período (mês ou ciclo de leitura)"
+          >
+            <KeyboardIcon className="h-3.5 w-3.5" />
+            Geração manual
+          </button>
           <Link
             href={`/admin/brasil-solar/${id}/editar`}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg hover:bg-muted transition-colors"
@@ -431,6 +452,12 @@ export default function ClientDetailPage() {
             geracaoMediaEsperada={esperadaMensalBaseKwh(client) || null}
           />
           <MonthlyComparisonChart logs={client.monitoringLogs} />
+          <GeracaoManualCard
+            clientId={client.id}
+            clientNome={client.nome}
+            onChanged={fetchClient}
+            recarregarToken={geracaoManualToken}
+          />
         </div>
       )}
 
@@ -646,6 +673,21 @@ export default function ClientDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {geracaoManualAberta && (
+        <LancamentoManualModal
+          clientId={client.id}
+          clientNome={client.nome}
+          inicial={null}
+          onClose={() => setGeracaoManualAberta(false)}
+          onSaved={async () => {
+            setGeracaoManualAberta(false);
+            setGeracaoManualToken((n) => n + 1);
+            setActiveTab("geracao");
+            await fetchClient();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -15,6 +15,10 @@ const ORANGE_DEEP = "#C2551C";
 // Verde-petróleo dos relatórios do cliente (relatório BS / demonstrativo).
 const GREEN = "#2E9B87";
 const GREEN_DEEP = "#1B5E54";
+// Âmbar: período com geração INFORMADA (lançamento manual), não medida pela
+// plataforma de monitoramento. Cor distinta de propósito — o cliente tem que
+// conseguir separar o que foi medido do que foi declarado.
+const INFORMADO = "#D9A02B";
 const INK = "#1F1F1F";
 const INK_SOFT = "#59604F";
 const INK_FAINT = "#8A938D";
@@ -449,6 +453,16 @@ export function GeracaoMensalCard({
                 color: GREEN_DEEP,
                 label: `Total do período: ${kwh(serie.totalKwh)} kWh`,
               },
+              // Só aparece quando há período informado — legenda de exceção não
+              // polui o gráfico de quem tem monitoramento funcionando.
+              ...(serie.manualKwh && serie.manualKwh > 0
+                ? [
+                    {
+                      color: INFORMADO,
+                      label: `Informado pela Brasil Solar: ${kwh(serie.manualKwh)} kWh`,
+                    },
+                  ]
+                : []),
             ]}
           />
         </>
@@ -491,7 +505,8 @@ function Legend({ items }: { items: { color: string; label: string }[] }) {
 function BarsChart({
   pontos, denso,
 }: {
-  pontos: { label: string; kwh: number }[];
+  /** `manual` = período informado pela Brasil Solar, não medido pela plataforma. */
+  pontos: { label: string; kwh: number; manual?: boolean }[];
   denso: boolean;
 }) {
   const W = denso ? 900 : 640, H = denso ? 220 : 240;
@@ -533,7 +548,7 @@ function BarsChart({
                 width={bw}
                 height={Math.max(h, p.kwh > 0 ? 1.5 : 0)}
                 rx={denso ? 3 : 4}
-                fill={destaque ? GREEN_DEEP : GREEN}
+                fill={p.manual ? INFORMADO : destaque ? GREEN_DEEP : GREEN}
                 opacity={p.kwh > 0 ? 1 : 0.25}
               />
               {mostraLabel && (

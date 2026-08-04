@@ -89,8 +89,14 @@ export interface PortalSerieGeracao {
   ano: number;
   /** Mês selecionado (1-12) quando a série é diária; null quando é anual. */
   mes: number | null;
-  pontos: { label: string; kwh: number }[];
+  /**
+   * `manual: true` = o kWh do ponto veio (em maior parte) de lançamento manual,
+   * não de leitura da plataforma. O gráfico precisa dizer isso ao cliente.
+   */
+  pontos: { label: string; kwh: number; manual?: boolean }[];
   totalKwh: number;
+  /** kWh do período informado manualmente — 0 quando tudo é medido. */
+  manualKwh?: number;
 }
 
 export interface PortalClienteData {
@@ -522,30 +528,38 @@ async function getSerieGeracao(
 
   const logs = await prisma.monitoringLog.findMany({
     where: { clientId: { in: clientIds }, data: { gte: inicio, lt: fim } },
-    select: { clientId: true, data: true, geracaoDiaria: true },
+    select: { clientId: true, data: true, geracaoDiaria: true, origem: true },
   });
 
   // Dedup por (usina, dia) — mantém o maior valor do dia.
-  const byClientDay = new Map<string, number>();
+  const byClientDay = new Map<string, { kwh: number; manual: boolean }>();
   for (const l of logs) {
     const key = `${l.clientId}|${l.data.toISOString().slice(0, 10)}`;
-    const prev = byClientDay.get(key) ?? 0;
-    if (l.geracaoDiaria > prev) byClientDay.set(key, l.geracaoDiaria);
+    const prev = byClientDay.get(key);
+    if (!prev || l.geracaoDiaria > prev.kwh) {
+      byClientDay.set(key, { kwh: l.geracaoDiaria, manual: l.origem === "MANUAL" });
+    }
   }
 
   const acc = new Map<number, number>(); // índice (mês 1-12 ou dia 1-31) -> kWh
-  for (const [key, kwh] of byClientDay) {
+  const accManual = new Map<number, number>();
+  for (const [key, v] of byClientDay) {
     const day = key.split("|")[1]; // YYYY-MM-DD
     const idx = mes ? Number(day.slice(8, 10)) : Number(day.slice(5, 7));
-    acc.set(idx, (acc.get(idx) ?? 0) + kwh);
+    acc.set(idx, (acc.get(idx) ?? 0) + v.kwh);
+    if (v.manual) accManual.set(idx, (accManual.get(idx) ?? 0) + v.kwh);
   }
 
   const total = mes ? new Date(Date.UTC(ano, mes, 0)).getUTCDate() : 12;
   const pontos = Array.from({ length: total }, (_, i) => {
     const idx = i + 1;
+    const kwh = acc.get(idx) ?? 0;
+    const manualKwh = accManual.get(idx) ?? 0;
     return {
       label: mes ? String(idx) : MES_ABREV[i],
-      kwh: round1(acc.get(idx) ?? 0),
+      kwh: round1(kwh),
+      // Ponto marcado quando a maior parte do kWh é informada, não medida.
+      manual: manualKwh > 0 && manualKwh > kwh / 2,
     };
   });
 
@@ -554,6 +568,7 @@ async function getSerieGeracao(
     mes,
     pontos,
     totalKwh: round1(pontos.reduce((s, p) => s + p.kwh, 0)),
+    manualKwh: round1(Array.from(accManual.values()).reduce((s, v) => s + v, 0)),
   };
 }
 

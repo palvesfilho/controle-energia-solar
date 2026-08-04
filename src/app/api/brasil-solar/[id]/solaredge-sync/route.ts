@@ -76,6 +76,8 @@ export async function POST(
               clientId_data: { clientId: id, data: date },
             },
             update: {
+              // Dado medido vence lançamento manual (origem MANUAL).
+              origem: "API",
               geracaoDiaria: day.energyKwh,
             },
             create: {

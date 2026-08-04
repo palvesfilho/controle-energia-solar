@@ -218,7 +218,8 @@ async function main() {
         });
         await prisma.monitoringLog.upsert({
           where: { clientId_data: { clientId: c.id, data } },
-          update: { geracaoDiaria: d.energyKwh },
+          // origem: "API" derruba lançamento manual do dia — dado medido vence.
+          update: { origem: "API", geracaoDiaria: d.energyKwh },
           create: {
             clientId: c.id,
             data,

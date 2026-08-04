@@ -183,6 +183,12 @@ export interface RelatorioMonthRow {
     fonte: "CICLO_LEITURA" | "MES_CALENDARIO";
   };
   geracaoInversorKwh: number | null;
+  /**
+   * Parte de `geracaoInversorKwh` que veio de lançamento MANUAL (a plataforma de
+   * monitoramento não integra / não enviou). > 0 obriga a sinalizar o mês como
+   * informado, não medido — ver src/lib/geracao-manual.ts.
+   */
+  geracaoManualKwh: number;
   injetadaMedidorKwh: number | null;
   /** consumo da rede (o que veio na fatura RGE) — `ConsumerBill.consumoKwh` */
   consumoRedeKwh: number | null;
@@ -744,10 +750,13 @@ async function sumGenerationForPeriod(
   permitirApi = true,
   /** Orçamento compartilhado do relatório. Sem ele, não há teto de tempo. */
   orcamento?: OrcamentoApi,
-): Promise<{ totalKwh: number | null; erros: string[] }> {
+): Promise<{ totalKwh: number | null; manualKwh: number; erros: string[] }> {
   const erros: string[] = [];
   let total = 0;
   let qualquerSucesso = false;
+  // kWh do período que vem de lançamento manual (plataforma sem integração).
+  // Viaja junto pro relatório poder dizer ao cliente que aquele mês é estimado.
+  let manual = 0;
 
   // Lê primeiro do banco (MonitoringLog) — sem bater na API. Cron diário
   // já mantém isso atualizado. Só bate na API se não houver log algum
@@ -758,11 +767,15 @@ async function sumGenerationForPeriod(
       clientId: { in: clientIds },
       data: { gte: inicio, lt: fim },
     },
-    select: { clientId: true, geracaoDiaria: true },
+    select: { clientId: true, geracaoDiaria: true, origem: true },
   });
   const cachedByClient = new Map<string, number>();
+  const manualByClient = new Map<string, number>();
   for (const log of cachedLogs) {
     cachedByClient.set(log.clientId, (cachedByClient.get(log.clientId) ?? 0) + log.geracaoDiaria);
+    if (log.origem === "MANUAL") {
+      manualByClient.set(log.clientId, (manualByClient.get(log.clientId) ?? 0) + log.geracaoDiaria);
+    }
   }
 
   for (const c of monitoringClients) {
@@ -773,6 +786,7 @@ async function sumGenerationForPeriod(
     const cachedKwh = cachedByClient.get(c.id);
     if (cachedKwh != null && cachedKwh > 0) {
       total += cachedKwh;
+      manual += manualByClient.get(c.id) ?? 0;
       qualquerSucesso = true;
       continue;
     }
@@ -835,7 +849,7 @@ async function sumGenerationForPeriod(
       if (orcamento) orcamento.restanteMs -= Date.now() - t0;
     }
   }
-  return { totalKwh: qualquerSucesso ? total : null, erros };
+  return { totalKwh: qualquerSucesso ? total : null, manualKwh: manual, erros };
 }
 
 export async function getProprietarioRelatorio(
@@ -993,7 +1007,7 @@ export async function getProprietarioRelatorio(
       fim = new Date(Date.UTC(bill.anoReferencia, bill.mesReferencia, 1));
     }
 
-    const { totalKwh: geracaoInversorKwh, erros: inversoresErros } =
+    const { totalKwh: geracaoInversorKwh, manualKwh: geracaoManualKwh, erros: inversoresErros } =
       await sumGenerationForPeriod(
         monitoringClients,
         inicio,
@@ -1079,6 +1093,7 @@ export async function getProprietarioRelatorio(
         fonte,
       },
       geracaoInversorKwh,
+      geracaoManualKwh,
       injetadaMedidorKwh: bill.energiaInjetadaMedidorKwh,
       consumoRedeKwh,
       consumoInstantaneoKwh,
@@ -1233,6 +1248,8 @@ export interface RelatorioAgregadoMonthRow {
   saldoCreditosBeneficiariasTotal: number | null;
   /** Geração agregada do(s) inversor(es) no período (null sem Plant) */
   geracaoInversorKwh: number | null;
+  /** Parte de `geracaoInversorKwh` informada à mão (ver src/lib/geracao-manual.ts) */
+  geracaoManualKwh: number;
   /** Da fatura da UC titular — energia injetada na rede */
   injetadaMedidorKwh: number | null;
   /** Da fatura da UC titular — saldo de créditos GD acumulado */
@@ -2001,7 +2018,7 @@ export async function getProprietarioRelatorioAgregado(
       }
     }
 
-    const { totalKwh: geracaoInversorKwh, erros: inversoresErros } =
+    const { totalKwh: geracaoInversorKwh, manualKwh: geracaoManualKwh, erros: inversoresErros } =
       await sumGenerationForPeriod(
         monitoringClients,
         inicio,
@@ -2085,6 +2102,7 @@ export async function getProprietarioRelatorioAgregado(
       contaSemSolarRsTotal: contaSemSolarTotal,
       saldoCreditosBeneficiariasTotal: saldoBeneficiariasTotal,
       geracaoInversorKwh,
+      geracaoManualKwh,
       injetadaMedidorKwh: billTitular?.energiaInjetadaMedidorKwh ?? null,
       saldoCreditosTitular: billTitular?.saldoCreditos ?? null,
       beneficiarias: beneficiariasRows,

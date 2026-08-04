@@ -84,7 +84,8 @@ async function main() {
             const date = new Date(Date.UTC(year, month - 1, day.day, 12, 0, 0));
             await prisma.monitoringLog.upsert({
               where: { clientId_data: { clientId: client.id, data: date } },
-              update: { geracaoDiaria: day.energyKwh },
+              // origem: "API" derruba lançamento manual do dia — dado medido vence.
+              update: { origem: "API", geracaoDiaria: day.energyKwh },
               create: {
                 clientId: client.id,
                 data: date,

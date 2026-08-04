@@ -942,10 +942,11 @@ model BrasilSolarClient {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relacoes
-  monitoringLogs  MonitoringLog[]
-  alerts          MonitoringAlert[]
-  inverterSamples InverterSample[]
-  monitoringPlans BrasilSolarMonitoringPlan[]
+  monitoringLogs     MonitoringLog[]
+  alerts             MonitoringAlert[]
+  inverterSamples    InverterSample[]
+  monitoringPlans    BrasilSolarMonitoringPlan[]
+  lancamentosManuais ManualGenerationEntry[]
 
   // Link opcional com dados existentes
   consumerId String? @map("consumer_id")
@@ -1202,6 +1203,14 @@ model MonitoringLog {
   irradiacao      Float? // kWh/m2 irradiacao solar
   temperatura     Float? // Temperatura media inversores
 
+  // API    = medido, veio da plataforma de monitoramento.
+  // MANUAL = rateio de um total mensal digitado por um operador, enquanto a
+  //          integração da plataforma não existe (ver ManualGenerationEntry).
+  // Dado real vence: todo sync grava origem=API por cima de linha MANUAL.
+  // Quem exibe geração PRECISA sinalizar o que é MANUAL — estimativa não pode
+  // se passar por medição.
+  origem String @default("API")
+
   createdAt DateTime @default(now()) @map("created_at")
 
   client BrasilSolarClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
@@ -1210,6 +1219,56 @@ model MonitoringLog {
   @@index([data])
   @@index([clientId, data])
   @@map("monitoring_logs")
+}
+
+/// Total de geração de UM PERÍODO informado à mão, para usina cuja plataforma de
+/// monitoramento ainda não integra (ou parou de enviar). É registro de auditoria:
+/// guarda o que o operador declarou, de onde tirou o número e quem lançou.
+///
+/// O dado que os relatórios leem NÃO é este — o total é rateado em linhas
+/// diárias de MonitoringLog com origem=MANUAL, porque é de lá que relatório BS,
+/// portal do cliente e análise de créditos somam geração. Excluir o lançamento
+/// apaga as linhas rateadas.
+model ManualGenerationEntry {
+  id       String @id @default(cuid())
+  clientId String @map("client_id")
+
+  /// MENSAL = mês calendário fechado. PERSONALIZADO = ciclo de leitura da
+  /// fatura (ex.: 10/04 a 11/05). Só muda como a janela foi escolhida na tela;
+  /// o rateio é o mesmo.
+  tipoPeriodo String @default("MENSAL") @map("tipo_periodo")
+
+  /// Janela [dataInicio, dataFim) — FIM EXCLUSIVO, igual à janela de leitura
+  /// usada pelo relatório (`gte dataLeituraAnterior, lt dataLeituraAtual`).
+  /// Assim ciclos consecutivos (10/04–11/05, 11/05–10/06) não dividem nem
+  /// duplicam o dia da virada, e o total do ciclo casa com o do relatório.
+  dataInicio DateTime @map("data_inicio")
+  dataFim    DateTime @map("data_fim")
+
+  /// Competência só pra rótulo/agrupamento: no MENSAL é o próprio mês; no
+  /// PERSONALIZADO é o mês do ÚLTIMO dia coberto (mesma referência da fatura).
+  ano Int
+  mes Int // 1-12
+
+  kwhTotal     Float @map("kwh_total") // total do período declarado pelo operador
+  kwhRateado   Float @map("kwh_rateado") // o que virou linha MANUAL (desconta dias já medidos)
+  diasRateados Int   @map("dias_rateados")
+
+  fonte      String? // de onde veio o número: print do app, cliente, foto do inversor
+  observacao String?
+
+  registradoPor String   @map("registrado_por") // email do operador
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  client BrasilSolarClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  // Janelas sobrepostas dobrariam o kWh do mesmo dia — o unique pega o caso
+  // idêntico e `lancarGeracaoManual` recusa qualquer interseção parcial.
+  @@unique([clientId, dataInicio, dataFim])
+  @@index([clientId, dataInicio])
+  @@index([ano, mes])
+  @@map("manual_generation_entries")
 }
 
 model MonitoringAlert {

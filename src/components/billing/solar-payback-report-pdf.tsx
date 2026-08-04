@@ -756,6 +756,22 @@ export function SolarPaybackReportPDF({
                 ⚠ {mes.anomalia}
               </Text>
             )}
+            {/* Geração informada à mão não pode se passar por leitura de
+                inversor — o cliente precisa saber que o número é declarado. */}
+            {mes.geracaoManualKwh > 0 && (
+              <Text
+                style={{
+                  fontSize: 8,
+                  color: C.orange,
+                  marginBottom: 6,
+                  fontStyle: "italic",
+                }}
+              >
+                Geração de {labelMes} informada manualmente ({formatKwh(mes.geracaoManualKwh)}
+                ): o monitoramento da usina não enviou dados no período, então foi usado o total do
+                mês informado pela Brasil Solar.
+              </Text>
+            )}
             <View style={[s.kpiRow, { flexWrap: "wrap" }]}>
               {/* Linha 1: Geração · Consumo · Créditos · Desempenho */}
               {!semMonitoramento && (

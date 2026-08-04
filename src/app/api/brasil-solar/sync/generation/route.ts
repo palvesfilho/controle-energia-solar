@@ -72,6 +72,8 @@ export async function POST(req: NextRequest) {
                 clientId_data: { clientId: clientInfo.id, data: date },
               },
               update: {
+                // Dado medido vence lançamento manual (origem MANUAL).
+                origem: "API",
                 geracaoDiaria: day.energyKwh,
               },
               create: {

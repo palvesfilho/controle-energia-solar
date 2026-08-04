@@ -5,7 +5,12 @@ import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { performanceRatioMesAtual } from "@/lib/geracao-esperada";
 
-// POST /api/brasil-solar/[id]/monitoring - Registrar leitura de geracao
+// POST /api/brasil-solar/[id]/monitoring - Registrar leitura de UM DIA a mao.
+//
+// Grava origem=MANUAL: nao veio da plataforma, e o proximo sync do dia
+// sobrescreve. Pra lancar o TOTAL DE UM MES (caso comum quando a plataforma nao
+// integra), use /api/brasil-solar/[id]/geracao-manual — ele rateia o total e
+// registra auditoria em ManualGenerationEntry.
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -26,6 +31,7 @@ export async function POST(
       clientId_data: { clientId: id, data },
     },
     update: {
+      origem: "MANUAL",
       geracaoDiaria: parseFloat(body.geracaoDiaria),
       geracaoEsperada: body.geracaoEsperada ? parseFloat(body.geracaoEsperada) : undefined,
       picoMaximo: body.picoMaximo ? parseFloat(body.picoMaximo) : undefined,
@@ -36,6 +42,7 @@ export async function POST(
     create: {
       clientId: id,
       data,
+      origem: "MANUAL",
       geracaoDiaria: parseFloat(body.geracaoDiaria),
       geracaoEsperada: body.geracaoEsperada ? parseFloat(body.geracaoEsperada) : null,
       picoMaximo: body.picoMaximo ? parseFloat(body.picoMaximo) : null,
@@ -68,14 +75,14 @@ export async function POST(
     ? performanceRatioMesAtual(client, geracaoMes, new Date())
     : null;
 
+  // Nao mexe em statusMonitoramento nem em ultimaLeitura: digitar geracao a mao
+  // nao faz a plataforma voltar a enviar. Marcar ONLINE aqui apagaria o alerta
+  // de usina muda — o problema que motivou o lancamento manual.
   await prisma.brasilSolarClient.update({
     where: { id },
     data: {
-      ultimaGeracao: parseFloat(body.geracaoDiaria),
-      ultimaLeitura: new Date(),
       geracaoMesAtual: geracaoMes,
       performanceRatio: pr,
-      statusMonitoramento: "ONLINE",
     },
   });
 

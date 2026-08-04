@@ -157,6 +157,8 @@ async function processPlatform(
         await prisma.monitoringLog.upsert({
           where: { clientId_data: { clientId: client.id, data: date } },
           update: {
+            // Dado medido vence lançamento manual (origem MANUAL).
+            origem: "API",
             geracaoDiaria: day.energyKwh,
             ...(day.irradiacao != null ? { irradiacao: day.irradiacao } : {}),
           },

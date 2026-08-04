@@ -32,6 +32,7 @@ import {
   Zap,
   FileBarChart,
   Inbox,
+  KeyboardIcon,
 } from "lucide-react";
 import { canAccessSection, type AdminSection } from "@/lib/roles";
 import { UserRole } from "@/types/next-auth";
@@ -160,6 +161,7 @@ export const adminNavItems: NavEntry[] = [
       { kind: "leaf", module: "bs", section: "brasilSolar", title: "Clientes Brasil Solar", href: "/admin/brasil-solar/proprietarios", icon: FolderTree },
       { kind: "leaf", module: "bs", section: "brasilSolar", title: "Plantas Fotovoltaicas", href: "/admin/brasil-solar", icon: SunMedium },
       { kind: "leaf", module: "bs", section: "brasilSolar", title: "Relatórios — Visão Geral", href: "/admin/brasil-solar/relatorios", icon: FileBarChart },
+      { kind: "leaf", module: "bs", section: "brasilSolar", title: "Geração Manual", href: "/admin/brasil-solar/geracao-manual", icon: KeyboardIcon },
     ],
   },
   {
