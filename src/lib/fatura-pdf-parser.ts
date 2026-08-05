@@ -784,6 +784,37 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
 
   const grupoA = extractGrupoA(lines);
 
+  // A leitura de injeção acima para na PRIMEIRA linha "Energia Injetada". Isso
+  // valia enquanto a fatura tinha um posto só. No Grupo A com dois postos a
+  // primeira linha é a de PONTA — que numa usina solar é ~zero — e a injeção
+  // real, toda em FORA PONTA, era descartada em silêncio: a GRAFICA JACUI
+  // registrou 0 kWh injetado de 12/2025 a 07/2026 enquanto o medidor marcava
+  // 1.829 a 6.486 kWh por mês.
+  //
+  // Quando o Grupo A leu as grandezas do medidor, elas mandam: o total é a SOMA
+  // dos postos. As leituras (anterior/atual) só continuam sendo publicadas
+  // quando há um único posto — com dois, não existe um par de índices que
+  // explique o total, e inventar um seria mentir na auditoria.
+  const injecoesMedidor = grupoA?.leiturasMedidor.filter(
+    (l) => /injetada|inj\b/i.test(l.grandeza) && l.consumo != null,
+  );
+  const injetadaMedidor =
+    injecoesMedidor && injecoesMedidor.length > 0
+      ? {
+          energiaInjetadaMedidorKwh: injecoesMedidor.reduce((s, l) => s + (l.consumo ?? 0), 0),
+          leituraInjetadaAnterior:
+            injecoesMedidor.length === 1 ? injecoesMedidor[0].leituraAnterior : null,
+          leituraInjetadaAtual:
+            injecoesMedidor.length === 1 ? injecoesMedidor[0].leituraAtual : null,
+          constanteMedidorInjetada: injecoesMedidor[0].constante,
+        }
+      : {
+          energiaInjetadaMedidorKwh,
+          leituraInjetadaAnterior,
+          leituraInjetadaAtual,
+          constanteMedidorInjetada,
+        };
+
   return {
     codigoInstalacao,
     rawText,
@@ -829,10 +860,7 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
       saldoExpirarProxMesKwh,
       participacaoGeracaoPct,
 
-      energiaInjetadaMedidorKwh,
-      leituraInjetadaAnterior,
-      leituraInjetadaAtual,
-      constanteMedidorInjetada,
+      ...injetadaMedidor,
 
       custoDispTusdKwh,
       custoDispTusdValor,
