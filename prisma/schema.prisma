@@ -672,6 +672,19 @@ model ConsumerBill {
   leituraInjetadaAtual      Float? @map("leitura_injetada_atual")
   constanteMedidorInjetada  Float? @map("constante_medidor_injetada")
 
+  // Grupo A: o medidor registra a injeção em DOIS postos, cada um com seu par de
+  // leituras. `energiaInjetadaMedidorKwh` acima continua sendo o TOTAL (soma dos
+  // postos) — é o que relatório e validação do inversor comparam com a geração —
+  // mas o total sozinho APAGA a quebra, e o cliente Grupo A injeta nos dois.
+  // Aqui cada posto fica inteiro: kWh e as leituras que o explicam.
+  // Em fatura de posto único estes ficam nulos e valem os campos legados acima.
+  energiaInjetadaMedidorPontaKwh     Float? @map("energia_injetada_medidor_ponta_kwh")
+  leituraInjetadaPontaAnterior       Float? @map("leitura_injetada_ponta_anterior")
+  leituraInjetadaPontaAtual          Float? @map("leitura_injetada_ponta_atual")
+  energiaInjetadaMedidorForaPontaKwh Float? @map("energia_injetada_medidor_fora_ponta_kwh")
+  leituraInjetadaForaPontaAnterior   Float? @map("leitura_injetada_fora_ponta_anterior")
+  leituraInjetadaForaPontaAtual      Float? @map("leitura_injetada_fora_ponta_atual")
+
   // Custo de Disponibilidade (cobrança mínima B3 trifásico = 100 kWh). Separado do consumo real.
   custoDispTusdKwh   Float? @map("custo_disp_tusd_kwh")
   custoDispTusdValor Float? @map("custo_disp_tusd_valor")

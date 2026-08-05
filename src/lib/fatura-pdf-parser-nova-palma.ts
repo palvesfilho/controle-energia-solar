@@ -555,6 +555,15 @@ export function parseNovaPalma(lines: string[]): ParsedFaturaPdf {
       leituraInjetadaAtual,
       constanteMedidorInjetada,
 
+      // A Nova Palma é B3 convencional: medidor de posto único, sem quebra
+      // ponta/fora ponta pra guardar.
+      energiaInjetadaMedidorPontaKwh: null,
+      leituraInjetadaPontaAnterior: null,
+      leituraInjetadaPontaAtual: null,
+      energiaInjetadaMedidorForaPontaKwh: null,
+      leituraInjetadaForaPontaAnterior: null,
+      leituraInjetadaForaPontaAtual: null,
+
       // B3 convencional: a Nova Palma não imprime linha de custo de disponibilidade.
       custoDispTusdKwh: null,
       custoDispTusdValor: null,

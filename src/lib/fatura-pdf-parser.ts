@@ -187,6 +187,14 @@ export interface ParsedFaturaPdf {
     leituraInjetadaAtual: number | null;
     constanteMedidorInjetada: number | null;
 
+    // Grupo A injeta nos dois postos — o total acima não substitui a quebra.
+    energiaInjetadaMedidorPontaKwh: number | null;
+    leituraInjetadaPontaAnterior: number | null;
+    leituraInjetadaPontaAtual: number | null;
+    energiaInjetadaMedidorForaPontaKwh: number | null;
+    leituraInjetadaForaPontaAnterior: number | null;
+    leituraInjetadaForaPontaAtual: number | null;
+
     custoDispTusdKwh: number | null;
     custoDispTusdValor: number | null;
     custoDispTeKwh: number | null;
@@ -791,13 +799,21 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
   // registrou 0 kWh injetado de 12/2025 a 07/2026 enquanto o medidor marcava
   // 1.829 a 6.486 kWh por mês.
   //
-  // Quando o Grupo A leu as grandezas do medidor, elas mandam: o total é a SOMA
-  // dos postos. As leituras (anterior/atual) só continuam sendo publicadas
-  // quando há um único posto — com dois, não existe um par de índices que
-  // explique o total, e inventar um seria mentir na auditoria.
+  // Quando o Grupo A leu as grandezas do medidor, elas mandam. O cliente Grupo A
+  // injeta em PONTA e em FORA PONTA, e cada posto tem seu próprio par de
+  // leituras: guardar só o total apagaria a quebra. Então grava-se as DUAS
+  // informações — cada posto inteiro (kWh + leituras que o explicam) — e o
+  // total como soma, porque é o total que relatório e validação do inversor
+  // comparam contra a geração.
+  //
+  // O par legado `leituraInjetadaAnterior/Atual` é um só e não representa dois
+  // postos: fica nulo quando há dois, senão publicaria índices que não fecham
+  // com o total pra quem audita. A quebra mora nos campos por posto.
   const injecoesMedidor = grupoA?.leiturasMedidor.filter(
     (l) => /injetada|inj\b/i.test(l.grandeza) && l.consumo != null,
   );
+  const injPonta = injecoesMedidor?.find((l) => l.posto === "PONTA") ?? null;
+  const injForaPonta = injecoesMedidor?.find((l) => l.posto === "FORA_PONTA") ?? null;
   const injetadaMedidor =
     injecoesMedidor && injecoesMedidor.length > 0
       ? {
@@ -807,12 +823,26 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
           leituraInjetadaAtual:
             injecoesMedidor.length === 1 ? injecoesMedidor[0].leituraAtual : null,
           constanteMedidorInjetada: injecoesMedidor[0].constante,
+
+          energiaInjetadaMedidorPontaKwh: injPonta?.consumo ?? null,
+          leituraInjetadaPontaAnterior: injPonta?.leituraAnterior ?? null,
+          leituraInjetadaPontaAtual: injPonta?.leituraAtual ?? null,
+          energiaInjetadaMedidorForaPontaKwh: injForaPonta?.consumo ?? null,
+          leituraInjetadaForaPontaAnterior: injForaPonta?.leituraAnterior ?? null,
+          leituraInjetadaForaPontaAtual: injForaPonta?.leituraAtual ?? null,
         }
       : {
           energiaInjetadaMedidorKwh,
           leituraInjetadaAnterior,
           leituraInjetadaAtual,
           constanteMedidorInjetada,
+
+          energiaInjetadaMedidorPontaKwh: null,
+          leituraInjetadaPontaAnterior: null,
+          leituraInjetadaPontaAtual: null,
+          energiaInjetadaMedidorForaPontaKwh: null,
+          leituraInjetadaForaPontaAnterior: null,
+          leituraInjetadaForaPontaAtual: null,
         };
 
   return {
