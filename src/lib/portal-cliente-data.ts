@@ -315,7 +315,9 @@ async function getClientIds(proprietarioId: string): Promise<string[]> {
  * do `InverterSample` (só Sungrow persiste hoje) — null à noite, então a curva
  * cobre naturalmente só o período de sol. Timestamps são convertidos de UTC
  * para horário de Brasília (BRT, UTC−3); como toda a geração de um dia BRT cai
- * dentro do mesmo dia UTC, agrupar por dia UTC é equivalente aqui.
+ * dentro do mesmo dia UTC, agrupar por dia UTC é equivalente aqui. As pontas em
+ * zero (antes do nascer e depois do pôr do sol) são aparadas — ver comentário
+ * no recorte.
  *
  * `totalKwh` vem do MonitoringLog do dia (leitura oficial da distribuidora do
  * inversor) e existe mesmo quando a usina não tem curva intradiária.
@@ -369,16 +371,29 @@ async function getCurvaDia(
     byInstant.set(t, (byInstant.get(t) ?? 0) + r.pAcW);
   }
 
+  // A coleta da Sungrow varre 8h–24h UTC (= 5h–21h BRT), então sobram amostras
+  // com potência zero antes do nascer e depois do pôr do sol. Sem aparar, o
+  // gráfico "começa" às 5h da manhã — hora em que não há sol no Brasil. Mantém
+  // uma amostra zerada de cada lado pra curva ancorar no chão.
+  const ordenados = Array.from(byInstant.entries()).sort(([a], [b]) => a - b);
+  const primeiroSol = ordenados.findIndex(([, w]) => w > 0);
+  const recorte =
+    primeiroSol === -1
+      ? ordenados // dia inteiro em zero: mostra a linha no chão, não "sem dados"
+      : (() => {
+          let ultimoSol = ordenados.length - 1;
+          while (ultimoSol > primeiroSol && ordenados[ultimoSol][1] <= 0) ultimoSol--;
+          return ordenados.slice(Math.max(0, primeiroSol - 1), ultimoSol + 2);
+        })();
+
   let picoW = 0;
-  const pontos = Array.from(byInstant.entries())
-    .sort(([a], [b]) => a - b)
-    .map(([t, w]) => {
-      if (w > picoW) picoW = w;
-      const brt = new Date(t - BRT_OFFSET_MS);
-      const hh = String(brt.getUTCHours()).padStart(2, "0");
-      const mm = String(brt.getUTCMinutes()).padStart(2, "0");
-      return { hora: `${hh}:${mm}`, kw: Math.round((w / 1000) * 100) / 100 };
-    });
+  const pontos = recorte.map(([t, w]) => {
+    if (w > picoW) picoW = w;
+    const brt = new Date(t - BRT_OFFSET_MS);
+    const hh = String(brt.getUTCHours()).padStart(2, "0");
+    const mm = String(brt.getUTCMinutes()).padStart(2, "0");
+    return { hora: `${hh}:${mm}`, kw: Math.round((w / 1000) * 100) / 100 };
+  });
 
   return { data: ymd, label, pontos, picoKw: Math.round((picoW / 1000) * 10) / 10, totalKwh };
 }
