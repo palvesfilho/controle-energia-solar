@@ -131,6 +131,7 @@ export async function consultarJob(jobId: string): Promise<ResultadoJob> {
     resultado?: {
       completo?: boolean;
       clientes?: Array<{
+        erro?: string;
         ucs_incompletas?: string[];
         faturas?: Array<{
           uc: string;
@@ -147,7 +148,13 @@ export async function consultarJob(jobId: string): Promise<ResultadoJob> {
 
   const faturas: FaturaDoRobo[] = [];
   const ucsIncompletas: string[] = [];
+  // O robô nunca aborta por um cliente: ele registra o motivo em `clientes[].erro`
+  // e segue. Esse é o campo que carrega diagnósticos acionáveis — "esta conta não
+  // tem UC vinculada", por exemplo. Sem lê-lo, a tela só mostraria "0 faturas" e a
+  // pessoa não saberia o que fazer.
+  const motivos: string[] = [];
   for (const cliente of job.resultado?.clientes ?? []) {
+    if (cliente.erro) motivos.push(cliente.erro);
     ucsIncompletas.push(...(cliente.ucs_incompletas ?? []));
     for (const f of cliente.faturas ?? []) {
       faturas.push({
@@ -165,7 +172,9 @@ export async function consultarJob(jobId: string): Promise<ResultadoJob> {
   return {
     status: job.status,
     progresso: job.progresso ?? "",
-    erro: job.erro ?? null,
+    // O erro do job (falha técnica) tem precedência; na falta dele, o motivo que
+    // o robô registrou por cliente é o que explica um resultado vazio.
+    erro: job.erro ?? (motivos.length ? motivos.join(" ") : null),
     completo: job.resultado?.completo ?? null,
     faturas,
     ucsIncompletas,

@@ -269,6 +269,12 @@ export function StatusFaturasCard({
           if (j.status === "falhou") {
             total.erros++;
             toast.error(`${u.nome}: o robô falhou — ${j.erro || "sem detalhe"}`);
+          } else if (j.erro && Number(j.encontradas ?? 0) === 0) {
+            // Terminou "bem" mas sem achar nada, e o robô disse por quê (conta sem
+            // UC vinculada, por exemplo). O motivo vale mais que o silêncio: sem
+            // ele a pessoa repete o botão sem saber que o problema é no portal.
+            total.erros++;
+            toast.warning(`${u.nome}: ${j.erro}`, { duration: 15000 });
           } else if (j.status === "cancelado") {
             toast.info(`${u.nome}: cancelado — o que já baixou foi preservado.`);
           } else {
