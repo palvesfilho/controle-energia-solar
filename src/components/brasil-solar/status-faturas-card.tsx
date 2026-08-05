@@ -75,6 +75,12 @@ function fmtBR(n: number): string {
   });
 }
 
+/** Por extenso, para a mensagem de "o portal só tem a partir de ...". */
+const MESES_EXTENSO = [
+  "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+];
+
 function mesAno(mes: number, ano: number): string {
   const meses = [
     "jan", "fev", "mar", "abr", "mai", "jun",
@@ -184,7 +190,11 @@ export function StatusFaturasCard({
    * APARECENDO no seletor e as faturas vão preenchendo a tabela conforme descem,
    * em vez de tudo surgir de uma vez no fim.
    */
-  async function syncAntigas(meses: number, rotuloInicio: string) {
+  async function syncAntigas(
+    meses: number,
+    rotuloInicio: string,
+    inicio: { ano: number; mes: number },
+  ) {
     if (!data) return;
     const alvos = data.ucs.filter((u) => u.credencial);
     if (alvos.length === 0) {
@@ -194,6 +204,10 @@ export function StatusFaturasCard({
 
     setSyncingAntigas(true);
     const total = { criadas: 0, jaExistiam: 0, semSegundaVia: 0, erros: 0, incompletas: 0 };
+    // Competência mais antiga que o portal ofereceu, entre TODAS as UCs. Se ela
+    // for mais recente que o mês pedido, o histórico acabou antes — e isso não é
+    // falha: a concessionária só guarda a segunda via por um tempo.
+    let maisAntiga: { ano: number; mes: number } | null = null;
 
     try {
       for (let i = 0; i < alvos.length; i++) {
@@ -262,6 +276,15 @@ export function StatusFaturasCard({
             total.jaExistiam += Number(j.jaExistiam ?? 0);
             total.semSegundaVia += Number(j.semSegundaVia ?? 0);
             total.erros += Number(j.erros ?? 0);
+
+            const ano = Number(j.maisAntigaAno);
+            const mesA = Number(j.maisAntigaMes);
+            if (ano && mesA) {
+              if (!maisAntiga || ano < maisAntiga.ano ||
+                  (ano === maisAntiga.ano && mesA < maisAntiga.mes)) {
+                maisAntiga = { ano, mes: mesA };
+              }
+            }
             // `completo: false` = o robô não varreu tudo (o portal caiu no meio).
             // Não é sucesso: contar à parte evita um "pronto" enganoso no fim.
             if (j.completo === false) total.incompletas++;
@@ -284,6 +307,24 @@ export function StatusFaturasCard({
     if (total.jaExistiam) partes.push(`${total.jaExistiam} já existia(m)`);
     if (total.semSegundaVia) partes.push(`${total.semSegundaVia} sem segunda via`);
     if (total.erros) partes.push(`${total.erros} com erro`);
+
+    // O portal acabou antes do mês pedido? Avisa em separado, porque a pessoa
+    // pediu 2021, recebeu de 2024 e sem isto não sabe se foi limite da
+    // concessionária ou defeito. Vale mesmo quando o resto correu bem.
+    const antiga: { ano: number; mes: number } | null = maisAntiga;
+    if (
+      antiga &&
+      (antiga.ano > inicio.ano ||
+        (antiga.ano === inicio.ano && antiga.mes > inicio.mes))
+    ) {
+      const nome = MESES_EXTENSO[antiga.mes - 1];
+      toast.warning(
+        `A concessionária só tem segunda via a partir de ${nome}/${antiga.ano}. ` +
+          `As faturas anteriores a essa data não estão mais no portal — para ` +
+          `essas, use o upload manual.`,
+        { duration: 12000 },
+      );
+    }
 
     if (total.incompletas) {
       toast.warning(

@@ -35,6 +35,23 @@ export const runtime = "nodejs";
 /** Estados em que o robô já não vai mexer mais no job. */
 const TERMINAIS = ["concluido", "falhou", "cancelado"];
 
+/** Mês do robô ("Jun/2026", às vezes já "2026-06") -> competência numérica. */
+const ABREV = ["jan", "fev", "mar", "abr", "mai", "jun",
+               "jul", "ago", "set", "out", "nov", "dez"];
+
+function competenciaDe(mes: string): { ano: number; mes: number } | null {
+  const texto = (mes || "").trim().toLowerCase();
+  const iso = texto.match(/^(\d{4})-(\d{2})$/);           // Nova Palma manda assim
+  if (iso) return { ano: Number(iso[1]), mes: Number(iso[2]) };
+  const pt = texto
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .match(/^([a-z]{3})[a-z]*[/\-\s]+(\d{4})$/);          // "Jun/2026"
+  if (!pt) return null;
+  const i = ABREV.indexOf(pt[1]);
+  return i < 0 ? null : { ano: Number(pt[2]), mes: i + 1 };
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -98,6 +115,20 @@ export async function GET(
     }
   }
 
+  // A fatura mais ANTIGA que o portal ofereceu. A concessionária mantém a segunda
+  // via por tempo determinado: quando o robô varre até o fim e a mais antiga é mais
+  // recente do que se pediu, não houve falha — aquele mês simplesmente não existe
+  // mais lá. Sem este dado a tela não consegue distinguir isso de um erro.
+  let maisAntiga: { ano: number; mes: number } | null = null;
+  for (const f of job.faturas) {
+    const c = competenciaDe(f.mes);
+    if (!c) continue;
+    if (!maisAntiga || c.ano < maisAntiga.ano ||
+        (c.ano === maisAntiga.ano && c.mes < maisAntiga.mes)) {
+      maisAntiga = c;
+    }
+  }
+
   const semPdf = job.faturas.filter((f: FaturaDoRobo) =>
     ["em_aberto", "indisponivel"].includes(f.status),
   );
@@ -116,6 +147,9 @@ export async function GET(
     encontradas: job.faturas.length,
     semSegundaVia: semPdf.length,
     falhasNoDownload: falharam.length,
+    // Até onde o portal tem segunda via para esta UC (null = nada encontrado).
+    maisAntigaAno: maisAntiga?.ano ?? null,
+    maisAntigaMes: maisAntiga?.mes ?? null,
     // Da importação: o que virou fatura no Gestor.
     ...contarPorStatus(importadas),
     items: importadas,

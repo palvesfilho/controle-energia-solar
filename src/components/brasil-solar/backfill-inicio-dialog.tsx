@@ -39,8 +39,16 @@ export function mesesDesde(ano: number, mes: number): number {
 interface Props {
   open: boolean;
   onOpenChange: (aberto: boolean) => void;
-  /** Recebe quantos meses buscar, contados do mês escolhido até hoje. */
-  onConfirmar: (meses: number, rotulo: string) => void;
+  /**
+   * Recebe quantos meses buscar (do mês escolhido até hoje) e o próprio mês de
+   * início — a tela precisa dele para dizer, no fim, se o portal esgotou antes
+   * do que se pediu.
+   */
+  onConfirmar: (
+    meses: number,
+    rotulo: string,
+    inicio: { ano: number; mes: number },
+  ) => void;
   /** Quantas UCs serão percorridas — o operador merece saber antes de começar. */
   totalUcs: number;
 }
@@ -203,7 +211,7 @@ export function BackfillInicioDialog({
             disabled={invalido}
             onClick={() => {
               onOpenChange(false);
-              onConfirmar(total, rotulo);
+              onConfirmar(total, rotulo, { ano, mes });
             }}
           >
             <History className="h-4 w-4 mr-1.5" />
