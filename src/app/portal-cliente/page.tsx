@@ -12,6 +12,8 @@ import {
 import { resolvePlanoPortal } from "@/lib/portal-cliente-plano";
 import { formatNomeSaudacao } from "@/lib/formatters";
 import { PortalClienteBody } from "@/components/brasil-solar/portal-cliente-body";
+import { PwaRegister } from "@/components/pwa/pwa-register";
+import { InstallPrompt } from "@/components/pwa/install-prompt";
 
 export const dynamic = "force-dynamic";
 
@@ -95,6 +97,12 @@ export default async function PortalClientePage() {
           />
         )}
       </main>
+
+      {/* PWA: registra o service worker e oferece a instalação na tela de
+          início. Fica na página, não no layout, para não aparecer na rota
+          pública de pagamento (`/portal-cliente/pagar/<token>`). */}
+      <PwaRegister />
+      <InstallPrompt />
     </div>
   );
 }

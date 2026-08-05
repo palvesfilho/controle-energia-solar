@@ -1,0 +1,35 @@
+{
+  "id": "/portal-cliente",
+  "name": "Rede Brasil Solar — Portal do Cliente",
+  "short_name": "Brasil Solar",
+  "description": "Acompanhe a geração da sua usina solar, sua economia e seus relatórios mensais.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "/portal-cliente",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F5F8F7",
+  "theme_color": "#2E9B87",
+  "categories": ["business", "utilities"],
+  "icons": [
+    {
+      "src": "/pwa/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
