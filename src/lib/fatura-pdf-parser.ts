@@ -335,6 +335,18 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
       }
     }
   }
+  // (2b) Formato ANTIGO do Grupo A: o rótulo vem SEM "Código da" — a linha é só
+  // "Instalação 3095355874" (GRAFICA JACUI 07/2025 a 05/2026). O número fica no
+  // FIM da linha, então nem (2) nem o fallback (a)/(b) pegavam e a fatura era
+  // recusada com "Código da instalação não encontrado".
+  // O número tem que estar COLADO no rótulo: "Saldo em Energia da Instalação:
+  // Ponta 0,0000000000 kWh" também contém "Instalação" e traria 0000000000.
+  if (!codigoInstalacao) {
+    for (const line of lines) {
+      const m = line.match(/\binstala[cç][aã]o\s*:?\s*(\d{10})\b/i);
+      if (m) { codigoInstalacao = m[1]; break; }
+    }
+  }
   // Fallback (a)/(b): 10 dígitos no início de uma linha.
   if (!codigoInstalacao) {
     for (const line of lines) {
