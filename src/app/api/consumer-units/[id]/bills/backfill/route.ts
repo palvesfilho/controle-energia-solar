@@ -30,11 +30,15 @@ export const runtime = "nodejs";
  */
 const MESES_PADRAO = 12;
 /**
- * Teto por chamada. O robô varre a tabela do portal fatura a fatura, então um
- * pedido muito fundo vira uma sessão longuíssima — e o portal derruba sessão
- * parada. 60 meses (5 anos) cobre qualquer histórico real de contrato.
+ * Teto por chamada. Casa com o alcance do seletor da tela (8 anos): se lá dá para
+ * escolher 2019, aqui tem de caber, senão a tela promete um período e a rota
+ * entrega outro, calada.
+ *
+ * Um pedido fundo NÃO custa proporcionalmente caro: o robô pula (sem baixar) toda
+ * fatura que já está no armazenamento, então repetir com um mês de início mais
+ * antigo só gasta tempo com o pedaço que falta.
  */
-const MESES_MAX = 60;
+const MESES_MAX = 96;
 
 export async function POST(
   req: NextRequest,

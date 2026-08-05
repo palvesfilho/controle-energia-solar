@@ -21,7 +21,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { History } from "lucide-react";
+import { History, Info } from "lucide-react";
 
 const MESES = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
@@ -59,11 +59,18 @@ export function BackfillInicioDialog({
   const [ano, setAno] = useState(padrao.getFullYear());
   const [mes, setMes] = useState(padrao.getMonth() + 1);
 
+  // 8 anos de alcance. Casa com MESES_MAX (96) da rota: o que dá para escolher
+  // aqui é o que ela aceita, senão a tela prometeria um período maior do que o
+  // buscado de fato.
   const anos = Array.from({ length: 8 }, (_, i) => anoAtual - i);
   const total = mesesDesde(ano, mes);
   const rotulo = `${MESES[mes - 1]}/${ano}`;
   // Mês futuro não existe em fatura nenhuma.
   const invalido = ano > anoAtual || (ano === anoAtual && mes > hoje.getMonth() + 1);
+  // O mês mais antigo que dá para pedir. Anunciado na tela para ninguém supor um
+  // alcance que não existe — e para o operador saber que, se precisar de algo mais
+  // antigo, o caminho é outro (upload manual).
+  const limiteAno = anos[anos.length - 1];
 
   const atalhos = [3, 6, 12, 24].map((n) => {
     const d = new Date(anoAtual, hoje.getMonth() - (n - 1), 1);
@@ -152,6 +159,16 @@ export function BackfillInicioDialog({
             </div>
           </div>
 
+          <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+            <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <span>
+              <strong>Busca limitada a janeiro/{limiteAno}</strong> — a
+              concessionária mantém a segunda via por tempo determinado, e mesmo
+              dentro desse período uma fatura pode não estar disponível. Para
+              faturas mais antigas, use o upload manual.
+            </span>
+          </div>
+
           <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
             {invalido ? (
               <span className="text-destructive">
@@ -166,6 +183,12 @@ export function BackfillInicioDialog({
                   {totalUcs} {totalUcs === 1 ? "UC" : "UCs"}
                 </strong>
                 , uma de cada vez. Pode levar alguns minutos por UC.
+                {" "}
+                <span className="block mt-1">
+                  Faturas que já estão aqui são <strong className="text-foreground">puladas</strong>,
+                  não baixadas de novo — dá para repetir com um mês mais antigo
+                  que só o pedaço que falta é buscado.
+                </span>
               </>
             )}
           </div>
