@@ -210,25 +210,54 @@ async function main() {
         continue;
       }
 
-      for (const d of dias) {
-        const data = new Date(Date.UTC(j.ano, j.mes - 1, d.day, 12, 0, 0));
-        const antes = await prisma.monitoringLog.findUnique({
-          where: { clientId_data: { clientId: c.id, data } },
-          select: { id: true },
-        });
-        await prisma.monitoringLog.upsert({
-          where: { clientId_data: { clientId: c.id, data } },
-          // origem: "API" derruba lançamento manual do dia — dado medido vence.
-          update: { origem: "API", geracaoDiaria: d.energyKwh },
-          create: {
-            clientId: c.id,
-            data,
-            geracaoDiaria: d.energyKwh,
-            geracaoEsperada: c.geracaoMediaEsperada ? c.geracaoMediaEsperada / 30 : null,
+      // Um mês inteiro em ~2 idas ao banco, não 2 por DIA. O banco é remoto
+      // (Railway): com upsert dia a dia o custo é latência de rede, não de
+      // escrita — media ~600 ms por dia gravado, o que dava dezenas de horas
+      // pra fechar a base. A esmagadora maioria dos meses deficitários tem
+      // ZERO dia no banco, e esses saem num único createMany.
+      const existentes = await prisma.monitoringLog.findMany({
+        where: {
+          clientId: c.id,
+          data: {
+            gte: new Date(Date.UTC(j.ano, j.mes - 1, 1, 12, 0, 0)),
+            lte: new Date(Date.UTC(j.ano, j.mes - 1, diasNoMes(j.ano, j.mes), 12, 0, 0)),
           },
+        },
+        select: { data: true, geracaoDiaria: true, origem: true },
+      });
+      const porDia = new Map(existentes.map((e) => [e.data.getUTCDate(), e]));
+
+      const novos = dias
+        .filter((d) => !porDia.has(d.day))
+        .map((d) => ({
+          clientId: c.id,
+          data: new Date(Date.UTC(j.ano, j.mes - 1, d.day, 12, 0, 0)),
+          geracaoDiaria: d.energyKwh,
+          geracaoEsperada: c.geracaoMediaEsperada ? c.geracaoMediaEsperada / 30 : null,
+        }));
+      if (novos.length > 0) {
+        // skipDuplicates: outra execução pode ter gravado o mesmo dia no meio.
+        await prisma.monitoringLog.createMany({ data: novos, skipDuplicates: true });
+        criados += novos.length;
+      }
+
+      // Dia que já existe só é reescrito quando muda de fato — reescrever o
+      // mesmo número seria pagar uma ida ao banco por nada.
+      for (const d of dias) {
+        const atual = porDia.get(d.day);
+        if (!atual) continue;
+        if (atual.origem === "API" && atual.geracaoDiaria === d.energyKwh) continue;
+        await prisma.monitoringLog.update({
+          where: {
+            clientId_data: {
+              clientId: c.id,
+              data: new Date(Date.UTC(j.ano, j.mes - 1, d.day, 12, 0, 0)),
+            },
+          },
+          // origem: "API" derruba lançamento manual do dia — dado medido vence.
+          data: { origem: "API", geracaoDiaria: d.energyKwh },
         });
-        if (antes) atualizados++;
-        else criados++;
+        atualizados++;
       }
       console.log(`  ${c.nome} [${plataforma}] ${k}: banco ${jaTem}d -> API ${dias.length}d`);
     }
