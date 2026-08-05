@@ -58,13 +58,12 @@ const isApi = createRouteMatcher([
 const isPublicApi = createRouteMatcher([
   "/api/webhooks/(.*)",
   "/api/auth/(.*)", // legado NextAuth — pode remover quando lib/auth-options sumir
-  // Server-to-server: o robô RGE (backfill de faturas) faz POST aqui com a sua
-  // PRÓPRIA autenticação (Authorization: Bearer CRON_SECRET). Sem sessão Clerk,
-  // então precisa ser público no middleware — a rota valida o Bearer.
+  // Server-to-server: porta de entrada de faturas históricas, chamada por um robô
+  // de download com a sua PRÓPRIA autenticação (Authorization: Bearer CRON_SECRET).
+  // Sem sessão Clerk, então precisa ser pública no middleware — a rota valida o
+  // Bearer. Hoje sem chamador: o robô antigo saiu em 05/08/2026 e o novo (serviço
+  // `entrega-robos-railway`) ainda não foi integrado.
   "/api/faturas-energia/ingest",
-  // Callback do robô RGE ao terminar o backfill assíncrono (Bearer CRON_SECRET,
-  // sem sessão Clerk). O [id] da UC é dinâmico → wildcard.
-  "/api/consumer-units/(.*)/bills/backfill/status",
   // Pagamento branded: o cliente paga ANTES de ter conta. A chave é o
   // conviteToken (UUID) na URL — a rota valida o token, não a sessão.
   "/api/portal/cobranca/(.*)",

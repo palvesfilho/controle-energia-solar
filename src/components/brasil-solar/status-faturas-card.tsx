@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -86,13 +86,36 @@ function sameComp(a: Competencia | null, b: Competencia | null): boolean {
   return !!a && !!b && a.mes === b.mes && a.ano === b.ano;
 }
 
-export function StatusFaturasCard({ proprietarioId }: { proprietarioId: string }) {
+export function StatusFaturasCard({
+  proprietarioId,
+  /**
+   * Avisa o pai que faturas novas entraram no banco, para ele recarregar os
+   * outros cards da página que também as mostram (a "Lista de faturas" da UC,
+   * logo abaixo). Sem isto o backfill só apareceria lá depois de um F5.
+   */
+  onFaturasImportadas,
+}: {
+  proprietarioId: string;
+  onFaturasImportadas?: () => void;
+}) {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [syncingAntigas, setSyncingAntigas] = useState(false);
   const [data, setData] = useState<Response | null>(null);
   const [selected, setSelected] = useState<Competencia | null>(null);
   const [preview, setPreview] = useState<FaturaPreviewData | null>(null);
+  const [syncingAntigas, setSyncingAntigas] = useState(false);
+  // Última linha do log do robô + em que UC ele está. É o sinal de vida durante
+  // um backfill, que pode levar muitos minutos. Vive só enquanto a tela está
+  // aberta: fechar NÃO cancela o robô — o job segue, e clicar de novo depois é
+  // seguro porque a importação é idempotente (não duplica fatura).
+  const [progressoAntigas, setProgressoAntigas] = useState("");
+  const naTela = useRef(true);
+  useEffect(() => {
+    naTela.current = true;
+    return () => {
+      naTela.current = false;
+    };
+  }, []);
 
   const load = useCallback(
     async (comp?: Competencia | null) => {
@@ -147,42 +170,124 @@ export function StatusFaturasCard({ proprietarioId }: { proprietarioId: string }
     await load(selected);
   }
 
-  // Backfill de faturas de meses ANTERIORES via robô RGE (portal CPFL/RGE).
-  // Só faz sentido nas UCs com credencial cadastrada; as demais são puladas.
+  /**
+   * Baixa as faturas de meses anteriores de TODAS as UCs com credencial.
+   *
+   * UMA UC DE CADA VEZ, esperando a anterior terminar: cada job abre um navegador
+   * inteiro no servidor e o robô os executa em fila de qualquer jeito. Disparar
+   * tudo junto só multiplicaria o acesso simultâneo ao portal — que é o que atrai
+   * bloqueio — sem terminar mais cedo.
+   *
+   * A cada UC concluída a tabela é recarregada, então as competências novas vão
+   * APARECENDO no seletor e as faturas vão preenchendo a tabela conforme descem,
+   * em vez de tudo surgir de uma vez no fim.
+   */
   async function syncAntigas() {
     if (!data) return;
     const alvos = data.ucs.filter((u) => u.credencial);
     if (alvos.length === 0) {
-      toast.error("Nenhuma UC com credencial CPFL/RGE cadastrada.");
+      toast.error("Nenhuma UC com credencial da concessionária cadastrada.");
       return;
     }
+
     setSyncingAntigas(true);
-    let ok = 0;
-    let fail = 0;
-    for (const u of alvos) {
-      try {
-        const res = await fetch(
-          `/api/consumer-units/${u.consumerUnitId}/bills/backfill`,
-          { method: "POST" },
-        );
-        const j = await res.json().catch(() => ({}));
-        // A rota agora só DISPARA o robô (assíncrono); o download roda em segundo
-        // plano e o statusSync atualiza quando termina. `ok` = job aceito.
-        if (res.ok && j?.success !== false) {
-          ok++;
-        } else {
-          fail++;
+    const total = { criadas: 0, jaExistiam: 0, semSegundaVia: 0, erros: 0, incompletas: 0 };
+
+    try {
+      for (let i = 0; i < alvos.length; i++) {
+        const u = alvos[i];
+        const posicao = alvos.length > 1 ? `UC ${i + 1}/${alvos.length} — ` : "";
+        setProgressoAntigas(`${posicao}${u.nome}: iniciando...`);
+
+        let jobId: string;
+        try {
+          const res = await fetch(
+            `/api/consumer-units/${u.consumerUnitId}/bills/backfill`,
+            { method: "POST" },
+          );
+          const j = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(j?.error || "falha ao iniciar");
+          jobId = j.jobId;
+        } catch (e) {
+          total.erros++;
+          toast.error(
+            `${u.nome}: ${e instanceof Error ? e.message : "falha ao iniciar"}`,
+          );
+          continue; // uma UC problemática não interrompe as outras
         }
-      } catch {
-        fail++;
+
+        // Polling. Sem prazo: só a fila de acesso da CPFL pode levar 45 min —
+        // demora NÃO é erro, por isso não há timeout aqui.
+        let concluido = false;
+        while (!concluido) {
+          if (!naTela.current) return; // saiu da tela: para de acompanhar
+          await new Promise((r) => setTimeout(r, 5000));
+
+          let j: Record<string, unknown>;
+          try {
+            const res = await fetch(
+              `/api/consumer-units/${u.consumerUnitId}/bills/backfill/status?jobId=${encodeURIComponent(jobId)}`,
+            );
+            j = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error((j?.error as string) || "falha ao consultar");
+          } catch (e) {
+            total.erros++;
+            toast.error(
+              `${u.nome}: ${e instanceof Error ? e.message : "falha ao consultar"}`,
+            );
+            break;
+          }
+
+          if (!j.terminou) {
+            setProgressoAntigas(
+              `${posicao}${u.nome}: ${(j.progresso as string) || "trabalhando..."}`,
+            );
+            continue;
+          }
+          concluido = true;
+
+          if (j.status === "falhou") {
+            total.erros++;
+            toast.error(`${u.nome}: o robô falhou — ${j.erro || "sem detalhe"}`);
+          } else if (j.status === "cancelado") {
+            toast.info(`${u.nome}: cancelado — o que já baixou foi preservado.`);
+          } else {
+            total.criadas += Number(j.criadas ?? 0);
+            total.jaExistiam += Number(j.jaExistiam ?? 0);
+            total.semSegundaVia += Number(j.semSegundaVia ?? 0);
+            total.erros += Number(j.erros ?? 0);
+            // `completo: false` = o robô não varreu tudo (o portal caiu no meio).
+            // Não é sucesso: contar à parte evita um "pronto" enganoso no fim.
+            if (j.completo === false) total.incompletas++;
+          }
+
+          // Recarrega já: as faturas desta UC entram na tabela e os meses novos
+          // aparecem no seletor de competência antes da próxima UC começar.
+          await load(selected);
+          // E avisa a página, para a "Lista de faturas" logo abaixo mostrar as
+          // novas sem exigir F5.
+          if (Number(j.criadas ?? 0) > 0) onFaturasImportadas?.();
+        }
       }
+    } finally {
+      setSyncingAntigas(false);
+      setProgressoAntigas("");
     }
-    setSyncingAntigas(false);
-    toast.success(
-      `Backfill iniciado em ${ok} UC(s)${fail ? `, ${fail} falha(s) ao disparar` : ""}. ` +
-        `O download roda em segundo plano — o status atualiza quando terminar.`,
-    );
-    await load(selected);
+
+    const partes = [`${total.criadas} fatura(s) nova(s)`];
+    if (total.jaExistiam) partes.push(`${total.jaExistiam} já existia(m)`);
+    if (total.semSegundaVia) partes.push(`${total.semSegundaVia} sem segunda via`);
+    if (total.erros) partes.push(`${total.erros} com erro`);
+
+    if (total.incompletas) {
+      toast.warning(
+        `${partes.join(", ")}. ${total.incompletas} UC(s) não foram varridas por inteiro — dá para repetir.`,
+      );
+    } else if (total.criadas === 0 && total.erros === 0) {
+      toast.info(`Nada novo para baixar (${partes.join(", ")}).`);
+    } else {
+      toast.success(partes.join(", ") + ".");
+    }
   }
 
   if (loading && !data) {
@@ -217,7 +322,7 @@ export function StatusFaturasCard({ proprietarioId }: { proprietarioId: string }
               variant="outline"
               onClick={syncAntigas}
               disabled={syncing || syncingAntigas}
-              title="Baixa faturas de meses anteriores do portal CPFL/RGE (backfill)"
+              title="Baixa as faturas de meses anteriores no portal da concessionária e grava cada uma na sua UC"
             >
               <History
                 className={`h-4 w-4 mr-1.5 ${syncingAntigas ? "animate-spin" : ""}`}
@@ -239,6 +344,17 @@ export function StatusFaturasCard({ proprietarioId }: { proprietarioId: string }
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Sinal de vida do robô. Um backfill leva minutos (a fila de acesso da
+            CPFL sozinha pode levar 45): sem isto a tela parece travada. */}
+        {syncingAntigas && (
+          <div className="flex items-start gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+            <History className="h-3.5 w-3.5 mt-0.5 shrink-0 animate-spin" />
+            <span className="break-words">
+              {progressoAntigas || "conversando com o robô..."}
+            </span>
+          </div>
+        )}
+
         {compsDisp.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground mr-1">

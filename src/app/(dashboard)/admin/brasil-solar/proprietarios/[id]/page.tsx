@@ -965,7 +965,12 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
             onSyncComplete={() => setBillsRefreshKey((k) => k + 1)}
           />
           <BeneficiariasCard proprietarioId={id} />
-          <StatusFaturasCard proprietarioId={id} />
+          <StatusFaturasCard
+            proprietarioId={id}
+            // O backfill grava ConsumerBills; a lista abaixo precisa recarregar
+            // para mostrá-las sem exigir um F5.
+            onFaturasImportadas={() => setBillsRefreshKey((k) => k + 1)}
+          />
           <UcBills
             consumerUnitId={consumerUnit.id}
             refreshKey={billsRefreshKey}

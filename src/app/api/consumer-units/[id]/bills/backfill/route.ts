@@ -1,19 +1,17 @@
 /**
  * POST /api/consumer-units/[id]/bills/backfill
  *
- * Dispara o robô RGE (serviço Python) para baixar faturas de meses ANTERIORES
- * desta UC do portal CPFL/RGE. O mês vigente continua vindo do Infosimples;
- * este é o backfill histórico.
+ * Dispara o download das faturas de meses ANTERIORES de UMA unidade consumidora,
+ * pelo serviço de robôs. É o que o botão "Sincronizar faturas antigas" chama.
  *
- * Fluxo:
- *   1. lê a CpflCredential da UC e descriptografa a senha;
- *   2. chama o serviço Python (ROBO_RGE_URL) em POST /baixar, passando login +
- *      o filtro `instalacoes` (só a instalação desta UC) + ingest_url apontando
- *      pra ESTA instância do gestor + o CRON_SECRET;
- *   3. o serviço baixa os PDFs e faz POST de volta em /api/faturas-energia/ingest,
- *      que cria os ConsumerBill de forma idempotente (não sobrescreve).
+ * Esta rota é a PONTE: o navegador nunca fala com o robô. Ela valida a sessão,
+ * busca a credencial do portal no nosso banco, decifra a senha e repassa ao robô
+ * junto com os códigos daquela UC. Assim a ROBO_API_KEY nunca chega ao navegador e
+ * a senha do cliente não fica guardada no serviço do robô.
  *
- * Esta rota é acionada pelo usuário (sessão), não é server-to-server.
+ * Responde na hora com o `jobId` — o download roda em segundo plano e leva de
+ * minutos a horas (a CPFL põe fila de acesso). Quem acompanha é o GET .../status,
+ * que também é quem IMPORTA os PDFs quando o job termina.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth-compat";
@@ -21,15 +19,15 @@ import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 import { decrypt } from "@/lib/crypto";
+import { baixarFaturasDaUc, RoboIndisponivelError } from "@/lib/robo-faturas";
 
 export const runtime = "nodejs";
-// A rota só DISPARA o robô (modo assíncrono) e volta na hora; o download em si
-// leva minutos, mas roda no serviço Python e reporta o fim via callback
-// (../backfill/status). Por isso não precisamos mais segurar a requisição.
-export const maxDuration = 60;
+
+/** Quantas faturas por UC o botão baixa. Combinado em 05/08/2026: 2 (teste). */
+const LIMITE_FATURAS = 2;
 
 export async function POST(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
@@ -38,97 +36,70 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const roboUrl = process.env.ROBO_RGE_URL;
-  const roboSecret = process.env.ROBO_SECRET;
-  const cronSecret = process.env.CRON_SECRET;
-  if (!roboUrl || !roboSecret) {
+  const unit = await prisma.consumerUnit.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      nome: true,
+      codigoUc: true,
+      codigoUcAntigo: true,
+      cpflCredential: {
+        select: { emailCpfl: true, senhaCpfl: true, instalacao: true, active: true },
+      },
+    },
+  });
+
+  if (!unit) {
     return NextResponse.json(
-      { error: "Serviço do robô não configurado (defina ROBO_RGE_URL e ROBO_SECRET)" },
-      { status: 500 },
-    );
-  }
-  if (!cronSecret) {
-    return NextResponse.json(
-      { error: "CRON_SECRET não configurado (necessário pra ingestão)" },
-      { status: 500 },
+      { error: "Unidade consumidora não encontrada." },
+      { status: 404 },
     );
   }
 
-  const credential = await prisma.cpflCredential.findUnique({
-    where: { consumerUnitId: id },
-  });
-  if (!credential) {
+  const cred = unit.cpflCredential;
+  if (!cred || !cred.active) {
     return NextResponse.json(
-      { error: "Credenciais CPFL/RGE não cadastradas para esta unidade" },
+      { error: "Esta UC não tem credencial do portal cadastrada (ou está inativa)." },
       { status: 400 },
     );
   }
-  if (!credential.active) {
-    return NextResponse.json({ error: "Credenciais desativadas" }, { status: 400 });
+
+  let senha: string;
+  try {
+    senha = decrypt(cred.senhaCpfl);
+  } catch {
+    // Credencial ilegível é problema de configuração, não do robô: dizer isso
+    // evita uma caçada ao fantasma do lado do serviço Python.
+    return NextResponse.json(
+      { error: "Não consegui decifrar a senha do portal desta UC. Recadastre-a." },
+      { status: 500 },
+    );
   }
 
-  // ingest_url = esta MESMA instância (local no teste, prod em produção).
-  const ingestUrl = `${req.nextUrl.origin}/api/faturas-energia/ingest`;
-
-  await prisma.cpflCredential.update({
-    where: { consumerUnitId: id },
-    data: { statusSync: "PENDING", erroSync: null },
-  });
-
-  // Callback: o robô faz POST aqui quando termina (Bearer CRON_SECRET) → seta
-  // statusSync SUCCESS/ERROR. Fica PENDING enquanto baixa.
-  const statusCallbackUrl = `${req.nextUrl.origin}/api/consumer-units/${id}/bills/backfill/status`;
-
   try {
-    const senha = decrypt(credential.senhaCpfl);
-
-    // Dispara o robô em modo ASSÍNCRONO: status_callback_url faz o /baixar
-    // retornar 202 na hora e baixar em background. Assim a rota não segura a
-    // conexão por ~9 min (o que estourava e marcava ERROR falso em contas grandes).
-    const resp = await fetch(`${roboUrl.replace(/\/$/, "")}/baixar`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-robo-secret": roboSecret,
-      },
-      body: JSON.stringify({
-        email: credential.emailCpfl,
-        senha,
-        ingest_url: ingestUrl,
-        cron_secret: cronSecret,
-        instalacoes: [credential.instalacao],
-        status_callback_url: statusCallbackUrl,
-      }),
+    const { jobId } = await baixarFaturasDaUc({
+      credencial: { nome: unit.nome, email: cred.emailCpfl, senha },
+      // Os três identificadores: o portal pode listar a UC por qualquer um deles
+      // (a RGE trocou os códigos em jul/2026). O robô entra só no que casar.
+      codigosUc: [unit.codigoUc, unit.codigoUcAntigo, cred.instalacao].filter(
+        (c): c is string => !!c,
+      ),
+      limiteFaturas: LIMITE_FATURAS,
     });
 
-    const result = await resp.json().catch(() => ({}));
-
-    // Aqui só validamos que o robô ACEITOU o job. O resultado real (SUCCESS/ERROR)
-    // chega depois pelo callback.
-    if (!resp.ok || result?.ok === false) {
-      const msg =
-        (result && (result.detail || result.error)) ||
-        `Robô retornou HTTP ${resp.status}`;
-      await prisma.cpflCredential.update({
-        where: { consumerUnitId: id },
-        data: { statusSync: "ERROR", erroSync: String(msg).slice(0, 500) },
-      });
-      return NextResponse.json({ success: false, error: msg }, { status: 502 });
-    }
-
-    // Job aceito — segue baixando em background; statusSync continua PENDING até
-    // o callback. A tela de status já reflete isso.
     return NextResponse.json({
-      success: true,
-      status: "iniciado",
-      instalacao: credential.instalacao,
+      jobId,
+      consumerUnitId: unit.id,
+      limiteFaturas: LIMITE_FATURAS,
     });
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : "Erro ao chamar o robô RGE";
-    await prisma.cpflCredential.update({
-      where: { consumerUnitId: id },
-      data: { statusSync: "ERROR", erroSync: msg.slice(0, 500) },
-    });
-    return NextResponse.json({ success: false, error: msg }, { status: 500 });
+  } catch (err) {
+    if (err instanceof RoboIndisponivelError) {
+      return NextResponse.json({ error: err.message }, { status: 503 });
+    }
+    console.error("[backfill] falha ao disparar o robô:", err);
+    return NextResponse.json(
+      { error: "Falha ao disparar o robô de faturas." },
+      { status: 500 },
+    );
   }
 }
