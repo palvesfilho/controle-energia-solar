@@ -16,6 +16,7 @@ import {
   History,
 } from "lucide-react";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { BackfillInicioDialog } from "./backfill-inicio-dialog";
 import {
   FaturaPreviewDialog,
   type FaturaPreviewData,
@@ -104,6 +105,7 @@ export function StatusFaturasCard({
   const [selected, setSelected] = useState<Competencia | null>(null);
   const [preview, setPreview] = useState<FaturaPreviewData | null>(null);
   const [syncingAntigas, setSyncingAntigas] = useState(false);
+  const [escolhendoInicio, setEscolhendoInicio] = useState(false);
   // Última linha do log do robô + em que UC ele está. É o sinal de vida durante
   // um backfill, que pode levar muitos minutos. Vive só enquanto a tela está
   // aberta: fechar NÃO cancela o robô — o job segue, e clicar de novo depois é
@@ -182,7 +184,7 @@ export function StatusFaturasCard({
    * APARECENDO no seletor e as faturas vão preenchendo a tabela conforme descem,
    * em vez de tudo surgir de uma vez no fim.
    */
-  async function syncAntigas() {
+  async function syncAntigas(meses: number, rotuloInicio: string) {
     if (!data) return;
     const alvos = data.ucs.filter((u) => u.credencial);
     if (alvos.length === 0) {
@@ -203,7 +205,11 @@ export function StatusFaturasCard({
         try {
           const res = await fetch(
             `/api/consumer-units/${u.consumerUnitId}/bills/backfill`,
-            { method: "POST" },
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ meses }),
+            },
           );
           const j = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(j?.error || "falha ao iniciar");
@@ -284,7 +290,12 @@ export function StatusFaturasCard({
         `${partes.join(", ")}. ${total.incompletas} UC(s) não foram varridas por inteiro — dá para repetir.`,
       );
     } else if (total.criadas === 0 && total.erros === 0) {
-      toast.info(`Nada novo para baixar (${partes.join(", ")}).`);
+      // Dizer DESDE QUANDO se procurou: sem isso "nada novo" parece falha, quando
+      // muitas vezes só significa que o período pedido já estava completo.
+      toast.info(
+        `Nada novo desde ${rotuloInicio} (${partes.join(", ")}). ` +
+          `Para buscar mais fundo, escolha um mês anterior.`,
+      );
     } else {
       toast.success(partes.join(", ") + ".");
     }
@@ -320,7 +331,7 @@ export function StatusFaturasCard({
             <Button
               size="sm"
               variant="outline"
-              onClick={syncAntigas}
+              onClick={() => setEscolhendoInicio(true)}
               disabled={syncing || syncingAntigas}
               title="Baixa as faturas de meses anteriores no portal da concessionária e grava cada uma na sua UC"
             >
@@ -535,6 +546,12 @@ export function StatusFaturasCard({
           if (!v) setPreview(null);
         }}
         fatura={preview}
+      />
+      <BackfillInicioDialog
+        open={escolhendoInicio}
+        onOpenChange={setEscolhendoInicio}
+        totalUcs={data.ucs.filter((u) => u.credencial).length}
+        onConfirmar={syncAntigas}
       />
     </Card>
   );

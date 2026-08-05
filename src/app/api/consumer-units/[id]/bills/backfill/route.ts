@@ -23,11 +23,21 @@ import { baixarFaturasDaUc, RoboIndisponivelError } from "@/lib/robo-faturas";
 
 export const runtime = "nodejs";
 
-/** Quantas faturas por UC o botão baixa. Combinado em 05/08/2026: 2 (teste). */
-const LIMITE_FATURAS = 2;
+/**
+ * Quantas faturas por UC buscar quando o pedido não diz. A tela sempre manda
+ * `meses` (calculado do mês de início que o operador escolheu); este padrão só
+ * vale para uma chamada direta à API.
+ */
+const MESES_PADRAO = 12;
+/**
+ * Teto por chamada. O robô varre a tabela do portal fatura a fatura, então um
+ * pedido muito fundo vira uma sessão longuíssima — e o portal derruba sessão
+ * parada. 60 meses (5 anos) cobre qualquer histórico real de contrato.
+ */
+const MESES_MAX = 60;
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
@@ -35,6 +45,14 @@ export async function POST(
   if (!session || !isAdminRole(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Quantos meses buscar, contados de trás para frente a partir do mês atual —
+  // é o mês de início que o operador escolheu na tela, já convertido.
+  const corpo = await req.json().catch(() => ({}));
+  const pedido = Number(corpo?.meses);
+  const meses = Number.isFinite(pedido) && pedido > 0
+    ? Math.min(Math.floor(pedido), MESES_MAX)
+    : MESES_PADRAO;
 
   const unit = await prisma.consumerUnit.findUnique({
     where: { id },
@@ -84,13 +102,16 @@ export async function POST(
       codigosUc: [unit.codigoUc, unit.codigoUcAntigo, cred.instalacao].filter(
         (c): c is string => !!c,
       ),
-      limiteFaturas: LIMITE_FATURAS,
+      // O robô conta as faturas MAIS RECENTES da UC, então "N meses atrás" vira
+      // "as N primeiras da tabela". Faturas já baixadas contam para o limite mas
+      // não são rebaixadas — é isso que faz repetir o botão sair barato.
+      limiteFaturas: meses,
     });
 
     return NextResponse.json({
       jobId,
       consumerUnitId: unit.id,
-      limiteFaturas: LIMITE_FATURAS,
+      meses,
     });
   } catch (err) {
     if (err instanceof RoboIndisponivelError) {
