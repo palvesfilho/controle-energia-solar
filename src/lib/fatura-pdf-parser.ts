@@ -497,7 +497,11 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
     const isCompensacao = d.includes("ouc") || d.includes("muc");
     const isInjPropria = isInjAny && !isCompensacao;
     const isInj = isInjAny && isCompensacao;
-    const isTusd = d.includes("tusd");
+    // A RGE trunca "TUSD" em "TUS" nas linhas de crédito por posto do Grupo A
+    // ("Energ Atv Inj. mUC oPT Pta-TUS", "... oPT-Pta-TUS"). Um includes("tusd")
+    // não casa e a linha some das DUAS laterais — nem TUSD nem TE. Aceitar o
+    // rótulo curto exige delimitador: "tus" solto casaria dentro de palavras.
+    const isTusd = /(?:^|[^a-z])tusd?(?:[^a-z]|$)/.test(d);
     const isTe = !isTusd && (d.includes(" te ") || d.endsWith(" te") || d.includes("- te") || d.includes("-te"));
     // Linha de bandeira cobrada ("Adicional de Bandeira X") ou de crédito
     // ("Cred Adc Band X" — note "band" abreviado no PDF). Ambas seguem o mesmo
@@ -631,11 +635,12 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
   if (bandeiraTarifaria == null) {
     const bandeirasEncontradas = new Map<string, number>();
     for (const line of lines) {
-      const matches = line.matchAll(/(Verde|Amarela|Vermelha\s*[12]?)\s+(\d{1,2})\s+Dias/gi);
+      // O Grupo A escreve o patamar com "P": "Vermelha P1 31 Dias".
+      const matches = line.matchAll(/(Verde|Amarela|Vermelha(?:\s*P?\s*[12])?)\s+(\d{1,2})\s+Dias/gi);
       for (const mm of matches) {
         let cor = mm[1].replace(/\s+/g, " ").trim();
-        // normaliza "vermelha1"/"vermelha 1"/"vermelha 2"
-        const corLower = cor.toLowerCase();
+        // normaliza "vermelha1"/"vermelha 1"/"vermelha 2"/"vermelha p1"/"vermelha p2"
+        const corLower = cor.toLowerCase().replace(/\bp\s*([12])\b/, "$1");
         if (corLower.startsWith("vermelha 2")) cor = "Vermelha 2";
         else if (corLower.startsWith("vermelha")) cor = "Vermelha 1";
         else if (corLower === "amarela") cor = "Amarela";
@@ -657,9 +662,18 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
     const d = normDesc(line);
     const nums = line.match(/[\d.]+(?:,\d+)?/g) ?? [];
     if (nums.length >= 3) {
-      if (d.startsWith("icms") && icms == null) icms = parseNumBR(nums[nums.length - 1]);
-      else if (d.startsWith("pis") && pis == null) pis = parseNumBR(nums[nums.length - 1]);
+      if (d.startsWith("pis") && pis == null) pis = parseNumBR(nums[nums.length - 1]);
       else if (d.startsWith("cofins") && cofins == null) cofins = parseNumBR(nums[nums.length - 1]);
+    }
+    // No Grupo A o ICMS não abre linha própria: vem grudado no FIM da linha do
+    // Consumo Ponta ("...74,96 ICMS 5.344,49 17,00 908,55"), então exigir
+    // startsWith deixava o campo nulo em 11/11 faturas da GRÁFICA JACUI.
+    // Procuramos o trio base/alíquota/valor onde quer que o rótulo apareça;
+    // é sempre um só por fatura (a 2ª ocorrência, quando existe, repete a 1ª
+    // na página 2 — por isso continua first-wins, não soma).
+    if (icms == null) {
+      const m = line.match(/ICMS\s+([\d.]+,\d+)\s+([\d.]+(?:,\d+)?)\s+([\d.]+,\d+)/i);
+      if (m) icms = parseNumBR(m[3]);
     }
   }
 
@@ -677,8 +691,15 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
   // vírgula — então restringir a regex pra "X,YY" evita capturar esses lixos.
   // O valor real do encargo aparece logo após a descrição, antes do código.
   const REGEX_BRL = /-?\d{1,3}(?:\.\d{3})*,\d{2}-?/;
+  // O rodapé legal fala dos mesmos encargos sem cobrar nenhum: "Atraso no
+  // pagamento será cobrado em conta futura: Multa 2%. Juros 0,033% ao dia...".
+  // A linha casa com "multa"+"atraso" e o primeiro valor com vírgula é o
+  // "0,033" da taxa — somava +0,03 em TODA fatura (12/2025: multa real 70,15,
+  // parser 70,21, porque o aviso se repete nas 2 páginas).
+  const REGEX_RODAPE_LEGAL = /sera cobrado|conta futura|legislacao vigente/;
   for (const line of lines) {
     const d = normDesc(line);
+    if (REGEX_RODAPE_LEGAL.test(d)) continue;
     const match = line.match(REGEX_BRL);
     const valor = match ? parseNumBR(match[0]) : null;
     if (valor == null) continue;
@@ -780,14 +801,31 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
   // oUC/mUC). É o total de energia que abateu o consumo do cliente. A geração
   // própria continua disponível separada em energiaInjetadaPropria* (o cálculo
   // do investidor subtrai a própria pra isolar só o rateio). TE e TUSD são as
-  // duas laterais do mesmo valor; usamos a lateral que tiver dados.
-  const propriaTusdKwh = energiaInjetadaPropriaTusdKwh ?? 0;
-  const propriaTeKwh = energiaInjetadaPropriaTeKwh ?? 0;
-  const totalTusd = injTusdKwh + propriaTusdKwh;
-  const totalTe = injTeKwh + propriaTeKwh;
-  const temTusd = temInjTusd || propriaTusdKwh > 0;
-  const temTe = temInjTe || propriaTeKwh > 0;
-  const energiaInjetada = temTusd ? totalTusd : temTe ? totalTe : null;
+  // duas laterais do MESMO kWh — somar as duas dobraria o crédito, então cada
+  // origem escolhe uma.
+  //
+  // A escolha é POR ORIGEM, não uma vez pra fatura inteira: uma fatura pode
+  // trazer um crédito com as duas laterais e outro só com TE. Decidindo global
+  // "tem TUSD? use TUSD", a origem que só tem TE era descartada mesmo já
+  // capturada — 5.593 kWh (−11,5%) sumiram em 12 meses da GRÁFICA JACUI, sem
+  // erro nenhum na tela.
+  function kwhDaOrigem(tusd: number | null, te: number | null): number | null {
+    if (tusd != null && tusd > 0) return tusd;
+    if (te != null && te > 0) return te;
+    return tusd ?? te;
+  }
+  let injKwh = 0;
+  let temInjKwh = false;
+  for (const det of injetadaDetalhes) {
+    const kwh = kwhDaOrigem(det.tusdKwh, det.teKwh);
+    if (kwh != null) {
+      injKwh += kwh;
+      temInjKwh = true;
+    }
+  }
+  const propriaKwh = kwhDaOrigem(energiaInjetadaPropriaTusdKwh, energiaInjetadaPropriaTeKwh);
+  const energiaInjetada =
+    temInjKwh || propriaKwh != null ? injKwh + (propriaKwh ?? 0) : null;
   const energiaCompensada = energiaInjetada;
 
   const grupoA = extractGrupoA(lines);
