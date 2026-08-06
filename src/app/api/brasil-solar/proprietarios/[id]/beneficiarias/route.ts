@@ -3,7 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
-import { formatCodigoUc, normalizeCodigoUc } from "@/lib/uc-codigo";
+import { formatCodigoUc, normalizeCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
 
 // GET /api/brasil-solar/proprietarios/[id]/beneficiarias
 // Lista todas as beneficiárias ativas do proprietário.
@@ -154,8 +154,10 @@ export async function PUT(
     distribuidora: string;
   } | null = null;
   if (propFull?.codigoUc) {
-    const titularUc = await prisma.consumerUnit.findUnique({
-      where: { codigoUc: propFull.codigoUc },
+    const titularUc = await prisma.consumerUnit.findFirst({
+      // Casa também pelo código antigo — ver `whereCodigoUc`. Sem isso as
+      // beneficiárias não herdam a credencial do titular, caladas.
+      where: whereCodigoUc(propFull.codigoUc),
       select: { id: true },
     });
     if (titularUc) {
@@ -177,8 +179,11 @@ export async function PUT(
     });
 
     for (const e of entries) {
-      let uc = await tx.consumerUnit.findUnique({
-        where: { codigoUc: e.codigoUc },
+      // Casa também pelo código antigo — ver `whereCodigoUc`. Com `findUnique`
+      // no código exato, uma UC já migrada pela RGE não era encontrada e o
+      // `create` abaixo fazia uma SEGUNDA UC para a mesma unidade física.
+      let uc = await tx.consumerUnit.findFirst({
+        where: whereCodigoUc(e.codigoUc),
         select: { id: true, codigoUcAntigo: true },
       });
       if (!uc) {

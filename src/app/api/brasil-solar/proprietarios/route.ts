@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { serializeObraObservacoes } from "@/lib/obra-meta";
 import { parseDateOnly } from "@/lib/obra-calendario";
 import { encrypt } from "@/lib/crypto";
-import { normalizeCodigoUc } from "@/lib/uc-codigo";
+import { normalizeCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
 import { buscarIds } from "@/lib/busca-sql";
 import { normalizeConcessionaria } from "@/lib/concessionarias";
 import {
@@ -262,8 +262,11 @@ export async function POST(req: NextRequest) {
   let consumerUnitId: string | null = null;
   if (codigoUcInput) {
     try {
-      const existing = await prisma.consumerUnit.findUnique({
-        where: { codigoUc: codigoUcInput },
+      // Casa também pelo código antigo — ver `whereCodigoUc`. Com `findUnique`
+      // no código exato, cadastrar um proprietário com o código pré-migração
+      // criava uma UC duplicada da que já existia com o código novo.
+      const existing = await prisma.consumerUnit.findFirst({
+        where: whereCodigoUc(codigoUcInput),
       });
       if (existing) {
         consumerUnitId = existing.id;

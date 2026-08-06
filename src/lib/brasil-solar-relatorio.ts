@@ -13,7 +13,7 @@ import { getRangeTotal as huaweiRangeTotal } from "@/lib/huawei";
 // Ver PLATAFORMAS_SEM_FALLBACK_AO_VIVO abaixo.
 import { getRangeTotal as solaredgeRangeTotal } from "@/lib/solaredge";
 import { getRelatorioParametros } from "@/lib/app-settings";
-import { formatCodigoUc } from "@/lib/uc-codigo";
+import { formatCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
 import {
   esperadaDoPeriodoKwh,
   esperadaMensalBaseTotalKwh,
@@ -1867,7 +1867,8 @@ export async function getProprietarioRelatorioAgregado(
   let ucTitularId: string | null = null;
   if (proprietario.codigoUc) {
     const ucTitular = await prisma.consumerUnit.findFirst({
-      where: { codigoUc: proprietario.codigoUc },
+      // Casa também pelo código antigo — ver `whereCodigoUc`.
+      where: whereCodigoUc(proprietario.codigoUc),
       select: { id: true, codigoUc: true, distribuidora: true },
     });
     if (ucTitular) {
@@ -2230,7 +2231,8 @@ export async function listarRelatoriosProprietario(
     | null = null;
   if (proprietario.codigoUc) {
     ucTitular = await prisma.consumerUnit.findFirst({
-      where: { codigoUc: proprietario.codigoUc },
+      // Casa também pelo código antigo — ver `whereCodigoUc`.
+      where: whereCodigoUc(proprietario.codigoUc),
       select: { id: true, codigoUc: true, nome: true, distribuidora: true, active: true },
     });
     if (ucTitular) ucIds.add(ucTitular.id);

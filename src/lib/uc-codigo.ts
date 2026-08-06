@@ -40,6 +40,26 @@ export function normalizeCodigoUc(v: string | null | undefined): string | null |
 }
 
 /**
+ * Cláusula `where` para achar a `ConsumerUnit` de um código de UC.
+ *
+ * 🔑 **Regra única de casamento.** A RGE trocou os códigos em jul/2026, então a
+ * mesma UC física aparece ora pelo código novo (`codigoUc`), ora pelo antigo
+ * (`codigoUcAntigo`) — depende de onde o dado foi cadastrado. Quem casa só pelo
+ * `codigoUc` exato não acha a UC e devolve **vazio sem erro**: o card de status
+ * de faturas sumia inteiro (junto com o botão "Sincronizar faturas antigas"), o
+ * relatório saía sem a titular, as beneficiárias não herdavam a credencial e o
+ * cadastro criava uma UC duplicada. Nenhum desses casos dava mensagem.
+ *
+ * Use SEMPRE isto para ir de um código (do proprietário, da beneficiária, de uma
+ * planilha) até a `ConsumerUnit`, com `findFirst` — nunca `findUnique`, que só
+ * aceita a chave exata. Ver [[project_rge_troca_codigo_uc]].
+ */
+export function whereCodigoUc(codigo: string) {
+  const norm = (normalizeCodigoUc(codigo) as string | null) ?? codigo;
+  return { OR: [{ codigoUc: norm }, { codigoUcAntigo: norm }] };
+}
+
+/**
  * Exibe o código no padrão impresso pela concessionária.
  *
  * - 12 dígitos → `3.562.981.001-26`
