@@ -87,6 +87,14 @@ export async function populateBillingFromBill(
       tarifaTUSD: true,
       tarifaTeComTributos: true,
       tarifaTusdComTributos: true,
+      // Grupo A — posto FORA PONTA: de onde sai o preco do kWh que o solar
+      // evita (ver lib/preco-kwh.ts). Ausentes em fatura Grupo B.
+      consumoTeForaPontaKwh: true,
+      consumoTeForaPontaValor: true,
+      consumoTusdForaPontaKwh: true,
+      consumoTusdForaPontaValor: true,
+      tarifaTeForaPonta: true,
+      tarifaTusdForaPonta: true,
       energiaInjetadaPropriaTeValor: true,
       energiaInjetadaPropriaTusdValor: true,
       consumerUnit: {

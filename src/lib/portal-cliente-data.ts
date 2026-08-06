@@ -10,6 +10,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { persistDailySamples } from "@/lib/sungrow-persist";
+import { precoKwhSolar } from "@/lib/preco-kwh";
 
 /** Tarifa de referência (R$/kWh) de fallback quando não há fatura para derivar a tarifa real. */
 const TARIFA_REF = 0.95;
@@ -206,6 +207,11 @@ async function resolveTarifaReferencia(
           OR: [
             { tarifaTeComTributos: { not: null } },
             { tarifaTusdComTributos: { not: null } },
+            // Grupo A não preenche as tarifas "únicas" acima — o preço vem do
+            // posto FORA PONTA. Sem estas linhas a fatura Grupo A nem era
+            // considerada e o portal caía no TARIFA_REF de fallback.
+            { consumoTusdForaPontaValor: { not: null } },
+            { tarifaTusdForaPonta: { not: null } },
           ],
         },
       ],
@@ -214,14 +220,22 @@ async function resolveTarifaReferencia(
     select: {
       tarifaTeComTributos: true,
       tarifaTusdComTributos: true,
+      // Grupo A — posto FORA PONTA: de onde sai o preco do kWh que o solar
+      // evita (ver lib/preco-kwh.ts). Ausentes em fatura Grupo B.
+      consumoTeForaPontaKwh: true,
+      consumoTeForaPontaValor: true,
+      consumoTusdForaPontaKwh: true,
+      consumoTusdForaPontaValor: true,
+      tarifaTeForaPonta: true,
+      tarifaTusdForaPonta: true,
       anoReferencia: true,
       mesReferencia: true,
     },
   });
   if (!bill) return null;
 
-  const tarifa =
-    (bill.tarifaTeComTributos ?? 0) + (bill.tarifaTusdComTributos ?? 0);
+  // 🔑 Grupo A: o preço é o do posto FORA PONTA, onde há sol. Ver lib/preco-kwh.ts.
+  const tarifa = precoKwhSolar(bill).precoKwh ?? 0;
   return tarifa > 0
     ? { tarifa, ano: bill.anoReferencia, mes: bill.mesReferencia }
     : null;

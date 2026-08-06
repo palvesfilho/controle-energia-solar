@@ -15,17 +15,17 @@ import { getRangeTotal as solaredgeRangeTotal } from "@/lib/solaredge";
 import { getRelatorioParametros } from "@/lib/app-settings";
 import { formatCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
 import {
+  precoKwhSolar,
+  TRIBUTOS_EFETIVOS_PADRAO,
+  type PrecoKwhInput,
+} from "@/lib/preco-kwh";
+import {
   esperadaDoPeriodoKwh,
   esperadaMensalBaseTotalKwh,
 } from "@/lib/geracao-esperada";
 
-/**
- * Carga tributária efetiva estimada para gross-up da tarifa de consumo
- * instantâneo (ICMS + PIS + COFINS "por dentro"). Padrão pra B1 RGE/RS.
- * Hoje hardcoded; futuramente pode vir de configuração da concessionária ou
- * da própria ConsumerBill quando os campos icms/pis/cofins estiverem em alíquota.
- */
-const TRIBUTOS_EFETIVOS_PADRAO = 0.25;
+// `TRIBUTOS_EFETIVOS_PADRAO` (gross-up ICMS+PIS+COFINS "por dentro") mora em
+// `lib/preco-kwh.ts`, junto da regra de preço do kWh — uma constante só.
 
 /**
  * Campos da fatura (`ConsumerBill`) necessários pra calcular a "conta sem
@@ -49,17 +49,33 @@ export interface ContaSemSolarInput {
   bandeiraAmarelaCreditoValor: number | null;
   bandeiraVermelhaCreditoValor: number | null;
   bandeiraVermelha2CreditoValor: number | null;
-  /** Tarifa cheia (TE com tributos, R$/kWh) — usada no autoconsumo instantâneo */
+  /** Tarifa cheia (TE com tributos, R$/kWh) — Grupo B / posto único */
   tarifaTeComTributos: number | null;
-  /** Tarifa cheia (TUSD com tributos, R$/kWh) */
+  /** Tarifa cheia (TUSD com tributos, R$/kWh) — Grupo B / posto único */
   tarifaTusdComTributos: number | null;
 }
+
+/**
+ * Grupo A: campos do posto FORA PONTA, de onde sai o preço do kWh que o solar
+ * evita. Opcionais — fatura Grupo B não os tem. Ver `lib/preco-kwh.ts`.
+ */
+export type ContaSemSolarInputGrupoA = Pick<
+  PrecoKwhInput,
+  | "consumoTeForaPontaKwh"
+  | "consumoTeForaPontaValor"
+  | "consumoTusdForaPontaKwh"
+  | "consumoTusdForaPontaValor"
+  | "tarifaTeForaPonta"
+  | "tarifaTusdForaPonta"
+>;
 
 /**
  * Campos opcionais usados APENAS como fallback quando a fatura não trouxe o
  * detalhamento das linhas de crédito em R$ (faturas antigas / parser incompleto).
  */
-export interface EconomiaMensalInput extends ContaSemSolarInput {
+export interface EconomiaMensalInput
+  extends ContaSemSolarInput,
+    ContaSemSolarInputGrupoA {
   /** kWh compensados pelos créditos GD (própria + rateio) */
   energiaCompensada?: number | null;
   /** Tarifa TE sem tributos (R$/kWh) */
@@ -142,14 +158,13 @@ export function calcularEconomiaMensal(
 
   let autoconsumoRs = 0;
   if (consumoInstantaneoKwh != null && consumoInstantaneoKwh > 0) {
-    const tarifaCheia =
-      (bill.tarifaTeComTributos ?? 0) + (bill.tarifaTusdComTributos ?? 0);
-    if (tarifaCheia > 0) {
-      autoconsumoRs = consumoInstantaneoKwh * tarifaCheia;
-    } else if (tarifaBase > 0) {
-      autoconsumoRs =
-        consumoInstantaneoKwh * (tarifaBase / (1 - TRIBUTOS_EFETIVOS_PADRAO));
-      estimada = true;
+    // 🔑 No Grupo A o preço é o do posto FORA PONTA — é onde há sol. Usar a
+    // tarifa cheia "única" aqui pegava a de PONTA e inflava o autoconsumo em
+    // ~3,7×. Ver `precoKwhSolar` em `lib/preco-kwh.ts`.
+    const preco = precoKwhSolar(bill);
+    if (preco.precoKwh != null) {
+      autoconsumoRs = consumoInstantaneoKwh * preco.precoKwh;
+      if (preco.estimado) estimada = true;
     }
   }
 
@@ -985,6 +1000,14 @@ export async function getProprietarioRelatorio(
       bandeiraVermelha2CreditoValor: true,
       tarifaTeComTributos: true,
       tarifaTusdComTributos: true,
+      // Grupo A — posto FORA PONTA: de onde sai o preco do kWh que o solar
+      // evita (ver lib/preco-kwh.ts). Ausentes em fatura Grupo B.
+      consumoTeForaPontaKwh: true,
+      consumoTeForaPontaValor: true,
+      consumoTusdForaPontaKwh: true,
+      consumoTusdForaPontaValor: true,
+      tarifaTeForaPonta: true,
+      tarifaTusdForaPonta: true,
     },
   });
   let economiaAcumulada = 0;
@@ -1955,6 +1978,14 @@ export async function getProprietarioRelatorioAgregado(
       bandeiraVermelha2CreditoValor: true,
       tarifaTeComTributos: true,
       tarifaTusdComTributos: true,
+      // Grupo A — posto FORA PONTA: de onde sai o preco do kWh que o solar
+      // evita (ver lib/preco-kwh.ts). Ausentes em fatura Grupo B.
+      consumoTeForaPontaKwh: true,
+      consumoTeForaPontaValor: true,
+      consumoTusdForaPontaKwh: true,
+      consumoTusdForaPontaValor: true,
+      tarifaTeForaPonta: true,
+      tarifaTusdForaPonta: true,
     },
   });
 

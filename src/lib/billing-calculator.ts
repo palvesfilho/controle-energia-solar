@@ -23,6 +23,8 @@
  * null com mensagem "ainda não implementada".
  */
 
+import { precoKwhSolar, type PrecoKwhInput } from "@/lib/preco-kwh";
+
 export type RegraRemuneracao =
   | "FAT_UNICA_COMPENSADA_BANDEIRAS"
   | "FAT_UNICA_COMPENSADA_BANDEIRAS_DIMARZARI"
@@ -30,7 +32,9 @@ export type RegraRemuneracao =
   | "DESC_COMPENSADA"
   | "DESC_FATURA_COMPENSADA_DOMMO";
 
-export interface BillInput {
+// Herda de `PrecoKwhInput` os campos do posto FORA PONTA (Grupo A) — é o preço
+// que vale para o consumo instantâneo, porque é o horário em que há sol.
+export interface BillInput extends PrecoKwhInput {
   // Créditos de energia compensada (vêm negativos na fatura — viramos absoluto).
   // Esses campos representam APENAS o crédito da nossa usina (linhas oUC).
   injetadaOucTeValor: number | null;
@@ -57,8 +61,7 @@ export interface BillInput {
   // do parser (faturas legadas pré 2026-06-27).
   tarifaTE?: number | null;
   tarifaTUSD?: number | null;
-  // Tarifa COM tributos (ICMS+PIS+COFINS) — preferida no cálculo de consumo
-  // instantâneo, pois é o R$/kWh real que o cliente paga.
+  // Tarifa COM tributos (ICMS+PIS+COFINS) — Grupo B / posto único.
   tarifaTeComTributos?: number | null;
   tarifaTusdComTributos?: number | null;
 }
@@ -171,34 +174,30 @@ function calcularPercentualSobreCompensadoBase(
   //    aquele kWh se tivesse passado pela rede). Caímos no fallback da base
   //    sem impostos só quando os campos novos ainda não foram preenchidos
   //    (faturas legadas antes do parser ser atualizado em 2026-06-27).
+  //    🔑 No Grupo A o preço é o do posto FORA PONTA — é onde há sol. Quem
+  //    decide é `precoKwhSolar` (lib/preco-kwh.ts), a regra única do sistema.
   let consumoInstantaneoValor: number | null = null;
   let parcelaInstantaneo: number | null = null;
   if (unit.isGeradoraDescontado) {
     const kwh = bill.consumoInstantaneoKwh;
-    const teComTrib = bill.tarifaTeComTributos;
-    const tusdComTrib = bill.tarifaTusdComTributos;
-    const teBase = bill.tarifaTE;
-    const tusdBase = bill.tarifaTUSD;
-    const te = teComTrib ?? teBase;
-    const tusd = tusdComTrib ?? tusdBase;
-    const usandoFallbackBase =
-      (teComTrib == null && teBase != null) ||
-      (tusdComTrib == null && tusdBase != null);
+    const preco = precoKwhSolar(bill);
     if (kwh == null) {
       problemas.push(
         "UC geradora em DESCONTADO sem consumoInstantaneoKwh preenchido — cobrança ignora consumo instantâneo",
       );
-    } else if (te == null || tusd == null) {
+    } else if (preco.precoKwh == null) {
       problemas.push(
-        "Fatura sem tarifaTE/tarifaTUSD — não foi possível valorar consumo instantâneo",
+        preco.motivo ??
+          "Fatura sem tarifaTE/tarifaTUSD — não foi possível valorar consumo instantâneo",
       );
     } else {
-      if (usandoFallbackBase) {
+      if (preco.estimado) {
         problemas.push(
-          "Fatura sem tarifa com tributos — usando tarifa base; reparsear o PDF preenche o campo correto",
+          preco.motivo ??
+            "Fatura sem tarifa com tributos — usando gross-up estimado; reparsear o PDF preenche o campo correto",
         );
       }
-      consumoInstantaneoValor = kwh * (te + tusd);
+      consumoInstantaneoValor = kwh * preco.precoKwh;
       if (descontoContrato != null) {
         parcelaInstantaneo = consumoInstantaneoValor * descontoContrato;
       }
