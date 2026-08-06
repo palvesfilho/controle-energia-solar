@@ -758,6 +758,36 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
     });
   }
 
+  // No Grupo A o painel tem TRÊS séries lado a lado — "Consumo Ponta",
+  // "Consumo Fora de Ponta" e "Demanda" — e cada linha repete o mês três vezes:
+  //   "MAR 26 lll... 1353,00 31 MAR 26 lll... 6645,00 31 MAR 26 lll... 74,00 31"
+  // O padrão monômio acima está ancorado no fim da linha e não pega nada disso,
+  // então a fatura Grupo A ficava sem histórico. Os valores vêm truncados no
+  // inteiro (1353,00 pro faturado 1.353,8364) — é painel, não fonte de cálculo.
+  if (historico.length === 0) {
+    for (const line of lines) {
+      const grupos = [...line.matchAll(/\b([A-Z]{3})\s+(\d{2})\s+[l\s]*([\d.]+,\d{2})\s+(\d{1,2})\b/g)];
+      if (grupos.length !== 3) continue;
+      const [ponta, foraPonta, demanda] = grupos;
+      const mesAno = `${ponta[1].toUpperCase()}/${ponta[2]}`;
+      if (seenMesAno.has(mesAno)) continue;
+      // As três séries têm que falar do mesmo mês; se não, não é esse painel.
+      if (`${foraPonta[1].toUpperCase()}/${foraPonta[2]}` !== mesAno) continue;
+      if (`${demanda[1].toUpperCase()}/${demanda[2]}` !== mesAno) continue;
+      seenMesAno.add(mesAno);
+      const pontaKwh = parseNumBR(ponta[3]);
+      const foraPontaKwh = parseNumBR(foraPonta[3]);
+      historico.push({
+        mesAno,
+        consumoKwh: (pontaKwh ?? 0) + (foraPontaKwh ?? 0),
+        dias: parseInt(ponta[4]),
+        pontaKwh,
+        foraPontaKwh,
+        demandaKw: parseNumBR(demanda[3]),
+      });
+    }
+  }
+
   // Consumo total do mês: preferir linha do medidor, fallback primeiro "Consumo"
   let consumoKwh: number | null = consumoTusdKwh ?? consumoTeKwh;
   for (const line of lines) {
@@ -776,6 +806,23 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
       codigoBarras = m[0].replace(/[^\d]/g, "").slice(0, 48); // 47/48 dígitos
       if (codigoBarras.length >= 44) break;
       codigoBarras = null;
+    }
+  }
+  // A fatura Grupo A vem com boleto bancário, cuja linha digitável tem campos
+  // de 5 dígitos + ponto ("341-7 34191.09909 32608.212935 83792.250009 4
+  // 14170000552793"). O padrão acima procura blocos de 11-12 dígitos e não via
+  // nada. Casar o layout inteiro em vez de "um monte de dígitos": a mesma
+  // fatura traz um número de 44 dígitos que É OUTRA COISA — a chave de acesso
+  // da NF-e (UF 43 + AAMM + CNPJ da RGE) — e viraria código de barras errado.
+  if (codigoBarras == null) {
+    for (const line of lines) {
+      const m = line.match(
+        /(\d{5})[.\s](\d{5,6})\s+(\d{5})[.\s](\d{5,6})\s+(\d{5})[.\s](\d{5,6})\s+(\d)\s+(\d{14})/,
+      );
+      if (m) {
+        codigoBarras = m.slice(1).join("");
+        break;
+      }
     }
   }
 
@@ -883,6 +930,29 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
           leituraInjetadaForaPontaAtual: null,
         };
 
+  // Mesma armadilha da injeção, nos dois campos monômios que sobraram.
+  //
+  // `consumoKwh` sai da linha "Energia Ativa - kWh" do medidor e parava na
+  // primeira, que no Grupo A é a de PONTA: a GRÁFICA JACUI registrava 1.090 kWh
+  // num mês de 4.618. Aqui somam-se os dois postos, e continua sendo o MEDIDO
+  // (o faturado, 2,5% maior por conta da taxa de perda, mora nos campos por
+  // posto) — é o medido que o relatório soma com o autoconsumo instantâneo,
+  // que também vem do medidor.
+  const ativasMedidor = grupoA?.leiturasMedidor.filter(
+    (l) => /ativa/i.test(l.grandeza) && l.unidade === "kWh" && l.consumo != null,
+  );
+  if (ativasMedidor && ativasMedidor.length > 1) {
+    consumoKwh = ativasMedidor.reduce((s, l) => s + (l.consumo ?? 0), 0);
+  }
+
+  // `saldoCreditos` lia "Saldo em Energia da Instalação: Ponta ..." e ficava com
+  // a Ponta — sempre 0 nessa UC. O saldo Fora Ponta vem na linha seguinte e
+  // chegou a 3.303 kWh sem aparecer em lugar nenhum.
+  let saldoCreditos: number | null = saldoInstalacaoKwh;
+  if (grupoA && (grupoA.saldoPontaKwh != null || grupoA.saldoForaPontaKwh != null)) {
+    saldoCreditos = (grupoA.saldoPontaKwh ?? 0) + (grupoA.saldoForaPontaKwh ?? 0);
+  }
+
   return {
     codigoInstalacao,
     rawText,
@@ -910,7 +980,7 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
 
       energiaInjetada,
       energiaCompensada,
-      saldoCreditos: saldoInstalacaoKwh,
+      saldoCreditos,
 
       injetadaOucTeKwh: temInjTe ? injTeKwh : null,
       injetadaOucTeValor: temInjTe ? injTeValor : null,

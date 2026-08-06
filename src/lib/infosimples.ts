@@ -681,6 +681,11 @@ export interface HistoricoConsumoItem {
   mesAno: string;
   consumoKwh: number | null;
   dias: number | null;
+  // Grupo A: o painel traz três séries no mesmo mês. `consumoKwh` continua
+  // sendo o total (ponta + fora ponta) pra não quebrar quem já lê o campo.
+  pontaKwh?: number | null;
+  foraPontaKwh?: number | null;
+  demandaKw?: number | null;
 }
 
 /** Converte energia.historico_consumo em array limpo. */

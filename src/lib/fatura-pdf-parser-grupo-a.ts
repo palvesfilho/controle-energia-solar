@@ -133,6 +133,13 @@ function detectPosto(desc: string): "PONTA" | "FORA_PONTA" | null {
     return "FORA_PONTA";
   }
   if (/\bponta\b/.test(d)) return "PONTA";
+  // Crédito de outra UC: o posto vem abreviado depois do marcador de posto
+  // tarifário — "mUC mPT-FP TUSD" (mesmo posto, fora ponta) e "mUC oPT-Pta-TE"
+  // (outro posto, ponta). Sem isso a linha inteira era descartada e o crédito
+  // não aparecia em posto nenhum. "fponta" não casa com \bfp\b (o "o" seguinte
+  // é caractere de palavra), então a ordem aqui não conflita com o de cima.
+  if (/\bfp\b/.test(d)) return "FORA_PONTA";
+  if (/\bpta\b/.test(d)) return "PONTA";
   return null;
 }
 
@@ -332,9 +339,19 @@ interface ConsumoPostoInfo {
   tarifaTusdForaPonta: number | null;
 }
 
+/**
+ * Lateral TUSD. Nas linhas de crédito por posto a RGE trunca o rótulo em "TUS"
+ * ("Energ Atv Inj. mUC oPT-Pta-TUS"), então um includes("tusd") deixava a linha
+ * sem lateral nenhuma. O delimitador é obrigatório: "tus" solto casaria dentro
+ * de outra palavra.
+ */
+function isTusdDesc(d: string): boolean {
+  return /(?:^|[^a-z])tusd?(?:[^a-z]|$)/.test(d);
+}
+
 function isTeDesc(d: string): boolean {
   // " - TE", " TE ", "-TE" no fim/contexto. Excluir "TUSD" e "tensao".
-  if (d.includes("tusd")) return false;
+  if (isTusdDesc(d)) return false;
   return /\bte\b/.test(d) || / - te\b/.test(d) || /-te\b/.test(d);
 }
 
@@ -363,7 +380,7 @@ function parseConsumoPosto(items: LinhaDescOp[]): ConsumoPostoInfo {
     if (d.includes("inj") || d.includes("bandeira") || d.includes("disp") || d.includes("reativ")) continue;
     const posto = detectPosto(it.desc);
     if (!posto) continue;
-    const isTusd = d.includes("tusd");
+    const isTusd = isTusdDesc(d);
     const isTe = !isTusd && isTeDesc(d);
 
     if (posto === "PONTA") {
@@ -458,7 +475,7 @@ function parseInjecaoPosto(items: LinhaDescOp[]): InjecaoPostoInfo {
     if (!(d.includes("energ") && d.includes("inj"))) continue;
     const posto = detectPosto(it.desc);
     if (!posto) continue;
-    const isTusd = d.includes("tusd");
+    const isTusd = isTusdDesc(d);
     const isTe = !isTusd && isTeDesc(d);
     const target = isTusd ? tusd : isTe ? te : null;
     if (!target) continue;
