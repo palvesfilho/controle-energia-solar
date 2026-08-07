@@ -971,10 +971,9 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
             // para mostrá-las sem exigir um F5.
             onFaturasImportadas={() => setBillsRefreshKey((k) => k + 1)}
           />
-          <UcBills
-            consumerUnitId={consumerUnit.id}
-            refreshKey={billsRefreshKey}
-          />
+          {/* Todas as UCs do proprietário, não só a titular: as faturas das
+              beneficiárias entram no banco e antes não apareciam aqui. */}
+          <UcBills proprietarioId={id} refreshKey={billsRefreshKey} />
         </>
       )}
 

@@ -3,7 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
-import { whereCodigoUc } from "@/lib/uc-codigo";
+import { resolverUcsDoProprietario } from "@/lib/brasil-solar-ucs";
 
 // GET /api/brasil-solar/proprietarios/[id]/status-faturas?mes=5&ano=2026
 // Retorna status agregado de faturas (titular + beneficiárias) na competência
@@ -31,67 +31,10 @@ export async function GET(
     return NextResponse.json({ error: "Proprietário não encontrado" }, { status: 404 });
   }
 
-  type UcAgrupada = {
-    consumerUnitId: string;
-    codigoUc: string;
-    nome: string;
-    tipo: "TITULAR" | "BENEFICIARIA";
-    percentual: number | null;
-  };
-
-  const ucs: UcAgrupada[] = [];
-
-  // UC titular do proprietário (mesma codigoUc registrada nele).
-  //
-  // ⚠️ Tem de casar do MESMO jeito que a página faz em
-  // `/api/consumer-units?codigoUc=`. Antes aqui era `findUnique` no `codigoUc`
-  // exato: quando a RGE trocou o código da UC (jul/2026) e o proprietário ficou
-  // com o antigo, a página achava a UC e renderizava o card, mas este endpoint
-  // devolvia `ucs: []` — e o card some inteiro, junto com o botão "Sincronizar
-  // faturas antigas", sem nenhuma mensagem.
-  if (prop.codigoUc) {
-    const titular = await prisma.consumerUnit.findFirst({
-      where: whereCodigoUc(prop.codigoUc),
-      select: { id: true, codigoUc: true, nome: true },
-    });
-    if (titular) {
-      ucs.push({
-        consumerUnitId: titular.id,
-        codigoUc: titular.codigoUc,
-        nome: titular.nome,
-        tipo: "TITULAR",
-        percentual: null,
-      });
-    }
-  }
-
-  // Beneficiárias com ConsumerUnit linkada.
-  const beneficiarias = await prisma.brasilSolarBeneficiaria.findMany({
-    where: { proprietarioId: id, active: true },
-    orderBy: { createdAt: "asc" },
-    select: {
-      consumerUnitId: true,
-      codigoUc: true,
-      nome: true,
-      percentual: true,
-    },
-  });
-  for (const b of beneficiarias) {
-    if (!b.consumerUnitId) continue;
-    if (ucs.some((u) => u.consumerUnitId === b.consumerUnitId)) continue;
-    const cu = await prisma.consumerUnit.findUnique({
-      where: { id: b.consumerUnitId },
-      select: { id: true, codigoUc: true, nome: true },
-    });
-    if (!cu) continue;
-    ucs.push({
-      consumerUnitId: cu.id,
-      codigoUc: cu.codigoUc,
-      nome: b.nome ?? cu.nome,
-      tipo: "BENEFICIARIA",
-      percentual: b.percentual,
-    });
-  }
+  // Titular + beneficiárias. A resolução mora em `resolverUcsDoProprietario`
+  // porque a lista de faturas responde à MESMA pergunta: duas versões dela
+  // acabariam discordando e sumindo com UC sem dar erro.
+  const ucs = await resolverUcsDoProprietario(id, prop.codigoUc);
 
   const ucIds = ucs.map((u) => u.consumerUnitId);
 
