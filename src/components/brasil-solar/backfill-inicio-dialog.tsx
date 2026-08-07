@@ -80,7 +80,9 @@ export function BackfillInicioDialog({
   // antigo, o caminho é outro (upload manual).
   const limiteAno = anos[anos.length - 1];
 
-  const atalhos = [3, 6, 12, 24].map((n) => {
+  // 30 é o fundo útil: é até onde a concessionária costuma manter a segunda via
+  // (a JOCELAINE puxou até fev/2024, ~31 meses). Além disso o robô roda à toa.
+  const atalhos = [3, 6, 12, 24, 30].map((n) => {
     const d = new Date(anoAtual, hoje.getMonth() - (n - 1), 1);
     return { n, ano: d.getFullYear(), mes: d.getMonth() + 1 };
   });
