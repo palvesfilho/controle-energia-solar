@@ -14,6 +14,7 @@ import {
   FileBarChart2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { InversorTag } from "@/components/brasil-solar/inversor-tag";
 
 interface Proprietario {
   id: string;
@@ -24,6 +25,10 @@ interface Proprietario {
   cidade?: string | null;
   uf?: string | null;
   createdAt: string;
+  inversorMarca?: string | null;
+  plataformaMonitoramento?: string | null;
+  executadoPor?: string | null;
+  empresaTerceira?: { id: string; nome: string } | null;
   _count: { plantas: number };
 }
 
@@ -182,12 +187,23 @@ export default function ProprietariosPage() {
                   proprietarios.map((p) => (
                     <tr key={p.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                       <td className="py-2.5 px-3">
-                        <Link
-                          href={`/admin/brasil-solar/proprietarios/${p.id}`}
-                          className="font-medium text-foreground hover:text-primary transition-colors"
-                        >
-                          {p.nome}
-                        </Link>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Link
+                            href={`/admin/brasil-solar/proprietarios/${p.id}`}
+                            className="font-medium text-foreground hover:text-primary transition-colors"
+                          >
+                            {p.nome}
+                          </Link>
+                          <InversorTag
+                            inversorMarca={p.inversorMarca}
+                            plataformaMonitoramento={p.plataformaMonitoramento}
+                          />
+                        </div>
+                        {p.executadoPor === "TERCEIRO" && (
+                          <p className="text-[10px] text-muted-foreground">
+                            {p.empresaTerceira?.nome ?? "Terceiro (empresa não informada)"}
+                          </p>
+                        )}
                       </td>
                       <td className="py-2.5 px-3 text-muted-foreground">
                         {p.telefone || "-"}

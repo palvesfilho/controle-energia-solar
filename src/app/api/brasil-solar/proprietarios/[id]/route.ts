@@ -5,6 +5,8 @@ import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { normalizeCodigoUc } from "@/lib/uc-codigo";
 
+const EXECUTADO_POR_VALORES = new Set(["BRASIL_SOLAR", "TERCEIRO"]);
+
 // GET /api/brasil-solar/proprietarios/[id]
 export async function GET(
   _req: NextRequest,
@@ -20,6 +22,8 @@ export async function GET(
   const proprietario = await prisma.brasilSolarProprietario.findUnique({
     where: { id },
     include: {
+      // Nome da empresa executora, quando executadoPor = TERCEIRO.
+      empresaTerceira: { select: { id: true, nome: true } },
       plantas: {
         where: { active: true },
         orderBy: { nome: "asc" },
@@ -65,9 +69,55 @@ export async function PUT(
   const { id } = await params;
   const body = await req.json();
 
+  // Quem executou o sistema, e — quando é TERCEIRO — qual empresa.
+  //
+  // `undefined` significa "não mexe neste campo" pro Prisma, e é isso que
+  // preserva o resto do PUT: telas que não enviam esses campos continuam
+  // funcionando iguais. Só entra no update quem veio no body.
+  let executadoPor: string | undefined;
+  let empresaTerceiraId: string | null | undefined;
+
+  if (typeof body.executadoPor === "string") {
+    const v = body.executadoPor.trim();
+    if (!EXECUTADO_POR_VALORES.has(v)) {
+      return NextResponse.json(
+        { error: "Campo 'executadoPor' inválido (use BRASIL_SOLAR ou TERCEIRO)" },
+        { status: 400 },
+      );
+    }
+    executadoPor = v;
+  }
+
+  if (body.empresaTerceiraId !== undefined) {
+    const bruto = body.empresaTerceiraId;
+    const idEmpresa = typeof bruto === "string" ? bruto.trim() : "";
+    if (!idEmpresa) {
+      empresaTerceiraId = null;
+    } else {
+      // Valida a FK aqui pra devolver mensagem útil em vez de P2003 cru.
+      const empresa = await prisma.empresaTerceira.findUnique({
+        where: { id: idEmpresa },
+        select: { id: true },
+      });
+      if (!empresa) {
+        return NextResponse.json(
+          { error: "Empresa executora não encontrada — recarregue a lista e escolha de novo" },
+          { status: 400 },
+        );
+      }
+      empresaTerceiraId = empresa.id;
+    }
+  }
+
+  // Voltar para BRASIL_SOLAR limpa a empresa: guardá-la deixaria a ficha com uma
+  // executora que contradiz o próprio executadoPor.
+  if (executadoPor === "BRASIL_SOLAR") empresaTerceiraId = null;
+
   const proprietario = await prisma.brasilSolarProprietario.update({
     where: { id },
     data: {
+      executadoPor,
+      empresaTerceiraId,
       nome: body.nome,
       cpfCnpj: body.cpfCnpj,
       email: body.email,

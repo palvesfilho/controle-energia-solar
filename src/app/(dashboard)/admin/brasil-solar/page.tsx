@@ -5,6 +5,7 @@ import Link from "next/link";
 import { StatsCards } from "@/components/brasil-solar/stats-cards";
 import { ClientFilters } from "@/components/brasil-solar/client-filters";
 import { MonitoringStatusBadge } from "@/components/brasil-solar/status-badge";
+import { InversorTag } from "@/components/brasil-solar/inversor-tag";
 import { formatNumber } from "@/lib/formatters";
 import {
   ChevronLeft,
@@ -352,12 +353,18 @@ export default function BrasilSolarPage() {
                   clients.map((client) => (
                     <tr key={client.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                       <td className="py-2.5 px-3">
-                        <Link
-                          href={`/admin/brasil-solar/${client.id}`}
-                          className="font-medium text-foreground hover:text-primary transition-colors"
-                        >
-                          {client.nome}
-                        </Link>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Link
+                            href={`/admin/brasil-solar/${client.id}`}
+                            className="font-medium text-foreground hover:text-primary transition-colors"
+                          >
+                            {client.nome}
+                          </Link>
+                          <InversorTag
+                            inversorMarca={client.inversorMarca}
+                            plataformaMonitoramento={client.plataformaMonitoramento}
+                          />
+                        </div>
                         {client.cpfCnpj && (
                           <p className="text-[10px] text-muted-foreground">{client.cpfCnpj}</p>
                         )}

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isValidPhone } from "@/lib/phone";
+import { EmpresaTerceiraDialog } from "@/components/brasil-solar/empresa-terceira-dialog";
 
 interface FormData {
   nome: string;
@@ -18,6 +19,11 @@ interface FormData {
   cidade: string;
   uf: string;
   observacoes: string;
+  executadoPor: "BRASIL_SOLAR" | "TERCEIRO";
+  /** Só usado quando executadoPor = TERCEIRO. "" = nenhuma escolhida. */
+  empresaTerceiraId: string;
+  /** Nome da empresa escolhida — só pra exibir sem rebuscar a lista. */
+  empresaTerceiraNome: string;
 }
 
 const UF_OPTIONS = [
@@ -34,7 +40,9 @@ export default function EditarProprietarioPage({ params }: { params: Promise<{ i
   const [form, setForm] = useState<FormData>({
     nome: "", cpfCnpj: "", email: "", telefone: "",
     endereco: "", cidade: "", uf: "", observacoes: "",
+    executadoPor: "BRASIL_SOLAR", empresaTerceiraId: "", empresaTerceiraNome: "",
   });
+  const [empresaDialogAberto, setEmpresaDialogAberto] = useState(false);
 
   useEffect(() => {
     fetch(`/api/brasil-solar/proprietarios/${id}`)
@@ -49,6 +57,9 @@ export default function EditarProprietarioPage({ params }: { params: Promise<{ i
           cidade: data.cidade || "",
           uf: data.uf || "",
           observacoes: data.observacoes || "",
+          executadoPor: data.executadoPor === "TERCEIRO" ? "TERCEIRO" : "BRASIL_SOLAR",
+          empresaTerceiraId: data.empresaTerceira?.id || "",
+          empresaTerceiraNome: data.empresaTerceira?.nome || "",
         });
       })
       .catch(() => toast.error("Erro ao carregar"))
@@ -67,6 +78,10 @@ export default function EditarProprietarioPage({ params }: { params: Promise<{ i
     }
     if (form.telefone && !isValidPhone(form.telefone)) {
       toast.error("Telefone inválido. Use (XX)XXXXX-XXXX");
+      return;
+    }
+    if (form.executadoPor === "TERCEIRO" && !form.empresaTerceiraId) {
+      toast.error("Selecione a empresa que executou o sistema");
       return;
     }
 
@@ -163,6 +178,53 @@ export default function EditarProprietarioPage({ params }: { params: Promise<{ i
               </div>
             </div>
 
+            <div className="space-y-3 pt-4 border-t">
+              <div>
+                <label className="text-sm font-medium">Sistema executado por *</label>
+                <select
+                  value={form.executadoPor}
+                  onChange={(e) => {
+                    const v = e.target.value as FormData["executadoPor"];
+                    set("executadoPor", v);
+                    // Marcar "Terceiro" já abre a janela — sem empresa o salvar
+                    // nem passa na validação.
+                    if (v === "TERCEIRO") {
+                      if (!form.empresaTerceiraId) setEmpresaDialogAberto(true);
+                    } else {
+                      // Voltar para Brasil Solar limpa a empresa (a API faz o
+                      // mesmo no servidor, aqui é só o reflexo na tela).
+                      set("empresaTerceiraId", "");
+                      set("empresaTerceiraNome", "");
+                    }
+                  }}
+                  className="w-full mt-1 px-3 py-2 text-sm border rounded-lg bg-background"
+                >
+                  <option value="BRASIL_SOLAR">Brasil Solar</option>
+                  <option value="TERCEIRO">Terceiro</option>
+                </select>
+              </div>
+
+              {form.executadoPor === "TERCEIRO" && (
+                <div>
+                  <label className="text-sm font-medium">Empresa que executou *</label>
+                  <button
+                    type="button"
+                    onClick={() => setEmpresaDialogAberto(true)}
+                    className={`w-full mt-1 px-3 py-2 text-sm border rounded-lg bg-background text-left flex items-center justify-between gap-2 hover:bg-muted/50 transition-colors ${
+                      form.empresaTerceiraId ? "" : "text-muted-foreground"
+                    }`}
+                  >
+                    <span className="truncate">
+                      {form.empresaTerceiraNome || "Selecionar empresa…"}
+                    </span>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {form.empresaTerceiraId ? "Trocar" : "Escolher"}
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div className="flex items-center gap-3 pt-4 border-t">
               <button
                 type="submit"
@@ -179,6 +241,17 @@ export default function EditarProprietarioPage({ params }: { params: Promise<{ i
           </CardContent>
         </Card>
       </form>
+
+      {/* Fora do <form>: os botões do diálogo não podem submeter a edição. */}
+      <EmpresaTerceiraDialog
+        open={empresaDialogAberto}
+        onOpenChange={setEmpresaDialogAberto}
+        value={form.empresaTerceiraId}
+        onSelect={(empresa) => {
+          set("empresaTerceiraId", empresa.id);
+          set("empresaTerceiraNome", empresa.nome);
+        }}
+      />
     </div>
   );
 }

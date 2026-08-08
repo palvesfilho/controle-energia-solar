@@ -13,6 +13,7 @@ import { isValidPhone } from "@/lib/phone";
 import { CONCESSIONARIAS } from "@/lib/concessionarias";
 import { modeloDaConcessionaria, ROTULO_MODELO } from "@/lib/anexo-modelos";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { EmpresaTerceiraDialog } from "@/components/brasil-solar/empresa-terceira-dialog";
 import {
   TIPOS_TELHADO,
   TIPOS_COM_ESTRUTURA,
@@ -31,6 +32,10 @@ interface FormData {
   uf: string;
   observacoes: string;
   executadoPor: "BRASIL_SOLAR" | "TERCEIRO";
+  /** Só usado quando executadoPor = TERCEIRO. "" = nenhuma escolhida. */
+  empresaTerceiraId: string;
+  /** Nome da empresa escolhida — só pra exibir sem ter que rebuscar a lista. */
+  empresaTerceiraNome: string;
   obraJaExecutada: boolean;
   codigoUc: string;
   codigoUcAntigo: string;
@@ -82,6 +87,8 @@ export default function NovoProprietarioPage() {
     nome: "", cpfCnpj: "", email: "", telefone: "",
     endereco: "", cidade: "", uf: "", observacoes: "",
     executadoPor: "BRASIL_SOLAR",
+    empresaTerceiraId: "",
+    empresaTerceiraNome: "",
     obraJaExecutada: false,
     codigoUc: "", codigoUcAntigo: "", concessionaria: "",
     emailPortal: "", senhaPortal: "", instalacaoPortal: "",
@@ -89,6 +96,7 @@ export default function NovoProprietarioPage() {
     dataPagamento: "", prazoContratoDias: "",
   });
   const [showPortalPassword, setShowPortalPassword] = useState(false);
+  const [empresaDialogAberto, setEmpresaDialogAberto] = useState(false);
   const modeloEscolhido = modeloDaConcessionaria(form.concessionaria);
 
   function set<K extends keyof FormData>(field: K, value: FormData[K]) {
@@ -200,6 +208,10 @@ export default function NovoProprietarioPage() {
     }
 
     const isTerceiro = form.executadoPor === "TERCEIRO";
+    if (isTerceiro && !form.empresaTerceiraId) {
+      toast.error("Selecione a empresa que executou o sistema");
+      return;
+    }
     // Sem cronograma a montar: terceiro (só monitoramento) ou obra já feita.
     const semObraAAgendar = isTerceiro || form.obraJaExecutada;
     let prazo: number | null = null;
@@ -242,6 +254,7 @@ export default function NovoProprietarioPage() {
         uf: form.uf,
         observacoes: form.observacoes,
         executadoPor: form.executadoPor,
+        empresaTerceiraId: isTerceiro ? form.empresaTerceiraId : null,
         obraJaExecutada: !isTerceiro && form.obraJaExecutada,
         codigoUc: form.codigoUc.trim() || null,
         codigoUcAntigo: form.codigoUcAntigo.trim() || null,
@@ -276,11 +289,28 @@ export default function NovoProprietarioPage() {
 
       if (res.ok) {
         const data = await res.json();
-        toast.success(
-          plantaPrefill
-            ? "Proprietário e usina cadastrados"
-            : "Proprietário criado",
-        );
+        // A API cria o proprietário mesmo quando UC, acesso ao portal ou obra
+        // falham — e devolve `avisos` dizendo o que ficou de fora. Antes esses
+        // erros eram engolidos e o cadastro dizia "criado": foi assim que a
+        // senha do portal de um cliente sumiu sem ninguém perceber.
+        const avisos: string[] = Array.isArray(data.avisos) ? data.avisos : [];
+        if (avisos.length > 0) {
+          for (const aviso of avisos) {
+            toast.warning("Cadastro salvo, mas incompleto", {
+              description: aviso,
+              // Sobrevive à navegação e só sai quando o operador fechar: é a
+              // única chance dele saber que precisa completar algo à mão.
+              duration: Infinity,
+              closeButton: true,
+            });
+          }
+        } else {
+          toast.success(
+            plantaPrefill
+              ? "Proprietário e usina cadastrados"
+              : "Proprietário criado",
+          );
+        }
         router.push(`/admin/brasil-solar/proprietarios/${data.id}`);
       } else {
         const err = await res.json();
@@ -387,9 +417,20 @@ export default function NovoProprietarioPage() {
               <label className="text-sm font-medium">Sistema executado por *</label>
               <select
                 value={form.executadoPor}
-                onChange={(e) =>
-                  set("executadoPor", e.target.value as FormData["executadoPor"])
-                }
+                onChange={(e) => {
+                  const v = e.target.value as FormData["executadoPor"];
+                  set("executadoPor", v);
+                  // Marcar "Terceiro" já abre a janela da empresa — é a pergunta
+                  // seguinte natural, e sem ela o cadastro nem passa na validação.
+                  if (v === "TERCEIRO") {
+                    if (!form.empresaTerceiraId) setEmpresaDialogAberto(true);
+                  } else {
+                    // Voltar para Brasil Solar limpa a empresa: guardá-la deixaria
+                    // a ficha com uma executora que contradiz o próprio campo.
+                    set("empresaTerceiraId", "");
+                    set("empresaTerceiraNome", "");
+                  }
+                }}
                 className="w-full mt-1 px-3 py-2 text-sm border rounded-lg bg-background"
                 required
               >
@@ -398,11 +439,30 @@ export default function NovoProprietarioPage() {
               </select>
             </div>
             {form.executadoPor === "TERCEIRO" && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                <strong>Somente monitoramento:</strong> a Brasil Solar não executa a obra
-                deste sistema. Nenhuma obra ou tarefa de gestão será criada — o cadastro
-                serve para monitorar a geração da usina e administrar os créditos.
-              </div>
+              <>
+                <div>
+                  <label className="text-sm font-medium">Empresa que executou *</label>
+                  <button
+                    type="button"
+                    onClick={() => setEmpresaDialogAberto(true)}
+                    className={`w-full mt-1 px-3 py-2 text-sm border rounded-lg bg-background text-left flex items-center justify-between gap-2 hover:bg-muted/50 transition-colors ${
+                      form.empresaTerceiraId ? "" : "text-muted-foreground"
+                    }`}
+                  >
+                    <span className="truncate">
+                      {form.empresaTerceiraNome || "Selecionar empresa…"}
+                    </span>
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {form.empresaTerceiraId ? "Trocar" : "Escolher"}
+                    </span>
+                  </button>
+                </div>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  <strong>Somente monitoramento:</strong> a Brasil Solar não executa a obra
+                  deste sistema. Nenhuma obra ou tarefa de gestão será criada — o cadastro
+                  serve para monitorar a geração da usina e administrar os créditos.
+                </div>
+              </>
             )}
 
             {form.executadoPor === "BRASIL_SOLAR" && (
@@ -719,6 +779,17 @@ export default function NovoProprietarioPage() {
           </CardContent>
         </Card>
       </form>
+
+      {/* Fora do <form>: os botões do diálogo não podem submeter o cadastro. */}
+      <EmpresaTerceiraDialog
+        open={empresaDialogAberto}
+        onOpenChange={setEmpresaDialogAberto}
+        value={form.empresaTerceiraId}
+        onSelect={(empresa) => {
+          set("empresaTerceiraId", empresa.id);
+          set("empresaTerceiraNome", empresa.nome);
+        }}
+      />
     </div>
   );
 }

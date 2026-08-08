@@ -80,6 +80,12 @@ export async function GET(req: NextRequest) {
         cidade: true,
         uf: true,
         createdAt: true,
+        // Tag da marca do inversor (ver src/lib/marca-inversor.ts): a declarada
+        // manda, a plataforma das usinas entra como derivação.
+        inversorMarca: true,
+        executadoPor: true,
+        empresaTerceira: { select: { id: true, nome: true } },
+        plantas: { select: { plataformaMonitoramento: true } },
         _count: {
           select: { plantas: true },
         },
@@ -88,8 +94,23 @@ export async function GET(req: NextRequest) {
     prisma.brasilSolarProprietario.count({ where }),
   ]);
 
+  // Um proprietário pode ter várias usinas; a tag mostra uma marca só. Pega a
+  // primeira plataforma preenchida — na prática são todas iguais, e quando não
+  // são, a marca declarada (que ganha da plataforma) é quem resolve.
+  const proprietariosComTag = proprietarios.map((p) => {
+    const { plantas, ...resto } = p as typeof p & {
+      plantas: { plataformaMonitoramento: string | null }[];
+    };
+    return {
+      ...resto,
+      plataformaMonitoramento:
+        plantas.find((u) => (u.plataformaMonitoramento ?? "").trim())
+          ?.plataformaMonitoramento ?? null,
+    };
+  });
+
   return NextResponse.json({
-    proprietarios,
+    proprietarios: proprietariosComTag,
     pagination: {
       page,
       limit,
@@ -127,6 +148,28 @@ export async function POST(req: NextRequest) {
     );
   }
   const isTerceiro = executadoPor === "TERCEIRO";
+
+  // Qual empresa executou, quando não foi a Brasil Solar. Só vale pra TERCEIRO —
+  // se vier num cadastro BRASIL_SOLAR é ignorado, senão a ficha guarda uma
+  // empresa executora que contradiz o próprio executadoPor.
+  let empresaTerceiraId: string | null = null;
+  if (isTerceiro) {
+    const id = typeof body.empresaTerceiraId === "string" ? body.empresaTerceiraId.trim() : "";
+    if (id) {
+      // Valida a FK aqui pra devolver mensagem útil em vez de P2003 cru.
+      const empresa = await prisma.empresaTerceira.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+      if (!empresa) {
+        return NextResponse.json(
+          { error: "Empresa executora não encontrada — recarregue a lista e escolha de novo" },
+          { status: 400 },
+        );
+      }
+      empresaTerceiraId = empresa.id;
+    }
+  }
 
   // Obra da Brasil Solar já executada antes do cadastro: não há cronograma a
   // agendar, então pula Obra e tarefas igual ao TERCEIRO. Só faz sentido
@@ -233,6 +276,7 @@ export async function POST(req: NextRequest) {
       uf: body.uf?.trim() || null,
       observacoes: body.observacoes?.trim() || null,
       executadoPor,
+      empresaTerceiraId,
       obraJaExecutada,
       tipoTelhado,
       tipoTelhadoOutro,
@@ -256,10 +300,21 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  // Avisos NÃO fatais: o que o cadastro tentou fazer e não conseguiu. Vão na
+  // resposta para a tela mostrar ao operador.
+  //
+  // ⚠️ Por que isso existe: estas etapas ficam em try/catch para não derrubar o
+  // cadastro do proprietário — mas engolir o erro fazia o operador digitar
+  // email/senha do portal e o servidor descartar tudo em silêncio, respondendo
+  // "Proprietário criado". Só se descobria dias depois, no botão "Sincronizar
+  // faturas antigas", como "Nenhuma UC com credencial" (GRÁFICA JACUI, 05/08/26).
+  const avisos: string[] = [];
+
   // Cria automaticamente a ConsumerUnit quando o cÃ³digo UC foi informado.
   // NÃ£o falha o cadastro do proprietÃ¡rio se a UC nÃ£o puder ser criada
   // (ex.: cÃ³digo jÃ¡ em uso).
   let consumerUnitId: string | null = null;
+  let motivoUcFalhou: string | null = null;
   if (codigoUcInput) {
     try {
       // Casa também pelo código antigo — ver `whereCodigoUc`. Com `findUnique`
@@ -285,7 +340,11 @@ export async function POST(req: NextRequest) {
         consumerUnitId = created.id;
       }
     } catch (e) {
+      motivoUcFalhou = e instanceof Error ? e.message : String(e);
       console.error("[POST /brasil-solar/proprietarios] auto-UC falhou:", e);
+      avisos.push(
+        `A Unidade Consumidora ${codigoUcInput} não pôde ser criada automaticamente: ${motivoUcFalhou}`,
+      );
     }
   }
 
@@ -295,7 +354,21 @@ export async function POST(req: NextRequest) {
   // cadastro do proprietÃ¡rio/UC.
   const portal =
     body.portal && typeof body.portal === "object" ? body.portal : null;
-  if (consumerUnitId && portal) {
+  const AVISO_CADASTRAR_DEPOIS =
+    'Cadastre o acesso no card "Status e acesso à concessionária", na tela do proprietário.';
+
+  if (portal && !consumerUnitId) {
+    // O operador digitou email/senha do portal e não há UC para pendurá-los.
+    // ANTES o bloco inteiro era pulado por um `if (consumerUnitId && portal)`
+    // e a credencial sumia sem rastro. Agora o cadastro conclui, mas dizendo
+    // exatamente o que não foi salvo e por quê.
+    const motivo = motivoUcFalhou
+      ? `a UC não pôde ser criada (${motivoUcFalhou})`
+      : "o código da UC não foi informado";
+    avisos.push(
+      `O acesso ao portal da concessionária NÃO foi salvo porque ${motivo}. ${AVISO_CADASTRAR_DEPOIS}`,
+    );
+  } else if (portal && consumerUnitId) {
     try {
       // A concessionária da credencial é a mesma dos dados técnicos — a tela não
       // pergunta duas vezes. `portal.distribuidora` não é mais lido do body.
@@ -326,9 +399,22 @@ export async function POST(req: NextRequest) {
             },
           });
         }
+      } else {
+        // Faltou campo. A tela valida antes de enviar, então chegar aqui indica
+        // payload de outra origem (import/API) — nunca silenciar.
+        const faltando = [
+          !email && "email",
+          !senha && "senha",
+          !instalacao && "instalação",
+        ].filter(Boolean).join(", ");
+        avisos.push(
+          `O acesso ao portal NÃO foi salvo: faltou ${faltando}. ${AVISO_CADASTRAR_DEPOIS}`,
+        );
       }
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       console.error("[POST /brasil-solar/proprietarios] auto-credencial falhou:", e);
+      avisos.push(`O acesso ao portal NÃO foi salvo: ${msg}. ${AVISO_CADASTRAR_DEPOIS}`);
     }
   }
 
@@ -408,10 +494,18 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     // NÃ£o falhar a criaÃ§Ã£o do proprietÃ¡rio se a obra/tarefas nÃ£o puderem ser criadas.
     console.error("[POST /brasil-solar/proprietarios] auto-obra falhou:", e);
+    avisos.push(
+      `A obra e as tarefas do cronograma não foram criadas: ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
   }
 
-  return NextResponse.json(proprietario, { status: 201 });
+  // `avisos` só aparece quando algo ficou pelo caminho — a tela usa a presença
+  // dele para trocar o "Proprietário criado" por um alerta do que falta fazer.
+  return NextResponse.json(
+    avisos.length ? { ...proprietario, avisos } : proprietario,
+    { status: 201 },
+  );
 }
 
 function toFloat(v: unknown): number | null {
