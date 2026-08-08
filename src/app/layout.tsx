@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Poppins, Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { ptBR } from "@clerk/localizations";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
@@ -45,7 +46,24 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider signInUrl="/login-clerk" signInForceRedirectUrl="/portal" signInFallbackRedirectUrl="/portal">
+    /**
+     * `localization={ptBR}` traduz a INTERFACE do Clerk — tela de entrar, criar
+     * conta, código de verificação, redefinir senha e as mensagens de erro.
+     * Os clientes da Rede Brasil Solar não falam inglês, e a tela de cadastro é
+     * o primeiro contato deles com o sistema.
+     *
+     * ⚠️ Isto NÃO traduz os E-MAILS. O convite, o código de verificação e o
+     * "esqueci minha senha" são templates hospedados no Clerk e se editam no
+     * Dashboard (Customization → E-mails), não aqui. Traduzir só a interface
+     * deixa o fluxo pela metade: o cliente recebe um e-mail em inglês e cai numa
+     * tela em português.
+     */
+    <ClerkProvider
+      localization={ptBR}
+      signInUrl="/login-clerk"
+      signInForceRedirectUrl="/portal"
+      signInFallbackRedirectUrl="/portal"
+    >
       <html
         lang="pt-BR"
         className={`${poppins.variable} ${inter.variable} h-full antialiased`}
