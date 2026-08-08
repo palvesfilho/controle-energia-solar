@@ -16,8 +16,13 @@ export const metadata: Metadata = {
     title: "Brasil Solar",
     statusBarStyle: "default",
   },
+  // Troca a faísca da AURA (layout raiz) pelo sol da Rede Brasil Solar: na aba,
+  // no atalho e no iOS. O 32 é o tamanho que o navegador usa na aba.
   icons: {
-    icon: [{ url: "/pwa/icon-192.png", sizes: "192x192", type: "image/png" }],
+    icon: [
+      { url: "/pwa/icon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/pwa/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
     apple: [{ url: "/pwa/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };

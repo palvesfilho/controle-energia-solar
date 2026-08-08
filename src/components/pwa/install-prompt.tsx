@@ -1,90 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Download, Share, SquarePlus, X } from "lucide-react";
 import { brand, brandGradient } from "@/lib/brand-colors";
+import { useInstalarApp } from "./use-instalar-app";
 
 /**
  * Faixa "Instalar aplicativo" do Portal do Cliente.
  *
- * Dois caminhos, porque os sistemas não se comportam igual:
- *  - Android/Chrome/Edge disparam `beforeinstallprompt`; guardamos o evento e
- *    abrimos o diálogo nativo no clique.
- *  - iOS/Safari não tem essa API. Lá só resta explicar o caminho manual
- *    (Compartilhar → Adicionar à Tela de Início).
- *
- * Some quando o app já está instalado (`display-mode: standalone`) ou quando o
+ * A lógica de detectar o sistema e abrir o diálogo mora no `useInstalarApp`;
+ * aqui fica só a aparência. Some quando o app já está instalado ou quando o
  * cliente dispensa a faixa.
+ *
+ * O primo desta faixa é o `InstallAppBotao`, usado na barra de prévia da Visão
+ * do cliente — mesma lógica, aparência discreta.
  */
-
-const CHAVE_DISPENSA = "bs-pwa-install-dispensado";
-
-type PromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-};
-
-function estaInstalado(): boolean {
-  if (typeof window === "undefined") return false;
-  return (
-    window.matchMedia("(display-mode: standalone)").matches ||
-    // Safari no iOS não implementa display-mode: standalone.
-    (window.navigator as Navigator & { standalone?: boolean }).standalone === true
-  );
-}
-
-function ehIOS(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return /iphone|ipad|ipod/i.test(navigator.userAgent);
-}
-
 export function InstallPrompt() {
-  const [evento, setEvento] = useState<PromptEvent | null>(null);
-  const [mostrarIOS, setMostrarIOS] = useState(false);
-  const [visivel, setVisivel] = useState(false);
+  const { podeInstalarDireto, ehIOS, instalado, dispensado, dispensar, instalar } =
+    useInstalarApp();
   const [comoFazerIOS, setComoFazerIOS] = useState(false);
 
-  useEffect(() => {
-    if (estaInstalado()) return;
-    if (localStorage.getItem(CHAVE_DISPENSA) === "1") return;
-
-    if (ehIOS()) {
-      setMostrarIOS(true);
-      setVisivel(true);
-      return;
-    }
-
-    const aoPoderInstalar = (e: Event) => {
-      // Sem o preventDefault o Chrome mostra o próprio mini-infobar.
-      e.preventDefault();
-      setEvento(e as PromptEvent);
-      setVisivel(true);
-    };
-
-    const aoInstalar = () => setVisivel(false);
-
-    window.addEventListener("beforeinstallprompt", aoPoderInstalar);
-    window.addEventListener("appinstalled", aoInstalar);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", aoPoderInstalar);
-      window.removeEventListener("appinstalled", aoInstalar);
-    };
-  }, []);
-
-  function dispensar() {
-    localStorage.setItem(CHAVE_DISPENSA, "1");
-    setVisivel(false);
-  }
-
-  async function instalar() {
-    if (!evento) return;
-    await evento.prompt();
-    const { outcome } = await evento.userChoice;
-    if (outcome === "accepted") setVisivel(false);
-    // O evento é de uso único: depois de consumido não dá pra chamar de novo.
-    setEvento(null);
-  }
-
+  // No iOS não há evento para esperar: a faixa aparece assim que sabemos que é
+  // iPhone. Nos demais, só depois que o navegador libera a instalação.
+  const visivel = !instalado && !dispensado && (ehIOS || podeInstalarDireto);
   if (!visivel) return null;
 
   return (
@@ -106,7 +44,7 @@ export function InstallPrompt() {
               Fica com ícone na tela do celular e abre direto, sem navegador.
             </p>
 
-            {mostrarIOS ? (
+            {ehIOS ? (
               comoFazerIOS ? (
                 <ol className="mt-3 space-y-2 text-xs text-[#59604F]">
                   <li className="flex items-center gap-2">

@@ -56,6 +56,9 @@ function iconSvg(
 }
 
 const VARIANTES = [
+  // 32px é o tamanho que o navegador usa na ABA. Rasterizar direto nesse
+  // tamanho sai nítido; reduzir o de 192 apaga o traço fino do sol.
+  { arquivo: "icon-32.png", size: 32, rounded: true, sunRatio: 0.7 },
   { arquivo: "icon-192.png", size: 192, rounded: true, sunRatio: 0.62 },
   { arquivo: "icon-512.png", size: 512, rounded: true, sunRatio: 0.62 },
   { arquivo: "icon-maskable-512.png", size: 512, rounded: false, sunRatio: 0.46 },

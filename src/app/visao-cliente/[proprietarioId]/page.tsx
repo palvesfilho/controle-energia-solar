@@ -13,6 +13,8 @@ import {
 import { resolvePlanoPortal } from "@/lib/portal-cliente-plano";
 import { formatNomeSaudacao } from "@/lib/formatters";
 import { PortalClienteBody } from "@/components/brasil-solar/portal-cliente-body";
+import { PwaRegister } from "@/components/pwa/pwa-register";
+import { InstallAppBotao } from "@/components/pwa/install-app-botao";
 
 export const dynamic = "force-dynamic";
 
@@ -108,6 +110,9 @@ export default async function VisaoClientePage({
               Completo
             </Link>
           </div>
+          {/* Instalação do app: fica na barra de prévia, e não na faixa branca
+              que o cliente vê, pra não confundir quem demonstra a tela. */}
+          <InstallAppBotao />
           <Link
             href={`/admin/brasil-solar/proprietarios/${prop.id}`}
             className="inline-flex items-center gap-1 opacity-90 hover:opacity-100"
@@ -148,6 +153,11 @@ export default async function VisaoClientePage({
           ctaHref={plano.ctaHref}
         />
       </main>
+
+      {/* O Chrome só libera a instalação se houver service worker registrado.
+          Quem abre a prévia pode nunca ter entrado no portal do cliente, então
+          registramos aqui também — é o mesmo `/sw.js`, escopo "/". */}
+      <PwaRegister />
     </div>
   );
 }
