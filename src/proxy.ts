@@ -57,7 +57,10 @@ const isApi = createRouteMatcher([
 
 const isPublicApi = createRouteMatcher([
   "/api/webhooks/(.*)",
-  "/api/auth/(.*)", // legado NextAuth — pode remover quando lib/auth-options sumir
+  // ❌ "/api/auth/(.*)" saiu em 08/08/2026 junto com o login por senha local.
+  // Era ele que deixava o endpoint do NextAuth acessível sem sessão — e o
+  // handler comparava senha com bcrypt contra User.passwordHash. A rota agora
+  // devolve 410, e sem esta entrada nem chega lá: o Clerk barra antes.
   // Server-to-server: porta de entrada de faturas históricas, chamada por um robô
   // de download com a sua PRÓPRIA autenticação (Authorization: Bearer CRON_SECRET).
   // Sem sessão Clerk, então precisa ser pública no middleware — a rota valida o
