@@ -10,7 +10,7 @@ import {
   parseBillData,
   InfosimplesApiError,
 } from "@/lib/infosimples";
-import { enrichBillFromPdfFallback } from "@/lib/infosimples-pdf-fallback";
+import { enrichBillFromPdfFallback, describeFallback } from "@/lib/infosimples-pdf-fallback";
 import { populateBillingFromBill } from "@/lib/billing-populate";
 import { syncInvestorPayablesFromBill } from "@/lib/investor-payables";
 
@@ -76,9 +76,11 @@ async function syncOne(
     };
   }
 
+  // ultimaTentativaSync marca a hora da TENTATIVA. Sem ela o erro aparece na
+  // tela com a data do último sucesso e parece que ninguém tentou desde então.
   await prisma.cpflCredential.update({
     where: { consumerUnitId },
-    data: { statusSync: "PENDING", erroSync: null },
+    data: { statusSync: "PENDING", erroSync: null, ultimaTentativaSync: new Date() },
   });
 
   try {
@@ -107,9 +109,9 @@ async function syncOne(
         billDataRaw.pdfUrl,
       );
       const billData = fallback.enriched as typeof billDataRaw;
-      if (fallback.usedFallback) {
+      if (fallback.usedFallback || fallback.reason) {
         console.info(
-          `[sync-all] PDF fallback aplicado em UC=${codigoUc} ${billData.anoReferencia}-${String(billData.mesReferencia).padStart(2, "0")}: ${fallback.fieldsBackfilled.join(", ")}`,
+          `[sync-all] PDF fallback em UC=${codigoUc} ${billData.anoReferencia}-${String(billData.mesReferencia).padStart(2, "0")}: ${describeFallback(fallback)}`,
         );
       }
 
@@ -155,6 +157,7 @@ async function syncOne(
       data: {
         statusSync: "SUCCESS",
         ultimaSync: new Date(),
+        ultimaTentativaSync: new Date(),
         erroSync: syncedCount === 0 ? "Nenhuma fatura encontrada" : null,
       },
     });
@@ -177,7 +180,7 @@ async function syncOne(
           : "Erro desconhecido";
     await prisma.cpflCredential.update({
       where: { consumerUnitId },
-      data: { statusSync: "ERROR", erroSync: msg },
+      data: { statusSync: "ERROR", erroSync: msg, ultimaTentativaSync: new Date() },
     });
     return {
       consumerUnitId,

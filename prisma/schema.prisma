@@ -842,9 +842,14 @@ model CpflCredential {
   // nunca escolhida a parte. Valores em src/lib/concessionarias.ts.
   distribuidora String @default("RGE/CPFL")
 
-  ultimaSync DateTime? @map("ultima_sync")
-  statusSync String?   @map("status_sync") // "SUCCESS" | "ERROR" | "PENDING"
-  erroSync   String?   @map("erro_sync")
+  // ultimaSync = último sync que deu CERTO. ultimaTentativaSync = última vez que
+  // tentamos, dê certo ou não. Sem o segundo campo a tela mostrava o erro novo
+  // com a data do último sucesso ("Erro no sync (29/05/2026)" para uma falha de
+  // 27/07/2026) e parecia que ninguém mais havia tentado.
+  ultimaSync          DateTime? @map("ultima_sync")
+  ultimaTentativaSync DateTime? @map("ultima_tentativa_sync")
+  statusSync          String?   @map("status_sync") // "SUCCESS" | "ERROR" | "PENDING"
+  erroSync            String?   @map("erro_sync")
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")

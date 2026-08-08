@@ -122,6 +122,23 @@ export function dayInBrasil(instant: Date): Date {
   return dateOnlyUTC(y, m, d);
 }
 
+/**
+ * Instante REAL (sync, erro, criação) formatado em Brasília: "06/08/2026, 14:03".
+ * `toLocaleString("pt-BR")` sem fuso usa o TZ do processo — no Railway isso é
+ * UTC e a hora sai 3 horas adiantada pra quem opera no Brasil.
+ */
+export function formatInstantBR(d: Date | null | undefined): string {
+  if (!d) return "—";
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: TZ_BRASIL,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+}
+
 /** Segunda-feira da semana do dia informado (dia-calendário). */
 export function startOfWeekMondayOnly(d: Date): Date {
   const w = weekdayOnly(d);

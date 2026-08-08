@@ -10,7 +10,7 @@ import {
   parseBillData,
   InfosimplesApiError,
 } from "@/lib/infosimples";
-import { enrichBillFromPdfFallback } from "@/lib/infosimples-pdf-fallback";
+import { enrichBillFromPdfFallback, describeFallback } from "@/lib/infosimples-pdf-fallback";
 
 async function persistPdf(
   plantId: string,
@@ -57,9 +57,11 @@ export async function POST(
     return NextResponse.json({ error: "Credenciais desativadas" }, { status: 400 });
   }
 
+  // ultimaTentativaSync marca a hora da TENTATIVA. Sem ela o erro aparece na
+  // tela com a data do último sucesso e parece que ninguém tentou desde então.
   await prisma.cpflCredential.update({
     where: { plantId: id },
-    data: { statusSync: "PENDING", erroSync: null },
+    data: { statusSync: "PENDING", erroSync: null, ultimaTentativaSync: new Date() },
   });
 
   try {
@@ -77,6 +79,7 @@ export async function POST(
         data: {
           statusSync: "SUCCESS",
           ultimaSync: new Date(),
+          ultimaTentativaSync: new Date(),
           erroSync: "Nenhuma fatura encontrada",
         },
       });
@@ -106,9 +109,9 @@ export async function POST(
         billDataRaw.pdfUrl,
       );
       const billData = fallback.enriched as typeof billDataRaw;
-      if (fallback.usedFallback) {
+      if (fallback.usedFallback || fallback.reason) {
         console.info(
-          `[plants/bills/sync] PDF fallback aplicado em plant=${id} ${billData.anoReferencia}-${String(billData.mesReferencia).padStart(2, "0")}: ${fallback.fieldsBackfilled.join(", ")}`,
+          `[plants/bills/sync] PDF fallback em plant=${id} ${billData.anoReferencia}-${String(billData.mesReferencia).padStart(2, "0")}: ${describeFallback(fallback)}`,
         );
       }
 
@@ -152,6 +155,7 @@ export async function POST(
       data: {
         statusSync: "SUCCESS",
         ultimaSync: new Date(),
+        ultimaTentativaSync: new Date(),
         erroSync: null,
       },
     });
@@ -174,6 +178,7 @@ export async function POST(
       data: {
         statusSync: "ERROR",
         erroSync: errorMessage,
+        ultimaTentativaSync: new Date(),
       },
     });
 

@@ -17,7 +17,7 @@ async function syncOne(credentialId: string) {
 
   await prisma.cpflCredential.update({
     where: { id: cred.id },
-    data: { statusSync: "PENDING", erroSync: null },
+    data: { statusSync: "PENDING", erroSync: null, ultimaTentativaSync: new Date() },
   });
 
   try {
@@ -34,7 +34,7 @@ async function syncOne(credentialId: string) {
     if (!faturas || faturas.length === 0) {
       await prisma.cpflCredential.update({
         where: { id: cred.id },
-        data: { statusSync: "SUCCESS", ultimaSync: new Date(), erroSync: "Nenhuma fatura encontrada" },
+        data: { statusSync: "SUCCESS", ultimaSync: new Date(), ultimaTentativaSync: new Date(), erroSync: "Nenhuma fatura encontrada" },
       });
       console.log("Nenhuma fatura encontrada");
       return;
@@ -60,7 +60,7 @@ async function syncOne(credentialId: string) {
 
     await prisma.cpflCredential.update({
       where: { id: cred.id },
-      data: { statusSync: "SUCCESS", ultimaSync: new Date(), erroSync: null },
+      data: { statusSync: "SUCCESS", ultimaSync: new Date(), ultimaTentativaSync: new Date(), erroSync: null },
     });
     console.log(`OK — ${synced} fatura(s) salvas no banco`);
   } catch (e) {
@@ -69,7 +69,7 @@ async function syncOne(credentialId: string) {
       : e instanceof Error ? e.message : "Erro desconhecido";
     await prisma.cpflCredential.update({
       where: { id: cred.id },
-      data: { statusSync: "ERROR", erroSync: msg },
+      data: { statusSync: "ERROR", erroSync: msg, ultimaTentativaSync: new Date() },
     });
     console.error("ERRO:", msg);
   }

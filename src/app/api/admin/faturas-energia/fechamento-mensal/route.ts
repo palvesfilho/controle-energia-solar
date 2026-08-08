@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calcularValorCobrado } from "@/lib/billing-calculator";
 import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
+import { formatInstantBR } from "@/lib/date-only";
 
 export type FechamentoStatus = "pronta" | "pendente" | "erro" | "paga";
 
@@ -52,6 +53,7 @@ export async function GET(req: NextRequest) {
             statusSync: true,
             erroSync: true,
             ultimaSync: true,
+            ultimaTentativaSync: true,
           },
         },
       },
@@ -130,6 +132,7 @@ export async function GET(req: NextRequest) {
       statusSync: string | null;
       erroSync: string | null;
       ultimaSync: Date | null;
+      ultimaTentativaSync: Date | null;
     } | null,
     unitForCalc?: {
       regraRemuneracao: string | null;
@@ -159,15 +162,21 @@ export async function GET(req: NextRequest) {
       } else if (!credInfo.active) {
         problemas.push("Credencial desativada");
       } else if (credInfo.erroSync) {
-        const quando = credInfo.ultimaSync
-          ? ` (${credInfo.ultimaSync.toLocaleString("pt-BR")})`
-          : "";
-        problemas.push(`Erro no sync${quando}: ${credInfo.erroSync}`);
+        // A data do erro é a da TENTATIVA, não a do último sucesso: mostrar
+        // `ultimaSync` aqui fazia uma falha de 27/07 aparecer como "29/05".
+        const tentativa = credInfo.ultimaTentativaSync ?? credInfo.ultimaSync;
+        const quando = tentativa ? ` (${formatInstantBR(tentativa)})` : "";
+        const ultimoOk =
+          credInfo.ultimaSync && credInfo.ultimaTentativaSync &&
+          credInfo.ultimaSync.getTime() < credInfo.ultimaTentativaSync.getTime()
+            ? ` — último sync OK em ${formatInstantBR(credInfo.ultimaSync)}`
+            : "";
+        problemas.push(`Erro no sync${quando}: ${credInfo.erroSync}${ultimoOk}`);
       } else if (!credInfo.ultimaSync) {
         problemas.push("Credencial cadastrada mas nunca sincronizada");
       } else if (credInfo.statusSync === "SUCCESS") {
         problemas.push(
-          `Sync OK em ${credInfo.ultimaSync.toLocaleString("pt-BR")} — fatura deste mês ainda não emitida pela concessionária`,
+          `Sync OK em ${formatInstantBR(credInfo.ultimaSync)} — fatura deste mês ainda não emitida pela concessionária`,
         );
       } else {
         problemas.push("Fatura não sincronizada — cobrar concessionária");
@@ -233,6 +242,7 @@ export async function GET(req: NextRequest) {
             statusSync: uc.cpflCredential.statusSync,
             erroSync: uc.cpflCredential.erroSync,
             ultimaSync: uc.cpflCredential.ultimaSync,
+            ultimaTentativaSync: uc.cpflCredential.ultimaTentativaSync,
           }
         : null,
       {

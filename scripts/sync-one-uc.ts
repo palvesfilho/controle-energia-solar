@@ -32,7 +32,7 @@ async function main() {
 
   console.log(`Sincronizando UC ${uc.codigoUc} (${uc.nome})...`);
 
-  await prisma.cpflCredential.update({ where: { consumerUnitId: uc.id }, data: { statusSync: "PENDING", erroSync: null } });
+  await prisma.cpflCredential.update({ where: { consumerUnitId: uc.id }, data: { statusSync: "PENDING", erroSync: null, ultimaTentativaSync: new Date() } });
 
   try {
     const senha = decrypt(cred.senhaCpfl);
@@ -65,12 +65,12 @@ async function main() {
 
     await prisma.cpflCredential.update({
       where: { consumerUnitId: uc.id },
-      data: { statusSync: "SUCCESS", ultimaSync: new Date(), erroSync: synced === 0 ? "Nenhuma fatura encontrada" : null },
+      data: { statusSync: "SUCCESS", ultimaSync: new Date(), ultimaTentativaSync: new Date(), erroSync: synced === 0 ? "Nenhuma fatura encontrada" : null },
     });
     console.log(`Concluído: ${synced} fatura(s) sincronizada(s).`);
   } catch (e) {
     const msg = e instanceof InfosimplesApiError ? `${e.message} (code: ${e.code})` : e instanceof Error ? e.message : String(e);
-    await prisma.cpflCredential.update({ where: { consumerUnitId: uc.id }, data: { statusSync: "ERROR", erroSync: msg } });
+    await prisma.cpflCredential.update({ where: { consumerUnitId: uc.id }, data: { statusSync: "ERROR", erroSync: msg, ultimaTentativaSync: new Date() } });
     console.error("ERRO:", msg);
     process.exit(1);
   }
