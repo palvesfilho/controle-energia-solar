@@ -20,6 +20,8 @@ interface SamplePoint {
   timeStampUtc: string;
   hhmmBrt: string;
   kwhAcumulado: number | null;
+  /** Potência AC medida no slot (kW). Null nas linhas antigas, de 5 min. */
+  kw: number | null;
   p2Wh: number | null;
 }
 
@@ -101,10 +103,12 @@ export function IntraDayChart({ clientId }: { clientId: string }) {
   }, [clientId, date, fetchData]);
 
   // Une os samples de todos os inversores num único array por timestamp pra plotar.
-  // Converte energia acumulada (kWh) → potência média do intervalo (kW),
-  // calculando ΔkWh / Δh entre amostras consecutivas. Funciona pra qualquer
-  // resolução (5min, 30min, etc.). Sem isso, a curva fica plana no total do
-  // dia após o pôr-do-sol porque o acumulado não cai.
+  //
+  // Quando a amostra traz `kw` (potência AC medida no slot de 15 min), é ela
+  // que vale — é leitura direta do inversor. O cálculo por ΔkWh/Δh continua
+  // como reserva para as linhas antigas, gravadas antes do coletor de 15 min,
+  // que só têm energia acumulada. Sem esse fallback a curva ficaria plana no
+  // total do dia após o pôr-do-sol, porque o acumulado não cai.
   const chartData = useMemo(() => {
     if (!data || data.inverters.length === 0) return [];
     const byTime = new Map<string, Record<string, string | number | null>>();
@@ -127,8 +131,8 @@ export function IntraDayChart({ clientId }: { clientId: string }) {
       for (const s of sorted) {
         const cur = s.kwhAcumulado;
         const curTs = tsToMs(s.timeStampUtc);
-        let kw: number | null = null;
-        if (cur != null) {
+        let kw: number | null = s.kw;
+        if (kw == null && cur != null) {
           if (prevKwh != null && prevTs != null) {
             const deltaKwh = cur - prevKwh;
             const deltaH = (curTs - prevTs) / 3600000;
@@ -137,6 +141,8 @@ export function IntraDayChart({ clientId }: { clientId: string }) {
           } else {
             kw = 0;
           }
+        }
+        if (cur != null) {
           prevKwh = cur;
           prevTs = curTs;
         }
@@ -172,7 +178,7 @@ export function IntraDayChart({ clientId }: { clientId: string }) {
               onClick={collectNow}
               disabled={collecting}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
-              title="Coleta os últimos 7 dias da Sungrow e grava no banco"
+              title="Coleta os últimos 7 dias na plataforma de monitoramento da usina e grava no banco"
             >
               {collecting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
               {collecting ? "Coletando…" : "Coletar 7 dias"}
@@ -195,7 +201,7 @@ export function IntraDayChart({ clientId }: { clientId: string }) {
         ) : !hasData ? (
           <div className="h-72 flex flex-col items-center justify-center gap-2 text-muted-foreground text-sm">
             <p>Sem dados pro dia {date}.</p>
-            <p className="text-xs">Use &quot;Coletar 7 dias&quot; pra buscar da Sungrow.</p>
+            <p className="text-xs">Use &quot;Coletar 7 dias&quot; pra buscar na plataforma da usina.</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={320}>

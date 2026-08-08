@@ -602,6 +602,61 @@ export async function getDevRealKpi(
   return data.data ?? [];
 }
 
+/** Uma leitura de 5 min de um inversor, já normalizada. */
+export interface HuaweiDeviceSample {
+  devId: number;
+  /** epoch ms do instante coletado */
+  collectTime: number;
+  /** potência ativa no instante, em W (a API devolve kW) */
+  activePowerW: number | null;
+  /** energia acumulada no dia, em Wh (a API devolve kWh) */
+  energiaDiaWh: number | null;
+}
+
+interface DevFiveMinutesResponse {
+  failCode: number;
+  success: boolean;
+  data?: Array<{
+    devId: number;
+    collectTime: number;
+    dataItemMap?: { active_power?: number | null; product_power?: number | null };
+  }>;
+}
+
+/**
+ * Curva de 5 min dos inversores (`/getDevFiveMinutes`), usada pelo coletor
+ * intradiário. Aceita até 100 devIds por chamada e devolve o DIA INTEIRO de
+ * `diaReferencia` — a API não recebe janela, só a data.
+ *
+ * Todos os devIds precisam ser do mesmo `devTypeId` (padrão 1 = inversor
+ * string), igual ao `getDevRealKpi`.
+ *
+ * ⚠️ Endpoint com limite de frequência agressivo: a Huawei responde failCode
+ * 407 (ACCESS_FREQUENCY_IS_TOO_HIGH) se for chamado demais. Quem chama deve
+ * desistir na primeira recusa em vez de repetir.
+ */
+export async function getDeviceFiveMinutes(
+  devIds: Array<number | string>,
+  diaReferencia: Date,
+  devTypeId = 1,
+): Promise<HuaweiDeviceSample[]> {
+  if (devIds.length === 0) return [];
+
+  const data = await huaweiFetch<DevFiveMinutesResponse>("/getDevFiveMinutes", {
+    devIds: devIds.join(","),
+    devTypeId,
+    collectTime: diaReferencia.getTime(),
+  });
+
+  return (data.data ?? []).map((d) => ({
+    devId: d.devId,
+    collectTime: d.collectTime,
+    // A Huawei reporta em kW / kWh; o resto do sistema trabalha em W / Wh.
+    activePowerW: d.dataItemMap?.active_power != null ? d.dataItemMap.active_power * 1000 : null,
+    energiaDiaWh: d.dataItemMap?.product_power != null ? d.dataItemMap.product_power * 1000 : null,
+  }));
+}
+
 function avgDefined(values: Array<number | undefined | null>): number | null {
   const nums = values.filter((v): v is number => typeof v === "number" && !Number.isNaN(v));
   if (nums.length === 0) return null;

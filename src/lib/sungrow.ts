@@ -130,7 +130,12 @@ export function invalidateToken() {
 // Requisições autenticadas
 // ============================================================
 
-async function sungrowFetch<T>(
+/**
+ * Exportado pra que os scripts de sondagem (`scripts/probe-sungrow-*.ts`)
+ * consigam bater em endpoints ainda não embrulhados numa função tipada.
+ * Fora de sondagem, prefira as funções de alto nível deste arquivo.
+ */
+export async function sungrowFetch<T>(
   endpoint: string,
   params: Record<string, unknown> = {},
 ): Promise<T> {

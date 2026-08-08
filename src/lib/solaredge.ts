@@ -350,6 +350,70 @@ export async function getActiveAlertsBatch(
 }
 
 /** Busca geração diária em lote */
+/** Teto documentado dos endpoints `/sites/{ids}/...` em lote. */
+const BULK_SITES_POR_CHAMADA = 100;
+
+interface BulkEnergyResponse {
+  sitesEnergy?: {
+    siteEnergyList?: Array<{
+      siteId: number;
+      energyValues?: { values?: Array<{ date: string; value: number | null }> };
+    }>;
+  };
+}
+
+/**
+ * Energia de UM dia para vários sites numa chamada só (`/sites/{ids}/energy`).
+ *
+ * Existe porque integrar a curva de 15 min subestima o dia em ~2% de forma
+ * sistemática (medido em 9 usinas, viés de −4,0% a +0,7%): a curva é potência
+ * AC do inversor, enquanto a energia oficial vem do medidor de produção. Como
+ * o endpoint é em lote, custa 3 chamadas pras 241 usinas — barato demais pra
+ * entregar ao cliente um número 2% menor do que o do portal da SolarEdge.
+ *
+ * Retorna kWh por siteId (só os que reportaram valor).
+ */
+export async function getDailyEnergyBulk(
+  siteIds: string[],
+  dia: Date,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (siteIds.length === 0) return out;
+
+  const apiKey = getApiKey();
+  const ymd = dia.toISOString().slice(0, 10);
+
+  for (let i = 0; i < siteIds.length; i += BULK_SITES_POR_CHAMADA) {
+    const lote = siteIds.slice(i, i + BULK_SITES_POR_CHAMADA);
+    const params = new URLSearchParams({
+      api_key: apiKey,
+      timeUnit: "DAY",
+      startDate: ymd,
+      endDate: ymd,
+    });
+
+    const res = await fetch(`${SOLAREDGE_BASE_URL}/sites/${lote.join(",")}/energy?${params}`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      throw new SolarEdgeApiError(
+        res.status,
+        `SolarEdge API ${res.status} em /sites/{ids}/energy`,
+        "/sites/{ids}/energy",
+      );
+    }
+
+    const body = (await res.json()) as BulkEnergyResponse;
+    for (const site of body.sitesEnergy?.siteEnergyList ?? []) {
+      const wh = site.energyValues?.values?.[0]?.value;
+      if (wh != null && wh > 0) out.set(String(site.siteId), wh / 1000);
+    }
+  }
+
+  return out;
+}
+
 export async function getDailyGenerationBatch(
   siteIds: number[],
   year: number,

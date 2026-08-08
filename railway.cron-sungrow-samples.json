@@ -1,11 +1,21 @@
 {
+  "$comentario": [
+    "Config do serviço de cron 'cron-sungrow-samples' (id cde0c44e) no Railway.",
+    "O NOME do arquivo e do serviço são legado: ele não coleta mais só Sungrow.",
+    "Agora roda o coletor intradiário das 4 plataformas de 15 em 15 minutos.",
+    "Mantido neste caminho de propósito — é o arquivo que o serviço JÁ lê, então",
+    "a troca entra sozinha no próximo deploy, sem ninguém precisar criar serviço",
+    "novo no dashboard. Renomear o serviço é cosmético e pode ser feito depois.",
+    "O modo --cron faz este mesmo serviço cuidar do fechamento do dia (23:45 UTC)",
+    "e da poda das amostras (domingos), dispensando serviços separados."
+  ],
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "npx prisma generate && npx tsx scripts/collect-sungrow-samples.ts",
-    "cronSchedule": "0 11,14,17,20,23 * * *",
+    "startCommand": "npx prisma generate && npx tsx scripts/collect-intraday-15min.ts --cron",
+    "cronSchedule": "*/15 8-23 * * *",
     "restartPolicyType": "NEVER"
   }
 }

@@ -1,4 +1,15 @@
 /**
+ * ⚠️ SUBSTITUÍDO por `scripts/collect-intraday-15min.ts`.
+ *
+ * O serviço de cron do Railway que roda ESTE script (railway.cron-sungrow-samples.json,
+ * 5×/dia) precisa ser DESLIGADO quando o cron de 15 min entrar. Os dois na mesma
+ * tabela brigam de convenção: aqui as amostras são gravadas na resolução crua de
+ * 5 min, lá em slots alinhados de 15 min. Misturadas, a curva do portal fica
+ * serrilhada — ela soma a potência por instante, e nos minutos "soltos" só parte
+ * dos inversores tem valor.
+ *
+ * Mantido no repositório apenas como referência do formato antigo.
+ *
  * Coleta da curva intra-dia Sungrow (InverterSample), pra o cron do Railway.
  *
  * Percorre TODOS os clientes BrasilSolar com Sungrow ativo e persiste os

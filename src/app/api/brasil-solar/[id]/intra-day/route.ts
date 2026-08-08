@@ -4,7 +4,12 @@ import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { readDailySamples } from "@/lib/sungrow-persist";
-import { persistDailySamples } from "@/lib/sungrow-persist";
+import {
+  coletarIntradia,
+  PLATAFORMAS_INTRADIA,
+  type PlataformaIntradia,
+} from "@/lib/intraday-collector";
+import { atualizarGeracaoDoDia } from "@/lib/intraday-generation";
 
 /**
  * GET /api/brasil-solar/[id]/intra-day?date=YYYY-MM-DD
@@ -71,6 +76,10 @@ export async function GET(
       timeStampUtc: s.timeStamp,
       hhmmBrt: utcStampToBrtHhmm(s.timeStamp),
       kwhAcumulado: s.p1 != null ? s.p1 / 1000 : null,
+      // Potência AC média do slot, medida. É a leitura direta — o gráfico só
+      // cai pro delta de energia acumulada quando esta vier nula (linhas
+      // antigas, gravadas antes do coletor de 15 min).
+      kw: s.pAcW != null ? s.pAcW / 1000 : null,
       p2Wh: s.p2,
     }));
     // Último p1 não-nulo > 0 = energia do dia desse inversor
@@ -99,8 +108,12 @@ export async function GET(
 /**
  * POST /api/brasil-solar/[id]/intra-day
  *
- * Coleta intra-dia (5h-21h BRT) e persiste. Body:
- * { days?: number }  // default 1 (apenas ontem)
+ * Coleta a curva intradiária dos últimos dias e persiste em slots de 15 min.
+ * Body: { days?: number }  // default 1 (apenas ontem)
+ *
+ * Usa o mesmo coletor do cron, então vale para as quatro plataformas — antes
+ * este botão respondia "Cliente sem Sungrow configurado" para as usinas
+ * Fronius, SolarEdge e Huawei, que são a maior parte da frota.
  */
 export async function POST(
   req: NextRequest,
@@ -120,36 +133,40 @@ export async function POST(
     select: { id: true, monitoramentoPlantId: true, plataformaMonitoramento: true },
   });
   if (!client) return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
-  if (client.plataformaMonitoramento !== "SUNGROW" || !client.monitoramentoPlantId) {
-    return NextResponse.json({ error: "Cliente sem Sungrow configurado" }, { status: 400 });
+  if (
+    !client.monitoramentoPlantId ||
+    !PLATAFORMAS_INTRADIA.includes(client.plataformaMonitoramento as PlataformaIntradia)
+  ) {
+    return NextResponse.json(
+      { error: "Usina sem plataforma de monitoramento com curva intradiária" },
+      { status: 400 },
+    );
   }
 
-  const psId = client.monitoramentoPlantId;
-  const results = [] as Array<{ date: string; samplesUpserted: number; invertersProcessed: number }>;
+  const results = [] as Array<{ date: string; slotsGravados: number; erros: number }>;
 
   for (let i = 1; i <= days; i++) {
     const d = new Date();
     d.setUTCDate(d.getUTCDate() - i);
-    const year = d.getUTCFullYear();
-    const month = d.getUTCMonth() + 1;
-    const day = d.getUTCDate();
-    try {
-      const r = await persistDailySamples(id, psId, year, month, day);
-      results.push({
-        date: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
-        samplesUpserted: r.samplesUpserted,
-        invertersProcessed: r.invertersProcessed,
-      });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "erro";
-      results.push({
-        date: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
-        samplesUpserted: 0,
-        invertersProcessed: 0,
-        ...({ error: msg } as Record<string, string>),
-      });
-    }
+    const fimDoDia = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 0, 0));
+    const r = await coletarIntradia({
+      clientIds: [id],
+      minutos: 15 * 60, // dia solar inteiro
+      agora: fimDoDia,
+      ignorarJanelaSolar: true,
+    });
+    results.push({
+      date: fimDoDia.toISOString().slice(0, 10),
+      slotsGravados: r.slotsGravados,
+      erros: r.plataformas.reduce((s, p) => s + p.erros.length, 0),
+    });
   }
+
+  // Fecha o total do dia mais recente coletado, pra que o card de geração da
+  // usina reflita a coleta que o operador acabou de pedir.
+  const ontem = new Date();
+  ontem.setUTCDate(ontem.getUTCDate() - 1);
+  await atualizarGeracaoDoDia({ clientIds: [id], dia: ontem });
 
   return NextResponse.json({ message: "Coleta intra-dia concluída", days, results });
 }

@@ -46,6 +46,20 @@ const MESES_LONGO = [
 ];
 
 /**
+ * Passo da atualização automática do gráfico diário. Igual ao passo da coleta
+ * (`SLOT_MINUTOS` em `lib/intraday-collector`): buscar mais rápido do que isso
+ * só devolveria a mesma curva.
+ */
+const INTERVALO_ATUALIZACAO_MS = 15 * 60 * 1000;
+
+const horaBrt = (d: Date) =>
+  d.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  });
+
+/**
  * Dashboard de geração do portal do cliente.
  *
  * `proprietarioId`: quando definido, os gráficos interativos buscam pelos
@@ -275,34 +289,74 @@ export function GeracaoDiariaCard({
   const [status, setStatus] = useState(statusInicial);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [atualizadoEm, setAtualizadoEm] = useState<Date | null>(null);
   // A carga inicial já veio do servidor. Ela é reaproveitada, exceto quando o
   // dia é hoje/ontem: aí buscamos de novo com `refresh=1` para o servidor
-  // coletar na Sungrow o que o cron ainda não trouxe (a curva do dia atual vai
-  // se formando ao longo do dia).
+  // coletar na plataforma o que o cron ainda não trouxe (a curva do dia atual
+  // vai se formando ao longo do dia).
   const primeiraRenderizacao = useRef(true);
+
+  const buscarCurva = useCallback(
+    (opts: { silencioso?: boolean } = {}) => {
+      const recente = dataSel === hojeYmd || dataSel === ontemYmd(hojeYmd);
+      let cancelado = false;
+      // A atualização automática não acende o spinner: o cliente está olhando
+      // o gráfico, não pediu nada, e piscar "carregando" a cada 15 min irrita.
+      if (!opts.silencioso) setCarregando(true);
+      setErro(null);
+      fetch(geracaoUrl("dia", { data: dataSel, refresh: recente ? "1" : undefined }, proprietarioId))
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error("falha"))))
+        .then((json: PortalCurvaDia & { statusMonitoramento: PortalStatusMonitoramento }) => {
+          if (cancelado) return;
+          setCurva(json);
+          setStatus(json.statusMonitoramento);
+          setAtualizadoEm(new Date());
+        })
+        .catch(() => {
+          // Numa atualização automática que falha, o gráfico que já está na
+          // tela continua válido — não vale trocá-lo por uma mensagem de erro.
+          if (!cancelado && !opts.silencioso) setErro("Não foi possível carregar esta data.");
+        })
+        .finally(() => !cancelado && !opts.silencioso && setCarregando(false));
+      return () => {
+        cancelado = true;
+      };
+    },
+    [dataSel, hojeYmd, proprietarioId],
+  );
 
   useEffect(() => {
     const inicial = primeiraRenderizacao.current;
     primeiraRenderizacao.current = false;
     const recente = dataSel === hojeYmd || dataSel === ontemYmd(hojeYmd);
     if (inicial && !recente) return;
+    return buscarCurva();
+  }, [dataSel, hojeYmd, buscarCurva]);
 
-    let cancelado = false;
-    setCarregando(true);
-    setErro(null);
-    fetch(geracaoUrl("dia", { data: dataSel, refresh: recente ? "1" : undefined }, proprietarioId))
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("falha"))))
-      .then((json: PortalCurvaDia & { statusMonitoramento: PortalStatusMonitoramento }) => {
-        if (cancelado) return;
-        setCurva(json);
-        setStatus(json.statusMonitoramento);
-      })
-      .catch(() => !cancelado && setErro("Não foi possível carregar esta data."))
-      .finally(() => !cancelado && setCarregando(false));
-    return () => {
-      cancelado = true;
+  // Atualização automática a cada 15 min — o mesmo passo da coleta, então cada
+  // ciclo traz exatamente um ponto novo na curva. Só quando a data escolhida é
+  // hoje (dia fechado não muda mais) e a aba está visível (aba em segundo
+  // plano ficaria batendo no servidor a noite inteira sem ninguém olhando).
+  useEffect(() => {
+    if (dataSel !== hojeYmd) return;
+
+    const cancelar: Array<() => void> = [];
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      cancelar.push(buscarCurva({ silencioso: true }));
     };
-  }, [dataSel, hojeYmd, proprietarioId]);
+
+    const intervalo = setInterval(tick, INTERVALO_ATUALIZACAO_MS);
+    // Voltar pra aba depois de um tempo deve mostrar dado fresco na hora, sem
+    // esperar o próximo ciclo de 15 min.
+    document.addEventListener("visibilitychange", tick);
+
+    return () => {
+      clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", tick);
+      for (const c of cancelar) c();
+    };
+  }, [dataSel, hojeYmd, buscarCurva]);
 
   const total =
     curva.totalKwh != null
@@ -313,7 +367,11 @@ export function GeracaoDiariaCard({
     <Card
       title="Geração diária"
       badge={<StatusBadge status={status} />}
-      hint={`potência (kW) · ${curva.label}`}
+      hint={
+        dataSel === hojeYmd
+          ? `potência (kW) · ${curva.label} · atualiza a cada 15 min${atualizadoEm ? ` · ${horaBrt(atualizadoEm)}` : ""}`
+          : `potência (kW) · ${curva.label}`
+      }
       right={
         <>
           {totalMensal && (
@@ -484,6 +542,103 @@ function EmptyChart({ texto }: { texto: string }) {
   );
 }
 
+/**
+ * Balão de leitura dos gráficos de barras.
+ *
+ * Fica dentro do mesmo elemento que rola horizontalmente, e posicionado em
+ * porcentagem do viewBox — assim acompanha a barra quando o gráfico é largo e
+ * o cliente arrasta de lado. `xPct` é grampeado longe das bordas porque o
+ * contêiner tem `overflow-x: auto` e cortaria o balão nos extremos.
+ */
+function TooltipGrafico({
+  xPct, yPct, titulo, linhas,
+}: {
+  xPct: number;
+  yPct: number;
+  titulo: string;
+  linhas: { cor: string; rotulo: string; valor: string }[];
+}) {
+  return (
+    <div
+      className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-lg border px-2.5 py-1.5 shadow-md"
+      style={{
+        left: `${Math.min(88, Math.max(12, xPct))}%`,
+        top: `${yPct}%`,
+        marginTop: -8,
+        background: "#FFFFFF",
+        borderColor: BORDER,
+        minWidth: 132,
+      }}
+    >
+      <div className="text-[11px] font-semibold whitespace-nowrap" style={{ color: INK }}>
+        {titulo}
+      </div>
+      {linhas.map((l) => (
+        <div
+          key={l.rotulo}
+          className="flex items-center gap-1.5 text-[11px] whitespace-nowrap"
+          style={{ color: INK_SOFT }}
+        >
+          <span className="inline-block w-2 h-2 rounded-sm shrink-0" style={{ background: l.cor }} />
+          <span>{l.rotulo}</span>
+          <span className="ml-auto pl-2 font-semibold tabular-nums" style={{ color: INK }}>
+            {l.valor}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Faixas invisíveis de captura do ponteiro, uma por barra.
+ *
+ * Cobrem a altura toda do gráfico em vez de só a barra: o cliente acerta o mês
+ * mirando na coluna, sem precisar encostar exatamente numa barra de 2 px de
+ * altura num mês fraco. `onPointerDown` cobre o toque no celular, onde não
+ * existe "passar o mouse por cima".
+ */
+function FaixasDeToque({
+  n, padL, padT, slot, altura, ativo, onAtivar,
+}: {
+  n: number;
+  padL: number;
+  padT: number;
+  slot: number;
+  altura: number;
+  ativo: number | null;
+  onAtivar: (i: number | null) => void;
+}) {
+  return (
+    <>
+      {ativo != null && (
+        <rect
+          x={padL + slot * ativo}
+          y={padT}
+          width={slot}
+          height={altura}
+          fill={INK}
+          opacity={0.04}
+          pointerEvents="none"
+        />
+      )}
+      {Array.from({ length: n }, (_, i) => (
+        <rect
+          key={`toque-${i}`}
+          x={padL + slot * i}
+          y={padT}
+          width={slot}
+          height={altura}
+          fill="transparent"
+          style={{ cursor: "pointer" }}
+          onPointerEnter={() => onAtivar(i)}
+          onPointerDown={() => onAtivar(i)}
+        />
+      ))}
+    </>
+  );
+}
+
 function Legend({ items }: { items: { color: string; label: string }[] }) {
   return (
     <div className="flex gap-4 mt-2.5 text-xs" style={{ color: INK_SOFT }}>
@@ -518,10 +673,19 @@ function BarsChart({
   const slot = iw / n;
   const bw = denso ? slot * 0.66 : Math.min(34, slot * 0.6);
   const maiorIdx = pontos.reduce((best, p, i) => (p.kwh > pontos[best].kwh ? i : best), 0);
+  const [ativo, setAtivo] = useState<number | null>(null);
+  const pontoAtivo = ativo != null ? pontos[ativo] : null;
 
   return (
     <div className="mt-3 overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Geração em kWh por período">
+      <div className="relative">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full h-auto"
+        role="img"
+        aria-label="Geração em kWh por período"
+        onPointerLeave={() => setAtivo(null)}
+      >
         {Array.from({ length: count + 1 }, (_, i) => {
           const val = step * i;
           const y = padT + ih - (val / niceMax) * ih;
@@ -566,7 +730,31 @@ function BarsChart({
             </g>
           );
         })}
+        <FaixasDeToque
+          n={n}
+          padL={padL}
+          padT={padT}
+          slot={slot}
+          altura={ih}
+          ativo={ativo}
+          onAtivar={setAtivo}
+        />
       </svg>
+      {pontoAtivo && (
+        <TooltipGrafico
+          xPct={((padL + slot * ativo! + slot / 2) / W) * 100}
+          yPct={((padT + ih - (pontoAtivo.kwh / niceMax) * ih) / H) * 100}
+          titulo={denso ? `Dia ${pontoAtivo.label}` : pontoAtivo.label}
+          linhas={[
+            {
+              cor: pontoAtivo.manual ? INFORMADO : GREEN,
+              rotulo: pontoAtivo.manual ? "Informado" : "Geração",
+              valor: `${pontoAtivo.kwh.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} kWh`,
+            },
+          ]}
+        />
+      )}
+      </div>
     </div>
   );
 }
@@ -630,10 +818,19 @@ function GeracaoConsumoChart({ data }: { data: PortalClienteData }) {
   const slot = iw / n;
   const gap = Math.min(4, slot * 0.08);
   const bw = Math.min(15, (slot * 0.6 - gap) / 2);
+  const [ativo, setAtivo] = useState<number | null>(null);
+  const mesAtivo = ativo != null ? meses[ativo] : null;
 
   return (
     <div className="mt-3 overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Geração e consumo mensal em kWh">
+      <div className="relative">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="w-full h-auto"
+        role="img"
+        aria-label="Geração e consumo mensal em kWh"
+        onPointerLeave={() => setAtivo(null)}
+      >
         {Array.from({ length: count + 1 }, (_, i) => {
           const val = step * i;
           const y = padT + ih - (val / niceMax) * ih;
@@ -667,7 +864,43 @@ function GeracaoConsumoChart({ data }: { data: PortalClienteData }) {
             </g>
           );
         })}
+        <FaixasDeToque
+          n={n}
+          padL={padL}
+          padT={padT}
+          slot={slot}
+          altura={ih}
+          ativo={ativo}
+          onAtivar={setAtivo}
+        />
       </svg>
+      {mesAtivo && (
+        <TooltipGrafico
+          xPct={((padL + slot * ativo! + slot / 2) / W) * 100}
+          yPct={
+            ((padT + ih - (Math.max(mesAtivo.kwh, mesAtivo.consumoKwh ?? 0) / niceMax) * ih) / H) * 100
+          }
+          titulo={`${MESES_LONGO[mesAtivo.mes - 1]} de ${mesAtivo.ano}`}
+          linhas={[
+            {
+              cor: GREEN,
+              rotulo: "Geração",
+              valor: `${mesAtivo.kwh.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} kWh`,
+            },
+            {
+              cor: ORANGE,
+              rotulo: "Consumo",
+              // Consumo vem das faturas: mês sem fatura lançada não tem número,
+              // e inventar zero aqui viraria "o cliente não consumiu nada".
+              valor:
+                mesAtivo.consumoKwh != null
+                  ? `${mesAtivo.consumoKwh.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} kWh`
+                  : "sem fatura",
+            },
+          ]}
+        />
+      )}
+      </div>
     </div>
   );
 }

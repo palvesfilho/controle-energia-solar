@@ -9,7 +9,7 @@
  * proprietário pelo clerkUserId).
  */
 import { prisma } from "@/lib/prisma";
-import { persistDailySamples } from "@/lib/sungrow-persist";
+import { coletarIntradia, PLATAFORMAS_INTRADIA } from "@/lib/intraday-collector";
 import { precoKwhSolar } from "@/lib/preco-kwh";
 
 /** Tarifa de referência (R$/kWh) de fallback quando não há fatura para derivar a tarifa real. */
@@ -419,9 +419,19 @@ const REFRESH_MIN_INTERVALO_MS = 5 * 60 * 1000;
 const FRESCOR_HOJE_MS = 20 * 60 * 1000;
 
 /**
- * Coleta sob demanda as amostras Sungrow do dia pedido, quando o que está no
- * banco está velho ou não existe. Sem isto o cliente só vê a curva dos dias já
+ * Coleta sob demanda as amostras do dia pedido, quando o que está no banco
+ * está velho ou não existe. Sem isto o cliente só vê a curva dos dias já
  * varridos pelo cron — hoje e ontem ficam vazios enquanto o cron não roda.
+ *
+ * Passa pelo `coletarIntradia` — o MESMO coletor do cron — por dois motivos:
+ *
+ *  1. Cobertura. O caminho antigo só falava Sungrow, e das 13 usinas que hoje
+ *     aparecem no portal apenas 6 são Sungrow: as outras 7 (Fronius e
+ *     SolarEdge) nunca atualizavam ao vivo, por mais que o cliente recarregasse.
+ *  2. Convenção única. O caminho antigo gravava a resolução crua de 5 min; o
+ *     cron grava slots de 15. As duas convenções na mesma tabela deixam o
+ *     gráfico serrilhado, porque a curva soma a potência por instante e nos
+ *     minutos "soltos" só um inversor tem valor.
  *
  * Só age em HOJE e ONTEM (BRT); dias mais antigos já estão fechados no banco.
  * Cada usina é coletada no máximo 1x a cada 5 min (guard em memória) e as
@@ -442,7 +452,7 @@ async function refreshAmostrasDia(clientIds: string[], ymd: string): Promise<voi
     where: {
       id: { in: clientIds },
       active: true,
-      plataformaMonitoramento: "SUNGROW",
+      plataformaMonitoramento: { in: PLATAFORMAS_INTRADIA },
       monitoramentoPlantId: { not: null },
     },
     select: { id: true, monitoramentoPlantId: true },
@@ -453,6 +463,7 @@ async function refreshAmostrasDia(clientIds: string[], ymd: string): Promise<voi
   const dayStart = new Date(Date.UTC(y, m - 1, d));
   const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
   const agora = Date.now();
+  const aColetar: string[] = [];
 
   await Promise.all(
     usinas.map(async (u) => {
@@ -481,13 +492,26 @@ async function refreshAmostrasDia(clientIds: string[], ymd: string): Promise<voi
       }
 
       ultimoRefresh.set(chave, agora);
-      try {
-        await persistDailySamples(u.id, u.monitoramentoPlantId!, y, m, d);
-      } catch {
-        // Usina sem escopo na API / instabilidade Sungrow: mantém o que há.
-      }
+      aColetar.push(u.id);
     }),
   );
+
+  if (aColetar.length === 0) return;
+
+  try {
+    // Uma chamada só pras usinas que precisam: os adapters já agrupam por
+    // plataforma e usam os endpoints em lote onde existem.
+    await coletarIntradia({
+      clientIds: aColetar,
+      // Do começo do dia solar até o fim da janela pedida — é o que preenche a
+      // curva inteira de quem abriu o portal antes do cron passar.
+      minutos: 15 * 60,
+      agora: new Date(dayStart.getTime() + 23 * 60 * 60 * 1000),
+      ignorarJanelaSolar: true,
+    });
+  } catch {
+    // Instabilidade de qualquer plataforma: mantém o que já está persistido.
+  }
 }
 
 /**
@@ -579,18 +603,25 @@ async function getSerieGeracao(
     if (v.manual) accManual.set(idx, (accManual.get(idx) ?? 0) + v.kwh);
   }
 
-  const total = mes ? new Date(Date.UTC(ano, mes, 0)).getUTCDate() : 12;
-  const pontos = Array.from({ length: total }, (_, i) => {
-    const idx = i + 1;
+  // Recorte do ano: começa em janeiro, mas nunca antes do mês em que a usina
+  // entrou em operação, e nunca depois do mês corrente. Sem isso o cliente que
+  // ligou a usina em março via jan e fev zerados — parecendo usina parada — e
+  // meia dúzia de barras vazias de meses que ainda não aconteceram.
+  const { primeiroMes, ultimoMes } = mes
+    ? { primeiroMes: 1, ultimoMes: ultimoDiaAExibir(ano, mes) }
+    : await recorteDoAno(clientIds, ano);
+
+  const pontos = [];
+  for (let idx = primeiroMes; idx <= ultimoMes; idx++) {
     const kwh = acc.get(idx) ?? 0;
     const manualKwh = accManual.get(idx) ?? 0;
-    return {
-      label: mes ? String(idx) : MES_ABREV[i],
+    pontos.push({
+      label: mes ? String(idx) : MES_ABREV[idx - 1],
       kwh: round1(kwh),
       // Ponto marcado quando a maior parte do kWh é informada, não medida.
       manual: manualKwh > 0 && manualKwh > kwh / 2,
-    };
-  });
+    });
+  }
 
   return {
     ano,
@@ -599,6 +630,53 @@ async function getSerieGeracao(
     totalKwh: round1(pontos.reduce((s, p) => s + p.kwh, 0)),
     manualKwh: round1(Array.from(accManual.values()).reduce((s, v) => s + v, 0)),
   };
+}
+
+/**
+ * Último dia a desenhar na visão de um mês: o mês inteiro, exceto no mês
+ * corrente, que para em hoje — barra de dia que ainda não aconteceu lê como
+ * usina parada.
+ */
+function ultimoDiaAExibir(ano: number, mes: number): number {
+  const diasNoMes = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+  const hoje = hojeBrtYmd();
+  const ehMesCorrente = ano === Number(hoje.slice(0, 4)) && mes === Number(hoje.slice(5, 7));
+  return ehMesCorrente ? Number(hoje.slice(8, 10)) : diasNoMes;
+}
+
+/**
+ * Primeiro e último mês a desenhar no gráfico do ano.
+ *
+ * A borda de início vem da PRIMEIRA LEITURA registrada, não do campo
+ * `dataInstalacao` do cadastro: das 13 usinas que hoje aparecem no portal, 7
+ * estão com esse campo vazio — inclusive as três da Fundação Meneghetti. Data
+ * de leitura sempre existe quando existe gráfico.
+ */
+async function recorteDoAno(
+  clientIds: string[],
+  ano: number,
+): Promise<{ primeiroMes: number; ultimoMes: number }> {
+  const hoje = hojeBrtYmd();
+  const anoAtual = Number(hoje.slice(0, 4));
+  const mesAtual = Number(hoje.slice(5, 7));
+
+  const ultimoMes = ano === anoAtual ? mesAtual : 12;
+  if (clientIds.length === 0) return { primeiroMes: 1, ultimoMes };
+
+  const primeira = await prisma.monitoringLog.findFirst({
+    where: { clientId: { in: clientIds }, geracaoDiaria: { gt: 0 } },
+    orderBy: { data: "asc" },
+    select: { data: true },
+  });
+  if (!primeira) return { primeiroMes: 1, ultimoMes };
+
+  // Entrou em operação num ano anterior → o ano inteiro conta desde janeiro.
+  const primeiroMes =
+    primeira.data.getUTCFullYear() === ano ? primeira.data.getUTCMonth() + 1 : 1;
+
+  // Guarda-costas: usina que só começou depois da janela consultada devolve
+  // faixa vazia, em vez de inverter o laço e desenhar o ano ao contrário.
+  return { primeiroMes: Math.min(primeiroMes, ultimoMes + 1), ultimoMes };
 }
 
 /** Anos com geração registrada, do mais recente para o mais antigo. */
