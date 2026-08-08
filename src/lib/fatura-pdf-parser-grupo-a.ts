@@ -271,6 +271,22 @@ interface DemandaInfo {
   demandaUltrapassagemValor: number | null;
 }
 
+/**
+ * A RGE emite a demanda em DUAS linhas `Demanda [kW] - TUSD` do mesmo mês, com a
+ * mesma tarifa base: a 1ª é a parcela ISENTA de ICMS (sem as colunas de alíquota
+ * e valor do imposto) e a 2ª é a TRIBUTADA (`... 17,00 417,44`). Elas não são
+ * alternativas — são pedaços da mesma cobrança, e a soma das quantidades fecha
+ * na demanda contratada (85,0000 kW em 13/13 faturas da GRÁFICA JACUI).
+ *
+ * O código original era `if (campo == null) campo = ...`, ou seja, first-wins:
+ * ficava só com a 1ª (a menor, tipicamente 10–20% do total) e perdia R$ 2.250 por
+ * fatura sem erro nenhum na tela. Aqui as linhas são ACUMULADAS.
+ *
+ * ⚠️ `demandaMedidaKw` guarda a demanda FATURADA, não a medida. Quando a medida
+ * fica abaixo da contratada — 52 kW ponta / 73 kW fora ponta contra 85 contratados
+ * na JACUI — cobra-se a contratada, e é esse número que sai daqui. A medida de
+ * verdade está em `leiturasMedidor` (`Demanda Ativa - kW Ponta/Fora Ponta`).
+ */
 function parseDemanda(items: LinhaDescOp[]): DemandaInfo {
   const out: DemandaInfo = {
     demandaMedidaKw: null,
@@ -280,6 +296,11 @@ function parseDemanda(items: LinhaDescOp[]): DemandaInfo {
     demandaUltrapassagemKw: null,
     demandaUltrapassagemValor: null,
   };
+  // Acumulador que preserva o `null` de "não achou nenhuma linha" — somar em cima
+  // de 0 transformaria fatura sem demanda em fatura com demanda zero.
+  const soma = (acc: number | null, v: number | null) =>
+    v == null ? acc : (acc ?? 0) + v;
+
   for (const it of items) {
     if (it.unidade !== "kW") continue;
     const d = normDesc(it.desc);
@@ -287,19 +308,25 @@ function parseDemanda(items: LinhaDescOp[]): DemandaInfo {
     const isUltrap = d.includes("ultrap");
     const isGeracao = d.includes("gera");
     if (isGeracao) continue; // tratado em parseTusdG
+    // 🔑 `Demanda kW 85` é o RÓTULO da demanda contratada, não uma cobrança: vem
+    // sem tarifa e sem valor. O pdfjs normalmente a gruda no fim de outra linha,
+    // mas em 12/2025 ela saiu isolada e virou um item próprio — somada às duas
+    // linhas reais dava 170 kW. Linha de cobrança sempre tem valor; essa não tem.
+    if (it.valorTotal == null) continue;
     const posto = detectPosto(it.desc);
     if (isUltrap) {
-      // Demanda Ultrap [kW] - TUSD ...
-      if (out.demandaUltrapassagemKw == null) out.demandaUltrapassagemKw = it.qtd;
-      if (out.demandaUltrapassagemValor == null) out.demandaUltrapassagemValor = it.valorTotal;
+      // Demanda Ultrap [kW] - TUSD ... — mesma quebra isenta/tributada.
+      out.demandaUltrapassagemKw = soma(out.demandaUltrapassagemKw, it.qtd);
+      out.demandaUltrapassagemValor = soma(out.demandaUltrapassagemValor, it.valorTotal);
     } else {
       // Demanda [kW] - TUSD ...
       if (posto === "PONTA") {
-        if (out.demandaMedidaPontaKw == null) out.demandaMedidaPontaKw = it.qtd;
+        out.demandaMedidaPontaKw = soma(out.demandaMedidaPontaKw, it.qtd);
       } else {
-        if (out.demandaMedidaKw == null) out.demandaMedidaKw = it.qtd;
+        out.demandaMedidaKw = soma(out.demandaMedidaKw, it.qtd);
       }
-      if (out.demandaTusdValor == null) out.demandaTusdValor = it.valorTotal;
+      out.demandaTusdValor = soma(out.demandaTusdValor, it.valorTotal);
+      // Tarifa é a MESMA nas duas linhas (25,53 na JACUI): first-wins de propósito.
       if (out.tarifaDemanda == null) out.tarifaDemanda = it.tarifaAneel;
     }
   }
