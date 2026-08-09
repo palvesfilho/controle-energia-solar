@@ -14,6 +14,7 @@ import { formatNomeSaudacao } from "@/lib/formatters";
 import { PortalClienteBody } from "@/components/brasil-solar/portal-cliente-body";
 import { PwaRegister } from "@/components/pwa/pwa-register";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
+import { PushNotificacoesCard } from "@/components/pwa/push-notificacoes-card";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +97,12 @@ export default async function PortalClientePage() {
             ctaHref={plano.ctaHref}
           />
         )}
+
+        {/* Avisos push: só para quem tem proprietário vinculado — sem vínculo
+            não há para quem disparar, e o card só geraria erro. Fica aqui e
+            NÃO no `PortalClienteBody` porque a Visão do cliente reaproveita
+            aquele corpo: o pós-venda acabaria inscrevendo o próprio celular. */}
+        {prop && <PushNotificacoesCard />}
       </main>
 
       {/* PWA: registra o service worker e oferece a instalação na tela de

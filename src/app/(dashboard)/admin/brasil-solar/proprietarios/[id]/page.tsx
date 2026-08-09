@@ -44,6 +44,7 @@ import { UcCredentialsForm } from "@/components/consumer-units/uc-credentials-fo
 import { UcBills } from "@/components/consumer-units/uc-bills";
 import { BeneficiariasCard } from "@/components/brasil-solar/beneficiarias-card";
 import { StatusFaturasCard } from "@/components/brasil-solar/status-faturas-card";
+import { PushTesteCard } from "@/components/brasil-solar/push-teste-card";
 import {
   MonitoringPlanModal,
   deriveStatus,
@@ -976,6 +977,11 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
           <UcBills proprietarioId={id} refreshKey={billsRefreshKey} />
         </>
       )}
+
+      {/* Notificações push — fora do bloco `consumerUnit` de propósito: o
+          cliente pode instalar o app e autorizar os avisos antes de a UC estar
+          cadastrada. */}
+      <PushTesteCard proprietarioId={id} proprietarioNome={data.nome} />
 
       {/* Usinas vinculadas */}
       <Card>

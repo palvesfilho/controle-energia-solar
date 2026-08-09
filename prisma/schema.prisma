@@ -1131,6 +1131,9 @@ model BrasilSolarProprietario {
   // Acesso pago ao portal do cliente (1:1). Ver BrasilSolarAcesso.
   acesso BrasilSolarAcesso?
 
+  // Celulares que autorizaram notificação push no portal (1 linha por aparelho).
+  pushSubscriptions PushSubscription[]
+
   @@index([nome])
   @@index([cpfCnpj])
   @@index([codigoUc])
@@ -1212,6 +1215,50 @@ model BrasilSolarAcesso {
   @@index([asaasChargeId])
   @@index([asaasSubscriptionId])
   @@map("brasil_solar_acessos")
+}
+
+/// Inscrição de notificação push (Web Push) de UM aparelho do cliente.
+///
+/// É por APARELHO, não por pessoa: o mesmo cliente que abre o portal no celular
+/// e no tablet gera duas linhas. Quem envia dispara para todas as inscrições do
+/// proprietário.
+///
+/// `endpoint` é a URL que o navegador entrega na inscrição (FCM no Android,
+/// Apple Push no iPhone) e já identifica o aparelho de forma única — por isso é
+/// `@unique` e serve de chave do upsert: reautorizar no mesmo celular atualiza a
+/// linha em vez de criar outra.
+///
+/// ⚠️ Inscrição EXPIRA sozinha (app desinstalado, permissão revogada, celular
+/// trocado). O envio responde 404/410 nesses casos e o remetente APAGA a linha —
+/// sem isso a tabela acumula endpoints mortos e todo disparo vira uma lista de
+/// erros que ninguém lê. Ver `src/lib/push-notificacoes.ts`.
+model PushSubscription {
+  id             String @id @default(cuid())
+  proprietarioId String @map("proprietario_id")
+
+  /// URL do serviço de push do fabricante. Identifica o aparelho.
+  endpoint String @unique
+  /// Chaves de criptografia da inscrição — o payload é cifrado com elas, e nem
+  /// o Google nem a Apple conseguem ler o conteúdo da notificação.
+  p256dh   String
+  auth     String
+
+  /// User agent de quem autorizou, só para o operador reconhecer o aparelho na
+  /// tela ("Android · Chrome"). Não é usado em nenhuma decisão.
+  userAgent String? @map("user_agent")
+
+  /// Último envio ACEITO pelo serviço de push. Aceito ≠ exibido: o aparelho
+  /// desligado recebe depois, e o cliente pode ter silenciado. Serve para o
+  /// operador saber que a inscrição ainda respondia naquela data.
+  ultimoEnvioEm DateTime? @map("ultimo_envio_em")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  proprietario BrasilSolarProprietario @relation(fields: [proprietarioId], references: [id], onDelete: Cascade)
+
+  @@index([proprietarioId])
+  @@map("push_subscriptions")
 }
 
 // Rateio simplificado para clientes Brasil Solar (sem versionamento, ao

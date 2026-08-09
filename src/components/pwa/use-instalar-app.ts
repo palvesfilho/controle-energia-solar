@@ -34,7 +34,13 @@ export type EstadoInstalacao = {
   instalar: () => Promise<void>;
 };
 
-function detectaInstalado(): boolean {
+/**
+ * Exportadas porque o `usePushNotificacoes` depende das MESMAS respostas: no
+ * iPhone o push só existe depois que o app está instalado na tela de início.
+ * Duas detecções separadas acabariam discordando e o cliente veria "ative os
+ * avisos" numa tela que não pode ativar nada.
+ */
+export function detectaInstalado(): boolean {
   if (typeof window === "undefined") return false;
   return (
     window.matchMedia("(display-mode: standalone)").matches ||
@@ -43,7 +49,7 @@ function detectaInstalado(): boolean {
   );
 }
 
-function detectaIOS(): boolean {
+export function detectaIOS(): boolean {
   if (typeof navigator === "undefined") return false;
   return /iphone|ipad|ipod/i.test(navigator.userAgent);
 }
