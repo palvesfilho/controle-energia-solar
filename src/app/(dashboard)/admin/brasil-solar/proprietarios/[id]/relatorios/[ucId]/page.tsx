@@ -102,6 +102,30 @@ const MESES_LONGO = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
+/**
+ * Colunas do grid de KPIs em telas grandes, indexadas pela QUANTIDADE de cartões
+ * que a seção realmente renderiza.
+ *
+ * 🔑 O número de colunas estava cravado e não batia com o de cartões, então
+ * sobrava sempre exatamente um e a linha quebrava: "Resultado do mês" tinha
+ * `lg:grid-cols-7` para 8 cartões (7+1) e "Acumulado" `md:grid-cols-4` para 5
+ * (4+1). Só aparecia em cliente COM monitoramento — sem monitoramento vários
+ * cartões somem e sobrava espaço, o que explica por que passava despercebido.
+ *
+ * As classes são escritas por extenso porque o Tailwind varre o código como
+ * texto: `lg:grid-cols-${n}` seria montado em runtime e a classe não existiria
+ * no CSS gerado.
+ */
+const COLS_LG: Record<number, string> = {
+  2: "lg:grid-cols-2",
+  3: "lg:grid-cols-3",
+  4: "lg:grid-cols-4",
+  5: "lg:grid-cols-5",
+  6: "lg:grid-cols-6",
+  7: "lg:grid-cols-7",
+  8: "lg:grid-cols-8",
+};
+
 export default function RelatorioDetalhePage() {
   const params = useParams();
   const proprietarioId = params.id as string;
@@ -301,7 +325,7 @@ export default function RelatorioDetalhePage() {
               </span>
             )}
           </div>
-          <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-7">
+          <div className={`grid gap-3 md:grid-cols-3 ${COLS_LG[semMonitoramento ? 5 : 8]}`}>
             {!semMonitoramento && (
               <KpiCard
                 label="Geração"
@@ -423,7 +447,7 @@ export default function RelatorioDetalhePage() {
             : "Acumulado desde a operação"}
         </h2>
       </div>
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className={`grid gap-3 md:grid-cols-2 ${COLS_LG[semMonitoramento ? 2 : 5]}`}>
         {!semMonitoramento && (
           <KpiCard
             label="Investimento total"
