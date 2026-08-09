@@ -7,8 +7,9 @@ import { getDailyGeneration as froniusDaily, getYearlyMonthlyBreakdown as froniu
 import { getDailyGeneration as huaweiDaily, getMonthlyGeneration as huaweiMonthly } from "@/lib/huawei";
 import { getDailyGeneration as sungrowDaily, getMonthlyGeneration as sungrowMonthly } from "@/lib/sungrow";
 import { getDailyGeneration as solaredgeDaily, getMonthlyGeneration as solaredgeMonthly } from "@/lib/solaredge";
+import { getDailyGeneration as growattDaily, getMonthlyGeneration as growattMonthly } from "@/lib/growatt";
 
-type Platform = "FRONIUS" | "HUAWEI" | "SUNGROW" | "SOLAREDGE";
+type Platform = "FRONIUS" | "HUAWEI" | "SUNGROW" | "SOLAREDGE" | "GROWATT";
 
 interface Inverter {
   id: string;
@@ -34,6 +35,9 @@ async function dailyForInverter(inv: Inverter, ano: number, mes: number): Promis
         const r = await solaredgeDaily(siteId, ano, mes);
         r.forEach((d) => map.set(d.day, (map.get(d.day) ?? 0) + d.energyKwh));
       }
+    } else if (inv.platform === "GROWATT") {
+      const r = await growattDaily(inv.monitoringId, ano, mes);
+      r.forEach((d) => map.set(d.day, (map.get(d.day) ?? 0) + d.energyKwh));
     }
   } catch {
     // silencia erros de rede/plataforma; a soma agregada continua
@@ -59,6 +63,9 @@ async function monthlyForInverter(inv: Inverter, ano: number): Promise<Map<numbe
         const r = await solaredgeMonthly(siteId, ano);
         r.forEach((m) => map.set(m.month, (map.get(m.month) ?? 0) + m.totalKwh));
       }
+    } else if (inv.platform === "GROWATT") {
+      const r = await growattMonthly(inv.monitoringId, ano);
+      r.forEach((m) => map.set(m.month, (map.get(m.month) ?? 0) + m.totalKwh));
     }
   } catch {
     // ignora falhas para não quebrar o agregado

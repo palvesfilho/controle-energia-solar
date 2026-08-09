@@ -19,6 +19,10 @@ import {
   getMonthlyTotal as solaredgeMonthlyTotal,
   getRangeTotal as solaredgeRangeTotal,
 } from "@/lib/solaredge";
+import {
+  getMonthlyTotal as growattMonthlyTotal,
+  getRangeTotal as growattRangeTotal,
+} from "@/lib/growatt";
 
 const TOLERANCE_PCT = 2;
 
@@ -145,6 +149,12 @@ export async function GET(
           const r = janelaFonte === "CICLO_LEITURA"
             ? await solaredgeRangeTotal(siteId, janelaInicio!, janelaFim!)
             : await solaredgeMonthlyTotal(siteId, ano, mes);
+          return { ...baseInfo, totalKwh: r.totalKwh, days: r.days, error: null as string | null };
+        }
+        if (platform === "GROWATT") {
+          const r = janelaFonte === "CICLO_LEITURA"
+            ? await growattRangeTotal(c.monitoramentoPlantId, janelaInicio!, janelaFim!)
+            : await growattMonthlyTotal(c.monitoramentoPlantId, ano, mes);
           return { ...baseInfo, totalKwh: r.totalKwh, days: r.days, error: null as string | null };
         }
         return { ...baseInfo, totalKwh: null, days: null, error: `Plataforma '${platform}' não suportada` };

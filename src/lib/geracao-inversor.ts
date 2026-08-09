@@ -20,6 +20,7 @@ import { getRangeTotal as froniusRangeTotal } from "@/lib/fronius";
 import { getRangeTotal as huaweiRangeTotal } from "@/lib/huawei";
 import { getRangeTotal as sungrowRangeTotal } from "@/lib/sungrow";
 import { getRangeTotal as solaredgeRangeTotal } from "@/lib/solaredge";
+import { getRangeTotal as growattRangeTotal } from "@/lib/growatt";
 
 export interface SyncGeracaoResult {
   billId: string;
@@ -61,6 +62,8 @@ async function sumGenerationForPeriod(
           continue;
         }
         r = await solaredgeRangeTotal(siteId, inicio, fim);
+      } else if (platform === "GROWATT") {
+        r = await growattRangeTotal(c.monitoramentoPlantId, inicio, fim);
       } else {
         erros.push(`${c.id}: plataforma '${platform}' não suportada`);
         continue;

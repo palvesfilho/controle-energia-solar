@@ -12,6 +12,7 @@ import { getRangeTotal as huaweiRangeTotal } from "@/lib/huawei";
 // Sungrow de propósito fora: seu getRangeTotal custa ~180 chamadas por mês.
 // Ver PLATAFORMAS_SEM_FALLBACK_AO_VIVO abaixo.
 import { getRangeTotal as solaredgeRangeTotal } from "@/lib/solaredge";
+import { getRangeTotal as growattRangeTotal } from "@/lib/growatt";
 import { getRelatorioParametros } from "@/lib/app-settings";
 import { formatCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
 import {
@@ -852,6 +853,12 @@ async function sumGenerationForPeriod(
           continue;
         }
         r = await comTimeout(solaredgeRangeTotal(siteId, inicio, fim), limiteMs, "SolarEdge");
+      } else if (platform === "GROWATT") {
+        r = await comTimeout(
+          growattRangeTotal(c.monitoramentoPlantId, inicio, fim),
+          limiteMs,
+          "Growatt",
+        );
       } else {
         erros.push(`${c.id}: plataforma '${platform}' não suportada`);
         continue;

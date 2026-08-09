@@ -8,6 +8,7 @@ import { getMonthlyTotal as froniusMonthlyTotal } from "@/lib/fronius";
 import { getMonthlyTotal as huaweiMonthlyTotal } from "@/lib/huawei";
 import { getMonthlyTotal as sungrowMonthlyTotal } from "@/lib/sungrow";
 import { getMonthlyTotal as solaredgeMonthlyTotal } from "@/lib/solaredge";
+import { getMonthlyTotal as growattMonthlyTotal } from "@/lib/growatt";
 
 export const runtime = "nodejs";
 
@@ -91,6 +92,8 @@ export async function POST(req: NextRequest) {
       } else {
         inversor = await solaredgeMonthlyTotal(siteId, anoReferencia, mesReferencia);
       }
+    } else if (platform === "GROWATT") {
+      inversor = await growattMonthlyTotal(client.monitoramentoPlantId, anoReferencia, mesReferencia);
     } else {
       inversorError = `Plataforma '${platform}' nÃ£o suportada`;
     }

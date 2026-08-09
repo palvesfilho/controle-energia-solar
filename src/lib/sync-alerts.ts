@@ -62,7 +62,7 @@ export async function runAlertSync(): Promise<AlertSyncResult> {
     const offlineClients = await prisma.brasilSolarClient.findMany({
       where: {
         active: true,
-        plataformaMonitoramento: { in: ["FRONIUS", "HUAWEI", "SOLAREDGE", "SUNGROW"] },
+        plataformaMonitoramento: { in: ["FRONIUS", "HUAWEI", "SOLAREDGE", "SUNGROW", "GROWATT"] },
         OR: [{ ultimaLeitura: { lt: offlineThreshold } }, { ultimaLeitura: null }],
         statusMonitoramento: { not: "SEM_DADOS" },
       },
