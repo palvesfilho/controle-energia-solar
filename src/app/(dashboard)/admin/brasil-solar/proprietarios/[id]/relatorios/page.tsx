@@ -43,6 +43,13 @@ export default function RelatoriosListPage() {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Redirecionando para o relatório final. Sem este estado a tela renderiza o
+   * ramo de erro durante o salto — `data` continua null e a checagem
+   * `error || !data` cai no `<p>Erro: {error}</p>` com `error` null, piscando um
+   * "Erro:" sem mensagem. Já acontecia no caminho das beneficiárias.
+   */
+  const [redirecionando, setRedirecionando] = useState(false);
 
   useEffect(() => {
     fetch(`/api/brasil-solar/proprietarios/${proprietarioId}/relatorios`)
@@ -52,23 +59,47 @@ export default function RelatoriosListPage() {
         return j as ApiResponse;
       })
       .then((d) => {
+        const base = `/admin/brasil-solar/proprietarios/${proprietarioId}`;
+
         // Proprietário com beneficiárias → relatório consolidado direto,
         // sem mostrar lista de UCs individuais (decisão 2026-06-02).
         const temBeneficiarias = d.ucs.some((uc) => uc.papel === "BENEFICIARIA");
         if (temBeneficiarias) {
-          router.replace(
-            `/admin/brasil-solar/proprietarios/${proprietarioId}/relatorio-agregado`,
-          );
+          setRedirecionando(true);
+          router.replace(`${base}/relatorio-agregado`);
           return;
         }
+
+        // 🔑 UMA UC só → vai direto pro relatório dela. Uma lista de um item
+        // não é escolha, é um clique a mais entre o operador e o dado: ele
+        // clicava em "Ver Relatório", caía aqui e tinha que clicar de novo no
+        // único cartão da tela. Medido em 09/08/2026: 12 dos 17 proprietários
+        // ativos têm exatamente 1 usina e NENHUM tem 2+ — na base de hoje esta
+        // lista não serve a ninguém.
+        //
+        // A lista continua existindo para quem vier a ter a 2ª UC; é só ela que
+        // deixa de aparecer quando não há o que escolher.
+        if (d.ucs.length === 1) {
+          setRedirecionando(true);
+          router.replace(`${base}/relatorios/${d.ucs[0].ucId}`);
+          return;
+        }
+
         setData(d);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, [proprietarioId, router]);
 
-  if (loading) {
-    return <p className="p-8 text-sm text-muted-foreground">Carregando...</p>;
+  // `replace` e não `push`: a tela intermediária não entra no histórico, então
+  // o "voltar" do relatório leva à ficha do cliente em vez de cair aqui e ser
+  // reenviado adiante — que seria um botão "voltar" que não volta.
+  if (loading || redirecionando) {
+    return (
+      <p className="p-8 text-sm text-muted-foreground">
+        {redirecionando ? "Abrindo relatório..." : "Carregando..."}
+      </p>
+    );
   }
   if (error || !data) {
     return <p className="p-8 text-sm text-red-600">Erro: {error}</p>;
