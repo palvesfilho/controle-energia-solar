@@ -14,10 +14,45 @@ import * as solaredge from "@/lib/solaredge";
 import * as sungrow from "@/lib/sungrow";
 import * as huawei from "@/lib/huawei";
 import type { InverterErrorEvent } from "@/lib/inverter-errors";
+import { horasSolaresEntre } from "@/lib/janela-solar";
 import {
   esperadaAcumuladaNoMesKwh,
   esperadaMensalBaseKwh,
 } from "@/lib/geracao-esperada";
+
+/**
+ * Horas de SOL sem comunicar até a usina virar alerta de mudez.
+ *
+ * Definido pelo Paulo em 10/08/2026: 8 horas, descontada a noite. Vale como
+ * padrão — `AlertaThreshold.thresholdCritico` do tipo OFFLINE sobrepõe, então
+ * dá pra ajustar sem mexer em código. O valor anterior era 48 horas de
+ * relógio, o que só acusava a usina dois dias depois de ela parar.
+ */
+const HORAS_SOLARES_MUDEZ_PADRAO = 8;
+
+/** Um dia solar = 15h (05:00–20:00 BRT). */
+const UM_DIA_SOLAR = 15;
+
+/**
+ * Severidade pela IDADE da mudez, não fixa.
+ *
+ * Motivo prático: havia 1.410 alertas OFFLINE abertos quando isto foi escrito,
+ * a maioria de usinas mudas há semanas. Nascendo todos como CRÍTICO, a usina
+ * que parou hoje de manhã — a única em que dá pra agir a tempo — fica
+ * indistinguível da pilha. Graduando, o operador filtra por CRÍTICA e vê só o
+ * que ainda tem conserto no mesmo dia.
+ *
+ *   até 1 dia solar  → CRITICA  (parou agora, dá pra salvar a geração de hoje)
+ *   até 3 dias       → ALTA     (perdeu dias, ainda é incidente)
+ *   acima disso      → MEDIA    (crônica: normalmente é cadastro, credencial
+ *                                ou usina desativada, não plantão técnico)
+ */
+function severidadeDaMudez(horasSol: number | null, padrao: string | null): string {
+  if (horasSol == null) return "MEDIA"; // nunca comunicou: é cadastro, não incidente
+  if (horasSol < UM_DIA_SOLAR) return padrao ?? "CRITICA";
+  if (horasSol < UM_DIA_SOLAR * 3) return "ALTA";
+  return "MEDIA";
+}
 
 /**
  * Fração mínima dos dias já decorridos do mês que a usina precisa ter no
@@ -51,27 +86,60 @@ export interface AlertSyncResult {
 
 const CONTRATO_AVISO_DIAS = 30;
 
-export async function runAlertSync(): Promise<AlertSyncResult> {
+export interface AlertSyncOptions {
+  /**
+   * Buscar na API de cada plataforma o código de erro do inversor (o "motivo").
+   * É a única parte que gasta cota — deixe `false` nas passadas frequentes de
+   * detecção e `true` na passada horária. Default `true`, pra que quem já
+   * chamava esta função sem argumento continue tendo o comportamento antigo.
+   */
+  incluirMotivoDoErro?: boolean;
+}
+
+export async function runAlertSync(
+  opts: AlertSyncOptions = {},
+): Promise<AlertSyncResult> {
+  opts = { incluirMotivoDoErro: true, ...opts };
   const now = new Date();
   const cfg = await getThresholds();
   let alertsCreated = 0;
 
+  // Fora do `if` porque o fechamento automático lá embaixo precisa do MESMO
+  // limiar da detecção — ver comentário em `resolvedOffline`.
+  const limiteHorasSolares = cfg.OFFLINE.thresholdCritico ?? HORAS_SOLARES_MUDEZ_PADRAO;
+
   let offlineDetected = 0;
   if (cfg.OFFLINE.enabled) {
-    const offlineThreshold = new Date(now.getTime() - 48 * 60 * 60 * 1000);
-    const offlineClients = await prisma.brasilSolarClient.findMany({
+    // O limiar é em HORAS DE SOL, não de relógio. Toda usina do país fica muda
+    // a noite inteira; contar essas horas faria a frota inteira alertar todo
+    // dia de madrugada. Assim, uma usina que emudece às 17h acumula 3h naquele
+    // dia e completa o limiar por volta das 10h do dia seguinte.
+    //
+    // Pré-filtro no banco: horas de sol nunca passam de horas de relógio, então
+    // quem não está mudo nem no relógio também não está em horas de sol. Evita
+    // trazer 1.800 usinas pra calcular uma a uma.
+    const corteRelogio = new Date(now.getTime() - limiteHorasSolares * 60 * 60 * 1000);
+    const candidatos = await prisma.brasilSolarClient.findMany({
       where: {
         active: true,
         plataformaMonitoramento: { in: ["FRONIUS", "HUAWEI", "SOLAREDGE", "SUNGROW", "GROWATT"] },
-        OR: [{ ultimaLeitura: { lt: offlineThreshold } }, { ultimaLeitura: null }],
+        OR: [{ ultimaLeitura: { lt: corteRelogio } }, { ultimaLeitura: null }],
         statusMonitoramento: { not: "SEM_DADOS" },
       },
       select: { id: true, nome: true, ultimaLeitura: true },
     });
-    offlineDetected = offlineClients.length;
-    const severidade = cfg.OFFLINE.severidadeDefault ?? "CRITICA";
 
-    for (const client of offlineClients) {
+    // `ultimaLeitura: null` = nunca leu nada. Não é usina que parou, é usina
+    // que nunca começou — vira alerta pelo mesmo caminho, mas sem número de
+    // horas inventado.
+    const mudas = candidatos.filter(
+      (c) =>
+        c.ultimaLeitura == null ||
+        horasSolaresEntre(new Date(c.ultimaLeitura), now) >= limiteHorasSolares,
+    );
+    offlineDetected = mudas.length;
+
+    for (const client of mudas) {
       const existing = await prisma.monitoringAlert.findFirst({
         where: {
           clientId: client.id,
@@ -81,24 +149,31 @@ export async function runAlertSync(): Promise<AlertSyncResult> {
       });
       if (existing) continue;
 
-      const diffHours = client.ultimaLeitura
-        ? Math.floor((now.getTime() - new Date(client.ultimaLeitura).getTime()) / 3600_000)
+      const horasSol = client.ultimaLeitura
+        ? Math.floor(horasSolaresEntre(new Date(client.ultimaLeitura), now))
         : null;
 
       await prisma.monitoringAlert.create({
         data: {
           clientId: client.id,
           tipo: "OFFLINE",
-          severidade,
+          severidade: severidadeDaMudez(horasSol, cfg.OFFLINE.severidadeDefault),
           acaoRequerida: getAcaoRequeridaDefault("OFFLINE"),
-          titulo: `Inversor desconectado${diffHours ? ` há ${diffHours}h` : ""}`,
-          descricao: `O inversor de ${client.nome} não envia dados${
-            diffHours ? ` há ${diffHours} horas` : ""
+          titulo:
+            horasSol != null
+              ? `Inversor sem comunicar há ${horasSol}h de sol`
+              : "Inversor nunca comunicou",
+          descricao: `O inversor de ${client.nome} ${
+            horasSol != null
+              ? `não envia dados há ${horasSol} horas de sol (madrugadas não contam)`
+              : "nunca enviou dados"
           }. Última leitura: ${
             client.ultimaLeitura
-              ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(
-                  new Date(client.ultimaLeitura),
-                )
+              ? new Intl.DateTimeFormat("pt-BR", {
+                  dateStyle: "short",
+                  timeStyle: "short",
+                  timeZone: "America/Sao_Paulo",
+                }).format(new Date(client.ultimaLeitura))
               : "nunca"
           }.`,
         },
@@ -357,21 +432,30 @@ export async function runAlertSync(): Promise<AlertSyncResult> {
   let erroInversorDetected = 0;
   let erroInversorResolvedAuto = 0;
 
-  const clientesComPlataforma = await prisma.brasilSolarClient.findMany({
-    where: {
-      active: true,
-      monitoramentoPlantId: { not: null },
-      plataformaMonitoramento: {
-        in: ["FRONIUS", "SOLAREDGE", "SUNGROW", "HUAWEI"],
-      },
-    },
-    select: {
-      id: true,
-      nome: true,
-      plataformaMonitoramento: true,
-      monitoramentoPlantId: true,
-    },
-  });
+  // Buscar o MOTIVO (código de erro do fabricante) é a única parte cara daqui:
+  // bate na API de cada plataforma e, no Fronius, é uma chamada por usina —
+  // 1.274 delas. Todo o resto é consulta ao banco e custa quase nada.
+  //
+  // Com a lista vazia nenhum agrupamento por plataforma se forma, nenhuma
+  // chamada sai e os laços abaixo viram no-op. É o corte na origem: mais
+  // seguro do que espalhar `if` por 175 linhas e esquecer de um.
+  const clientesComPlataforma = opts.incluirMotivoDoErro
+    ? await prisma.brasilSolarClient.findMany({
+        where: {
+          active: true,
+          monitoramentoPlantId: { not: null },
+          plataformaMonitoramento: {
+            in: ["FRONIUS", "SOLAREDGE", "SUNGROW", "HUAWEI"],
+          },
+        },
+        select: {
+          id: true,
+          nome: true,
+          plataformaMonitoramento: true,
+          monitoramentoPlantId: true,
+        },
+      })
+    : [];
 
   const porPlataforma = new Map<
     string,
@@ -534,21 +618,42 @@ export async function runAlertSync(): Promise<AlertSyncResult> {
     }
   }
 
-  const resolvedOffline = Number(
-    await prisma.$executeRaw`
-      UPDATE monitoring_alerts
-      SET status = 'RESOLVIDO',
-          resolvido_por = 'Sistema Automatico',
-          resolvido_em = ${now.toISOString()},
-          observacao_resolucao = 'Planta voltou a enviar dados automaticamente'
-      WHERE tipo = 'OFFLINE'
-        AND status IN ('ABERTO', 'EM_ANDAMENTO')
-        AND client_id IN (
-          SELECT id FROM brasil_solar_clients
-          WHERE status_monitoramento = 'ONLINE'
-        )
-    `,
-  );
+  /**
+   * Fecha o alerta de mudez pela MESMA evidência que o abriu: `ultimaLeitura`.
+   *
+   * Antes isto confiava em `status_monitoramento = 'ONLINE'`, um campo
+   * desnormalizado que pode estar velho — e estava. Numa passada real, 100
+   * alertas foram encerrados com "planta voltou a enviar dados" para usinas
+   * mudas havia até 45 dias, só porque o campo dizia ONLINE desde algum sync
+   * antigo. Duas checagens do mesmo fato com critérios diferentes: uma abre, a
+   * outra fecha, e a tela mente sem dar erro.
+   */
+  const alertasOfflineAbertos = await prisma.monitoringAlert.findMany({
+    where: { tipo: "OFFLINE", status: { in: ["ABERTO", "EM_ANDAMENTO"] } },
+    select: { id: true, client: { select: { ultimaLeitura: true } } },
+  });
+  const idsQueVoltaram = alertasOfflineAbertos
+    .filter(
+      (a) =>
+        a.client.ultimaLeitura != null &&
+        horasSolaresEntre(a.client.ultimaLeitura, now) < limiteHorasSolares,
+    )
+    .map((a) => a.id);
+
+  const resolvedOffline =
+    idsQueVoltaram.length === 0
+      ? 0
+      : (
+          await prisma.monitoringAlert.updateMany({
+            where: { id: { in: idsQueVoltaram } },
+            data: {
+              status: "RESOLVIDO",
+              resolvidoPor: "Sistema Automatico",
+              resolvidoEm: now,
+              observacaoResolucao: "Planta voltou a enviar dados automaticamente",
+            },
+          })
+        ).count;
 
   const limiteRecuperacao = cfg.BAIXA_GERACAO.thresholdMedio ?? 90;
   const resolvedLowGen = Number(
@@ -556,7 +661,7 @@ export async function runAlertSync(): Promise<AlertSyncResult> {
       UPDATE monitoring_alerts
       SET status = 'RESOLVIDO',
           resolvido_por = 'Sistema Automatico',
-          resolvido_em = ${now.toISOString()},
+          resolvido_em = ${now.toISOString()}::timestamp,
           observacao_resolucao = 'Performance ratio voltou ao normal'
       WHERE tipo = 'BAIXA_GERACAO'
         AND status IN ('ABERTO', 'EM_ANDAMENTO')
@@ -575,7 +680,7 @@ export async function runAlertSync(): Promise<AlertSyncResult> {
         UPDATE monitoring_alerts
         SET status = 'RESOLVIDO',
             resolvido_por = 'Sistema Automatico',
-            resolvido_em = ${now.toISOString()},
+            resolvido_em = ${now.toISOString()}::timestamp,
             observacao_resolucao = 'Temperatura do inversor voltou ao normal'
         WHERE tipo = 'TEMPERATURA_INVERSOR'
           AND status IN ('ABERTO', 'EM_ANDAMENTO')
@@ -596,7 +701,7 @@ export async function runAlertSync(): Promise<AlertSyncResult> {
         UPDATE monitoring_alerts
         SET status = 'RESOLVIDO',
             resolvido_por = 'Sistema Automatico',
-            resolvido_em = ${now.toISOString()},
+            resolvido_em = ${now.toISOString()}::timestamp,
             observacao_resolucao = 'Frequência da rede voltou ao normal'
         WHERE tipo = 'FREQUENCIA_REDE'
           AND status IN ('ABERTO', 'EM_ANDAMENTO')

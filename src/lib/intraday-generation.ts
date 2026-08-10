@@ -249,9 +249,21 @@ export async function atualizarGeracaoDoDia(
     ultima: Date;
   }> = [];
 
+  // Comunicação e geração são coisas diferentes, e confundir as duas cega a
+  // detecção de usina parada: uma usina cujo inversor falhou continua
+  // respondendo com 0 W — ela COMUNICA. Se `ultimaLeitura` só avançasse para
+  // quem gerou, essa usina pareceria muda e viraria alerta errado; e uma usina
+  // que de fato emudeceu ficaria com o campo congelado sem ninguém notar.
+  // Aqui `ultimaLeitura` = última vez que a plataforma nos deu QUALQUER
+  // amostra, tenha gerado ou não.
+  const aMarcarComunicacao: Array<{ id: string; ultima: Date }> = [];
+
   for (const usina of usinas) {
     const ag = porUsina.get(usina.id);
-    if (!ag || ag.kwh <= 0) continue;
+    if (!ag) continue;
+
+    aMarcarComunicacao.push({ id: usina.id, ultima: ag.ultima });
+    if (ag.kwh <= 0) continue;
 
     const anterior = existentes.get(usina.id);
 
@@ -272,8 +284,42 @@ export async function atualizarGeracaoDoDia(
   }
 
   logsGravados = await gravarEmLote(aGravar, data);
+  await marcarComunicacao(aMarcarComunicacao);
 
   return { usinasAtualizadas: usinas.length, logsGravados, duracaoMs: Date.now() - t0 };
+}
+
+/**
+ * Carimba `ultimaLeitura` de toda usina que respondeu nesta rodada.
+ *
+ * É o relógio em que a detecção de mudez se apoia ([[sync-alerts]] conta horas
+ * de sol desde este campo), então ele precisa refletir COMUNICAÇÃO, não
+ * geração. `statusMonitoramento` vira ONLINE só quando a amostra é fresca;
+ * marcar OFFLINE é responsabilidade do detector de alertas, que sabe descontar
+ * a noite — aqui, uma amostra velha apenas não promove a usina a ONLINE.
+ */
+async function marcarComunicacao(
+  linhas: Array<{ id: string; ultima: Date }>,
+): Promise<void> {
+  if (linhas.length === 0) return;
+
+  const agora = Date.now();
+  for (let i = 0; i < linhas.length; i += BLOCO_GRAVACAO) {
+    const bloco = linhas.slice(i, i + BLOCO_GRAVACAO);
+    const values = bloco.map(
+      (l) => Prisma.sql`(
+        ${l.id}, ${l.ultima}::timestamp,
+        ${agora - l.ultima.getTime() < 30 * 60 * 1000}::boolean
+      )`,
+    );
+    await prisma.$executeRaw`
+      UPDATE brasil_solar_clients AS c SET
+        ultima_leitura = v.ultima,
+        status_monitoramento = CASE WHEN v.fresca THEN 'ONLINE' ELSE c.status_monitoramento END
+      FROM (VALUES ${Prisma.join(values)}) AS v(id, ultima, fresca)
+      WHERE c.id = v.id
+    `;
+  }
 }
 
 /** Tamanho do bloco de gravação — mantém a query longe do teto de parâmetros. */
@@ -293,7 +339,6 @@ async function gravarEmLote(
 ): Promise<number> {
   if (linhas.length === 0) return 0;
 
-  const agora = Date.now();
   let gravados = 0;
 
   for (let i = 0; i < linhas.length; i += BLOCO_GRAVACAO) {
@@ -317,18 +362,16 @@ async function gravarEmLote(
         pico_maximo = EXCLUDED.pico_maximo
     `;
 
-    const status = bloco.map(
-      (l) => Prisma.sql`(
-        ${l.id}, ${l.kwh}::double precision, ${l.ultima}::timestamptz,
-        ${agora - l.ultima.getTime() < 30 * 60 * 1000 ? "ONLINE" : "OFFLINE"}
-      )`,
+    // Só a geração. `ultima_leitura` e `status_monitoramento` pertencem a
+    // `marcarComunicacao`, que enxerga também as usinas que responderam sem
+    // gerar nada — dois donos do mesmo campo com regras diferentes é como um
+    // deles passa a sobrescrever o outro sem ninguém perceber.
+    const geracao = bloco.map(
+      (l) => Prisma.sql`(${l.id}, ${l.kwh}::double precision)`,
     );
     await prisma.$executeRaw`
-      UPDATE brasil_solar_clients AS c SET
-        ultima_geracao = v.kwh,
-        ultima_leitura = v.ultima,
-        status_monitoramento = v.status
-      FROM (VALUES ${Prisma.join(status)}) AS v(id, kwh, ultima, status)
+      UPDATE brasil_solar_clients AS c SET ultima_geracao = v.kwh
+      FROM (VALUES ${Prisma.join(geracao)}) AS v(id, kwh)
       WHERE c.id = v.id
     `;
   }

@@ -33,6 +33,7 @@
 import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { dentroDaJanelaSolar } from "@/lib/janela-solar";
 import { sungrowFetch } from "@/lib/sungrow";
 
 export type PlataformaIntradia = "SUNGROW" | "SOLAREDGE" | "FRONIUS" | "HUAWEI" | "GROWATT";
@@ -50,8 +51,11 @@ export const SLOT_MINUTOS = 15;
 const SLOT_MS = SLOT_MINUTOS * 60 * 1000;
 const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
 
-/** Janela solar em horas UTC — 8h–23h UTC = 5h–20h BRT. Fora dela não coletamos. */
-const JANELA_SOLAR_UTC = { inicio: 8, fim: 23 };
+// A janela solar mora em `lib/janela-solar` — a MESMA definição serve pra
+// decidir quando coletar e pra decidir quando a falta de dado vira alerta de
+// usina muda. Duas definições separadas criariam alerta em horário que o
+// coletor nem tenta.
+export { dentroDaJanelaSolar };
 
 /**
  * Uma amostra já normalizada: a potência AC média durante o slot que começa em
@@ -112,12 +116,6 @@ export function janelaColeta(agora: Date, minutos = 45): { inicio: Date; fim: Da
   const fim = new Date(alinharSlot(agora).getTime() + SLOT_MS);
   const inicio = new Date(alinharSlot(new Date(agora.getTime() - minutos * 60 * 1000)).getTime());
   return { inicio, fim };
-}
-
-/** Está dentro da janela solar BRT? Fora dela a coleta é desperdício de cota. */
-export function dentroDaJanelaSolar(agora: Date): boolean {
-  const h = agora.getUTCHours();
-  return h >= JANELA_SOLAR_UTC.inicio && h < JANELA_SOLAR_UTC.fim;
 }
 
 const p2 = (n: number) => String(n).padStart(2, "0");

@@ -42,6 +42,7 @@ import {
 } from "../src/lib/intraday-collector";
 import { atualizarGeracaoDoDia } from "../src/lib/intraday-generation";
 import { podarAmostras } from "../src/lib/intraday-prune";
+import { runAlertSync } from "../src/lib/sync-alerts";
 
 function arg(nome: string): string | undefined {
   const flag = `--${nome}=`;
@@ -142,6 +143,18 @@ async function main() {
     });
     console.log(
       `[intraday] geração do dia: ${g.usinasAtualizadas} usinas · ${g.logsGravados} MonitoringLog · ${(g.duracaoMs / 1000).toFixed(1)}s`,
+    );
+  }
+
+  // Detecção de usina parada, toda rodada. É consulta ao banco e custa quase
+  // nada; o que custa cota é buscar o CÓDIGO do erro em cada plataforma, e
+  // isso só na virada da hora — código de fabricante não muda a cada 15 min.
+  if (modoCron) {
+    const comMotivo = agoraUtc.getUTCMinutes() < 15;
+    const a = await runAlertSync({ incluirMotivoDoErro: comMotivo });
+    console.log(
+      `[intraday] alertas: ${a.alertsCreated} criados · ${a.offlineDetected} usina(s) muda(s)` +
+        `${comMotivo ? ` · ${a.erroInversorDetected} erro(s) de inversor` : " · motivo não buscado nesta rodada"}`,
     );
   }
 
