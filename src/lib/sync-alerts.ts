@@ -15,6 +15,7 @@ import * as sungrow from "@/lib/sungrow";
 import * as huawei from "@/lib/huawei";
 import type { InverterErrorEvent } from "@/lib/inverter-errors";
 import { horasSolaresEntre } from "@/lib/janela-solar";
+import { PLATAFORMAS_INTRADIA } from "@/lib/plataformas-intradia";
 import {
   esperadaAcumuladaNoMesKwh,
   esperadaMensalBaseKwh,
@@ -122,7 +123,7 @@ export async function runAlertSync(
     const candidatos = await prisma.brasilSolarClient.findMany({
       where: {
         active: true,
-        plataformaMonitoramento: { in: ["FRONIUS", "HUAWEI", "SOLAREDGE", "SUNGROW", "GROWATT"] },
+        plataformaMonitoramento: { in: [...PLATAFORMAS_INTRADIA] },
         OR: [{ ultimaLeitura: { lt: corteRelogio } }, { ultimaLeitura: null }],
         statusMonitoramento: { not: "SEM_DADOS" },
       },

@@ -126,11 +126,17 @@ async function main() {
 
   for (const p of resumo.plataformas) {
     if (p.usinas === 0) continue;
+    // O atraso é o sintoma que não vira erro: a plataforma responde 200 com
+    // lista vazia e a curva simplesmente para de crescer. Fica no log de toda
+    // rodada pra que uma plataforma ficando pra trás seja visível sem consulta.
+    const atraso =
+      p.atrasoMin == null ? "sem dado na janela" : `atraso ${p.atrasoMin} min`;
     console.log(
       `  ${p.plataforma.padEnd(9)} ${String(p.usinasComDado).padStart(4)}/${String(p.usinas).padEnd(5)} usinas com dado · ` +
         `${String(p.chamadas).padStart(4)} chamadas · ${String(p.slotsGravados).padStart(5)} slots · ` +
-        `${(p.duracaoMs / 1000).toFixed(1)}s`,
+        `${(p.duracaoMs / 1000).toFixed(1)}s · desde ${p.janelaInicio?.toISOString().slice(11, 16) ?? "?"}Z · ${atraso}`,
     );
+    if (p.descoberta) console.log(`      descoberta: ${p.descoberta}`);
     for (const e of p.erros.slice(0, 5)) console.log(`      ✗ ${e}`);
     if (p.erros.length > 5) console.log(`      … +${p.erros.length - 5} erros`);
   }

@@ -89,9 +89,15 @@ export function IntraDayChart({ clientId }: { clientId: string }) {
       });
       if (res.ok) {
         const j = await res.json();
-        const total = (j.results as Array<{ samplesUpserted: number }>)
-          .reduce((s, r) => s + r.samplesUpserted, 0);
-        toast.success(`Coleta concluída: ${total} amostras gravadas (7 dias)`);
+        // O campo é `slotsGravados` desde o coletor de 15 min; lendo o nome
+        // antigo (`samplesUpserted`) o toast dizia sempre "NaN amostras".
+        const results = (j.results ?? []) as Array<{ slotsGravados?: number; erros?: number }>;
+        const total = results.reduce((s, r) => s + (r.slotsGravados ?? 0), 0);
+        const erros = results.reduce((s, r) => s + (r.erros ?? 0), 0);
+        toast.success(
+          `Coleta concluída: ${total} amostras gravadas (7 dias)` +
+            (erros > 0 ? ` · ${erros} erro(s) na plataforma` : ""),
+        );
         await fetchData(date);
       } else {
         const err = await res.json().catch(() => ({}));

@@ -49,9 +49,15 @@ export async function persistDailySamples(
     for (const sample of inv.samples) {
       const dt = tsStringToDate(sample.timeStamp);
       if (!dt) continue;
+      // Nunca apagar um valor real com null. Este caminho tem resolução de 30
+      // min e convive na MESMA tabela com o coletor de 15 min: gravar o null de
+      // uma leitura vazia por cima do que o coletor mediu abriria buracos na
+      // curva do cliente. O coletor novo já faz isso com COALESCE no SQL.
+      const semNulos = <T extends object>(o: T) =>
+        Object.fromEntries(Object.entries(o).filter(([, v]) => v != null));
       await prisma.inverterSample.upsert({
         where: { psKey_timeStamp: { psKey: inv.psKey, timeStamp: dt } },
-        update: { p1Wh: sample.p1, p2Wh: sample.p2, pAcW: sample.pAcW },
+        update: semNulos({ p1Wh: sample.p1, p2Wh: sample.p2, pAcW: sample.pAcW }),
         create: {
           clientId,
           psKey: inv.psKey,

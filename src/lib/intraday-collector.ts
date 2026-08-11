@@ -33,18 +33,19 @@
 import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { dentroDaJanelaSolar } from "@/lib/janela-solar";
+import { dentroDaJanelaSolar, JANELA_SOLAR_UTC } from "@/lib/janela-solar";
 import { sungrowFetch } from "@/lib/sungrow";
 
-export type PlataformaIntradia = "SUNGROW" | "SOLAREDGE" | "FRONIUS" | "HUAWEI" | "GROWATT";
-
-export const PLATAFORMAS_INTRADIA: PlataformaIntradia[] = [
-  "SUNGROW",
-  "SOLAREDGE",
-  "FRONIUS",
-  "HUAWEI",
-  "GROWATT",
-];
+// A lista mora em `lib/plataformas-intradia` (sem prisma/crypto) pra que a tela
+// também possa consultá-la. Reexportada aqui porque todo o coletor já a importa
+// deste módulo.
+export {
+  PLATAFORMAS_INTRADIA,
+  temCurvaIntradiaria,
+  type PlataformaIntradia,
+} from "@/lib/plataformas-intradia";
+import type { PlataformaIntradia } from "@/lib/plataformas-intradia";
+import { PLATAFORMAS_INTRADIA } from "@/lib/plataformas-intradia";
 
 /** Duração do slot. Muda isto e a resolução de todo o sistema muda junto. */
 export const SLOT_MINUTOS = 15;
@@ -79,6 +80,21 @@ export interface ResumoPlataforma {
   slotsGravados: number;
   erros: string[];
   duracaoMs: number;
+  /** Janela realmente pedida a esta plataforma — recua até o último dado dela. */
+  janelaInicio?: Date;
+  /**
+   * Atraso do dado desta plataforma: minutos entre `agora` e o slot mais novo
+   * que ela devolveu nesta rodada. É o número que denuncia uma plataforma
+   * ficando pra trás sem dar erro.
+   */
+  atrasoMin?: number | null;
+  /**
+   * Resultado da descoberta de dispositivos, quando a plataforma precisa de uma
+   * (hoje só a Huawei). Campo próprio, e não uma linha em `erros`: descoberta
+   * que não achou nada não é erro, mas precisa aparecer — foi um resultado
+   * vazio e silencioso que deixou 99 usinas Huawei sem curva por semanas.
+   */
+  descoberta?: string;
 }
 
 export interface ResumoColeta {
@@ -116,6 +132,60 @@ export function janelaColeta(agora: Date, minutos = 45): { inicio: Date; fim: Da
   const fim = new Date(alinharSlot(agora).getTime() + SLOT_MS);
   const inicio = new Date(alinharSlot(new Date(agora.getTime() - minutos * 60 * 1000)).getTime());
   return { inicio, fim };
+}
+
+/**
+ * Teto do quanto a janela pode recuar sozinha. Segura o custo quando uma
+ * plataforma passa o dia inteiro sem devolver nada: sem o teto, a janela
+ * cresceria até o começo do dia e a Sungrow pediria 5 fatias por rodada.
+ */
+const LOOKBACK_MAX_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Alarga a janela até o último dado que a plataforma já nos entregou.
+ *
+ * Cada plataforma sobe o dado com um atraso próprio, e o atraso não é fixo:
+ * medido em 11/08/26, SolarEdge/Huawei/Growatt entregavam com 12 min e a
+ * Fronius em tempo real, mas a SUNGROW estava **132 minutos atrás**. Como a
+ * rodada só olhava os últimos 45 min, a janela passava por cima do dado da
+ * Sungrow antes de ele existir: a API respondia 200 com lista vazia, sem erro
+ * nenhum, e a curva do cliente ficava congelada de manhã enquanto as outras
+ * quatro plataformas seguiam. O fechamento das 23h40 varria o dia e consertava
+ * o TOTAL — por isso o problema nunca apareceu no relatório, só na tela.
+ *
+ * Em vez de cravar um atraso por plataforma (que envelhece calado quando o
+ * fabricante muda), a janela recua até o slot mais novo que já temos daquela
+ * plataforma: se a Sungrow atrasar mais amanhã, a janela acompanha sozinha, e
+ * quando ela estiver em dia a janela volta a ser curta. Reperguntar um slot já
+ * gravado é de graça — o `gravarSlots` faz upsert com COALESCE.
+ *
+ * Sem dado nenhum na janela de referência (primeira rodada do dia, ou
+ * plataforma muda), recua o máximo permitido, limitado ao início do dia solar
+ * — é justamente aí que a Sungrow precisa recuperar a manhã inteira.
+ */
+async function janelaDaPlataforma(
+  plataforma: PlataformaIntradia,
+  base: { inicio: Date; fim: Date },
+  agora: Date,
+): Promise<{ inicio: Date; fim: Date }> {
+  const piso = Math.max(
+    agora.getTime() - LOOKBACK_MAX_MS,
+    Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth(), agora.getUTCDate()) +
+      JANELA_SOLAR_UTC.inicio * 60 * 60 * 1000,
+  );
+
+  const [row] = await prisma.$queryRaw<Array<{ ultimo: Date | null }>>`
+    SELECT MAX(s.time_stamp) AS ultimo
+      FROM inverter_samples s
+      JOIN brasil_solar_clients c ON c.id = s.client_id
+     WHERE c.plataforma_monitoramento = ${plataforma}
+       AND s.p_ac_w IS NOT NULL
+       AND s.time_stamp >= ${new Date(piso)}
+  `;
+
+  const alvo = row?.ultimo ? row.ultimo.getTime() : piso;
+  const inicio = Math.min(base.inicio.getTime(), Math.max(alvo, piso));
+  return { inicio: new Date(inicio), fim: base.fim };
 }
 
 const p2 = (n: number) => String(n).padStart(2, "0");
@@ -696,8 +766,19 @@ async function coletarFronius(
 const HUAWEI_DEVICES_POR_CHAMADA = 100;
 /** Tipos de dispositivo que geram energia — mesmo conjunto usado pelo resto da lib. */
 const HUAWEI_TIPOS_INVERSOR = new Set([1, 38, 39]);
-/** Usinas novas descobertas por rodada. Ver comentário na descoberta. */
-const HUAWEI_DESCOBERTAS_POR_RODADA = 3;
+/**
+ * Descoberta: 25 usinas por chamada, UMA chamada por rodada.
+ *
+ * O `/getDevList` tem limite próprio e apertado — medido em 11/08/26, ele
+ * responde 407 até para uma chamada de UM código, enquanto o
+ * `/getDevFiveMinutes` seguia respondendo normalmente na mesma hora. Ou seja: o
+ * limite é por endpoint, e neste a moeda é o NÚMERO DE CHAMADAS, não o de
+ * usinas. Uma chamada por rodada dá 4 por hora e cobre as 99 usinas ainda
+ * desconhecidas em ~1h de rodízio. O código antigo gastava 3 por rodada (12/h)
+ * e mesmo assim nunca descobria ninguém, porque tentava as mesmas 3 usinas.
+ */
+const HUAWEI_DESCOBERTA_POR_CHAMADA = 25;
+const HUAWEI_DESCOBERTAS_POR_RODADA = 1;
 
 /**
  * `HW:{devTypeId}:{devId}` — o tipo entra na chave porque o
@@ -721,7 +802,7 @@ async function coletarHuawei(
 ): Promise<SlotAmostra[]> {
   if (usinas.length === 0) return [];
 
-  const { getDeviceList, getDeviceFiveMinutes } = await import("@/lib/huawei");
+  const { getDeviceListBatch, getDeviceFiveMinutes } = await import("@/lib/huawei");
 
   const porCliente = await dispositivosConhecidos(
     usinas.map((u) => u.id),
@@ -740,26 +821,58 @@ async function coletarHuawei(
     }
   }
 
-  // Descoberta só de quem não tem device conhecido — cada uma custa 1 chamada
-  // ao `/getDevList`, e a Huawei responde 407 (frequência alta) bem antes das
-  // 105 usinas. Descobrindo poucas por rodada, a frota se completa ao longo do
-  // dia (96 rodadas × 3) sem estourar a cota logo na primeira.
-  const aDescobrir = usinas.filter((x) => !comDeviceConhecido.has(x.id));
-  for (const u of aDescobrir.slice(0, HUAWEI_DESCOBERTAS_POR_RODADA)) {
+  // Descoberta de quem ainda não tem dispositivo conhecido.
+  //
+  // Duas armadilhas aqui, e as duas já custaram caro: 99 das 105 usinas Huawei
+  // passaram semanas sem NENHUMA amostra por causa delas.
+  //
+  //  1. Era uma chamada por usina. A Huawei responde 407
+  //     (ACCESS_FREQUENCY_IS_TOO_HIGH) muito antes das 105 — agora vai em lote,
+  //     que é o que o `stationCodes` no plural sempre permitiu.
+  //  2. Pegava SEMPRE as 3 primeiras da lista. Como uma usina só sai da fila
+  //     quando grava amostra, um 407 na primeira travava a fila inteira: toda
+  //     rodada tentava as mesmas 3, para sempre. Daí o rodízio pelo número da
+  //     rodada — sem estado guardado, e cada usina chega a sua vez.
+  const aDescobrir = usinas
+    .filter((x) => !comDeviceConhecido.has(x.id))
+    .sort((a, b) => a.id.localeCompare(b.id)); // ordem estável pro rodízio
+
+  if (aDescobrir.length > 0) {
+    const porRodada = HUAWEI_DESCOBERTA_POR_CHAMADA * HUAWEI_DESCOBERTAS_POR_RODADA;
+    const rodada = Math.floor(janela.fim.getTime() / SLOT_MS);
+    const inicio = (rodada * porRodada) % aDescobrir.length;
+    // Fatia circular: a última rodada do ciclo emenda no começo da lista.
+    const fatia = [...aDescobrir, ...aDescobrir].slice(inicio, inicio + porRodada);
+
+    // O Map também desduplica: com menos usinas na fila que o tamanho da
+    // fatia, a volta circular repetiria plantId.
+    const porPlantId = new Map(fatia.map((u) => [u.plantId, u]));
     try {
-      resumo.chamadas++;
-      const devs = await getDeviceList(u.plantId);
-      for (const d of devs) {
-        const raw = d as unknown as { id?: number | string; devTypeId?: number };
-        const tipo = Number(raw.devTypeId ?? d.devTypeId);
-        if (raw.id != null && HUAWEI_TIPOS_INVERSOR.has(tipo)) {
-          donoDoDevice.set(String(raw.id), { clientId: u.id, devTypeId: tipo });
+      const { porStation, erros, chamadas } = await getDeviceListBatch(
+        [...porPlantId.keys()],
+        HUAWEI_DESCOBERTA_POR_CHAMADA,
+      );
+      resumo.chamadas += chamadas;
+      for (const e of erros) resumo.erros.push(`descoberta Huawei — ${e}`);
+
+      let novos = 0;
+      for (const [stationCode, devs] of porStation) {
+        const u = porPlantId.get(stationCode);
+        if (!u) continue;
+        for (const d of devs) {
+          const raw = d as unknown as { id?: number | string; devTypeId?: number };
+          const tipo = Number(raw.devTypeId ?? d.devTypeId);
+          if (raw.id != null && HUAWEI_TIPOS_INVERSOR.has(tipo)) {
+            donoDoDevice.set(String(raw.id), { clientId: u.id, devTypeId: tipo });
+            novos++;
+          }
         }
       }
+      resumo.descoberta =
+        `${porPlantId.size} usinas consultadas → ${porStation.size} responderam, ${novos} inversores novos ` +
+        `(${aDescobrir.length} ainda sem dispositivo conhecido)`;
     } catch (e) {
-      resumo.erros.push(`${u.nome}: descoberta de dispositivos — ${msg(e)}`);
-      // 407 = ACCESS_FREQUENCY_IS_TOO_HIGH. Insistir só afunda mais a cota.
-      if (msg(e).includes("407")) break;
+      resumo.erros.push(`descoberta Huawei em lote — ${msg(e)}`);
     }
   }
 
@@ -1037,7 +1150,24 @@ export async function coletarIntradia(opts: OpcoesColeta = {}): Promise<ResumoCo
 
     const tp = Date.now();
     try {
-      const slots = await ADAPTERS[plataforma](alvo, janela, resumo);
+      // A janela é por plataforma, não da rodada — ver `janelaDaPlataforma`.
+      const janelaP = await janelaDaPlataforma(plataforma, janela, agora);
+      resumo.janelaInicio = janelaP.inicio;
+
+      const slots = await ADAPTERS[plataforma](alvo, janelaP, resumo);
+
+      const maisNovo = slots.reduce<number | null>(
+        (m, s) =>
+          s.potenciaMediaW == null
+            ? m
+            : m == null || s.slotInicio.getTime() > m
+              ? s.slotInicio.getTime()
+              : m,
+        null,
+      );
+      resumo.atrasoMin =
+        maisNovo == null ? null : Math.round((agora.getTime() - maisNovo) / 60000);
+
       if (persistir) {
         resumo.slotsGravados = await gravarSlots(slots);
         totalGravado += resumo.slotsGravados;

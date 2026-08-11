@@ -303,6 +303,71 @@ export async function getMonthlyGeneration(
   return out;
 }
 
+// ============================================================
+// Versões em lote
+//
+// A Growatt não tem rota de frota (cada chamada é uma planta), então o lote é
+// concorrência controlada, igual ao da Fronius. Existem porque o
+// `sync-all/refresh` só sabia falar com quatro plataformas: as usinas Growatt
+// ficavam de fora da atualização de geração e status e apareciam paradas na
+// lista mesmo gerando.
+// ============================================================
+
+const MAX_CONCURRENT = 5;
+const BATCH_DELAY_MS = 300;
+
+async function emLote<T>(
+  ids: string[],
+  fn: (id: string) => Promise<T>,
+  aoFalhar: (id: string) => T,
+): Promise<Map<string, T>> {
+  const results = new Map<string, T>();
+  for (let i = 0; i < ids.length; i += MAX_CONCURRENT) {
+    const bloco = ids.slice(i, i + MAX_CONCURRENT);
+    await Promise.all(
+      bloco.map(async (id) => {
+        try {
+          results.set(id, await fn(id));
+        } catch {
+          results.set(id, aoFalhar(id));
+        }
+      }),
+    );
+    if (i + MAX_CONCURRENT < ids.length) {
+      await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
+    }
+  }
+  return results;
+}
+
+/** Geração diária de um mês, em lote. Mesmo contrato das outras plataformas. */
+export async function getDailyGenerationBatch(
+  plantIds: string[],
+  year: number,
+  month: number,
+): Promise<Map<string, DailyGeneration[]>> {
+  return emLote(
+    plantIds,
+    (id) => getDailyGeneration(id, year, month),
+    () => [],
+  );
+}
+
+/** Status em tempo real, em lote. Mesmo contrato das outras plataformas. */
+export async function getPlantStatusBatch(
+  plantIds: string[],
+): Promise<Map<string, PlantStatus>> {
+  return emLote(plantIds, getPlantStatus, (plantId) => ({
+    plantId,
+    isOnline: false,
+    dayPowerKwh: 0,
+    monthPowerKwh: 0,
+    totalPowerKwh: 0,
+    currentPowerKw: 0,
+    capacityKwp: 0,
+  }));
+}
+
 /**
  * Status consolidado de uma planta via /v1/plant/data. Campos confirmados em
  * 09/08/2026: current_power, today_energy, monthly_energy, yearly_energy,

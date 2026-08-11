@@ -132,7 +132,16 @@ async function huaweiFetch<T>(endpoint: string, body: Record<string, unknown> = 
 
   let result = await doRequest(token);
 
-  // Se token expirou (failCode 305), refazer login e tentar novamente
+  // Se token expirou (failCode 305), refazer login e tentar novamente.
+  //
+  // ⚠️ A Huawei mantém UMA sessão por usuário: qualquer outro processo que
+  // logue com a mesma conta (o cron do Railway, o servidor web, um script
+  // rodando na sua máquina) derruba este token e o próximo request cai aqui.
+  // Com dois processos alternando, cada chamada vira DUAS — e o próprio
+  // `/login` é dos endpoints mais limitados, respondendo 407. É por isso que
+  // reduzir o NÚMERO de chamadas (lotes em vez de uma por usina) importa mais
+  // do que espaçá-las, e por que sondar Huawei de local enquanto a produção
+  // roda dá resultado enganoso.
   if (result.failCode === 305) {
     invalidateToken();
     token = await login();
@@ -474,6 +483,60 @@ export async function getDeviceList(stationCode: string): Promise<HuaweiDevice[]
   return data.data ?? [];
 }
 
+/**
+ * Dispositivos de VÁRIAS plantas por chamada — o parâmetro do endpoint é
+ * `stationCodes`, no plural, e cada dispositivo devolvido traz o seu
+ * `stationCode`, então dá pra separar depois.
+ *
+ * Existe porque descobrir dispositivo de uma planta por vez é o que afunda a
+ * cota da Huawei: 105 chamadas ao `/getDevList` e a API passa a responder 407
+ * (ACCESS_FREQUENCY_IS_TOO_HIGH) muito antes do fim da lista. Com o lote, a
+ * frota inteira sai em poucas chamadas.
+ *
+ * Devolve o que conseguiu MAIS o motivo de cada chunk que falhou. O motivo não
+ * é opcional: "mapa vazio" pode ser cota (407), lote recusado ou frota sem
+ * inversor cadastrado, e sem distinguir os três não há como saber se a
+ * descoberta está quebrada ou se não havia nada pra achar.
+ */
+export async function getDeviceListBatch(
+  stationCodes: string[],
+  chunk = 25,
+): Promise<{ porStation: Map<string, HuaweiDevice[]>; erros: string[]; chamadas: number }> {
+  const porStation = new Map<string, HuaweiDevice[]>();
+  const erros: string[] = [];
+  let chamadas = 0;
+
+  for (let i = 0; i < stationCodes.length; i += chunk) {
+    const lote = stationCodes.slice(i, i + chunk);
+    let devs: HuaweiDevice[];
+    chamadas++;
+    try {
+      devs = await getDeviceList(lote.join(","));
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e);
+      erros.push(`lote de ${lote.length} usinas: ${m}`);
+      // 407 = cota. Insistir nos chunks seguintes só afunda mais.
+      if (m.includes("407")) {
+        erros.push(`cota estourada — ${stationCodes.length - i - lote.length} usinas não consultadas`);
+        break;
+      }
+      continue;
+    }
+    if (devs.length === 0) {
+      erros.push(`lote de ${lote.length} usinas: respondeu OK, porém sem nenhum dispositivo`);
+    }
+    for (const d of devs) {
+      const lista = porStation.get(d.stationCode) ?? [];
+      lista.push(d);
+      porStation.set(d.stationCode, lista);
+    }
+    if (i + chunk < stationCodes.length) {
+      await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
+    }
+  }
+  return { porStation, erros, chamadas };
+}
+
 // ============================================================
 // Alarmes ativos — endpoint /getAlarmList
 // Resposta tipica:
@@ -506,26 +569,37 @@ interface AlarmListResponse {
 }
 
 /**
- * Alarmes ativos de uma planta (status=1).
+ * Alarmes ativos (status=1) de UMA OU VÁRIAS plantas.
  *
  * O endpoint requer beginTime/endTime em epoch ms. Buscamos os últimos 30 dias.
- * Em caso de erro, retorna [].
+ * Em caso de erro, retorna mapa vazio.
+ *
+ * Aceita lista porque `stationCodes` é plural e cada alarme volta com o seu
+ * `stationCode`: era isso ou 105 chamadas por hora só de alarme, que é o que
+ * estourava a cota da conta e fazia o COLETOR levar 407 na sequência.
  */
-export async function getActiveAlerts(
-  stationCode: string,
-): Promise<import("./inverter-errors").InverterErrorEvent[]> {
+async function buscarAlarmes(
+  stationCodes: string[],
+): Promise<Map<string, import("./inverter-errors").InverterErrorEvent[]>> {
+  const out = new Map<string, import("./inverter-errors").InverterErrorEvent[]>();
+  if (stationCodes.length === 0) return out;
+
   try {
     const endTime = Date.now();
     const beginTime = endTime - 30 * 24 * 60 * 60 * 1000;
     const data = await huaweiFetch<AlarmListResponse>("/getAlarmList", {
-      stationCodes: stationCode,
+      stationCodes: stationCodes.join(","),
       beginTime,
       endTime,
     });
 
     const list = data.data ?? data.obj ?? [];
-    const out: import("./inverter-errors").InverterErrorEvent[] = [];
     for (const a of list) {
+      // Com um code só, algumas versões omitem o `stationCode` na resposta —
+      // aí não há ambiguidade e o alarme é daquela planta mesmo.
+      const dono =
+        a.stationCode ?? (stationCodes.length === 1 ? stationCodes[0] : null);
+      if (!dono) continue;
       // Filtro: apenas alarmes ativos. Algumas versões não devolvem `status` —
       // nesse caso confiamos no fato de que /getAlarmList só retorna ativos.
       if (a.status != null && Number(a.status) !== 1) continue;
@@ -540,7 +614,8 @@ export async function getActiveAlerts(
             : null;
       if (!codigo) continue;
 
-      out.push({
+      const lista = out.get(dono) ?? [];
+      lista.push({
         codigo,
         descricao:
           a.alarmName ??
@@ -552,13 +627,30 @@ export async function getActiveAlerts(
         externalId:
           a.alarmId != null ? String(a.alarmId) : null,
       });
+      out.set(dono, lista);
     }
     return out;
   } catch {
-    return [];
+    return out;
   }
 }
 
+/** Alarmes ativos de uma planta. */
+export async function getActiveAlerts(
+  stationCode: string,
+): Promise<import("./inverter-errors").InverterErrorEvent[]> {
+  return (await buscarAlarmes([stationCode])).get(stationCode) ?? [];
+}
+
+/** Quantas plantas por chamada de alarme. Mesmo teto do `/getDevList`. */
+const ALARMES_POR_CHAMADA = 25;
+
+/**
+ * Alarmes de várias plantas. Uma chamada a cada 25 usinas, em vez de uma por
+ * usina: 105 usinas saem em 5 chamadas, não 105. Plantas sem alarme não
+ * aparecem na resposta — por isso o mapa é preenchido com [] no fim, senão
+ * "sem alarme" viraria indistinguível de "não consultada".
+ */
 export async function getActiveAlertsBatch(
   stationCodes: string[],
 ): Promise<Map<string, import("./inverter-errors").InverterErrorEvent[]>> {
@@ -567,20 +659,19 @@ export async function getActiveAlertsBatch(
     import("./inverter-errors").InverterErrorEvent[]
   >();
 
-  for (let i = 0; i < stationCodes.length; i += MAX_CONCURRENT) {
-    const batch = stationCodes.slice(i, i + MAX_CONCURRENT);
-    const promises = batch.map(async (code) => {
-      const events = await getActiveAlerts(code);
-      results.set(code, events);
-    });
-
-    await Promise.all(promises);
-
-    if (i + MAX_CONCURRENT < stationCodes.length) {
+  for (let i = 0; i < stationCodes.length; i += ALARMES_POR_CHAMADA) {
+    const lote = stationCodes.slice(i, i + ALARMES_POR_CHAMADA);
+    for (const [code, eventos] of await buscarAlarmes(lote)) {
+      results.set(code, eventos);
+    }
+    if (i + ALARMES_POR_CHAMADA < stationCodes.length) {
       await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
     }
   }
 
+  for (const code of stationCodes) {
+    if (!results.has(code)) results.set(code, []);
+  }
   return results;
 }
 
@@ -673,12 +764,17 @@ export async function getDeviceMetricsBatch(
 ): Promise<Map<string, DeviceMetrics>> {
   const results = new Map<string, DeviceMetrics>();
 
+  // A lista de dispositivos de TODAS as plantas sai antes, em lote. Era uma
+  // chamada de `/getDevList` por planta aqui dentro — 105 por execução, o
+  // suficiente pra deixar a conta em 407 e derrubar a coleta da curva junto.
+  const { porStation: devicesPorStation } = await getDeviceListBatch(stationCodes);
+
   for (let i = 0; i < stationCodes.length; i += MAX_CONCURRENT) {
     const batch = stationCodes.slice(i, i + MAX_CONCURRENT);
 
     const promises = batch.map(async (stationCode) => {
       try {
-        const devices = await getDeviceList(stationCode);
+        const devices = devicesPorStation.get(stationCode) ?? [];
         const inverters = devices.filter((d) => INVERTER_DEV_TYPES.has(d.devTypeId));
 
         if (inverters.length === 0) {

@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { PLATAFORMAS_INTRADIA, temCurvaIntradiaria } from "@/lib/plataformas-intradia";
 import { esperadaMensalBaseKwh } from "@/lib/geracao-esperada";
 
 interface MonitoringLog {
@@ -463,12 +464,16 @@ export default function ClientDetailPage() {
 
       {activeTab === "intra-dia" && (
         <div className="space-y-4">
-          {client.plataformaMonitoramento === "SUNGROW" ? (
+          {temCurvaIntradiaria(client.plataformaMonitoramento) ? (
             <IntraDayChart clientId={client.id} />
           ) : (
             <Card>
               <CardContent className="p-6 text-sm text-muted-foreground">
-                Curva intra-diária disponível apenas para clientes com monitoramento Sungrow.
+                Curva intra-diária ainda não disponível para{" "}
+                {client.plataformaMonitoramento
+                  ? `monitoramento ${client.plataformaMonitoramento}`
+                  : "usinas sem plataforma de monitoramento"}
+                . Hoje o coletor atende {PLATAFORMAS_INTRADIA.join(", ")}.
               </CardContent>
             </Card>
           )}

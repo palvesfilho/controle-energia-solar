@@ -1,11 +1,17 @@
 /**
  * GET/POST /api/cron/sungrow-collect-samples
  *
- * Cron intradiário — coleta a curva intra-dia (amostras a cada ~5min, 5h-21h BRT)
- * de TODOS os clientes BrasilSolar com Sungrow ativo. Persiste em InverterSample.
+ * ⚠️ APOSENTADO COMO CRON — quem coleta a curva hoje é
+ * `scripts/collect-intraday-15min.ts` (cron do Railway, 15 em 15 min), que
+ * atende as CINCO plataformas em slots alinhados. Este caminho só falava
+ * Sungrow, tinha resolução de 30 min e escrevia na MESMA tabela: duas
+ * resoluções concorrendo na mesma curva. A entrada dele saiu do `vercel.json`
+ * em 11/08/26 (a última escrita real tinha sido em 08/08).
  *
- * Idempotente. Recomendado rodar várias vezes ao longo do dia solar (BRT) para o
- * portal exibir a curva do DIA ATUAL enquanto ela ainda está sendo formada.
+ * Continua no ar como gatilho MANUAL de recuperação de um dia específico
+ * (`?endDate=`), que o coletor novo só faz pelo modo `--fechamento`.
+ *
+ * Idempotente.
  *
  * Autenticação: `Authorization: Bearer <CRON_SECRET>` OU `?token=<CRON_SECRET>`.
  * Override de dias: `?days=3` (default 2 = hoje + ontem, máx 7).

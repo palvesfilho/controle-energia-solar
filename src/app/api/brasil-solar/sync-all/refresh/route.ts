@@ -19,11 +19,20 @@ import {
   getDailyGenerationBatch as getSolarEdgeDailyBatch,
   getPlantStatusBatch as getSolarEdgeStatusBatch,
 } from "@/lib/solaredge";
+import {
+  getDailyGenerationBatch as getGrowattDailyBatch,
+  getPlantStatusBatch as getGrowattStatusBatch,
+} from "@/lib/growatt";
 import { esperadaDoDiaDaUsina, performanceRatioMesAtual } from "@/lib/geracao-esperada";
+import { PLATAFORMAS_INTRADIA, type PlataformaIntradia } from "@/lib/plataformas-intradia";
 
 export const maxDuration = 600;
 
-type Plataforma = "HUAWEI" | "SUNGROW" | "FRONIUS" | "SOLAREDGE";
+// A mesma lista do coletor intradiário: uma plataforma que sabemos coletar tem
+// que aparecer em TODA rotina, não só na que foi escrita por último. A Growatt
+// entrou no coletor e ficou de fora daqui — 78 usinas nunca tiveram geração do
+// mês nem status atualizados por este endpoint.
+type Plataforma = PlataformaIntradia;
 
 interface ClientRow {
   id: string;
@@ -96,6 +105,15 @@ async function fetchDailyCurrentMonth(
         ]),
       );
     }
+    case "GROWATT": {
+      const raw = await getGrowattDailyBatch(plantIds, year, month);
+      return new Map(
+        Array.from(raw.entries()).map(([id, days]) => [
+          id,
+          days.map((d) => ({ day: d.day, energyKwh: d.energyKwh })),
+        ]),
+      );
+    }
   }
 }
 
@@ -122,6 +140,10 @@ async function fetchStatus(
       const siteIds = plantIds.map((id) => parseInt(id)).filter((n) => !isNaN(n));
       const raw = await getSolarEdgeStatusBatch(siteIds);
       return new Map(Array.from(raw.entries()).map(([id, s]) => [String(id), { isOnline: s.isOnline }]));
+    }
+    case "GROWATT": {
+      const raw = await getGrowattStatusBatch(plantIds);
+      return new Map(Array.from(raw.entries()).map(([id, s]) => [id, { isOnline: s.isOnline }]));
     }
   }
 }
@@ -206,8 +228,10 @@ async function processPlatform(
 
 /**
  * POST /api/brasil-solar/sync-all/refresh
- * Atualiza geracao do mes atual + status em tempo real para TODAS as plataformas
- * suportadas (Huawei, Sungrow, Fronius, SolarEdge) em uma unica chamada.
+ * Atualiza geração do mês atual + status em tempo real para TODAS as
+ * plataformas suportadas numa única chamada. A lista vem de
+ * `PLATAFORMAS_INTRADIA` de propósito: ligar uma plataforma nova em um lugar só
+ * e ela já entra aqui.
  */
 export async function POST(_req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -219,7 +243,7 @@ export async function POST(_req: NextRequest) {
     const clients = await prisma.brasilSolarClient.findMany({
       where: {
         active: true,
-        plataformaMonitoramento: { in: ["HUAWEI", "SUNGROW", "FRONIUS", "SOLAREDGE"] },
+        plataformaMonitoramento: { in: [...PLATAFORMAS_INTRADIA] },
         monitoramentoPlantId: { not: null },
       },
       select: {
@@ -238,15 +262,11 @@ export async function POST(_req: NextRequest) {
       );
     }
 
-    const porPlataforma: Record<Plataforma, ClientRow[]> = {
-      HUAWEI: [],
-      SUNGROW: [],
-      FRONIUS: [],
-      SOLAREDGE: [],
-    };
+    const porPlataforma = new Map<Plataforma, ClientRow[]>(
+      PLATAFORMAS_INTRADIA.map((p) => [p, [] as ClientRow[]]),
+    );
     for (const c of clients) {
-      const p = c.plataformaMonitoramento as Plataforma;
-      porPlataforma[p].push({
+      porPlataforma.get(c.plataformaMonitoramento as Plataforma)?.push({
         id: c.id,
         monitoramentoPlantId: c.monitoramentoPlantId!,
         geracaoMediaEsperada: c.geracaoMediaEsperada,
@@ -257,27 +277,23 @@ export async function POST(_req: NextRequest) {
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
 
-    const [huawei, sungrow, fronius, solaredge] = await Promise.all([
-      processPlatform("HUAWEI", porPlataforma.HUAWEI, year, month),
-      processPlatform("SUNGROW", porPlataforma.SUNGROW, year, month),
-      processPlatform("FRONIUS", porPlataforma.FRONIUS, year, month),
-      processPlatform("SOLAREDGE", porPlataforma.SOLAREDGE, year, month),
-    ]);
+    const resultados = await Promise.all(
+      PLATAFORMAS_INTRADIA.map(async (p) => [
+        p,
+        await processPlatform(p, porPlataforma.get(p) ?? [], year, month),
+      ] as const),
+    );
 
     const totais = {
-      clientesAtualizados:
-        huawei.clientesAtualizados +
-        sungrow.clientesAtualizados +
-        fronius.clientesAtualizados +
-        solaredge.clientesAtualizados,
-      logsUpsert: huawei.logsUpsert + sungrow.logsUpsert + fronius.logsUpsert + solaredge.logsUpsert,
+      clientesAtualizados: resultados.reduce((s, [, r]) => s + r.clientesAtualizados, 0),
+      logsUpsert: resultados.reduce((s, [, r]) => s + r.logsUpsert, 0),
     };
 
     return NextResponse.json({
-      message: "GeraÃ§Ã£o e status atualizados para todas as marcas",
+      message: "Geração e status atualizados para todas as marcas",
       periodo: `${month}/${year}`,
       totais,
-      porPlataforma: { HUAWEI: huawei, SUNGROW: sungrow, FRONIUS: fronius, SOLAREDGE: solaredge },
+      porPlataforma: Object.fromEntries(resultados),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro desconhecido";

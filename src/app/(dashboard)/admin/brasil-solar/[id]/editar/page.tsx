@@ -11,10 +11,16 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { isValidPhone } from "@/lib/phone";
 import { CONCESSIONARIAS } from "@/lib/concessionarias";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { PLATAFORMAS_INTRADIA } from "@/lib/plataformas-intradia";
 
-const PLATAFORMAS = [
-  "GROWATT", "SOLIS", "FRONIUS", "CANADIAN", "ABB", "DEYE",
-  "HOYMILES", "GOODWE", "HUAWEI", "SUNGROW", "BYD", "ENPHASE",
+/**
+ * Marcas sem coletor — o cadastro aceita, mas a usina não terá geração nem
+ * curva automáticas. Ficam num grupo separado no select porque a SOLAREDGE
+ * (241 usinas, a segunda maior da frota) simplesmente não estava nesta lista, e
+ * escolher a marca errada aqui é indistinguível de uma usina parada.
+ */
+const PLATAFORMAS_SEM_COLETOR = [
+  "SOLIS", "CANADIAN", "ABB", "DEYE", "HOYMILES", "GOODWE", "BYD", "ENPHASE",
 ];
 
 const UFS = [
@@ -225,7 +231,12 @@ export default function EditarClienteBrasilSolarPage() {
                 <select name="plataformaMonitoramento" value={form.plataformaMonitoramento} onChange={handleChange}
                   className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background outline-none">
                   <option value="">Selecione</option>
-                  {PLATAFORMAS.map((p) => <option key={p} value={p}>{p}</option>)}
+                  <optgroup label="Com coleta automática">
+                    {PLATAFORMAS_INTRADIA.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </optgroup>
+                  <optgroup label="Sem coleta — geração manual">
+                    {PLATAFORMAS_SEM_COLETOR.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </optgroup>
                 </select>
               </div>
               <FormField label="Login" name="monitoramentoLogin" value={form.monitoramentoLogin} onChange={handleChange} />

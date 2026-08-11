@@ -326,7 +326,8 @@ async function getClientIds(proprietarioId: string): Promise<string[]> {
 /**
  * Curva de geração intradiária (potência AC instantânea, kW) de um dia
  * específico, somando todos os inversores/usinas do proprietário. Lê o `pAcW`
- * do `InverterSample` (só Sungrow persiste hoje) — null à noite, então a curva
+ * do `InverterSample` (todas as plataformas de `PLATAFORMAS_INTRADIA`, não só a
+ * Sungrow como no início) — null à noite, então a curva
  * cobre naturalmente só o período de sol. Timestamps são convertidos de UTC
  * para horário de Brasília (BRT, UTC−3); como toda a geração de um dia BRT cai
  * dentro do mesmo dia UTC, agrupar por dia UTC é equivalente aqui. As pontas em
@@ -516,10 +517,15 @@ async function refreshAmostrasDia(clientIds: string[], ymd: string): Promise<voi
 
 /**
  * Estado de comunicação das usinas, derivado da última leitura instantânea
- * (`InverterSample`). A coleta roda de 3 em 3 horas (cron Sungrow), então a
- * janela de tolerância é de 4h — abaixo disso a usina está reportando. Fora do
- * horário de sol (18h–06h BRT) a ausência de leitura é normal: vira REPOUSO em
- * vez de OFFLINE, para não alarmar o cliente à noite.
+ * (`InverterSample`). Fora do horário de sol (18h–06h BRT) a ausência de
+ * leitura é normal: vira REPOUSO em vez de OFFLINE, para não alarmar o cliente
+ * à noite.
+ *
+ * ⚠️ NÃO APERTE as 4h de tolerância só porque a coleta agora é de 15 em 15 min.
+ * A tolerância não mede a nossa cadência, mede a da PLATAFORMA MAIS LENTA: a
+ * Sungrow entrega o dado com ~130 min de atraso (medido em 11/08/26), e um
+ * proprietário pode ter usinas de plataformas diferentes no mesmo cálculo.
+ * Com 30 min aqui, toda usina Sungrow apareceria OFFLINE o dia inteiro.
  */
 async function getStatusMonitoramento(
   clientIds: string[],
