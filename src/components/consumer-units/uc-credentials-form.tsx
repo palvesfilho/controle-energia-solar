@@ -253,6 +253,22 @@ export function UcCredentialsForm({ consumerUnitId, defaultInstalacao, onSyncCom
           </div>
         )}
 
+        {/* Sem credencial o card abria um formulário vazio sem dizer nada — e o
+            operador só descobria a falta lá no botão "Sincronizar faturas
+            antigas", que respondia "Nenhuma UC com credencial". */}
+        {!credential && (
+          <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30 p-3">
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+              Acesso ao portal ainda não cadastrado
+            </p>
+            <p className="text-xs text-amber-800 dark:text-amber-300 mt-1">
+              Sem o login do cliente no portal da concessionária não é possível
+              sincronizar faturas nem baixar as faturas antigas — o robô precisa
+              entrar no portal para pegar as segundas vias.
+            </p>
+          </div>
+        )}
+
         {showForm && (
           <form onSubmit={handleSave} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

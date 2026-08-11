@@ -198,7 +198,13 @@ export function StatusFaturasCard({
     if (!data) return;
     const alvos = data.ucs.filter((u) => u.credencial);
     if (alvos.length === 0) {
-      toast.error("Nenhuma UC com credencial da concessionária cadastrada.");
+      // Dizer o que fazer, não só o que falta: quem cai aqui costuma ter
+      // preenchido o acesso no cadastro e não sabe que ele não foi salvo.
+      toast.error("Nenhuma UC com credencial da concessionária cadastrada", {
+        description:
+          'O robô precisa do login do cliente no portal para baixar as segundas vias. Cadastre em "Status e acesso à concessionária", logo acima.',
+        duration: 12000,
+      });
       return;
     }
 
