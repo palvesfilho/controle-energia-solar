@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { normalizeCodigoUc } from "@/lib/uc-codigo";
 import { isAdminRole } from "@/lib/roles";
+import { avaliarExclusaoUsina } from "@/lib/plant-exclusao";
 
 export async function GET(
   _req: NextRequest,
@@ -113,6 +114,52 @@ export async function PUT(
       }),
     },
   });
+
+  return NextResponse.json({ success: true });
+}
+
+// Exclusão permanente da usina. Recusa (409) enquanto existir histórico
+// financeiro/energético apontando pra ela — nesses casos o caminho é desativar
+// (statusContrato/active), não apagar. Vínculos que o schema desfaz sozinho
+// (investidores, UCs, documentos, credencial) só viram aviso no preview.
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const session = await getServerSession(authOptions);
+  if (!session || !isAdminRole(session.user.role)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const impacto = await avaliarExclusaoUsina(id);
+  if (!impacto) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (impacto.bloqueios.length > 0) {
+    return NextResponse.json(
+      {
+        error: "Usina possui histórico e não pode ser excluída",
+        details: impacto.bloqueios,
+      },
+      { status: 409 },
+    );
+  }
+
+  try {
+    await prisma.plant.delete({ where: { id } });
+  } catch {
+    // Rede de segurança: alguma relação nova sem cascade que o preview ainda
+    // não conhece. Melhor 409 legível do que 500.
+    return NextResponse.json(
+      {
+        error: "Usina possui vínculos e não pode ser excluída",
+        details: ["Registros vinculados impedem a exclusão"],
+      },
+      { status: 409 },
+    );
+  }
 
   return NextResponse.json({ success: true });
 }

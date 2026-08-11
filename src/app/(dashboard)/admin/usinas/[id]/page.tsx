@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -27,6 +27,7 @@ import { PlantCredentialsForm } from "@/components/plants/plant-credentials-form
 import { PlantDocumentsCard } from "@/components/plants/plant-documents-card";
 import { MonitoringClientsPanel } from "@/components/plants/monitoring-clients-panel";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { ExcluirUsinaDialog } from "@/components/plants/excluir-usina-dialog";
 
 const PlantMonitoringCharts = dynamic(
   () =>
@@ -283,10 +284,12 @@ function Field({
 
 export default function UsinaPage() {
   const params = useParams();
+  const router = useRouter();
   const plantId = params.id as string;
 
   const [plant, setPlant] = useState<PlantData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [excluirOpen, setExcluirOpen] = useState(false);
 
   const [selectedRegra, setSelectedRegra] = useState("");
   const [selectedFormatoLeitura, setSelectedFormatoLeitura] = useState("");
@@ -502,6 +505,15 @@ export default function UsinaPage() {
           >
             {plant.active ? "Ativa" : "Inativa"}
           </Badge>
+          <button
+            type="button"
+            onClick={() => setExcluirOpen(true)}
+            title="Excluir usina"
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 dark:border-red-900 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+          >
+            <Trash2 className="h-4 w-4" />
+            Excluir usina
+          </button>
         </div>
         {plant.location && (
           <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
@@ -1022,6 +1034,14 @@ export default function UsinaPage() {
           </div>
         </div>
       )}
+
+      <ExcluirUsinaDialog
+        plantId={plant.id}
+        plantName={plant.name}
+        open={excluirOpen}
+        onOpenChange={setExcluirOpen}
+        onExcluida={() => router.push("/admin/usinas")}
+      />
     </div>
   );
 }

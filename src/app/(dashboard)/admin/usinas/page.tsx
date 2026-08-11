@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Plus,
   Pencil,
+  Trash2,
   Search,
   ArrowUpDown,
   Sun,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { matchBusca } from "@/lib/busca";
+import { ExcluirUsinaDialog } from "@/components/plants/excluir-usina-dialog";
 
 interface PlantData {
   id: string;
@@ -46,6 +48,7 @@ export default function UsinasPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | "ativo" | "inativo">("");
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "name", dir: "asc" });
+  const [excluirTarget, setExcluirTarget] = useState<PlantData | null>(null);
 
   useEffect(() => {
     fetch("/api/plants")
@@ -195,13 +198,23 @@ export default function UsinasPage() {
                         </Badge>
                       </td>
                       <td className="py-2.5 px-3 text-center">
-                        <Link
-                          href={`/admin/usinas/${plant.id}`}
-                          title="Abrir / editar"
-                          className="inline-flex p-1.5 rounded hover:bg-muted transition-colors"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Link>
+                        <div className="flex items-center justify-center gap-1">
+                          <Link
+                            href={`/admin/usinas/${plant.id}`}
+                            title="Abrir / editar"
+                            className="inline-flex p-1.5 rounded hover:bg-muted transition-colors"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => setExcluirTarget(plant)}
+                            title="Excluir usina"
+                            className="p-1.5 rounded text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -211,6 +224,14 @@ export default function UsinasPage() {
           )}
         </CardContent>
       </Card>
+
+      <ExcluirUsinaDialog
+        plantId={excluirTarget?.id ?? null}
+        plantName={excluirTarget?.name ?? ""}
+        open={excluirTarget !== null}
+        onOpenChange={(open) => !open && setExcluirTarget(null)}
+        onExcluida={(id) => setPlants((prev) => prev.filter((p) => p.id !== id))}
+      />
     </div>
   );
 }
