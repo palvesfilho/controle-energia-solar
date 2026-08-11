@@ -1,0 +1,330 @@
+{
+  "base_url": "https://gateway.isolarcloud.com.hk",
+  "sys_code": "901",
+  "ps_id": "1549294",
+  "ps_key": "1549294_55_1_1",
+  "chamadas": [
+    {
+      "passo": "login",
+      "endpoint": "/openapi/login",
+      "request": {
+        "appkey": "<APPKEY>",
+        "user_account": "tecnico1@solvesm.eng.br",
+        "user_password": "<SENHA>",
+        "lang": "_pt_BR",
+        "sys_code": "901"
+      },
+      "http_status": 200,
+      "result_code": "1",
+      "result_msg": "success",
+      "result_data_resumo": {
+        "token": "<TOKEN>",
+        "user_id": "392372"
+      }
+    },
+    {
+      "passo": "1) lista de dispositivos",
+      "endpoint": "/openapi/getDeviceList",
+      "request": {
+        "appkey": "<APPKEY>",
+        "token": "<TOKEN>",
+        "sys_code": "901",
+        "lang": "_pt_BR",
+        "ps_id": "1549294",
+        "curPage": 1,
+        "size": 100
+      },
+      "http_status": 200,
+      "result_code": "1",
+      "result_msg": "success",
+      "result_data_resumo": {
+        "pageList": [
+          {
+            "chnnl_id": 1,
+            "type_name": "Microinversor",
+            "ps_key": "1549294_55_1_1",
+            "rel_time": "2025-03-07 03:58:06",
+            "device_sn": "A2471188328",
+            "dev_status": "1",
+            "device_type": 55,
+            "factory_name": "SUNGROW",
+            "uuid": 3925006,
+            "grid_connection_date": "2025-03-07 03:58:06",
+            "device_name": "Micro Inverter1",
+            "dev_fault_status": 4,
+            "rel_state": 1,
+            "device_code": 1,
+            "ps_id": 1549294,
+            "device_model_id": 366634,
+            "communication_dev_sn": "A2471188328",
+            "device_model_code": "S2000S-SA"
+          }
+        ],
+        "rowCount": 1
+      }
+    },
+    {
+      "passo": "2) tempo real microinversor (o que funciona hoje)",
+      "endpoint": "/openapi/getDeviceRealTimeData",
+      "request": {
+        "appkey": "<APPKEY>",
+        "token": "<TOKEN>",
+        "sys_code": "901",
+        "lang": "_pt_BR",
+        "device_type": 55,
+        "point_id_list": [
+          "51346",
+          "51302",
+          "51303"
+        ],
+        "ps_key_list": [
+          "1549294_55_1_1"
+        ]
+      },
+      "http_status": 200,
+      "result_code": "1",
+      "result_msg": "success",
+      "result_data_resumo": {
+        "fail_ps_key_list": [],
+        "device_point_list": [
+          {
+            "device_point": {
+              "device_name": "Micro Inverter1",
+              "dev_fault_status": 4,
+              "ps_key": "1549294_55_1_1",
+              "device_sn": "A2471188328",
+              "dev_status": 1,
+              "ps_id": 1549294,
+              "p51346": "1200.01",
+              "p51302": "3196000.0",
+              "communication_dev_sn": "A2471188328",
+              "p51303": "320.0",
+              "uuid": 3925006,
+              "device_time": "20260806120000"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "passo": "2b) mesmo endpoint SEM point_id_list",
+      "endpoint": "/openapi/getDeviceRealTimeData",
+      "request": {
+        "appkey": "<APPKEY>",
+        "token": "<TOKEN>",
+        "sys_code": "901",
+        "lang": "_pt_BR",
+        "device_type": 55,
+        "ps_key_list": [
+          "1549294_55_1_1"
+        ]
+      },
+      "http_status": 200,
+      "result_code": "009",
+      "result_msg": "er_missing_parameter:point_id_list",
+      "result_data_resumo": null
+    },
+    {
+      "passo": "2c) getPVInverterRealTimeData no microinversor",
+      "endpoint": "/openapi/getPVInverterRealTimeData",
+      "request": {
+        "appkey": "<APPKEY>",
+        "token": "<TOKEN>",
+        "sys_code": "901",
+        "lang": "_pt_BR",
+        "ps_key_list": [
+          "1549294_55_1_1"
+        ]
+      },
+      "http_status": 200,
+      "result_code": "1",
+      "result_msg": "success",
+      "result_data_resumo": {
+        "fail_ps_key_list": [],
+        "device_point_list": [
+          {
+            "device_point": {
+              "ps_key": "1549294_55_1_1",
+              "p92": null,
+              "p50": null,
+              "p93": null,
+              "p52": null,
+              "p96": null,
+              "uuid": 3925006,
+              "p51": null,
+              "p10": null,
+              "p54": null,
+              "p98": null,
+              "p53": null,
+              "p97": null,
+              "p56": null,
+              "p113": null,
+              "p55": null,
+              "p99": null,
+              "p112": null,
+              "dev_fault_status": 4,
+              "p14": null,
+              "p58": null,
+              "p111": null,
+              "p57": null,
+              "p110": null,
+              "p16": null,
+              "p15": null,
+              "p18": null,
+              "p17": null,
+              "p19": null,
+              "communication_dev_sn": "A2471188328",
+              "device_time": "20260806120000",
+              "p21": null,
+              "p20": null,
+              "p23": null,
+              "p102": null,
+              "p22": null,
+              "p101": null,
+              "p25": null,
+              "p100": null,
+              "p24": null,
+              "p27": null,
+              "p106": null,
+              "p304": null,
+              "p26": null,
+              "p105": null,
+              "p104": null,
+              "p29": null,
+              "ps_id": 1549294,
+              "p103": null,
+              "p109": null,
+              "p108": null,
+              "p107": null,
+              "p1": null,
+              "p2": null,
+              "p4": null,
+              "p5": null,
+              "p6": null,
+              "p7": null,
+              "p8": null,
+              "p70": null,
+              "p9": null,
+              "p72": null,
+              "p7401": null,
+              "p71": null,
+              "p7402": null,
+              "p74": null,
+              "p73": null,
+              "p76": null,
+              "p75": null,
+              "p78": null,
+              "p77": null,
+              "device_name": "Micro Inverter1",
+              "p79": null,
+              "device_sn": "A2471188328",
+              "dev_status": 1,
+              "p81": null,
+              "p80": null,
+              "p83": null,
+              "p82": null,
+              "p85": null,
+              "p84": null,
+              "p7451": null,
+              "p43": null,
+              "p87": null,
+              "p7452": null,
+              "p45": null,
+              "p88": null,
+              "p47": null,
+              "p46": null,
+              "p49": null,
+              "p48": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "passo": "3) minute data com pontos do micro (513xx)",
+      "endpoint": "/openapi/getDevicePointMinuteDataList",
+      "request": {
+        "appkey": "<APPKEY>",
+        "token": "<TOKEN>",
+        "sys_code": "901",
+        "lang": "_pt_BR",
+        "ps_key_list": [
+          "1549294_55_1_1"
+        ],
+        "points": "p51346,p51302,p51303",
+        "start_time_stamp": "20260806120000",
+        "end_time_stamp": "20260806150000"
+      },
+      "http_status": 200,
+      "result_code": "1",
+      "result_msg": "success",
+      "result_data_resumo": {
+        "1549294_55_1_1": [
+          {
+            "time_stamp": "20260806120000",
+            "p51346": "1200.01",
+            "p51302": "3196000.0",
+            "p51303": "320.0"
+          }
+        ]
+      }
+    },
+    {
+      "passo": "3b) minute data com pontos de inversor string (p1,p2)",
+      "endpoint": "/openapi/getDevicePointMinuteDataList",
+      "request": {
+        "appkey": "<APPKEY>",
+        "token": "<TOKEN>",
+        "sys_code": "901",
+        "lang": "_pt_BR",
+        "ps_key_list": [
+          "1549294_55_1_1"
+        ],
+        "points": "p1,p2,p14,p24",
+        "start_time_stamp": "20260806120000",
+        "end_time_stamp": "20260806150000"
+      },
+      "http_status": 200,
+      "result_code": "1",
+      "result_msg": "success",
+      "result_data_resumo": {}
+    },
+    {
+      "passo": "4a) agregação diária (bloqueado?)",
+      "endpoint": "/openapi/getDevicePointDayMonthYearDataList",
+      "request": {
+        "appkey": "<APPKEY>",
+        "token": "<TOKEN>",
+        "sys_code": "901",
+        "lang": "_pt_BR",
+        "ps_key_list": [
+          "1549294_55_1_1"
+        ],
+        "points": "p51302",
+        "date_id": "20260806",
+        "data_type": "1"
+      },
+      "http_status": 200,
+      "result_code": "E900",
+      "result_msg": "Unauthorized access",
+      "result_data_resumo": null
+    },
+    {
+      "passo": "4b) relatório da planta (bloqueado?)",
+      "endpoint": "/openapi/getPsReport",
+      "request": {
+        "appkey": "<APPKEY>",
+        "token": "<TOKEN>",
+        "sys_code": "901",
+        "lang": "_pt_BR",
+        "ps_id": "1549294",
+        "date_id": "20260806",
+        "date_type": "1"
+      },
+      "http_status": 200,
+      "result_code": "E900",
+      "result_msg": "Unauthorized access",
+      "result_data_resumo": null
+    }
+  ]
+}
