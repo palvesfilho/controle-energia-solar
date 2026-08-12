@@ -19,6 +19,8 @@ import {
   Pencil,
   Eye,
   EyeOff,
+  Lock,
+  Copy,
 } from "lucide-react";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 
@@ -61,6 +63,9 @@ export function PlantCredentialsForm({
   // Só exibição: a API deriva do cadastro da usina e devolve pronta.
   const [distribuidora, setDistribuidora] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  // Senha salva, buscada só quando o operador clica no olho.
+  const [senhaSalva, setSenhaSalva] = useState<string | null>(null);
+  const [revelando, setRevelando] = useState(false);
 
   useEffect(() => {
     loadCredential();
@@ -80,7 +85,60 @@ export function PlantCredentialsForm({
       setCredential(null);
       setShowForm(true);
     }
+    setSenhaSalva(null);
+    setShowPassword(false);
     setLoadingCred(false);
+  }
+
+  /** Busca a senha salva (uma vez) e devolve; null se não deu. */
+  async function buscarSenhaSalva(): Promise<string | null> {
+    if (senhaSalva !== null) return senhaSalva;
+    setRevelando(true);
+    try {
+      const res = await fetch(`/api/plants/${plantId}/credentials/senha`);
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Não foi possível mostrar a senha");
+        return null;
+      }
+      setSenhaSalva(data.senha);
+      return data.senha as string;
+    } finally {
+      setRevelando(false);
+    }
+  }
+
+  async function toggleSenhaSalva() {
+    if (showPassword) {
+      setShowPassword(false);
+      return;
+    }
+    if ((await buscarSenhaSalva()) !== null) setShowPassword(true);
+  }
+
+  async function copiarSenha() {
+    const senha = await buscarSenhaSalva();
+    if (senha === null) return;
+    await navigator.clipboard.writeText(senha);
+    toast.success("Senha copiada");
+  }
+
+  /**
+   * No formulário o olho tem duas funções: se o operador ainda não digitou nada,
+   * ele traz a senha que está salva pra dentro do campo (dá pra corrigir uma
+   * letra em vez de redigitar tudo); se já digitou, só mostra o que digitou.
+   */
+  async function toggleSenhaFormulario() {
+    if (showPassword) {
+      setShowPassword(false);
+      return;
+    }
+    if (!senhaCpfl && credential?.hasSenha) {
+      const senha = await buscarSenhaSalva();
+      if (senha === null) return;
+      setSenhaCpfl(senha);
+    }
+    setShowPassword(true);
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -151,6 +209,8 @@ export function PlantCredentialsForm({
     setCredential(null);
     setEmailCpfl("");
     setSenhaCpfl("");
+    setSenhaSalva(null);
+    setShowPassword(false);
     setInstalacao(defaultInstalacao ?? "");
     setDistribuidora("");
     setShowForm(true);
@@ -206,6 +266,38 @@ export function PlantCredentialsForm({
                 </div>
               </div>
               <Separator />
+              {/* A senha some ao salvar; aqui ela volta sob demanda, sem precisar
+                  abrir a edição nem redigitar. */}
+              <div className="flex items-start gap-3">
+                <Lock className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-muted-foreground">Senha do portal</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-medium truncate">
+                      {showPassword && senhaSalva !== null ? senhaSalva : "••••••••"}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={toggleSenhaSalva}
+                      disabled={revelando}
+                      title={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                      className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={copiarSenha}
+                      disabled={revelando}
+                      title="Copiar senha"
+                      className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <Separator />
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex items-start gap-3">
                   <Hash className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -256,7 +348,14 @@ export function PlantCredentialsForm({
                 <RefreshCw className={`h-4 w-4 mr-1.5 ${syncing ? "animate-spin" : ""}`} />
                 {syncing ? "Sincronizando..." : "Sincronizar faturas"}
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setShowForm(true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setShowPassword(false);
+                  setShowForm(true);
+                }}
+              >
                 <Pencil className="h-4 w-4 mr-1.5" />
                 Editar
               </Button>
@@ -290,7 +389,7 @@ export function PlantCredentialsForm({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="senhaCpfl">
-                  {credential ? "Nova senha (deixe vazio para manter)" : "Senha do portal"}
+                  {credential ? "Senha do portal (deixe vazio para manter)" : "Senha do portal"}
                 </Label>
                 <div className="relative">
                   <Input
@@ -304,8 +403,16 @@ export function PlantCredentialsForm({
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={toggleSenhaFormulario}
+                    disabled={revelando}
+                    title={
+                      showPassword
+                        ? "Ocultar senha"
+                        : credential
+                          ? "Mostrar a senha salva"
+                          : "Mostrar senha"
+                    }
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -332,7 +439,15 @@ export function PlantCredentialsForm({
             )}
             <div className="flex gap-2 justify-end">
               {credential && (
-                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setSenhaCpfl("");
+                    setShowPassword(false);
+                    setShowForm(false);
+                  }}
+                >
                   Cancelar
                 </Button>
               )}
