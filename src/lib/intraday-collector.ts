@@ -803,6 +803,9 @@ async function coletarHuawei(
   if (usinas.length === 0) return [];
 
   const { getDeviceListBatch, getDeviceFiveMinutes } = await import("@/lib/huawei");
+  const { lerDispositivosMemorizados, gravarDispositivosMemorizados } = await import(
+    "@/lib/intraday-devices"
+  );
 
   const porCliente = await dispositivosConhecidos(
     usinas.map((u) => u.id),
@@ -812,12 +815,34 @@ async function coletarHuawei(
   // devId → { clientId, devTypeId }
   const donoDoDevice = new Map<string, { clientId: string; devTypeId: number }>();
   const comDeviceConhecido = new Set<string>();
+  /**
+   * Devices vindos de amostra recente — ou seja, comprovadamente entregando
+   * dado. Vão na FRENTE da fila de leitura: se a cota estourar no meio, quem
+   * cai é a descoberta nova, não a frota que já funcionava.
+   */
+  const deviceComprovado = new Set<string>();
   for (const u of usinas) {
     for (const psKey of porCliente.get(u.id) ?? []) {
       const p = parsePsKeyHuawei(psKey);
       if (!p) continue;
       donoDoDevice.set(p.devId, { clientId: u.id, devTypeId: p.devTypeId });
       comDeviceConhecido.add(u.id);
+      deviceComprovado.add(p.devId);
+    }
+  }
+
+  // Descobertas de rodadas anteriores que nunca viraram amostra. Sem isto, uma
+  // usina cujo inversor existe mas não entrega dado é redescoberta para sempre
+  // — e a redescoberta é justamente a chamada que a cota da Huawei não perdoa.
+  const idsDasUsinas = new Set(usinas.map((u) => u.id));
+  const memorizados = await lerDispositivosMemorizados("HUAWEI");
+  for (const [clientId, psKeys] of memorizados) {
+    if (!idsDasUsinas.has(clientId)) continue;
+    comDeviceConhecido.add(clientId); // vale mesmo com lista vazia: já perguntamos
+    for (const psKey of psKeys) {
+      const p = parsePsKeyHuawei(psKey);
+      if (!p || donoDoDevice.has(p.devId)) continue;
+      donoDoDevice.set(p.devId, { clientId, devTypeId: p.devTypeId });
     }
   }
 
@@ -856,21 +881,32 @@ async function coletarHuawei(
       for (const e of erros) resumo.erros.push(`descoberta Huawei — ${e}`);
 
       let novos = 0;
+      // Guarda o que a descoberta achou ANTES de tentar ler dado. É o ponto do
+      // conserto: a descoberta valia só até o fim da rodada, e o 407 da leitura
+      // apagava o trabalho todo.
+      const aMemorizar = new Map<string, string[]>();
       for (const [stationCode, devs] of porStation) {
         const u = porPlantId.get(stationCode);
         if (!u) continue;
+        const psKeys: string[] = [];
         for (const d of devs) {
           const raw = d as unknown as { id?: number | string; devTypeId?: number };
           const tipo = Number(raw.devTypeId ?? d.devTypeId);
           if (raw.id != null && HUAWEI_TIPOS_INVERSOR.has(tipo)) {
             donoDoDevice.set(String(raw.id), { clientId: u.id, devTypeId: tipo });
+            psKeys.push(psKeyHuawei(tipo, raw.id));
             novos++;
           }
         }
+        // Lista vazia também é resposta: "essa usina não tem inversor".
+        aMemorizar.set(u.id, psKeys);
       }
+      await gravarDispositivosMemorizados("HUAWEI", aMemorizar);
+
+      const semInversor = [...aMemorizar.values()].filter((l) => l.length === 0).length;
       resumo.descoberta =
         `${porPlantId.size} usinas consultadas → ${porStation.size} responderam, ${novos} inversores novos ` +
-        `(${aDescobrir.length} ainda sem dispositivo conhecido)`;
+        `(${semInversor} sem inversor cadastrado) · ${aDescobrir.length} na fila antes desta rodada`;
     } catch (e) {
       resumo.erros.push(`descoberta Huawei em lote — ${msg(e)}`);
     }
@@ -880,11 +916,32 @@ async function coletarHuawei(
   const comDado = new Set<string>();
 
   // Agrupa por devTypeId: o endpoint aceita um tipo por chamada.
+  //
+  // A ORDEM dentro de cada tipo importa quando a lista passa de uma chamada.
+  // Em 12/08/26 a descoberta somou 27 inversores novos aos 26 que já
+  // funcionavam, o lote de 53 levou 407 e a plataforma registrou `0/105` — as
+  // 26 boas caíram junto com as novas. Com os comprovados na frente, um 407 no
+  // meio da fila derruba só a ponta nova. É degradar em vez de desabar.
+  //
+  // ⚠️ E NÃO diminua `HUAWEI_DEVICES_POR_CHAMADA` para "proteger" mais: o 407
+  // apareceu igual com 26 e com 53 devices numa ÚNICA chamada, ou seja o limite
+  // é de FREQUÊNCIA, não de tamanho. Partir em lotes menores multiplica
+  // chamadas e piora exatamente o que se quer evitar — mesma lição do
+  // `/getDevList` (a moeda é o número de chamadas).
   const porTipo = new Map<number, string[]>();
   for (const [devId, info] of donoDoDevice) {
     const lista = porTipo.get(info.devTypeId) ?? [];
     lista.push(devId);
     porTipo.set(info.devTypeId, lista);
+  }
+  // Rodízio entre os não comprovados: se a cota sempre corta no mesmo ponto,
+  // sem isto os mesmos devices do fim da fila nunca seriam lidos.
+  const rodadaAtual = Math.floor(janela.fim.getTime() / SLOT_MS);
+  for (const [devTypeId, devIds] of porTipo) {
+    const comprovados = devIds.filter((d) => deviceComprovado.has(d)).sort();
+    const novos = devIds.filter((d) => !deviceComprovado.has(d)).sort();
+    const giro = novos.length > 0 ? rodadaAtual % novos.length : 0;
+    porTipo.set(devTypeId, [...comprovados, ...novos.slice(giro), ...novos.slice(0, giro)]);
   }
 
   cotaHuawei: for (const [devTypeId, devIds] of porTipo) {
