@@ -180,6 +180,7 @@ export default function ClientDetailPage() {
       HUAWEI: `/api/brasil-solar/${id}/huawei-sync`,
       SUNGROW: `/api/brasil-solar/${id}/sungrow-sync`,
       SOLAREDGE: `/api/brasil-solar/${id}/solaredge-sync`,
+      GROWATT: `/api/brasil-solar/${id}/growatt-sync`,
     };
     let syncUrl = platform ? syncUrlMap[platform] ?? null : null;
     if (syncUrl && opts?.fullHistory && platform === "SUNGROW") {
@@ -221,7 +222,9 @@ export default function ClientDetailPage() {
     }
   }, [id, client, fetchClient]);
 
-  const supportedPlatforms = ["FRONIUS", "HUAWEI", "SUNGROW", "SOLAREDGE"];
+  // Precisa casar com o syncUrlMap acima: uma plataforma listada aqui sem rota
+  // de sync deixa o botão aparecer e não fazer nada.
+  const supportedPlatforms = ["FRONIUS", "HUAWEI", "SUNGROW", "SOLAREDGE", "GROWATT"];
 
   useEffect(() => {
     fetchClient().then((data) => {

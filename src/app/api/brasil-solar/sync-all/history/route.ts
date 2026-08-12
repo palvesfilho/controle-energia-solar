@@ -7,6 +7,7 @@ import { getDailyGeneration as getHuaweiDaily } from "@/lib/huawei";
 import { getDailyGeneration as getSungrowDaily } from "@/lib/sungrow";
 import { getDailyGeneration as getFroniusDaily } from "@/lib/fronius";
 import { getDailyGeneration as getSolarEdgeDaily } from "@/lib/solaredge";
+import { getDailyGeneration as getGrowattDaily } from "@/lib/growatt";
 import {
   esperadaDoDiaDaUsina,
   esperadaDoMesKwh,
@@ -17,7 +18,7 @@ import {
 
 export const maxDuration = 600;
 
-type Plataforma = "HUAWEI" | "SUNGROW" | "FRONIUS" | "SOLAREDGE";
+type Plataforma = "HUAWEI" | "SUNGROW" | "FRONIUS" | "SOLAREDGE" | "GROWATT";
 
 interface DailyPoint {
   day: number;
@@ -39,6 +40,10 @@ const DELAY_BY_PLATFORM: Record<Plataforma, number> = {
   SUNGROW: 300,
   FRONIUS: 200,
   SOLAREDGE: 500,
+  // A Growatt recusa a requisição IDÊNTICA repetida em poucos segundos
+  // (10012 error_frequently_access). Aqui cada chamada é um mês diferente, mas
+  // o retry do próprio mês precisa de folga — medido em 12/08/2026.
+  GROWATT: 500,
 };
 
 async function fetchDaily(
@@ -66,13 +71,17 @@ async function fetchDaily(
       const data = await getSolarEdgeDaily(siteId, year, month);
       return data.map((d) => ({ day: d.day, energyKwh: d.energyKwh }));
     }
+    case "GROWATT": {
+      const data = await getGrowattDaily(plantId, year, month);
+      return data.map((d) => ({ day: d.day, energyKwh: d.energyKwh }));
+    }
   }
 }
 
 /**
  * POST /api/brasil-solar/sync-all/history
  * Importa historico completo de geracao de TODAS as usinas de TODAS as plataformas
- * suportadas (Huawei, Sungrow, Fronius, SolarEdge).
+ * suportadas (Huawei, Sungrow, Fronius, SolarEdge, Growatt).
  *
  * Body opcional: { fromYear?: number, plataformas?: Plataforma[] }
  */
@@ -86,7 +95,7 @@ export async function POST(req: NextRequest) {
   const fromYearOverride: number | undefined = body.fromYear;
   const plataformasFiltro: Plataforma[] = Array.isArray(body.plataformas) && body.plataformas.length > 0
     ? body.plataformas
-    : ["HUAWEI", "SUNGROW", "FRONIUS", "SOLAREDGE"];
+    : ["HUAWEI", "SUNGROW", "FRONIUS", "SOLAREDGE", "GROWATT"];
 
   try {
     const clients = await prisma.brasilSolarClient.findMany({
@@ -121,6 +130,7 @@ export async function POST(req: NextRequest) {
       SUNGROW: { clientes: 0, logs: 0 },
       FRONIUS: { clientes: 0, logs: 0 },
       SOLAREDGE: { clientes: 0, logs: 0 },
+      GROWATT: { clientes: 0, logs: 0 },
     };
     const clientResults: ClientResult[] = [];
     let totalLogs = 0;

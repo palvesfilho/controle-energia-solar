@@ -120,7 +120,10 @@ export async function GET(
       platform: c.plataformaMonitoramento!.toUpperCase() as Platform,
       monitoringId: c.monitoramentoPlantId!,
     }))
-    .filter((i) => ["FRONIUS", "HUAWEI", "SUNGROW", "SOLAREDGE"].includes(i.platform));
+    // GROWATT ficou de fora quando o adapter entrou: os ramos GROWATT acima
+    // existiam mas este filtro os matava antes, e o gráfico respondia
+    // "SEM_INVERSOR" para toda usina Growatt.
+    .filter((i) => ["FRONIUS", "HUAWEI", "SUNGROW", "SOLAREDGE", "GROWATT"].includes(i.platform));
 
   if (inverters.length === 0) {
     return NextResponse.json({ data: [], empty: true, reason: "SEM_INVERSOR" });
