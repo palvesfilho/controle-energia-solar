@@ -3,7 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
-import { normalizeCodigoUc } from "@/lib/uc-codigo";
+import { normalizeCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -86,14 +86,34 @@ export async function POST(req: NextRequest) {
   const codigoUc = normalizeCodigoUc(body.codigoUc);
   const codigoUcAntigo = normalizeCodigoUc(body.codigoUcAntigo) || null;
 
-  const existing = await prisma.consumerUnit.findUnique({
-    where: { codigoUc: codigoUc! },
-  });
-  if (existing) {
-    return NextResponse.json(
-      { error: "JÃ¡ existe uma UC com esse cÃ³digo" },
-      { status: 400 }
-    );
+  // Duplicata: procura pelo código novo E pelo antigo, nos DOIS campos. Antes era um
+  // `findUnique` só em `codigoUc`, e a RGE trocou os números das UCs (REN 1095/24): a
+  // UC que já existe guarda o código velho em `codigoUcAntigo`, então cadastrar com o
+  // número que a fatura ainda mostra passava batido e criava uma SEGUNDA UC da mesma
+  // unidade — uma com o histórico, outra vazia. Aconteceu duas vezes (ROSELAINE e
+  // JEFERSON, 12/08/2026). `whereCodigoUc` é a regra única de código→UC.
+  const informados = [codigoUc, codigoUcAntigo].filter(Boolean) as string[];
+  for (const informado of informados) {
+    const existing = await prisma.consumerUnit.findFirst({
+      where: whereCodigoUc(informado),
+      select: { id: true, nome: true, codigoUc: true, codigoUcAntigo: true },
+    });
+    if (existing) {
+      const porQual =
+        normalizeCodigoUc(existing.codigoUc) === normalizeCodigoUc(informado)
+          ? "código atual"
+          : "código antigo";
+      return NextResponse.json(
+        {
+          error:
+            `Já existe uma UC com esse código: "${existing.nome}" ` +
+            `(${existing.codigoUc}${existing.codigoUcAntigo ? ` / antigo ${existing.codigoUcAntigo}` : ""}) ` +
+            `— casou pelo ${porQual}. Se for a mesma unidade com número novo da RGE, ` +
+            `edite a UC existente e preencha o "código antigo" em vez de criar outra.`,
+        },
+        { status: 400 }
+      );
+    }
   }
 
   const allowedOrigem = new Set([
