@@ -40,6 +40,8 @@ interface MesData {
   economiaCompensadaRs: number | null;
   economiaInstantaneaRs: number | null;
   economiaMensalRs: number | null;
+  /** Período sem dado de inversor: a parcela instantânea é desconhecida, não zero */
+  autoconsumoIndisponivel: boolean;
   economiaAcumuladaRs: number;
   saldoPaybackRs: number;
   faturadoRs: number | null;
@@ -325,9 +327,17 @@ export default function RelatorioMesPage() {
         <Kpi
           icon={<Wallet className="h-4 w-4" />}
           label="Economia mensal"
-          value={formatBRL(m.economiaMensalRs)}
+          value={
+            m.autoconsumoIndisponivel && m.economiaMensalRs != null
+              ? `≥ ${formatBRL(m.economiaMensalRs)}`
+              : formatBRL(m.economiaMensalRs)
+          }
           color="violet"
-          hint={`Fatura concessionária: ${formatBRL(m.faturadoRs)}`}
+          hint={
+            m.autoconsumoIndisponivel
+              ? "Sem dado do inversor no período — falta a parcela de autoconsumo"
+              : `Fatura concessionária: ${formatBRL(m.faturadoRs)}`
+          }
         />
       </div>
 
@@ -368,13 +378,34 @@ export default function RelatorioMesPage() {
               }
             />
             <Row label="Economia compensada" value={formatBRL(m.economiaCompensadaRs)} />
-            <Row label="Economia instantânea" value={formatBRL(m.economiaInstantaneaRs)} />
-            <Row label="Economia do mês" value={formatBRL(m.economiaMensalRs)} bold />
+            <Row
+              label="Economia instantânea"
+              value={formatBRL(m.economiaInstantaneaRs)}
+              hint={
+                m.autoconsumoIndisponivel
+                  ? "sem dado do inversor no período"
+                  : undefined
+              }
+            />
+            <Row
+              label="Economia do mês"
+              value={
+                m.autoconsumoIndisponivel && m.economiaMensalRs != null
+                  ? `≥ ${formatBRL(m.economiaMensalRs)}`
+                  : formatBRL(m.economiaMensalRs)
+              }
+              hint={m.autoconsumoIndisponivel ? "só os créditos da fatura" : undefined}
+              bold
+            />
             <Row label="Retorno do mês" value={formatPct(m.retornoPct)} />
             <Row label="Fatura concessionária" value={formatBRL(m.faturadoRs)} />
             <Row
               label="Conta sem energia solar"
-              value={formatBRL(m.contaSemSolarRs)}
+              value={
+                m.autoconsumoIndisponivel && m.contaSemSolarRs != null
+                  ? `≥ ${formatBRL(m.contaSemSolarRs)}`
+                  : formatBRL(m.contaSemSolarRs)
+              }
               hint="fatura + economia"
               bold
             />

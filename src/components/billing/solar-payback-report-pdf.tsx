@@ -671,6 +671,12 @@ export function SolarPaybackReportPDF({
     { geracao: 0, consumo: 0, semSolar: 0, comSolar: 0, economia: 0 },
   );
   const algumMesEstimado = data.meses.some((m) => m.economiaEstimada);
+  // Mês sem dado de inversor: a economia impressa conta só os créditos que a
+  // fatura prova, e o total do período vira PISO. Marcado com † pra não passar
+  // por valor fechado — e NUNCA estimado, porque o padrão de autoconsumo é
+  // realidade do cliente (decisão do Paulo, 13/08/2026).
+  const algumMesSemInversor = data.meses.some((m) => m.autoconsumoIndisponivel);
+  const pisoSe = (parcial: boolean) => (parcial ? "≥ " : "");
   // Créditos é SALDO acumulado (não soma): no rodapé mostra o saldo final.
   const saldoCreditosFinal =
     data.meses.length > 0
@@ -708,6 +714,7 @@ export function SolarPaybackReportPDF({
               <View style={s.heroBadge}>
                 <Text style={s.heroBadgeLabel}>Economia mensal</Text>
                 <Text style={s.heroBadgeValue}>
+                  {pisoSe(mes.autoconsumoIndisponivel)}
                   {formatBRL(mes.economiaMensalRs)}
                 </Text>
               </View>
@@ -848,7 +855,7 @@ export function SolarPaybackReportPDF({
                 <Text style={s.kpiLabel}>Sem solar</Text>
                 <Text style={[s.kpiValue, { color: C.orange, fontSize: 12 }]}>
                   {mes.contaSemSolarRs != null
-                    ? formatBRL(mes.contaSemSolarRs)
+                    ? `${pisoSe(mes.autoconsumoIndisponivel)}${formatBRL(mes.contaSemSolarRs)}`
                     : "—"}
                 </Text>
                 <Text style={s.kpiSub}>quanto pagaria sem a usina</Text>
@@ -870,19 +877,29 @@ export function SolarPaybackReportPDF({
                 <Text style={s.kpiLabel}>Economia no mês</Text>
                 <Text style={[s.kpiValue, { color: C.teal, fontSize: 12 }]}>
                   {mes.economiaMensalRs != null
-                    ? formatBRL(mes.economiaMensalRs)
+                    ? `${pisoSe(mes.autoconsumoIndisponivel)}${formatBRL(mes.economiaMensalRs)}`
                     : "—"}
                 </Text>
-                {!semMonitoramento &&
-                  mes.economiaInstantaneaRs != null &&
-                  mes.economiaInstantaneaRs > 0 && (
-                    <Text style={s.kpiSub}>
-                      {formatBRL(mes.economiaCompensadaRs ?? 0)} comp +{" "}
-                      {formatBRL(mes.economiaInstantaneaRs)} inst
-                    </Text>
-                  )}
-                {semMonitoramento && (
-                  <Text style={s.kpiSub}>apenas créditos compensados</Text>
+                {mes.autoconsumoIndisponivel ? (
+                  <Text style={[s.kpiSub, { color: C.orangeDark }]}>
+                    {mes.economiaMensalRs != null
+                      ? "só os créditos da fatura — inversor sem dado no período"
+                      : "inversor sem dado no período"}
+                  </Text>
+                ) : (
+                  <>
+                    {!semMonitoramento &&
+                      mes.economiaInstantaneaRs != null &&
+                      mes.economiaInstantaneaRs > 0 && (
+                        <Text style={s.kpiSub}>
+                          {formatBRL(mes.economiaCompensadaRs ?? 0)} comp +{" "}
+                          {formatBRL(mes.economiaInstantaneaRs)} inst
+                        </Text>
+                      )}
+                    {semMonitoramento && (
+                      <Text style={s.kpiSub}>apenas créditos compensados</Text>
+                    )}
+                  </>
                 )}
               </View>
               {!semMonitoramento && (
@@ -923,15 +940,20 @@ export function SolarPaybackReportPDF({
           <View style={s.kpiCard}>
             <Text style={s.kpiLabel}>Economia Total</Text>
             <Text style={[s.kpiValue, { color: C.teal }]}>
+              {pisoSe(data.mesesEconomiaParcial > 0)}
               {formatBRL(economiaTotal)}
             </Text>
             <Text style={s.kpiSub}>
               {data.mesesComFatura ?? data.meses.length} mês(es) desde a operação
+              {data.mesesEconomiaParcial > 0
+                ? ` · ${data.mesesEconomiaParcial} sem dado do inversor`
+                : ""}
             </Text>
           </View>
           <View style={s.kpiCard}>
             <Text style={s.kpiLabel}>Economia média</Text>
             <Text style={[s.kpiValue, { color: C.orange }]}>
+              {pisoSe(data.mesesEconomiaParcial > 0)}
               {formatBRL(data.economiaMediaMensalRs)}
             </Text>
             <Text style={s.kpiSub}>por mês</Text>
@@ -1150,9 +1172,10 @@ export function SolarPaybackReportPDF({
                       ]}
                     >
                       {m.economiaMensalRs != null
-                        ? formatBRL(m.economiaMensalRs)
+                        ? `${pisoSe(m.autoconsumoIndisponivel)}${formatBRL(m.economiaMensalRs)}`
                         : "—"}
                       {m.economiaEstimada ? "*" : ""}
+                      {m.autoconsumoIndisponivel ? "†" : ""}
                     </Text>
                   </View>
                 );
@@ -1197,7 +1220,8 @@ export function SolarPaybackReportPDF({
                   }}
                 >
                   <Text style={{ fontSize: 7, color: C.gray }}>
-                    sem {formatBRL(totais.semSolar)}
+                    sem {pisoSe(algumMesSemInversor)}
+                    {formatBRL(totais.semSolar)}
                   </Text>
                   <Text style={{ fontSize: 7, color: C.orangeDark, fontWeight: 700 }}>
                     com {formatBRL(totais.comSolar)}
@@ -1209,6 +1233,7 @@ export function SolarPaybackReportPDF({
                     { flex: COL.economia, textAlign: "right", color: C.teal },
                   ]}
                 >
+                  {pisoSe(algumMesSemInversor)}
                   {formatBRL(totais.economia)}
                 </Text>
               </View>
@@ -1226,6 +1251,14 @@ export function SolarPaybackReportPDF({
                 <Text style={{ fontSize: 6.5, color: C.orangeDark, marginTop: 2 }}>
                   * Mês sem o detalhamento em R$ na fatura — economia estimada
                   pelos kWh compensados × tarifa.
+                </Text>
+              )}
+              {algumMesSemInversor && (
+                <Text style={{ fontSize: 6.5, color: C.orangeDark, marginTop: 2 }}>
+                  † Mês sem dado de geração do inversor. O valor mostrado conta
+                  apenas os créditos comprovados pela fatura — a energia gerada
+                  e consumida na hora, direto do painel, não pôde ser apurada.
+                  A economia real do mês foi MAIOR que a indicada.
                 </Text>
               )}
             </View>

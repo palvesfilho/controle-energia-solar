@@ -14,6 +14,7 @@ import { getRangeTotal as huaweiRangeTotal } from "@/lib/huawei";
 import { getRangeTotal as solaredgeRangeTotal } from "@/lib/solaredge";
 import { getRangeTotal as growattRangeTotal } from "@/lib/growatt";
 import { getRelatorioParametros } from "@/lib/app-settings";
+import { ehDiaSemDado } from "@/lib/dia-sem-dado";
 import { formatCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
 import {
   precoKwhSolar,
@@ -127,11 +128,26 @@ export interface EconomiaMensalDetalhe {
   contaSemSolarRs: number | null;
   /** Alguma parcela veio de estimativa (fatura sem detalhamento em R$). */
   estimada: boolean;
+  /**
+   * A parcela de autoconsumo instantâneo é DESCONHECIDA neste mês — a usina tem
+   * geração própria, mas o período ficou sem dado de inversor (datalogger mudo,
+   * ou geração menor que a injeção medida). Quando `true`, os valores acima são
+   * PISO: contam só o que a fatura prova, e o total verdadeiro é maior.
+   */
+  autoconsumoIndisponivel: boolean;
 }
 
 export function calcularEconomiaMensal(
   bill: EconomiaMensalInput,
   consumoInstantaneoKwh: number | null,
+  /**
+   * `false` quando a UC TEM geração própria mas o período ficou sem dado de
+   * inversor. Aí o autoconsumo é "não sei", não "zero" — ver a regra no fim
+   * desta função. O padrão `true` cobre os dois casos em que zero é verdade:
+   * a parcela não se aplica (beneficiária sem geração própria) ou
+   * `consumoInstantaneoKwh` veio medido.
+   */
+  autoconsumoConhecido: boolean = true,
 ): EconomiaMensalDetalhe {
   const mod = (v: number | null | undefined) => Math.abs(v ?? 0);
   const linhasCredito: (number | null)[] = [
@@ -169,13 +185,46 @@ export function calcularEconomiaMensal(
     }
   }
 
+  // 🔑 Autoconsumo desconhecido NÃO é autoconsumo zero. Sem dado de inversor no
+  // período, o que a fatura prova (os créditos compensados em R$) continua
+  // valendo integralmente — some só a parcela instantânea. Escrever "R$ 0,00" no
+  // mês seria a mesma afirmação falsa que `ehDiaSemDado` mata na geração: o
+  // cliente lê "não economizei nada" quando a verdade é "não sei quanto do
+  // painel foi direto pro chuveiro". E NÃO se estima pela média — o padrão de
+  // consumo é realidade do cliente, que não conhecemos (decisão do Paulo,
+  // 13/08/2026).
+  const autoconsumoIndisponivel = !autoconsumoConhecido;
   const semDadoAlgum =
     bill.valorTotal == null && compensacaoRs === 0 && autoconsumoRs === 0;
-  const economiaMensalRs = semDadoAlgum ? null : compensacaoRs + autoconsumoRs;
-  const contaSemSolarRs =
-    bill.valorTotal == null ? null : bill.valorTotal + compensacaoRs + autoconsumoRs;
 
-  return { compensacaoRs, autoconsumoRs, economiaMensalRs, contaSemSolarRs, estimada };
+  let economiaMensalRs: number | null;
+  let contaSemSolarRs: number | null;
+  if (autoconsumoIndisponivel) {
+    // Só a parcela provada pela fatura. Sem ela, nada a afirmar: `null`
+    // ("indisponível"), nunca 0.
+    economiaMensalRs = compensacaoRs > 0 ? compensacaoRs : null;
+    contaSemSolarRs =
+      economiaMensalRs != null && bill.valorTotal != null
+        ? bill.valorTotal + compensacaoRs
+        : null;
+  } else {
+    economiaMensalRs = semDadoAlgum ? null : compensacaoRs + autoconsumoRs;
+    contaSemSolarRs =
+      bill.valorTotal == null
+        ? null
+        : bill.valorTotal + compensacaoRs + autoconsumoRs;
+  }
+  // Nos dois ramos vale a identidade que o Paulo confere na mão:
+  //   economia = contaSemSolar − faturado
+
+  return {
+    compensacaoRs,
+    autoconsumoRs,
+    economiaMensalRs,
+    contaSemSolarRs,
+    estimada,
+    autoconsumoIndisponivel,
+  };
 }
 
 /**
@@ -230,6 +279,13 @@ export interface RelatorioMonthRow {
   economiaMensalRs: number | null;
   /** Economia derivada de estimativa (fatura sem detalhamento em R$) */
   economiaEstimada: boolean;
+  /**
+   * A usina tem geração própria, mas o período ficou SEM dado de inversor —
+   * então `economiaMensalRs` conta só o que a fatura prova e é um PISO, e
+   * `economiaInstantaneaRs` é desconhecida (não zero). A tela precisa avisar,
+   * não exibir R$ 0,00. Ver `calcularEconomiaMensal`.
+   */
+  autoconsumoIndisponivel: boolean;
   economiaAcumuladaRs: number;
   saldoPaybackRs: number;
   /** Faturado RGE (valor líquido pago à concessionária) */
@@ -287,6 +343,13 @@ export interface RelatorioData {
   /** Soma do prognóstico anual das usinas (BSC.geracaoAnualEsperada) */
   geracaoEsperadaAnualKwh: number;
   economiaMediaMensalRs: number;
+  /**
+   * Quantos meses ficaram sem dado de inversor e por isso contam só a parcela
+   * que a fatura prova. Maior que zero ⇒ `economiaMediaMensalRs`,
+   * `retornoTotalPct` e o payback são PISO, não valor fechado — a tela avisa
+   * em vez de exibir zero. Ver `RelatorioMonthRow.autoconsumoIndisponivel`.
+   */
+  mesesEconomiaParcial: number;
   /** Retorno total acumulado = economiaAcumulada / investimento × 100 */
   retornoTotalPct: number;
   /** Meses estimados até quitar (modelo com reajuste tarifa + depreciação módulos). */
@@ -863,6 +926,20 @@ async function sumGenerationForPeriod(
         erros.push(`${c.id}: plataforma '${platform}' não suportada`);
         continue;
       }
+      // 🔑 Growatt: total ZERO num período de dias inteiros é datalogger mudo, não
+      // usina parada — `plant/energy` devolve 0,0 nos dois casos. Contar isso como
+      // sucesso faz o relatório AFIRMAR "não gerou" e zera a economia do mês. É o
+      // mesmo defeito do `ehDiaSemDado`, mas na LEITURA ao vivo: os 4 pontos
+      // corrigidos em `b95cdd5` eram todos de escrita, e este passou. Ver
+      // [[project_growatt_zero_kwh_datalogger_mudo]].
+      // ⚠️ Só GROWATT: as outras plataformas têm a mesma armadilha em tese, mas
+      // não foram medidas — não se troca comportamento sem medir.
+      if (platform === "GROWATT" && ehDiaSemDado(r.totalKwh)) {
+        erros.push(
+          `${c.id}: Growatt devolveu 0 kWh no período — sem comunicação do datalogger, não é geração zero`,
+        );
+        continue;
+      }
       total += r.totalKwh;
       qualquerSucesso = true;
     } catch (e) {
@@ -1018,6 +1095,9 @@ export async function getProprietarioRelatorio(
     },
   });
   let economiaAcumulada = 0;
+  // Quantos meses saíram com a parcela de autoconsumo desconhecida — o acumulado
+  // e a média viram PISO, e a tela precisa dizer isso em vez de fingir exatidão.
+  let mesesEconomiaParcial = 0;
   const mesesAll: RelatorioMonthRow[] = [];
 
   // Só os meses exibidos (últimos 12) podem bater na API de monitoramento;
@@ -1086,13 +1166,35 @@ export async function getProprietarioRelatorio(
     // própria fatura: créditos compensados + autoconsumo instantâneo valorado
     // pela tarifa cheia. Ver `calcularEconomiaMensal`.
     const energiaCompensadaKwh = bill.energiaCompensada ?? null;
-    const eco = calcularEconomiaMensal(bill, consumoInstantaneoKwh);
+    // A parcela de autoconsumo só EXISTE pra UC com geração própria injetando
+    // nela. Sem usina monitorada ela não se aplica e zero é a verdade (é o caso
+    // do relatório lite e da beneficiária pura). Com usina monitorada e sem
+    // `consumoInstantaneoKwh` resolvido — datalogger mudo, ou a anomalia acima —
+    // ela é DESCONHECIDA, e aí o mês não pode sair como R$ 0,00.
+    const autoconsumoSeAplica = monitoringClients.length > 0;
+    // Marca só o caso que o Paulo descreveu: SEM dado de geração no período.
+    // Quando a geração existe mas a fatura não trouxe a leitura de injeção, o
+    // autoconsumo também não sai — mas essa é lacuna de FATURA, outra causa e
+    // outra conversa; mexer nela aqui viraria "≥" em quase todo mês de todo
+    // cliente sem eu ter medido o efeito.
+    const autoconsumoConhecido =
+      !autoconsumoSeAplica || geracaoInversorKwh != null;
+    const eco = calcularEconomiaMensal(
+      bill,
+      consumoInstantaneoKwh,
+      autoconsumoConhecido,
+    );
     const economiaMensalRs = eco.economiaMensalRs;
     const economiaCompensadaRs =
       economiaMensalRs == null ? null : eco.compensacaoRs;
-    const economiaInstantaneaRs =
-      economiaMensalRs == null ? null : eco.autoconsumoRs;
+    // Desconhecida ≠ zero: `null` quando falta o dado de geração.
+    const economiaInstantaneaRs = eco.autoconsumoIndisponivel
+      ? null
+      : economiaMensalRs == null
+        ? null
+        : eco.autoconsumoRs;
     const contaSemSolarRs = eco.contaSemSolarRs;
+    if (eco.autoconsumoIndisponivel) mesesEconomiaParcial++;
 
     economiaAcumulada += economiaMensalRs ?? 0;
     const saldoPaybackRs = investimentoTotal - economiaAcumulada;
@@ -1136,6 +1238,7 @@ export async function getProprietarioRelatorio(
       economiaInstantaneaRs,
       economiaMensalRs,
       economiaEstimada: eco.estimada,
+      autoconsumoIndisponivel: eco.autoconsumoIndisponivel,
       economiaAcumuladaRs: economiaAcumulada,
       saldoPaybackRs,
       faturadoRs: bill.valorTotal,
@@ -1206,6 +1309,7 @@ export async function getProprietarioRelatorio(
     geracaoEsperadaMensalKwh,
     geracaoEsperadaAnualKwh,
     economiaMediaMensalRs,
+    mesesEconomiaParcial,
     retornoTotalPct,
     paybackRestanteMeses,
     paybackQuitacaoPrevista,

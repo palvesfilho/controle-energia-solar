@@ -50,6 +50,8 @@ interface MonthRow {
   economiaCompensadaRs: number | null;
   economiaInstantaneaRs: number | null;
   economiaMensalRs: number | null;
+  /** Período sem dado de inversor: a parcela instantânea é desconhecida, não zero */
+  autoconsumoIndisponivel: boolean;
   economiaAcumuladaRs: number;
   saldoPaybackRs: number;
   faturadoRs: number | null;
@@ -76,6 +78,8 @@ interface ApiResponse {
   geracaoEsperadaMensalKwh: number;
   geracaoEsperadaAnualKwh: number;
   economiaMediaMensalRs: number;
+  /** >0 ⇒ média, retorno e payback são PISO (meses sem dado de inversor) */
+  mesesEconomiaParcial: number;
   retornoTotalPct: number;
   paybackRestanteMeses: number;
   paybackQuitacaoPrevista: { ano: number; mes: number } | null;
@@ -374,17 +378,23 @@ export default function RelatorioDetalhePage() {
               label="Economia mensal"
               value={
                 mesSelecionado.economiaMensalRs != null
-                  ? formatBRL(mesSelecionado.economiaMensalRs)
+                  ? // Sem o autoconsumo, o que sobra é PISO — o "≥" evita que o
+                    // cliente leia um número incompleto como valor fechado.
+                    `${mesSelecionado.autoconsumoIndisponivel ? "≥ " : ""}${formatBRL(mesSelecionado.economiaMensalRs)}`
                   : "—"
               }
               sublabel={
-                !semMonitoramento &&
-                mesSelecionado.economiaInstantaneaRs != null &&
-                mesSelecionado.economiaInstantaneaRs > 0
-                  ? `${formatBRL(mesSelecionado.economiaCompensadaRs ?? 0)} comp + ${formatBRL(mesSelecionado.economiaInstantaneaRs)} inst`
-                  : semMonitoramento
-                    ? "apenas créditos compensados"
-                    : undefined
+                mesSelecionado.autoconsumoIndisponivel
+                  ? mesSelecionado.economiaMensalRs != null
+                    ? `${formatBRL(mesSelecionado.economiaCompensadaRs ?? 0)} de créditos compensados — falta o autoconsumo (sem dado do inversor)`
+                    : "sem dado do inversor no período — não dá pra apurar"
+                  : !semMonitoramento &&
+                      mesSelecionado.economiaInstantaneaRs != null &&
+                      mesSelecionado.economiaInstantaneaRs > 0
+                    ? `${formatBRL(mesSelecionado.economiaCompensadaRs ?? 0)} comp + ${formatBRL(mesSelecionado.economiaInstantaneaRs)} inst`
+                    : semMonitoramento
+                      ? "apenas créditos compensados"
+                      : undefined
               }
               icon={<TrendingUp className="h-4 w-4" />}
               color={brand.teal}
@@ -403,7 +413,7 @@ export default function RelatorioDetalhePage() {
               label="Sem energia solar"
               value={
                 mesSelecionado.contaSemSolarRs != null
-                  ? formatBRL(mesSelecionado.contaSemSolarRs)
+                  ? `${mesSelecionado.autoconsumoIndisponivel ? "≥ " : ""}${formatBRL(mesSelecionado.contaSemSolarRs)}`
                   : "—"
               }
               sublabel={
@@ -458,14 +468,18 @@ export default function RelatorioDetalhePage() {
         )}
         <KpiCard
           label="Economia Total"
-          value={formatBRL(economiaTotal)}
-          sublabel={`${data.meses.length} mês(es) com fatura`}
+          value={`${data.mesesEconomiaParcial > 0 ? "≥ " : ""}${formatBRL(economiaTotal)}`}
+          sublabel={
+            data.mesesEconomiaParcial > 0
+              ? `${data.meses.length} mês(es) com fatura · ${data.mesesEconomiaParcial} sem dado do inversor`
+              : `${data.meses.length} mês(es) com fatura`
+          }
           icon={<TrendingUp className="h-4 w-4" />}
           color={brand.teal}
         />
         <KpiCard
           label="Economia média"
-          value={formatBRL(data.economiaMediaMensalRs)}
+          value={`${data.mesesEconomiaParcial > 0 ? "≥ " : ""}${formatBRL(data.economiaMediaMensalRs)}`}
           sublabel="por mês"
           icon={<Activity className="h-4 w-4" />}
           color={brand.orange}
@@ -704,12 +718,18 @@ export default function RelatorioDetalhePage() {
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums font-medium">
                       {m.economiaMensalRs != null
-                        ? formatBRL(m.economiaMensalRs)
+                        ? `${m.autoconsumoIndisponivel ? "≥ " : ""}${formatBRL(m.economiaMensalRs)}`
                         : "—"}
-                      {m.economiaInstantaneaRs != null && m.economiaInstantaneaRs > 0 && (
+                      {m.autoconsumoIndisponivel ? (
                         <div className="text-[10px] text-muted-foreground">
-                          ({formatBRL(m.economiaCompensadaRs ?? 0)} comp + {formatBRL(m.economiaInstantaneaRs)} inst)
+                          sem dado do inversor — falta o autoconsumo
                         </div>
+                      ) : (
+                        m.economiaInstantaneaRs != null && m.economiaInstantaneaRs > 0 && (
+                          <div className="text-[10px] text-muted-foreground">
+                            ({formatBRL(m.economiaCompensadaRs ?? 0)} comp + {formatBRL(m.economiaInstantaneaRs)} inst)
+                          </div>
+                        )
                       )}
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums">
