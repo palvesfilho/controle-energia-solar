@@ -15,6 +15,7 @@ import {
   performanceRatioMesAtual,
   type FonteGeracaoEsperada,
 } from "@/lib/geracao-esperada";
+import { ehDiaSemDado } from "@/lib/dia-sem-dado";
 
 export const maxDuration = 600;
 
@@ -173,6 +174,8 @@ export async function POST(req: NextRequest) {
           const dailyData = await fetchDaily(plataforma, client.monitoramentoPlantId!, year, month);
 
           for (const day of dailyData) {
+            // Growatt: 0,0 kWh é datalogger mudo, não medição. Ver dia-sem-dado.ts.
+            if (plataforma === "GROWATT" && ehDiaSemDado(day.energyKwh)) continue;
             const date = new Date(Date.UTC(year, month - 1, day.day, 12, 0, 0));
             await prisma.monitoringLog.upsert({
               where: { clientId_data: { clientId: client.id, data: date } },

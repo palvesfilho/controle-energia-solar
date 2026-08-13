@@ -25,6 +25,7 @@ import {
 } from "@/lib/growatt";
 import { esperadaDoDiaDaUsina, performanceRatioMesAtual } from "@/lib/geracao-esperada";
 import { PLATAFORMAS_INTRADIA, type PlataformaIntradia } from "@/lib/plataformas-intradia";
+import { ehDiaSemDado } from "@/lib/dia-sem-dado";
 
 export const maxDuration = 600;
 
@@ -175,6 +176,10 @@ async function processPlatform(
       const status = statusMap.get(client.monitoramentoPlantId);
 
       for (const day of daily) {
+        // Growatt: 0,0 kWh é datalogger mudo, não medição. Ver dia-sem-dado.ts.
+        // (As outras 4 plataformas seguem como antes — mesma armadilha, mas não
+        // medida ainda; mexer nelas sem medir é trocar um erro por outro.)
+        if (plataforma === "GROWATT" && ehDiaSemDado(day.energyKwh)) continue;
         const date = new Date(Date.UTC(year, month - 1, day.day, 12, 0, 0));
         await prisma.monitoringLog.upsert({
           where: { clientId_data: { clientId: client.id, data: date } },

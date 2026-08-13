@@ -5,6 +5,7 @@ import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getDailyGeneration, getPlantStatus } from "@/lib/growatt";
 import { esperadaDoDiaDaUsina, performanceRatioMesAtual } from "@/lib/geracao-esperada";
+import { ehDiaSemDado } from "@/lib/dia-sem-dado";
 
 /**
  * POST /api/brasil-solar/[id]/growatt-sync
@@ -63,6 +64,8 @@ export async function POST(
 
     let logsUpserted = 0;
     let mesesComDado = 0;
+    /** Dias que a Growatt devolveu como 0,0 kWh — sem comunicação, não medição. */
+    let diasSemDado = 0;
     const mesesLimitados: string[] = [];
     const mesesComErro: string[] = [];
 
@@ -73,6 +76,11 @@ export async function POST(
         if (dailyData.length > 0) mesesComDado++;
 
         for (const day of dailyData) {
+          // 0,0 kWh não é medição: é "não recebi dado". Ver dia-sem-dado.ts.
+          if (ehDiaSemDado(day.energyKwh)) {
+            diasSemDado++;
+            continue;
+          }
           // Data-calendário: meio-dia UTC, senão o fuso empurra o dia.
           const date = new Date(Date.UTC(year, month - 1, day.day, 12, 0, 0));
 
@@ -165,6 +173,18 @@ export async function POST(
           codigo: "GROWATT_ERRO",
           mensagem: `A Growatt respondeu com erro em ${mesesComErro.length} mês(es): ${mesesComErro.join(", ")}.`,
         };
+      } else if (diasSemDado > 0) {
+        // A Growatt respondeu com a grade de dias, mas TODOS zerados. Isso é o
+        // datalogger mudo — não vira 0 kWh no banco, senão o relatório passa a
+        // afirmar que a usina não gerou. A energia pode estar indo pra rede e
+        // sendo medida pela distribuidora do mesmo jeito.
+        diagnostico = {
+          codigo: "GROWATT_SEM_COMUNICACAO",
+          mensagem:
+            `A Growatt devolveu ${diasSemDado} dia(s) zerados e nenhum com geração. ` +
+            `Isso é datalogger sem comunicar, NÃO prova que a usina parou — confira a ` +
+            `energia injetada na fatura da distribuidora antes de tratar como usina parada.`,
+        };
       } else {
         diagnostico = {
           codigo: "GROWATT_SEM_GERACAO",
@@ -179,6 +199,7 @@ export async function POST(
       message: "Sincronizacao Growatt concluida",
       logsUpserted,
       mesesComDado,
+      diasSemDado,
       mesesLimitados,
       mesesComErro,
       geracaoMesAtual: geracaoMes,

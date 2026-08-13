@@ -10,8 +10,11 @@
  * ⚠️ GRAVA EM PRODUÇÃO (DATABASE_URL). Rodar com "go" explícito do Paulo.
  *
  * Regras:
- *  - Usina cujo período INTEIRO soma 0 kWh é PULADA. Escrever 365 zeros faria
- *    uma usina sem dado parecer uma usina medida em zero.
+ *  - Dia que volta 0,0 kWh NÃO é gravado. A Growatt devolve 0 tanto para "não
+ *    gerou" quanto para "o datalogger não mandou nada" — gravar esse 0 faz o
+ *    relatório AFIRMAR que a usina não gerou. Ver `src/lib/dia-sem-dado.ts`.
+ *    (A regra antiga pulava só a usina com o período INTEIRO zerado, e por isso
+ *    escreveu 79 zeros na 620604, que parou de comunicar no meio do período.)
  *  - `ultimaLeitura` e `statusMonitoramento` NÃO são tocados: são de quem lê ao
  *    vivo, e carimbá-los aqui cegaria o alerta de mudez por horas solares.
  *  - Dado medido vence lançamento MANUAL (upsert grava origem="API").
@@ -21,6 +24,7 @@
 import { prisma } from "../src/lib/prisma";
 import { getDailyGeneration } from "../src/lib/growatt";
 import { esperadaDoDiaDaUsina, performanceRatioMesAtual } from "../src/lib/geracao-esperada";
+import { ehDiaSemDado } from "../src/lib/dia-sem-dado";
 
 const MESES = Number(process.argv.find((a) => a.startsWith("--meses="))?.split("=")[1] ?? 12);
 const DRY = process.argv.includes("--dry");
@@ -47,6 +51,8 @@ interface Saida {
   limitados: string[];
   erros: string[];
   pulada: boolean;
+  /** Dias que a Growatt devolveu zerados (datalogger mudo) e NÃO foram gravados. */
+  diasSemDado: number;
 }
 
 async function processar(c: Alvo): Promise<Saida> {
@@ -61,6 +67,7 @@ async function processar(c: Alvo): Promise<Saida> {
     limitados: [],
     erros: [],
     pulada: false,
+    diasSemDado: 0,
   };
 
   // 1) LÊ tudo antes de gravar — precisa do total do período para decidir se a
@@ -78,6 +85,11 @@ async function processar(c: Alvo): Promise<Saida> {
       try {
         const daily = await getDailyGeneration(plantId, year, month);
         for (const dia of daily) {
+          // 0,0 kWh = "não recebi dado", não "medi zero". Não entra no banco.
+          if (ehDiaSemDado(dia.energyKwh)) {
+            out.diasSemDado++;
+            continue;
+          }
           // Data-calendário: meio-dia UTC, senão o fuso empurra o dia.
           colhido.push({
             data: new Date(Date.UTC(year, month - 1, dia.day, 12, 0, 0)),
@@ -210,6 +222,15 @@ async function main() {
   log(`FIM em ${((Date.now() - t0) / 1000).toFixed(0)}s`);
   log(`  ${comDado} usinas com geração · ${gravados} linha(s) gravada(s) · ${kwh.toFixed(1)} kWh`);
   log(`  ${mudas.length} usinas sem geração no período (puladas, nenhum zero escrito)`);
+  const semDado = saidas.filter((r) => r.diasSemDado > 0);
+  if (semDado.length) {
+    log(
+      `  ⚠️ ${semDado.length} usina(s) com dia(s) zerados NÃO gravados ` +
+        `(datalogger mudo — a energia pode estar indo pra rede assim mesmo):`,
+    );
+    for (const r of semDado.sort((a, b) => b.diasSemDado - a.diasSemDado))
+      log(`       ${r.plantId.padEnd(8)} ${r.nome.slice(0, 32).padEnd(32)} ${r.diasSemDado} dia(s)`);
+  }
   if (comLimite.length) {
     log(`  🔴 ${comLimite.length} com mês NÃO lido por limite 10012 (rodar de novo):`);
     for (const r of comLimite) log(`       ${r.plantId} ${r.nome} -> ${r.limitados.join(", ")}`);
