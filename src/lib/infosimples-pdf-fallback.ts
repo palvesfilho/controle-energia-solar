@@ -136,6 +136,29 @@ export function creditBlockLooksBroken(billData: BillData): boolean {
   const tusdKwh = num(billData.injetadaOucTusdKwh);
   if ((teValor == null) !== (tusdValor == null)) return true;
   if ((teKwh == null) !== (tusdKwh == null)) return true;
+
+  /**
+   * O bloco da geração PRÓPRIA fica torto do mesmo jeito — um lado preenchido e
+   * o outro null — e as checagens acima não o enxergam.
+   *
+   * Elas nasceram do caso do RATEIO (as 92 faturas de oUC, R$ 128 mil parados),
+   * então olham só `injetadaOuc*`. Uma UC que só tem painel próprio, sem
+   * rateio, tem os quatro campos oUC null legitimamente e passava por
+   * "coerente" mesmo com a injeção própria pela metade. Foi o caso do SANDRO
+   * SOUZA 07/2026: TE = R$ 268,86 e TUSD = null, com a economia do mês saindo
+   * cerca de R$ 244 menor do que a fatura provava.
+   *
+   * Falso positivo aqui é barato: marcar como suspeita só manda LER o PDF. Se o
+   * PDF também trouxer um lado só, a substituição escreve o mesmo estado e nada
+   * muda. O caro é o contrário — deixar passar.
+   */
+  const propTeValor = num(billData.energiaInjetadaPropriaTeValor);
+  const propTusdValor = num(billData.energiaInjetadaPropriaTusdValor);
+  const propTeKwh = num(billData.energiaInjetadaPropriaTeKwh);
+  const propTusdKwh = num(billData.energiaInjetadaPropriaTusdKwh);
+  if ((propTeValor == null) !== (propTusdValor == null)) return true;
+  if ((propTeKwh == null) !== (propTusdKwh == null)) return true;
+
   return false;
 }
 
