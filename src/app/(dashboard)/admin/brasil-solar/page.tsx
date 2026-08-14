@@ -75,10 +75,6 @@ export default function BrasilSolarPage() {
     status: "",
     marca: "",
     cidade: "",
-    plataforma: "",
-    uf: "",
-    contrato: "",
-    proprietario: "",
   });
   const [sortBy, setSortBy] = useState("nome");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
@@ -104,14 +100,6 @@ export default function BrasilSolarPage() {
       if (filters.status) params.set("status", filters.status);
       if (filters.marca) params.set("marca", filters.marca);
       if (filters.cidade) params.set("cidade", filters.cidade);
-      if (filters.plataforma) params.set("plataforma", filters.plataforma);
-      if (filters.uf) params.set("uf", filters.uf);
-      if (filters.contrato) params.set("contrato", filters.contrato);
-      if (filters.proprietario === "SEM_PROPRIETARIO") {
-        params.set("semProprietario", "true");
-      } else if (filters.proprietario) {
-        params.set("proprietarioId", filters.proprietario);
-      }
 
       const res = await fetch(`/api/brasil-solar?${params}`);
       if (res.ok) {

@@ -73,17 +73,7 @@ export async function GET() {
     .filter((c) => !chaveCidade(c.cidade))
     .reduce((acc, c) => acc + c._count._all, 0);
 
-  // Plataforma de monitoramento é OUTRA coisa que a marca do inversor (ver
-  // `marca-inversor.ts`) e continua filtrável — só que também pela base.
-  const porPlataforma = new Map<string, number>();
-  for (const p of pares) {
-    const nome = (p.plataformaMonitoramento ?? "").trim();
-    if (!nome) continue;
-    porPlataforma.set(nome, (porPlataforma.get(nome) ?? 0) + p._count._all);
-  }
-  const plataformas = [...porPlataforma.entries()]
-    .map(([valor, count]) => ({ valor, label: valor, count }))
-    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "pt-BR"));
-
-  return NextResponse.json({ marcas, cidades: listaCidades, semCidade, plataformas });
+  // Sem lista de plataformas: o filtro de plataforma de monitoramento saiu da
+  // tela em 13/08/2026 — quem procura planta procura pela MARCA do inversor.
+  return NextResponse.json({ marcas, cidades: listaCidades, semCidade });
 }

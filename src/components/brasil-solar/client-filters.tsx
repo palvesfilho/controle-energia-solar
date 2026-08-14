@@ -3,20 +3,18 @@
 import { Search, Filter, X } from "lucide-react";
 import { useState, useEffect } from "react";
 
+/**
+ * Quatro filtros, e só. Plataforma de monitoramento, contrato, UF e proprietário
+ * saíram em 13/08/2026 a pedido do Paulo: ninguém busca planta por plataforma —
+ * busca por marca de inversor — e a UF não separa nada porque a base inteira é
+ * do RS. Os parâmetros continuam existindo na rota `/api/brasil-solar` (outras
+ * telas usam `proprietarioId`); o que saiu foi o controle desta tela.
+ */
 interface FiltersState {
   search: string;
   status: string;
   marca: string;
   cidade: string;
-  plataforma: string;
-  uf: string;
-  contrato: string;
-  proprietario: string;
-}
-
-interface ProprietarioOption {
-  id: string;
-  nome: string;
 }
 
 /** Opção de dropdown vinda da base, com quantas usinas ela tem. */
@@ -25,12 +23,6 @@ interface Opcao {
   label: string;
   count: number;
 }
-
-const UFS = [
-  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
-  "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN",
-  "RS", "RO", "RR", "SC", "SP", "SE", "TO",
-];
 
 export function ClientFilters({
   filters,
@@ -42,50 +34,27 @@ export function ClientFilters({
   totalResults: number;
 }) {
   const [showFilters, setShowFilters] = useState(false);
-  const [proprietarios, setProprietarios] = useState<ProprietarioOption[]>([]);
   const [marcas, setMarcas] = useState<Opcao[]>([]);
   const [cidades, setCidades] = useState<Opcao[]>([]);
-  const [plataformas, setPlataformas] = useState<Opcao[]>([]);
 
-  // 🔴 `?all=true` responde `{ proprietarios: [...] }`, NÃO um array. Guardar o
-  // objeto cru fazia o `.map` da lista estourar `proprietarios.map is not a
-  // function` e derrubar a página inteira ao clicar em "Filtros" — o painel só
-  // renderiza depois do clique, então o erro ficava escondido até ali.
-  useEffect(() => {
-    fetch("/api/brasil-solar/proprietarios?all=true")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        const lista = Array.isArray(data) ? data : data?.proprietarios;
-        setProprietarios(Array.isArray(lista) ? lista : []);
-      })
-      .catch(() => {});
-  }, []);
-
-  // Marcas, cidades e plataformas saem da base (ver /api/brasil-solar/filtros):
-  // lista fixa no código oferecia marca que não existe e escondia marca nova.
+  // Marcas e cidades saem da base (ver /api/brasil-solar/filtros): lista fixa no
+  // código oferecia marca que não existe e escondia marca nova.
   useEffect(() => {
     fetch("/api/brasil-solar/filtros")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data) return;
         // `Array.isArray` e não `?? []`: dropdown que recebe o formato errado
-        // tem que ficar vazio, não derrubar a tela como o de proprietários fazia.
+        // tem que ficar vazio, não derrubar a tela — que foi o que o de
+        // proprietários fazia, respondendo `{ proprietarios: [...] }` onde o
+        // código esperava um array e estourando `.map is not a function`.
         setMarcas(Array.isArray(data.marcas) ? data.marcas : []);
         setCidades(Array.isArray(data.cidades) ? data.cidades : []);
-        setPlataformas(Array.isArray(data.plataformas) ? data.plataformas : []);
       })
       .catch(() => {});
   }, []);
 
-  const ativos = [
-    filters.status,
-    filters.marca,
-    filters.cidade,
-    filters.plataforma,
-    filters.uf,
-    filters.contrato,
-    filters.proprietario,
-  ].filter(Boolean);
+  const ativos = [filters.status, filters.marca, filters.cidade].filter(Boolean);
   const hasActiveFilters = ativos.length > 0;
 
   function set(campo: keyof FiltersState, valor: string) {
@@ -93,16 +62,7 @@ export function ClientFilters({
   }
 
   function clearFilters() {
-    onChange({
-      search: filters.search,
-      status: "",
-      marca: "",
-      cidade: "",
-      plataforma: "",
-      uf: "",
-      contrato: "",
-      proprietario: "",
-    });
+    onChange({ search: filters.search, status: "", marca: "", cidade: "" });
   }
 
   return (
@@ -208,44 +168,6 @@ export function ClientFilters({
               </Select>
             </Campo>
 
-            <Campo
-              label="Plataforma de monitoramento"
-              dica="O portal que integra a usina — nem sempre é a marca do inversor."
-            >
-              <Select value={filters.plataforma} onChange={(v) => set("plataforma", v)} placeholder="Todas as plataformas">
-                {plataformas.map((p) => (
-                  <option key={p.valor} value={p.valor}>
-                    {p.label} ({p.count})
-                  </option>
-                ))}
-              </Select>
-            </Campo>
-
-            <Campo label="UF">
-              <Select value={filters.uf} onChange={(v) => set("uf", v)} placeholder="Todas as UFs">
-                {UFS.map((u) => (
-                  <option key={u} value={u}>{u}</option>
-                ))}
-              </Select>
-            </Campo>
-
-            <Campo label="Contrato">
-              <Select value={filters.contrato} onChange={(v) => set("contrato", v)} placeholder="Todos os contratos">
-                <option value="ATIVO">Ativo</option>
-                <option value="SUSPENSO">Suspenso</option>
-                <option value="CANCELADO">Cancelado</option>
-                <option value="GARANTIA">Garantia</option>
-              </Select>
-            </Campo>
-
-            <Campo label="Proprietário">
-              <Select value={filters.proprietario} onChange={(v) => set("proprietario", v)} placeholder="Todos os proprietários">
-                <option value="SEM_PROPRIETARIO">Sem proprietário</option>
-                {proprietarios.map((p) => (
-                  <option key={p.id} value={p.id}>{p.nome}</option>
-                ))}
-              </Select>
-            </Campo>
           </div>
 
           {hasActiveFilters && (
