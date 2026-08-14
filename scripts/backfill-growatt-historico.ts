@@ -27,6 +27,21 @@ import { esperadaDoDiaDaUsina, performanceRatioMesAtual } from "../src/lib/gerac
 import { ehDiaSemDado } from "../src/lib/dia-sem-dado";
 
 const MESES = Number(process.argv.find((a) => a.startsWith("--meses="))?.split("=")[1] ?? 12);
+/**
+ * Quantos meses recentes PULAR antes de começar a colher.
+ *
+ * A janela é contada a partir do mês corrente, então `--meses=12` rodado em
+ * agosto alcança só até setembro do ano anterior — e o mês imediatamente
+ * anterior a esse fica num limbo: o relatório ainda o exibe (janela móvel de 12
+ * meses) mas o cache não o cobre, então toda abertura de tela vira chamada ao
+ * vivo, sujeita ao 10012. Foi o que aconteceu com as 78 usinas: 60 delas têm
+ * log começando exatamente em 2025-09.
+ *
+ * Com `--pular` dá pra buscar só a faixa que falta (`--pular=12 --meses=12`
+ * colhe o ano ANTERIOR ao já gravado) em vez de re-varrer o que já está no
+ * banco — metade das chamadas à API, mesmo resultado.
+ */
+const PULAR = Number(process.argv.find((a) => a.startsWith("--pular="))?.split("=")[1] ?? 0);
 const DRY = process.argv.includes("--dry");
 const CONCORRENCIA = 5; // plantas diferentes em paralelo: medido OK (o 10012 é por requisição idêntica)
 
@@ -74,7 +89,7 @@ async function processar(c: Alvo): Promise<Saida> {
   //    usina é muda (e então não escrever zeros).
   const colhido: { data: Date; kwh: number }[] = [];
 
-  for (let i = 0; i < MESES; i++) {
+  for (let i = PULAR; i < PULAR + MESES; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const year = d.getFullYear();
     const month = d.getMonth() + 1;
@@ -187,7 +202,15 @@ async function main() {
     orderBy: { nome: "asc" },
   });
 
-  log(`${clients.length} usinas Growatt · ${MESES} meses${DRY ? " · ENSAIO SECO (não grava)" : " · GRAVANDO EM PRODUÇÃO"}`);
+  const rotuloMes = (i: number) => {
+    const d = new Date(new Date().getFullYear(), new Date().getMonth() - i, 1);
+    return `${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  };
+  log(
+    `${clients.length} usinas Growatt · ${MESES} meses ` +
+      `(${rotuloMes(PULAR + MESES - 1)} → ${rotuloMes(PULAR)})` +
+      `${DRY ? " · ENSAIO SECO (não grava)" : " · GRAVANDO EM PRODUÇÃO"}`,
+  );
   const t0 = Date.now();
   const saidas: Saida[] = [];
 
