@@ -614,7 +614,14 @@ function SituacaoUsinaSection({ situacao }: { situacao: SituacaoUsina }) {
           </View>
         ))}
         <Text style={{ fontSize: 6.5, color: C.grayLight, marginTop: 6 }}>
-          {`Médias dos últimos ${situacao.mesesConsiderados} meses faturados. Cobertura = geração média ÷ consumo médio.`}
+          {/* A janela é a de CICLO (meses consecutivos com medição completa),
+              não os meses faturados: citar 12 quando só 8 sustentam a conta
+              seria afirmar mais do que se mediu. Ver `janelaDeCiclo`. */}
+          {`Apurado sobre ${situacao.mesesPareados} ${situacao.mesesPareados === 1 ? "mês" : "meses"} consecutivos com geração e consumo medidos` +
+            (situacao.cicloInicio && situacao.cicloFim && situacao.mesesPareados > 1
+              ? ` (${String(situacao.cicloInicio.mes).padStart(2, "0")}/${situacao.cicloInicio.ano} a ${String(situacao.cicloFim.mes).padStart(2, "0")}/${situacao.cicloFim.ano})`
+              : "") +
+            `. Cobertura = geração total ÷ consumo total do período.`}
         </Text>
       </View>
     </View>

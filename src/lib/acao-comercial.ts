@@ -170,15 +170,24 @@ function oportunidadesDaUsina(
   for (const item of situacao.itens) {
     if (item.tema === "DIMENSIONAMENTO" && item.nivel !== "OK") {
       const forte = item.nivel === "ACAO";
+      // Base fina não vira oferta de ampliação: vira tarefa de completar a
+      // medição. Propor obra em cima de meses sem leitura é vender contra um
+      // número que pode mudar sozinho na próxima abertura do relatório — foi
+      // exatamente o que aconteceu com o SANDRO (cobertura oscilando entre
+      // rodadas por causa do `10012` da Growatt). Ver `SituacaoUsina.baseIncompleta`.
+      const incompleta = situacao.baseIncompleta;
       ops.push({
-        tipo: "AMPLIACAO",
-        prioridade: forte ? "ALTA" : "MEDIA",
-        titulo: forte
-          ? "Propor ampliação da usina"
-          : "Avaliar ampliação — usina levemente abaixo do consumo",
+        tipo: incompleta ? "MONITORAMENTO" : "AMPLIACAO",
+        prioridade: incompleta ? "MEDIA" : forte ? "ALTA" : "MEDIA",
+        titulo: incompleta
+          ? "Completar a medição antes de falar em ampliação"
+          : forte
+            ? "Propor ampliação da usina"
+            : "Avaliar ampliação — usina levemente abaixo do consumo",
         evidencia: item.texto,
-        acao:
-          "Levar o caso à engenharia para dimensionar a ampliação (a lacuna está em kWh/mês; a potência a instalar depende de orientação, inclinação e sombreamento) e apresentar proposta ao cliente.",
+        acao: incompleta
+          ? `O diagnóstico se apoia em ${situacao.mesesPareados} de ${situacao.mesesConsiderados} meses — nos demais faltou leitura de geração ou de consumo. Antes de dimensionar qualquer ampliação, recuperar o histórico (verificar datalogger/comunicação da usina e faturas em falta). A lacuna de cobertura pode ser da medição, não da usina.`
+          : "Levar o caso à engenharia para dimensionar a ampliação (a lacuna está em kWh/mês; a potência a instalar depende de orientação, inclinação e sombreamento) e apresentar proposta ao cliente.",
         numeros: [
           ...(situacao.deficitMensalKwh != null
             ? [{ label: "Falta gerar", valor: `${fmtKwh(situacao.deficitMensalKwh)}/mês` }]

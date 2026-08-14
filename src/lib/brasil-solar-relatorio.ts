@@ -402,6 +402,9 @@ const MIN_PARES_ANO_ANTERIOR = 3;
 const VALIDADE_CREDITOS_MESES = 60;
 /** Janela das médias: últimos 12 meses com fatura (ou todos, se menos). */
 const JANELA_MEDIAS_MESES = 12;
+/** Competência para o texto do cliente ("de 05/2025 a 04/2026"). */
+const rotuloCompetencia = (m: { ano: number; mes: number }) =>
+  `${String(m.mes).padStart(2, "0")}/${m.ano}`;
 
 export interface SituacaoUsinaItem {
   tema: "DIMENSIONAMENTO" | "CREDITOS" | "DESEMPENHO" | "MONITORAMENTO";
@@ -414,6 +417,23 @@ export interface SituacaoUsinaItem {
 export interface SituacaoUsina {
   /** Meses usados nas médias (últimos 12 com fatura, ou todos se menos). */
   mesesConsiderados: number;
+  /**
+   * Tamanho da janela de ciclo: meses CONSECUTIVOS com geração e consumo
+   * conhecidos sobre os quais `coberturaPct` foi somada. Ver `janelaDeCiclo`.
+   */
+  mesesPareados: number;
+  /** Primeiro e último mês da janela de ciclo (para o texto dizer o período). */
+  cicloInicio: { ano: number; mes: number } | null;
+  cicloFim: { ano: number; mes: number } | null;
+  /**
+   * `true` quando a janela de ciclo tem menos que 12 meses consecutivos — ou
+   * seja, não dá para garantir um número inteiro de ciclos de leitura.
+   *
+   * Nesse estado o diagnóstico continua saindo — sumir com ele seria pior —
+   * mas NUNCA como `ACAO`, e o texto diz sobre quantos meses ele se apoia. Uma
+   * recomendação de ampliar usina não pode nascer de uma lacuna de medição.
+   */
+  baseIncompleta: boolean;
   /** Média mensal de geração do inversor no período (kWh) */
   geracaoMediaKwh: number | null;
   /** Média mensal de consumo TOTAL do cliente no período (kWh) */
@@ -451,6 +471,74 @@ function media(valores: number[]): number | null {
   return valores.reduce((a, b) => a + b, 0) / valores.length;
 }
 
+/** Mês completo = tem geração medida E consumo faturado. */
+function mesCompleto(m: RelatorioMonthRow): boolean {
+  return (
+    m.geracaoInversorKwh != null &&
+    m.geracaoInversorKwh > 0 &&
+    m.consumoTotalKwh != null &&
+    m.consumoTotalKwh > 0
+  );
+}
+
+/** `a` é o mês de calendário imediatamente anterior a `b`? */
+function ehMesAnterior(a: RelatorioMonthRow, b: RelatorioMonthRow): boolean {
+  const anterior = b.mes === 1 ? { ano: b.ano - 1, mes: 12 } : { ano: b.ano, mes: b.mes - 1 };
+  return a.ano === anterior.ano && a.mes === anterior.mes;
+}
+
+/**
+ * A janela sobre a qual a cobertura é calculada: a sequência de meses
+ * CONSECUTIVOS e COMPLETOS mais recente, com teto de `JANELA_MEDIAS_MESES`.
+ *
+ * ## Por que somar sobre um ciclo, e não tirar média de meses soltos
+ *
+ * "Consumo do mês" na fatura não é o consumo daquele mês quando a
+ * concessionária não lê o medidor todo mês. Na UC do SANDRO a RGE lê de 3 em 3
+ * meses: jan/2026 veio com 3.272 kWh (três meses de consumo real, apurados de
+ * uma vez) e fev/2026 com 110 kWh (estimado). O consumo é o mesmo nos dois
+ * meses — o que muda é quando a distribuidora o reconhece.
+ *
+ * Tirar média mensal sobre um SUBCONJUNTO desses meses enviesa conforme quais
+ * meses entram: pegar os meses de leitura infla, pegar os estimados esvazia.
+ * Foi assim que a mesma UC mediu 90% de cobertura por uma fórmula e 63,7% por
+ * outra, sendo ~74% a conta feita sobre 12 meses fechados.
+ *
+ * Somar resolve, porque a estimativa é acertada na leitura seguinte: ao longo
+ * de um ciclo inteiro, o total faturado converge para o total consumido. E 12
+ * meses fecham um número INTEIRO de ciclos para todos os ritmos usados no
+ * Brasil (mensal, bimestral, trimestral, semestral, anual) — daí o teto ser 12
+ * e não um número qualquer.
+ *
+ * ## Por que consecutivos
+ *
+ * Um buraco no meio quebra a compensação: se falta justamente o mês da leitura,
+ * ficam no somatório só os estimados, e o consumo do período aparece como uma
+ * fração do real. Por isso a janela para no primeiro mês incompleto em vez de
+ * pular por cima dele.
+ *
+ * Menos de 12 meses consecutivos ⇒ `baseIncompleta`: a conta ainda é a melhor
+ * disponível, mas não se pode garantir ciclo fechado, e o diagnóstico sai
+ * rebaixado e com ressalva.
+ */
+export function janelaDeCiclo(meses: RelatorioMonthRow[]): RelatorioMonthRow[] {
+  const ciclo: RelatorioMonthRow[] = [];
+  for (let i = meses.length - 1; i >= 0; i--) {
+    const m = meses[i];
+    if (!mesCompleto(m)) {
+      // Ainda não começou a contar: segue procurando um fim de janela mais
+      // antigo (o datalogger pode ter morrido nos últimos meses).
+      if (ciclo.length === 0) continue;
+      break;
+    }
+    // Já tem sequência: o mês só entra se for o anterior imediato.
+    if (ciclo.length > 0 && !ehMesAnterior(m, ciclo[0])) break;
+    ciclo.unshift(m);
+    if (ciclo.length === JANELA_MEDIAS_MESES) break;
+  }
+  return ciclo;
+}
+
 const fmtKwh = (v: number) =>
   `${Math.round(v).toLocaleString("pt-BR")} kWh`;
 
@@ -480,16 +568,22 @@ export function avaliarSituacaoUsina(
     .filter((v): v is number => v != null && v > 0);
   if (geracoes.length === 0) return null;
 
-  const consumos = janela
-    .map((m) => m.consumoTotalKwh)
-    .filter((v): v is number => v != null && v > 0);
+  const ciclo = janelaDeCiclo(meses);
+  const mesesPareados = ciclo.length;
+  const baseIncompleta = mesesPareados < JANELA_MEDIAS_MESES;
 
-  const geracaoMediaKwh = media(geracoes);
-  const consumoMedioKwh = media(consumos);
-  const coberturaPct =
-    geracaoMediaKwh != null && consumoMedioKwh != null && consumoMedioKwh > 0
-      ? (geracaoMediaKwh / consumoMedioKwh) * 100
-      : null;
+  // Somas sobre a MESMA sequência de meses — ver `janelaDeCiclo`.
+  const somaGeracao = ciclo.reduce((s, m) => s + m.geracaoInversorKwh!, 0);
+  const somaConsumo = ciclo.reduce((s, m) => s + m.consumoTotalKwh!, 0);
+
+  const geracaoMediaKwh = mesesPareados > 0 ? somaGeracao / mesesPareados : null;
+  const consumoMedioKwh = mesesPareados > 0 ? somaConsumo / mesesPareados : null;
+  const coberturaPct = somaConsumo > 0 ? (somaGeracao / somaConsumo) * 100 : null;
+
+  const cicloInicio = ciclo.length ? { ano: ciclo[0].ano, mes: ciclo[0].mes } : null;
+  const cicloFim = ciclo.length
+    ? { ano: ciclo[ciclo.length - 1].ano, mes: ciclo[ciclo.length - 1].mes }
+    : null;
 
   const saldoCreditosKwh = meses[meses.length - 1].saldoCreditosKwh;
   const saldoEmMesesDeConsumo =
@@ -548,8 +642,32 @@ export function avaliarSituacaoUsina(
 
   // --- 1. Dimensionamento -----------------------------------------------------
   if (coberturaPct != null && geracaoMediaKwh != null && consumoMedioKwh != null) {
-    const base = `A usina gerou em média ${fmtKwh(geracaoMediaKwh)}/mês e o consumo médio foi de ${fmtKwh(consumoMedioKwh)}/mês nos últimos ${janela.length} meses (cobertura de ${coberturaPct.toFixed(0)}%).`;
-    if (coberturaPct < COBERTURA_DEFICIT_FORTE * 100) {
+    // O período citado é o da janela de CICLO, não o tamanho nominal da
+    // janela: dizer "nos últimos 12 meses" quando só 8 sustentam a conta é
+    // afirmar mais do que se mediu.
+    const periodo =
+      cicloInicio && cicloFim
+        ? mesesPareados === 1
+          ? ` em ${rotuloCompetencia(cicloFim)}`
+          : ` de ${rotuloCompetencia(cicloInicio)} a ${rotuloCompetencia(cicloFim)}`
+        : "";
+    const base =
+      `A usina gerou em média ${fmtKwh(geracaoMediaKwh)}/mês e o consumo médio foi de ` +
+      `${fmtKwh(consumoMedioKwh)}/mês${periodo} ` +
+      `(${mesesPareados} ${mesesPareados === 1 ? "mês" : "meses"} de medição completa, cobertura de ${coberturaPct.toFixed(0)}%).`;
+    // Aviso que acompanha o diagnóstico quando a base é fina. Vai no TEXTO, e
+    // não num campo novo, de propósito: assim tela, PDF e ação comercial
+    // herdam sem precisar ser alterados um a um — o modo de falha de
+    // [[feedback_correcao_pela_metade_falha_calada]].
+    //
+    // Sem emoji de propósito: este texto é renderizado também pelo
+    // `@react-pdf` (`solar-payback-report-pdf.tsx`), cuja fonte embutida não
+    // tem glifo de emoji — o aviso sairia como quadrado vazio justamente no
+    // documento que vai ao cliente.
+    const ressalva = baseIncompleta
+      ? ` Atenção: este diagnóstico se apoia em ${mesesPareados} ${mesesPareados === 1 ? "mês" : "meses"} seguidos de medição completa, menos que os 12 que fecham um ciclo inteiro de leitura da distribuidora — trate-o como indicativo, não como conclusão fechada.`
+      : "";
+    if (coberturaPct < COBERTURA_DEFICIT_FORTE * 100 && !baseIncompleta) {
       itens.push({
         tema: "DIMENSIONAMENTO",
         nivel: "ACAO",
@@ -561,6 +679,21 @@ export function avaliarSituacaoUsina(
             : "") +
           "Enquanto essa diferença existir, parte do consumo continua sendo paga à concessionária. Vale avaliar uma ampliação da usina com a nossa equipe técnica.",
       });
+    } else if (coberturaPct < COBERTURA_DEFICIT_FORTE * 100) {
+      // Mesma leitura do caso acima, mas com base fina: informa a lacuna e
+      // convida a conversar, sem disparar recomendação de ampliação.
+      itens.push({
+        tema: "DIMENSIONAMENTO",
+        nivel: "ATENCAO",
+        titulo: "Indício de que a usina é menor que o seu consumo",
+        texto:
+          `${base} ` +
+          (deficitMensalKwh != null
+            ? `Pelos meses medidos, faltariam cerca de ${fmtKwh(deficitMensalKwh)}/mês de geração para cobrir todo o consumo. `
+            : "") +
+          "Antes de considerar uma ampliação, vale completar o histórico de medição." +
+          ressalva,
+      });
     } else if (coberturaPct < COBERTURA_MIN_EQUILIBRIO * 100) {
       itens.push({
         tema: "DIMENSIONAMENTO",
@@ -571,21 +704,22 @@ export function avaliarSituacaoUsina(
           (deficitMensalKwh != null
             ? `Faltam em média ${fmtKwh(deficitMensalKwh)}/mês de geração para zerar a diferença; `
             : "") +
-          "nos meses de menor sol a fatura fica acima do mínimo.",
+          "nos meses de menor sol a fatura fica acima do mínimo." +
+          ressalva,
       });
     } else if (coberturaPct <= COBERTURA_MAX_EQUILIBRIO * 100) {
       itens.push({
         tema: "DIMENSIONAMENTO",
         nivel: "OK",
         titulo: "Usina bem dimensionada para o seu consumo",
-        texto: `${base} Não há necessidade de ampliar: mantenha a usina como está.`,
+        texto: `${base} Não há necessidade de ampliar: mantenha a usina como está.${ressalva}`,
       });
     } else {
       itens.push({
         tema: "DIMENSIONAMENTO",
         nivel: "OK",
         titulo: "A usina gera mais do que você consome",
-        texto: `${base} A sobra de cerca de ${fmtKwh(geracaoMediaKwh - consumoMedioKwh)}/mês vira crédito de energia.`,
+        texto: `${base} A sobra de cerca de ${fmtKwh(geracaoMediaKwh - consumoMedioKwh)}/mês vira crédito de energia.${ressalva}`,
       });
     }
   }
@@ -689,12 +823,21 @@ export function avaliarSituacaoUsina(
       "A usina tem folga sobre o seu consumo: vale aproveitar o excedente em outra unidade.";
   } else if (temAcao) {
     resumo = "A usina está operando bem, com um ponto que pede atenção.";
+  } else if (baseIncompleta) {
+    // "Siga como está" é um veredito, e veredito exige base. Sem um ciclo de
+    // leitura fechado, a frase honesta é a que diz o que se sabe e o que
+    // falta — o cliente lê isso e decide; o "siga como está" ele só lê.
+    resumo = `Pelos ${mesesPareados} ${mesesPareados === 1 ? "mês medido" : "meses medidos"}, a usina está adequada ao seu consumo — mas ainda falta histórico para fechar um ciclo completo de leitura.`;
   } else {
     resumo = "A usina está adequada ao seu consumo — siga como está.";
   }
 
   return {
     mesesConsiderados: janela.length,
+    mesesPareados,
+    cicloInicio,
+    cicloFim,
+    baseIncompleta,
     geracaoMediaKwh,
     consumoMedioKwh,
     coberturaPct,
