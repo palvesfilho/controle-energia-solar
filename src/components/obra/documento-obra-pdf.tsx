@@ -90,7 +90,11 @@ export function DocumentoObraPDF({ data }: { data: DocumentoObraData }) {
           <View style={styles.infoBox}>
             <Text style={styles.infoLabel}>Previsão de execução</Text>
             <Text style={styles.infoValue}>
-              {fmtDate(data.obra.dataInicioPrevista)} →{" "}
+              {/* "a" e não "→" (U+2192): a Helvetica do PDF usa WinAnsi e não
+                  tem esse glifo — sobra o byte baixo (0x92), que na CP1252 é
+                  a aspa simples direita, então o intervalo saía como
+                  "01/01/2026 ' 30/06/2026". */}
+              {fmtDate(data.obra.dataInicioPrevista)} a{" "}
               {fmtDate(data.obra.dataFimPrevista)}
             </Text>
           </View>

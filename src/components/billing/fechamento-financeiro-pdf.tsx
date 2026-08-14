@@ -339,13 +339,13 @@ export function FechamentoFinanceiroPDF({ data }: { data: FechamentoPdfData }) {
         <View style={[s.dreRow, { marginTop: 4 }]}>
           <Text style={s.dreLabelIndent}>Conta da usina (concessionária)</Text>
           <Text style={[s.dreValor, s.dreValorNeg]}>
-            −{brl(t.custoUsinas)}
+            -{brl(t.custoUsinas)}
           </Text>
         </View>
         <View style={s.dreRow}>
           <Text style={s.dreLabelIndent}>Pagamento investidor (bruto)</Text>
           <Text style={[s.dreValor, s.dreValorNeg]}>
-            −{brl(t.custoInvestidorBruto)}
+            -{brl(t.custoInvestidorBruto)}
           </Text>
         </View>
         <View style={s.dreTotalRow}>
@@ -358,7 +358,7 @@ export function FechamentoFinanceiroPDF({ data }: { data: FechamentoPdfData }) {
         <View style={[s.dreRow, { marginTop: 4 }]}>
           <Text style={s.dreLabelIndent}>Custos fixos (rubricas)</Text>
           <Text style={[s.dreValor, s.dreValorNeg]}>
-            −{brl(t.custosFixosTotal)}
+            -{brl(t.custosFixosTotal)}
           </Text>
         </View>
         <View style={s.dreRow}>
@@ -368,7 +368,7 @@ export function FechamentoFinanceiroPDF({ data }: { data: FechamentoPdfData }) {
               ? `(${data.taxRatePercentual}% sobre receita)`
               : "(sem alíquota vigente)"}
           </Text>
-          <Text style={[s.dreValor, s.dreValorNeg]}>−{brl(t.imposto)}</Text>
+          <Text style={[s.dreValor, s.dreValorNeg]}>-{brl(t.imposto)}</Text>
         </View>
         <View style={s.dreTotalRow}>
           <Text style={s.dreTotalLbl}>

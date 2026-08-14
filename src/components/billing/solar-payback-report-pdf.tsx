@@ -676,7 +676,13 @@ export function SolarPaybackReportPDF({
   // por valor fechado — e NUNCA estimado, porque o padrão de autoconsumo é
   // realidade do cliente (decisão do Paulo, 13/08/2026).
   const algumMesSemInversor = data.meses.some((m) => m.autoconsumoIndisponivel);
-  const pisoSe = (parcial: boolean) => (parcial ? "≥ " : "");
+  // "no mín." e NÃO "≥": a Helvetica do PDF usa WinAnsi, que não tem o U+2265.
+  // O caractere não some nem dá erro — sobra o byte baixo (0x65) e ele sai
+  // como a letra "e". Em produção desde 13/08/2026 o cliente lia
+  // "e R$ 268,86" onde devia estar "≥ R$ 268,86". Mesma armadilha do "−"
+  // (U+2212) já anotada na nota de metodologia abaixo.
+  // `scripts/verifica-glifos-pdf.ts` varre isto em todos os PDFs.
+  const pisoSe = (parcial: boolean) => (parcial ? "no mín. " : "");
   // Créditos é SALDO acumulado (não soma): no rodapé mostra o saldo final.
   const saldoCreditosFinal =
     data.meses.length > 0
@@ -760,7 +766,8 @@ export function SolarPaybackReportPDF({
                   fontStyle: "italic",
                 }}
               >
-                ⚠ {mes.anomalia}
+                {/* Sem "⚠" (U+26A0): fora da WinAnsi, sai como lixo no PDF. */}
+                Atenção: {mes.anomalia}
               </Text>
             )}
             {/* Geração informada à mão não pode se passar por leitura de
