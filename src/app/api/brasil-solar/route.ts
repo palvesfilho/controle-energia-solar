@@ -25,7 +25,6 @@ export async function GET(req: NextRequest) {
   const plataforma = searchParams.get("plataforma") || "";
   const marca = searchParams.get("marca") || "";
   const cidade = searchParams.get("cidade") || "";
-  const uf = searchParams.get("uf") || "";
   const contrato = searchParams.get("contrato") || "";
   const proprietarioId = searchParams.get("proprietarioId") || "";
   const semProprietario = searchParams.get("semProprietario") === "true";
@@ -58,7 +57,11 @@ export async function GET(req: NextRequest) {
 
   if (status) where.statusMonitoramento = status;
   if (plataforma) where.plataformaMonitoramento = plataforma;
-  if (uf) where.uf = uf;
+  // Sem filtro por `uf`: o parametro saiu em 14/08/2026 junto com o controle da
+  // tela. A coluna so estava preenchida em 207 das 1.918 usinas — os syncs da
+  // Huawei e da Sungrow nao trazem UF — entao filtrar por ela escondia 89% da
+  // base sem avisar, e a base inteira e do RS de qualquer forma. Quem precisa
+  // separar por regiao usa `cidade`, que agrupa as grafias (ver cidade-chave.ts).
 
   // `AND` e não mais campos soltos: `where.OR` já é da busca por texto, e um
   // segundo `OR` no mesmo objeto sobrescreveria o primeiro em silêncio.
