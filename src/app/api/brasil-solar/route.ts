@@ -5,6 +5,8 @@ import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { normalizeCodigoUc } from "@/lib/uc-codigo";
 import { buscarIds } from "@/lib/busca-sql";
+import { marcaInversor } from "@/lib/marca-inversor";
+import { chaveCidade } from "@/lib/cidade-chave";
 
 // GET /api/brasil-solar - Lista paginada de clientes Brasil Solar
 export async function GET(req: NextRequest) {
@@ -21,6 +23,7 @@ export async function GET(req: NextRequest) {
   const search = searchParams.get("search") || "";
   const status = searchParams.get("status") || "";
   const plataforma = searchParams.get("plataforma") || "";
+  const marca = searchParams.get("marca") || "";
   const cidade = searchParams.get("cidade") || "";
   const uf = searchParams.get("uf") || "";
   const contrato = searchParams.get("contrato") || "";
@@ -55,8 +58,57 @@ export async function GET(req: NextRequest) {
 
   if (status) where.statusMonitoramento = status;
   if (plataforma) where.plataformaMonitoramento = plataforma;
-  if (cidade) where.cidade = cidade;
   if (uf) where.uf = uf;
+
+  // `AND` e não mais campos soltos: `where.OR` já é da busca por texto, e um
+  // segundo `OR` no mesmo objeto sobrescreveria o primeiro em silêncio.
+  const and: Record<string, unknown>[] = [];
+
+  if (marca) {
+    // Marca EFETIVA = declarada > plataforma (`marcaInversor`, a mesma regra da
+    // tag exibida na lista). Casar só `inversorMarca` acharia 78 das 1.918
+    // usinas: 1.838 têm o campo nulo e a marca que o operador vê vem da
+    // plataforma. Monta-se o `where` pelos PARES realmente existentes, então o
+    // resultado é exatamente o conjunto que mostra aquela tag.
+    const pares = await prisma.brasilSolarClient.groupBy({
+      by: ["inversorMarca", "plataformaMonitoramento"],
+      where: { active: true },
+    });
+    const casam = pares.filter(
+      (p) =>
+        marcaInversor({
+          inversorMarca: p.inversorMarca,
+          plataformaMonitoramento: p.plataformaMonitoramento,
+        }).marca === marca
+    );
+    and.push(
+      casam.length > 0
+        ? {
+            OR: casam.map((p) => ({
+              inversorMarca: p.inversorMarca,
+              plataformaMonitoramento: p.plataformaMonitoramento,
+            })),
+          }
+        : { id: { in: [] } } // marca inexistente: lista vazia, nunca a base toda
+    );
+  }
+
+  if (cidade) {
+    // O parametro é a CHAVE agrupada (ver `cidade-chave.ts`): "santa maria"
+    // pega as 10 grafias — `Santa Maria`, `SANTA MARIA`, `Santa Maria/RS`, com
+    // e sem espaço sobrando. Comparar o texto cru perdia 139 das 1.234.
+    const distintas = await prisma.brasilSolarClient.groupBy({
+      by: ["cidade"],
+      where: { active: true },
+    });
+    const variantes = distintas
+      .map((c) => c.cidade)
+      .filter((c): c is string => !!c && chaveCidade(c) === cidade);
+    and.push(variantes.length > 0 ? { cidade: { in: variantes } } : { id: { in: [] } });
+  }
+
+  if (and.length > 0) where.AND = and;
+
   if (contrato) where.statusContrato = contrato;
   if (proprietarioId) where.proprietarioId = proprietarioId;
   if (semProprietario) where.proprietarioId = null;

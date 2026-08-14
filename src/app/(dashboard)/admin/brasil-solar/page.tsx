@@ -73,6 +73,8 @@ export default function BrasilSolarPage() {
   const [filters, setFilters] = useState({
     search: "",
     status: "",
+    marca: "",
+    cidade: "",
     plataforma: "",
     uf: "",
     contrato: "",
@@ -100,6 +102,8 @@ export default function BrasilSolarPage() {
       });
       if (filters.search) params.set("search", filters.search);
       if (filters.status) params.set("status", filters.status);
+      if (filters.marca) params.set("marca", filters.marca);
+      if (filters.cidade) params.set("cidade", filters.cidade);
       if (filters.plataforma) params.set("plataforma", filters.plataforma);
       if (filters.uf) params.set("uf", filters.uf);
       if (filters.contrato) params.set("contrato", filters.contrato);
