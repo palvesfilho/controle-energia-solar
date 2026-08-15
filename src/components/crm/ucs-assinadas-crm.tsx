@@ -566,16 +566,30 @@ export function UcsAssinadasCrm() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+                  {/* O envelope guarda DOIS PDFs assinados, termo e procuração.
+                      O card só mostrava o termo — a procuração existia na rota
+                      e na cópia, mas não tinha por onde ser aberta aqui. */}
                   {u.envelopeIdCrm && (
-                    <a
-                      href={`/api/crm/termo/${u.envelopeIdCrm}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-accent"
-                    >
-                      <FileSignature className="h-3 w-3" />
-                      Termo assinado
-                    </a>
+                    <>
+                      <a
+                        href={`/api/crm/termo/${u.envelopeIdCrm}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-accent"
+                      >
+                        <FileSignature className="h-3 w-3" />
+                        Termo assinado
+                      </a>
+                      <a
+                        href={`/api/crm/termo/${u.envelopeIdCrm}?tipo=procuracao`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-accent"
+                      >
+                        <FileSignature className="h-3 w-3" />
+                        Procuração
+                      </a>
+                    </>
                   )}
                   {u.documentos.map((d) => (
                     <a
