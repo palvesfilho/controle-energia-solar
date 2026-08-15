@@ -9,6 +9,7 @@ import { ArrowLeft, Trash2 } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isValidPhone } from "@/lib/phone";
 import { AdditionalEmailsInput } from "@/components/investors/additional-emails-input";
+import { CidadeInput } from "@/components/ui/cidade-input";
 
 interface InvestorData {
   id: string;
@@ -209,7 +210,7 @@ export default function EditarInvestidorPage() {
               <FormField label="Complemento" name="complemento" defaultValue={investor.complemento ?? ""} placeholder="Apto, Sala..." />
               <FormField label="CEP" name="cep" defaultValue={investor.cep ?? ""} placeholder="00000-000" />
               <FormField label="Bairro" name="bairro" defaultValue={investor.bairro ?? ""} />
-              <FormField label="Cidade" name="cidade" defaultValue={investor.cidade ?? ""} />
+              <CidadeInput label="Cidade" name="cidade" defaultValue={investor.cidade} />
             </div>
           </CardContent>
         </Card>
@@ -227,7 +228,7 @@ export default function EditarInvestidorPage() {
               <FormField label="Complemento" name="complementoEmpresa" defaultValue={investor.complementoEmpresa ?? ""} placeholder="Sala, Andar..." />
               <FormField label="CEP" name="cepEmpresa" defaultValue={investor.cepEmpresa ?? ""} placeholder="00000-000" />
               <FormField label="Bairro" name="bairroEmpresa" defaultValue={investor.bairroEmpresa ?? ""} />
-              <FormField label="Cidade" name="cidadeEmpresa" defaultValue={investor.cidadeEmpresa ?? ""} />
+              <CidadeInput label="Cidade" name="cidadeEmpresa" defaultValue={investor.cidadeEmpresa} />
               <FormField label="Chave PIX" name="chavePix" defaultValue={investor.chavePix ?? ""} className="sm:col-span-2" />
             </div>
           </CardContent>

@@ -9,6 +9,7 @@ import { ArrowLeft } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isValidPhone } from "@/lib/phone";
 import { AdditionalEmailsInput } from "@/components/investors/additional-emails-input";
+import { CidadeInput } from "@/components/ui/cidade-input";
 
 function FormField({
   label,
@@ -129,7 +130,7 @@ export default function NovoInvestidorPage() {
               <FormField label="Complemento" name="complemento" placeholder="Apto, Sala..." />
               <FormField label="CEP" name="cep" placeholder="00000-000" />
               <FormField label="Bairro" name="bairro" />
-              <FormField label="Cidade" name="cidade" />
+              <CidadeInput label="Cidade" name="cidade" />
             </div>
           </CardContent>
         </Card>
@@ -147,7 +148,7 @@ export default function NovoInvestidorPage() {
               <FormField label="Complemento" name="complementoEmpresa" placeholder="Sala, Andar..." />
               <FormField label="CEP" name="cepEmpresa" placeholder="00000-000" />
               <FormField label="Bairro" name="bairroEmpresa" />
-              <FormField label="Cidade" name="cidadeEmpresa" />
+              <CidadeInput label="Cidade" name="cidadeEmpresa" />
               <FormField label="Chave PIX" name="chavePix" className="sm:col-span-2" />
             </div>
           </CardContent>
