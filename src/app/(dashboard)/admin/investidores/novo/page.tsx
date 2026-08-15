@@ -5,6 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import {
+  DocumentosAdesao,
+  type FichaDocumento,
+} from "@/components/consumer-units/documentos-adesao";
 import { ArrowLeft } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isValidPhone } from "@/lib/phone";
@@ -64,6 +68,10 @@ function FormField({
 
 /** Dados da adesao do CRM usados para pre-preencher o cadastro. */
 interface UcDoCrm {
+  adesaoIdCrm: number;
+  envelopeIdCrm: string | null;
+  assinadoEm: string | null;
+  documentos: { id: number; categoria: string | null; nomeArquivo: string; tamanho: number | null }[];
   clienteNome: string;
   clienteDocumento: string | null;
   clienteTipo: string | null;
@@ -75,6 +83,39 @@ interface UcDoCrm {
   complemento: string | null;
   bairro: string | null;
   cidade: string | null;
+}
+
+/** As seis fichas, sempre as seis -- a vazia mostra o que falta. */
+function montarFichas(uc: UcDoCrm): FichaDocumento[] {
+  const porCategoria = new Map((uc.documentos ?? []).map((d) => [d.categoria ?? "", d]));
+  const anexo = (cat: string, rotulo: string): FichaDocumento => {
+    const d = porCategoria.get(cat);
+    return {
+      chave: cat,
+      rotulo,
+      detalhe: d ? d.nomeArquivo : null,
+      href: d ? `/api/crm/documento/${d.id}` : null,
+    };
+  };
+  const assinadoEm = uc.assinadoEm ? new Date(uc.assinadoEm).toLocaleDateString("pt-BR") : null;
+  return [
+    {
+      chave: "termo",
+      rotulo: "Termo de Adesão",
+      detalhe: assinadoEm ? `assinado ${assinadoEm}` : null,
+      href: uc.envelopeIdCrm ? `/api/crm/termo/${uc.envelopeIdCrm}` : null,
+    },
+    {
+      chave: "procuracao",
+      rotulo: "Procuração",
+      detalhe: assinadoEm ? `assinada ${assinadoEm}` : null,
+      href: uc.envelopeIdCrm ? `/api/crm/termo/${uc.envelopeIdCrm}?tipo=procuracao` : null,
+    },
+    anexo("identidade", "Identidade"),
+    anexo("cartao_cnpj", "Cartão CNPJ"),
+    anexo("contrato_social", "Contrato social"),
+    anexo("outros", "Outro documento"),
+  ];
 }
 
 function NovoInvestidorConteudo() {
@@ -130,40 +171,52 @@ function NovoInvestidorConteudo() {
       body: JSON.stringify(data),
     });
 
+    const criado = await res.json().catch(() => null);
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "Erro desconhecido" }));
-      toast.error("Erro ao criar investidor", { description: err.error });
+      toast.error("Erro ao criar investidor", { description: criado?.error ?? "Erro desconhecido" });
       setLoading(false);
       return;
     }
 
-    // Tira a UC da fila do CRM. Aqui e so a marcacao: os campos de documento
-    // vivem em ConsumerUnit, e proprietario de usina nao gera uma -- os
-    // anexos seguem acessiveis pela propria fila.
-    if (crmUcId) {
+    // Tira da fila do CRM e copia os documentos da adesao para dentro do
+    // investidor. Se a copia falhar, o vinculo NAO e desfeito -- o aviso diz
+    // o que faltou, e o botao pode ser usado de novo.
+    const investorId: string | undefined = criado?.investor?.id;
+    if (crmUcId && investorId) {
       try {
-        await fetch(`/api/crm/ucs/${crmUcId}`, {
-          method: "PATCH",
+        const v = await fetch(`/api/crm/ucs/${crmUcId}/vincular`, {
+          method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ situacao: "CONCLUIDA" }),
+          body: JSON.stringify({ investorId }),
         });
-      } catch {
-        toast.warning("Investidor criado, mas a UC continua na fila do CRM.");
+        const dv = await v.json();
+        const d = dv.documentos ?? {};
+        const guardados = (d.copiados?.length ?? 0) + (d.reaproveitados?.length ?? 0);
+        toast.success(`Proprietario criado - ${guardados} documento(s) guardados nele.`);
+        if (d.falhas?.length) toast.warning(`Nao copiados: ${d.falhas.join(" - ")}`);
+      } catch (err) {
+        toast.warning(
+          `Proprietario criado, mas os documentos nao foram copiados: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
       }
+      router.push("/admin/crm/fila");
+      return;
     }
 
     toast.success("Investidor criado", { description: "Cadastro salvo com sucesso" });
-    router.push(crmUcId ? "/admin/crm/fila" : "/admin/investidores");
+    router.push("/admin/investidores");
   }
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className={crm ? "space-y-4" : "space-y-4 max-w-4xl"}>
       <Link
-        href="/admin/investidores"
+        href={crmUcId ? "/admin/crm/fila" : "/admin/investidores"}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
-        Voltar
+        {crmUcId ? "Voltar para a fila do CRM" : "Voltar"}
       </Link>
 
       <div>
@@ -176,6 +229,16 @@ function NovoInvestidorConteudo() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Documentos ao lado dos dados pessoais: sao esses os campos que se
+            conferem olhando o papel -- o CPF contra a identidade, o CNPJ
+            contra o cartao. Mesma escolha feita no cadastro de UC. */}
+        <div
+          className={
+            crm
+              ? "grid gap-4 lg:grid-cols-[minmax(0,1.9fr)_minmax(300px,1fr)] lg:items-start"
+              : undefined
+          }
+        >
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Dados Pessoais</CardTitle>
@@ -203,6 +266,14 @@ function NovoInvestidorConteudo() {
             </div>
           </CardContent>
         </Card>
+          {crm && (
+            <DocumentosAdesao
+              fichas={montarFichas(crm)}
+              adesaoIdCrm={crm.adesaoIdCrm}
+              copiadosEm={null}
+            />
+          )}
+        </div>
 
         <Card>
           <CardHeader className="pb-3">

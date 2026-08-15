@@ -30,8 +30,14 @@ export async function POST(
 
   const body = await req.json().catch(() => ({}));
   const consumerUnitId = typeof body.consumerUnitId === "string" ? body.consumerUnitId : null;
-  if (!consumerUnitId) {
-    return NextResponse.json({ error: "consumerUnitId é obrigatório." }, { status: 400 });
+  // Proprietário de usina não gera UC: os documentos vão para o investidor.
+  const investorId = typeof body.investorId === "string" ? body.investorId : null;
+
+  if (!consumerUnitId && !investorId) {
+    return NextResponse.json(
+      { error: "Informe consumerUnitId ou investorId." },
+      { status: 400 },
+    );
   }
 
   const linha = await prisma.crmUcImportada.findUnique({ where: { id } });
@@ -39,12 +45,23 @@ export async function POST(
     return NextResponse.json({ error: "UC do CRM não encontrada." }, { status: 404 });
   }
 
-  const uc = await prisma.consumerUnit.findUnique({
-    where: { id: consumerUnitId },
-    select: { id: true, codigoUc: true },
-  });
-  if (!uc) {
-    return NextResponse.json({ error: "Unidade consumidora não encontrada." }, { status: 404 });
+  if (consumerUnitId) {
+    const uc = await prisma.consumerUnit.findUnique({
+      where: { id: consumerUnitId },
+      select: { id: true },
+    });
+    if (!uc) {
+      return NextResponse.json({ error: "Unidade consumidora não encontrada." }, { status: 404 });
+    }
+  }
+  if (investorId) {
+    const inv = await prisma.investor.findUnique({
+      where: { id: investorId },
+      select: { id: true },
+    });
+    if (!inv) {
+      return NextResponse.json({ error: "Investidor não encontrado." }, { status: 404 });
+    }
   }
 
   // O vínculo primeiro: é o que não pode se perder.
@@ -56,10 +73,12 @@ export async function POST(
   let copia;
   try {
     copia = await copiarDocumentosDaAdesao(linha.adesaoIdCrm);
-    await prisma.consumerUnit.update({
-      where: { id: consumerUnitId },
-      data: copia.campos,
-    });
+    if (consumerUnitId) {
+      await prisma.consumerUnit.update({ where: { id: consumerUnitId }, data: copia.campos });
+    }
+    if (investorId) {
+      await prisma.investor.update({ where: { id: investorId }, data: copia.campos });
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[POST /api/crm/ucs/[id]/vincular] cópia:", err);
@@ -75,6 +94,7 @@ export async function POST(
     ok: true,
     vinculada: true,
     consumerUnitId,
+    investorId,
     documentos: {
       copiados: copia.copiados,
       reaproveitados: copia.reaproveitados,

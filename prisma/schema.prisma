@@ -54,6 +54,30 @@ model Investor {
   // Emails adicionais (sócios, financeiro etc.). JSON-encoded array de strings.
   additionalEmails   String?   @map("additional_emails")
 
+  // Documentos da adesão, quando o investidor entrou por uma venda do CRM
+  // marcada como `proprietario_usina`. Mesmos nomes de campo da ConsumerUnit
+  // de propósito: a rotina de cópia ([[crm-copia-documentos]]) serve os dois
+  // cadastros sem ter duas versões da mesma regra.
+  //
+  // Quem cede o telhado não é consumidor — não gera UC — mas a papelada dele
+  // é a mesma e precisa ficar guardada aqui, não apontando para o CRM, que
+  // apaga adesão.
+  docTermoAdesao        String? @map("doc_termo_adesao")
+  docTermoAdesaoNome    String? @map("doc_termo_adesao_nome")
+  docProcuracao         String? @map("doc_procuracao")
+  docProcuracaoNome     String? @map("doc_procuracao_nome")
+  docIdentidade         String? @map("doc_identidade")
+  docIdentidadeNome     String? @map("doc_identidade_nome")
+  docCartaoCnpj         String? @map("doc_cartao_cnpj")
+  docCartaoCnpjNome     String? @map("doc_cartao_cnpj_nome")
+  docContratoSocial     String? @map("doc_contrato_social")
+  docContratoSocialNome String? @map("doc_contrato_social_nome")
+  docOutros             String? @map("doc_outros")
+  docOutrosNome         String? @map("doc_outros_nome")
+
+  docsAdesaoIdCrm Int?      @map("docs_adesao_id_crm")
+  docsCopiadosEm  DateTime? @map("docs_copiados_em")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

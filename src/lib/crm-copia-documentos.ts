@@ -63,19 +63,31 @@ const CAMPO_POR_CATEGORIA: Record<string, { path: keyof DocumentosCopiados; nome
 };
 
 /**
- * Se outra UC da MESMA adesão já copiou este documento, reaproveita o caminho
- * em vez de subir o arquivo de novo. É o que faz "um objeto, N referências".
+ * Se algum cadastro da MESMA adesão já copiou este documento, reaproveita o
+ * caminho em vez de subir o arquivo de novo. É o que faz "um objeto, N
+ * referências".
+ *
+ * Procura nos DOIS cadastros: a mesma adesão pode gerar UCs e um proprietário
+ * de usina, e olhar só um lado faria o segundo subir uma cópia do arquivo que
+ * já está no bucket.
  */
 async function caminhoJaCopiado(
   adesaoId: number,
   campo: keyof DocumentosCopiados,
 ): Promise<string | null> {
-  const existente = await prisma.consumerUnit.findFirst({
-    where: { docsAdesaoIdCrm: adesaoId, [campo]: { not: null } },
-    select: { [campo]: true } as Record<string, boolean>,
-  });
-  const valor = existente ? (existente as Record<string, unknown>)[campo] : null;
-  return typeof valor === "string" ? valor : null;
+  const onde = { docsAdesaoIdCrm: adesaoId, [campo]: { not: null } };
+  const selecao = { [campo]: true } as Record<string, boolean>;
+
+  const [naUc, noInvestidor] = await Promise.all([
+    prisma.consumerUnit.findFirst({ where: onde, select: selecao }),
+    prisma.investor.findFirst({ where: onde, select: selecao }),
+  ]);
+
+  for (const linha of [naUc, noInvestidor]) {
+    const valor = linha ? (linha as Record<string, unknown>)[campo] : null;
+    if (typeof valor === "string") return valor;
+  }
+  return null;
 }
 
 export async function copiarDocumentosDaAdesao(adesaoId: number): Promise<ResultadoCopia> {
