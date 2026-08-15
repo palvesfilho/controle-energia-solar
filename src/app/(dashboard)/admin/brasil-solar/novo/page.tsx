@@ -8,6 +8,7 @@ import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { ProprietarioSelect } from "@/components/brasil-solar/proprietario-select";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { isValidPhone } from "@/lib/phone";
 import { CONCESSIONARIAS } from "@/lib/concessionarias";
 
@@ -84,15 +85,28 @@ function FormField({
       <label className="text-xs font-medium text-muted-foreground">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
-      <input
-        type={type}
-        name={name}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        required={required}
-        className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-      />
+      {/* Campo de senha ganha o "olho" pra conferir o que foi digitado. */}
+      {type === "password" ? (
+        <PasswordInput
+          name={name}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          required={required}
+          wrapperClassName="mt-1"
+          className="w-full text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+        />
+      ) : (
+        <input
+          type={type}
+          name={name}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          required={required}
+          className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+        />
+      )}
     </div>
   );
 }

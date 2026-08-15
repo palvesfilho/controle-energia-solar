@@ -18,6 +18,7 @@ import {
   Ban,
 } from "lucide-react";
 import { toast } from "sonner";
+import { PasswordInput } from "@/components/ui/password-input";
 
 type Modalidade = "MENSAL" | "ANUAL" | "CORTESIA";
 type Tipo = "MENSAL" | "ANUAL" | "PERSONALIZADO" | "CORTESIA";
@@ -565,9 +566,12 @@ export function ConviteAcessoModal({
                           Sua senha de administrador
                         </label>
                         <div className="relative">
-                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <input
-                            type="password"
+                          {/*
+                            z-10: o PasswordInput embrulha o campo num `relative`
+                            próprio, que vem depois no DOM e cobria o cadeado.
+                          */}
+                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10" />
+                          <PasswordInput
                             autoComplete="off"
                             placeholder="Confirme com sua senha"
                             value={cortesiaSenha}

@@ -10,6 +10,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { isValidPhone } from "@/lib/phone";
 import { AdditionalEmailsInput } from "@/components/investors/additional-emails-input";
 import { CidadeInput } from "@/components/ui/cidade-input";
+import { PasswordInput } from "@/components/ui/password-input";
 
 function FormField({
   label,
@@ -35,15 +36,28 @@ function FormField({
       <label className="text-xs font-medium text-muted-foreground">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
-      <input
-        type={type}
-        name={name}
-        placeholder={placeholder}
-        required={required}
-        minLength={minLength}
-        defaultValue={defaultValue}
-        className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-      />
+      {/* Campo de senha ganha o "olho" pra conferir o que foi digitado. */}
+      {type === "password" ? (
+        <PasswordInput
+          name={name}
+          placeholder={placeholder}
+          required={required}
+          minLength={minLength}
+          defaultValue={defaultValue}
+          wrapperClassName="mt-1"
+          className="w-full text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+        />
+      ) : (
+        <input
+          type={type}
+          name={name}
+          placeholder={placeholder}
+          required={required}
+          minLength={minLength}
+          defaultValue={defaultValue}
+          className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+        />
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Save } from "lucide-react";
 import {
@@ -592,9 +593,8 @@ export function UCForm({
           </div>
           <div className="space-y-2">
             <Label htmlFor="senhaDistribuidora">Senha (Distribuidora)</Label>
-            <Input
+            <PasswordInput
               id="senhaDistribuidora"
-              type="password"
               value={form.senhaDistribuidora}
               onChange={(e) => update("senhaDistribuidora", e.target.value)}
             />
