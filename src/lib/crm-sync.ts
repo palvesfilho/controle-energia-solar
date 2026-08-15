@@ -18,14 +18,16 @@
 import { prisma } from "@/lib/prisma";
 import {
   crmConfigurado,
-  extrairCodigosUc,
+  extrairUnidades,
   listarAdesoes,
   listarClientes,
+  listarEnvelopesAssinatura,
   listarProdutos,
   listarPropostasPorIds,
   listarUsuarios,
   listarVendasGanhas,
   type AdesaoCrm,
+  type EnvelopeAssinaturaCrm,
   type PropostaCrm,
 } from "@/lib/crm-supabase";
 
@@ -95,6 +97,11 @@ export interface ResultadoSync {
   obrasCriadas: number;
   naoClassificados: string[];
   assinadasSemVenda: number;
+  /** UCs assinadas gravadas em CrmUcImportada (uma linha por UC). */
+  ucsNovas: number;
+  ucsAtualizadas: number;
+  /** Adesões cujos arrays UC × kWh não bateram: a média saiu null. */
+  ucsSemMediaConfiavel: number;
   erros: string[];
 }
 
@@ -144,6 +151,9 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
     obrasCriadas: 0,
     naoClassificados: [],
     assinadasSemVenda: 0,
+    ucsNovas: 0,
+    ucsAtualizadas: 0,
+    ucsSemMediaConfiavel: 0,
     erros: [],
   };
 
@@ -157,12 +167,13 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
 
   await garantirDeParaPadrao();
 
-  const [produtos, ganhas, clientes, adesoes, usuarios, dePara] = await Promise.all([
+  const [produtos, ganhas, clientes, adesoes, usuarios, envelopes, dePara] = await Promise.all([
     listarProdutos(),
     listarVendasGanhas(),
     listarClientes(),
     listarAdesoes(),
     listarUsuarios(),
+    listarEnvelopesAssinatura(),
     prisma.crmProdutoDestino.findMany(),
   ]);
 
@@ -170,9 +181,26 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
   const clientePorId = new Map(clientes.map((c) => [c.id, c]));
   const emailPorUsuarioId = new Map(usuarios.map((u) => [u.id, u.email ?? null]));
   const deParaPorCodigo = new Map(dePara.map((d) => [d.codigoProduto, d]));
-  const adesaoPorProposta = new Map<number, AdesaoCrm>();
+
+  const envelopePorAdesao = new Map<number, EnvelopeAssinaturaCrm>();
+  for (const e of envelopes) {
+    if (e.adesao_id != null) envelopePorAdesao.set(e.adesao_id, e);
+  }
+
+  // LISTA por proposta, não uma adesão só. Aqui havia um `Map.set` que
+  // sobrescrevia calado: uma proposta pode ter VÁRIAS adesões assinadas (o
+  // INSTITUTO ELEVA tem duas, a PONTELLI JOALHERIA tem quatro) e só a última
+  // sobrevivia. Em 15/08/2026 isso escondia 5 das 35 UCs assinadas.
+  const adesoesPorProposta = new Map<number, AdesaoCrm[]>();
   for (const a of adesoes) {
-    if (a.proposta_id != null) adesaoPorProposta.set(a.proposta_id, a);
+    if (a.proposta_id == null) continue;
+    const lista = adesoesPorProposta.get(a.proposta_id);
+    if (lista) lista.push(a);
+    else adesoesPorProposta.set(a.proposta_id, [a]);
+  }
+  // Ordem estável e previsível: a mais antiga primeiro.
+  for (const lista of adesoesPorProposta.values()) {
+    lista.sort((x, y) => String(x.criado_em ?? "").localeCompare(String(y.criado_em ?? "")));
   }
 
   // Adesões assinadas cuja proposta NÃO está entre as ganhas: precisam
@@ -192,12 +220,22 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
     const nomeProduto = produto?.nome ?? "(produto desconhecido no CRM)";
 
     const cliente = proposta.cliente_id != null ? clientePorId.get(proposta.cliente_id) : undefined;
-    const adesao = adesaoPorProposta.get(proposta.id);
+    const adesoesDaProposta = adesoesPorProposta.get(proposta.id) ?? [];
+    // A mais recente manda nos dados de cabeçalho (é a última versão assinada
+    // do cadastro); as UCs, porém, vêm de TODAS elas.
+    const adesao = adesoesDaProposta[adesoesDaProposta.length - 1];
 
     const clienteNome = adesao?.cliente_nome ?? cliente?.nome ?? "(sem cliente)";
     const documento =
       adesao?.cliente_documento ?? cliente?.cpf ?? cliente?.cnpj ?? cliente?.documento ?? null;
-    const codigosUc = adesao ? extrairCodigosUc(adesao.unidades_consumidoras) : [];
+
+    // Todas as UCs de todas as adesões da proposta, já pareadas com o kWh.
+    const unidades = adesoesDaProposta.flatMap((a) =>
+      extrairUnidades(a.unidades_consumidoras, a.medias_mensais_kwh, a.media_mensal_kwh).map(
+        (u) => ({ ...u, adesao: a }),
+      ),
+    );
+    const codigosUc = [...new Set(unidades.map((u) => u.codigo))];
 
     const regra = deParaPorCodigo.get(codigoProduto);
     const geraObra = ehVendaGanha && (regra?.ativo ?? false) && regra!.geraObra;
@@ -233,7 +271,14 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
       adesaoIdCrm: adesao?.id ?? null,
       concessionaria: adesao?.concessionaria ?? proposta.concessionaria ?? null,
       codigosUc: codigosUc.length > 0 ? codigosUc.join(",") : null,
-      mediaMensalKwh: adesao?.media_mensal_kwh ?? null,
+      // Soma das UCs: nesta linha o número representa a venda inteira. O kWh
+      // de cada UC vive em CrmUcImportada, que é onde ele é usado para
+      // dimensionar. Null quando nenhuma UC tem média confiável, nunca 0 —
+      // zero aqui passaria por "consumo zero" em vez de "não sabemos".
+      mediaMensalKwh:
+        unidades.some((u) => u.mediaKwh != null)
+          ? unidades.reduce((s, u) => s + (u.mediaKwh ?? 0), 0)
+          : null,
     };
 
     const existente = await prisma.crmVendaImportada.findUnique({
@@ -259,6 +304,62 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
     }
 
     if (!ehVendaGanha) resultado.assinadasSemVenda += 1;
+
+    // Uma linha por UC assinada. É esta tabela que o operador usa: a UC é o
+    // que vai ser interligado com a usina, e o cadastro é decidido UC a UC.
+    for (const u of unidades) {
+      const a = u.adesao;
+      const envelope = envelopePorAdesao.get(a.id);
+      if (u.mediaKwh == null) resultado.ucsSemMediaConfiavel += 1;
+
+      const dadosUc = {
+        propostaIdCrm: proposta.id,
+        codigoUcBruto: u.bruto || null,
+        mediaMensalKwh: u.mediaKwh,
+        clienteNome: a.cliente_nome ?? clienteNome,
+        clienteDocumento: a.cliente_documento ?? documento,
+        clienteTipo: a.cliente_tipo,
+        clienteEmail: a.cliente_email,
+        clienteTelefone: a.cliente_telefone,
+        cep: a.cep,
+        logradouro: a.endereco,
+        numero: a.numero,
+        complemento: a.complemento,
+        bairro: a.bairro,
+        cidade: a.cidade ?? dados.cidade,
+        representanteNome: a.representante_nome,
+        representanteCpf: a.representante_cpf,
+        representanteCargo: a.representante_cargo,
+        concessionaria: a.concessionaria ?? dados.concessionaria,
+        proprietarioUsina: a.proprietario_usina ?? false,
+        assinaturaStatus: envelope?.status ?? null,
+        assinadoEm: primeiraDataValida(envelope?.assinado_em),
+        envelopeIdCrm: envelope?.id ?? null,
+      };
+
+      // Só a existência importa: `dadosUc` não carrega `situacao`, então uma
+      // re-sincronização atualiza os dados do CRM sem nunca devolver a UC para
+      // PENDENTE. Quem marcou como cadastrada não vê o trabalho voltar.
+      const jaTem = await prisma.crmUcImportada.findUnique({
+        where: { adesaoIdCrm_codigoUc: { adesaoIdCrm: a.id, codigoUc: u.codigo } },
+        select: { id: true },
+      });
+
+      if (!jaTem) {
+        await prisma.crmUcImportada.create({
+          data: { adesaoIdCrm: a.id, codigoUc: u.codigo, ...dadosUc },
+        });
+        resultado.ucsNovas += 1;
+      } else {
+        // Mesma regra da linha de venda: quem já cadastrou a UC aqui não tem
+        // o trabalho desfeito por uma re-sincronização.
+        await prisma.crmUcImportada.update({
+          where: { adesaoIdCrm_codigoUc: { adesaoIdCrm: a.id, codigoUc: u.codigo } },
+          data: dadosUc,
+        });
+        resultado.ucsAtualizadas += 1;
+      }
+    }
 
     // Obra: cria uma única vez por proposta.
     if (geraObra && !existente?.obraId) {

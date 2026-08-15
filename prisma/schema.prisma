@@ -502,6 +502,36 @@ model ConsumerUnit {
   rateioItems              RateioItem[]
   investorPayables         InvestorPayable[]
   acoesRecomendadas        AcaoRecomendada[]
+  // Documentos da adesão, alojados AQUI e não apontando para o CRM.
+  //
+  // Motivo concreto: em 15/08/2026 a adesão 16 do INSTITUTO ELEVA foi apagada
+  // do CRM enquanto a integração era construída. Documento que só referencia a
+  // origem some junto com ela.
+  //
+  // O valor é o caminho relativo no storage (ver [[file-storage]]); o `*Nome`
+  // guarda o nome original do arquivo, que é como o operador o reconhece.
+  //
+  // Quando o mesmo titular tem várias UCs (a LABIMED tem 11), o arquivo é
+  // gravado UMA vez, com chave derivada da adesão de origem, e todas as UCs
+  // apontam para ele. Campo por UC, objeto único no bucket.
+  docTermoAdesao        String? @map("doc_termo_adesao")
+  docTermoAdesaoNome    String? @map("doc_termo_adesao_nome")
+  docProcuracao         String? @map("doc_procuracao")
+  docProcuracaoNome     String? @map("doc_procuracao_nome")
+  docIdentidade         String? @map("doc_identidade")
+  docIdentidadeNome     String? @map("doc_identidade_nome")
+  docCartaoCnpj         String? @map("doc_cartao_cnpj")
+  docCartaoCnpjNome     String? @map("doc_cartao_cnpj_nome")
+  docContratoSocial     String? @map("doc_contrato_social")
+  docContratoSocialNome String? @map("doc_contrato_social_nome")
+  docOutros             String? @map("doc_outros")
+  docOutrosNome         String? @map("doc_outros_nome")
+
+  // Procedência: de qual adesão do CRM vieram, e quando. Sem isto, daqui a seis
+  // meses ninguém sabe de onde o arquivo saiu.
+  docsAdesaoIdCrm Int?      @map("docs_adesao_id_crm")
+  docsCopiadosEm  DateTime? @map("docs_copiados_em")
+
   consumoBaselines         ConsumoBaseline[]
   brasilSolarBeneficiarias BrasilSolarBeneficiaria[]
 
@@ -2254,4 +2284,77 @@ model CrmVendaImportada {
   @@index([situacao])
   @@index([codigoProduto])
   @@map("crm_venda_importada")
+}
+
+/// Uma linha por UNIDADE CONSUMIDORA assinada no Termo de Adesão do CRM.
+///
+/// Existe porque a unidade de trabalho é a UC, não a proposta: é a UC que vai
+/// ser interligada com a usina. `CrmVendaImportada` guarda uma linha por
+/// proposta, e isso perdia dado calado — uma proposta pode ter VÁRIAS adesões
+/// assinadas (o INSTITUTO ELEVA tem duas, a PONTELLI tem quatro), e cada
+/// adesão pode ter várias UCs. Em 15/08/2026 eram 35 UCs assinadas no CRM
+/// contra 30 que cabiam no modelo por proposta.
+///
+/// Traz junto os dados do consumidor como foram ASSINADOS, para o cadastro da
+/// UC chegar pré-preenchido em vez de ser redigitado.
+model CrmUcImportada {
+  id String @id @default(cuid())
+
+  // Chaves no CRM. A unicidade é (adesão, código) e não a proposta,
+  // justamente porque a proposta se repete.
+  propostaIdCrm Int    @map("proposta_id_crm")
+  adesaoIdCrm   Int    @map("adesao_id_crm")
+  // Só dígitos, para casar com ConsumerUnit.codigoUc. Ver [[whereCodigoUc]].
+  codigoUc      String @map("codigo_uc")
+  // Como veio do CRM ("2.715.094.001-03"), para exibir igual ao termo.
+  codigoUcBruto String? @map("codigo_uc_bruto")
+
+  // kWh/mês DESTA UC. Vem de `medias_mensais_kwh[i]`, pareado por POSIÇÃO com
+  // `unidades_consumidoras[i]`. Os dois arrays batem em 23/23 adesões; quando
+  // não baterem, o sync grava null em vez de parear errado.
+  mediaMensalKwh Float? @map("media_mensal_kwh")
+
+  // Consumidor, como assinado na adesão.
+  clienteNome      String  @map("cliente_nome")
+  clienteDocumento String? @map("cliente_documento")
+  clienteTipo      String? @map("cliente_tipo")
+  clienteEmail     String? @map("cliente_email")
+  clienteTelefone  String? @map("cliente_telefone")
+
+  // Endereço do titular no termo.
+  cep         String?
+  logradouro  String?
+  numero      String?
+  complemento String?
+  bairro      String?
+  cidade      String?
+
+  // Representante legal — preenchido quando o titular é PJ.
+  representanteNome  String? @map("representante_nome")
+  representanteCpf   String? @map("representante_cpf")
+  representanteCargo String? @map("representante_cargo")
+
+  concessionaria    String?
+  proprietarioUsina Boolean @default(false) @map("proprietario_usina")
+
+  // Assinatura do Termo (tabela `envelopes_assinatura` no CRM).
+  assinaturaStatus String?   @map("assinatura_status")
+  assinadoEm       DateTime? @map("assinado_em")
+  envelopeIdCrm    String?   @map("envelope_id_crm")
+
+  // PENDENTE | CONCLUIDA | IGNORADA — o cadastro é decidido por UC.
+  situacao String @default("PENDENTE")
+
+  // Preenchido quando a UC vira cadastro aqui. É o elo com a usina.
+  consumerUnitId String? @map("consumer_unit_id")
+
+  primeiraLeituraEm DateTime  @default(now()) @map("primeira_leitura_em")
+  ultimaLeituraEm   DateTime  @updatedAt @map("ultima_leitura_em")
+  processadaEm      DateTime? @map("processada_em")
+
+  @@unique([adesaoIdCrm, codigoUc])
+  @@index([situacao])
+  @@index([propostaIdCrm])
+  @@index([codigoUc])
+  @@map("crm_uc_importada")
 }

@@ -128,6 +128,18 @@ interface Props {
   error?: string;
   cancelHref: string;
   submitLabel?: string;
+  /**
+   * Painel exibido À DIREITA do card Identificação, em telas grandes.
+   *
+   * Existe para os documentos da adesão: os campos de identificação são
+   * justamente os que se conferem olhando o papel — o CNPJ contra o cartão
+   * CNPJ, o nome contra o contrato social. Ter o arquivo ao lado enquanto se
+   * digita vale mais que um card no fim da página.
+   *
+   * Sem o painel, o card volta a ocupar a largura inteira: nenhuma tela que já
+   * usa o formulário muda de aparência.
+   */
+  painelLateral?: React.ReactNode;
 }
 
 export function UCForm({
@@ -137,6 +149,7 @@ export function UCForm({
   error,
   cancelHref,
   submitLabel = "Salvar",
+  painelLateral,
 }: Props) {
   const [form, setForm] = useState<UCFormData>(() => {
     const base = { ...EMPTY_UC_FORM, ...initialData };
@@ -184,7 +197,14 @@ export function UCForm({
         </div>
       )}
 
-      {/* Identificação */}
+      {/* Identificação — com os documentos ao lado, quando houver. */}
+      <div
+        className={
+          painelLateral
+            ? "grid gap-6 lg:grid-cols-[minmax(0,1.9fr)_minmax(300px,1fr)] lg:items-start"
+            : undefined
+        }
+      >
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Identificação</CardTitle>
@@ -279,6 +299,8 @@ export function UCForm({
           </div>
         </CardContent>
       </Card>
+        {painelLateral}
+      </div>
 
       {/* Distribuidora */}
       <Card>

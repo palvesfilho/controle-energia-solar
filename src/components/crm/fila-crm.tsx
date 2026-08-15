@@ -34,6 +34,7 @@ import {
 import { matchBusca } from "@/lib/busca";
 import { formatCpfCnpjComRotulo } from "@/lib/documento";
 import type { ModuloCrm } from "@/lib/crm-modulo";
+import { UcsAssinadasCrm } from "@/components/crm/ucs-assinadas-crm";
 
 interface ItemFila {
   id: string;
@@ -123,6 +124,7 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
   const [sincronizando, setSincronizando] = useState(false);
   const [search, setSearch] = useState("");
   const [acting, setActing] = useState<string | null>(null);
+  const [versaoUcs, setVersaoUcs] = useState(0);
 
   const textos = TEXTOS[modulo];
 
@@ -161,13 +163,22 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
       if (!res.ok) {
         throw new Error([dados.error, dados.hint].filter(Boolean).join(" — "));
       }
+      const ucs = (dados.ucsNovas ?? 0) + (dados.ucsAtualizadas ?? 0);
       toast.success(
-        `Sincronizado: ${dados.vendasGanhas} venda(s) ganha(s) lida(s), ${dados.obrasCriadas} obra(s) criada(s).`,
+        `Sincronizado: ${dados.vendasGanhas} venda(s) ganha(s), ${ucs} UC(s) assinada(s), ` +
+          `${dados.obrasCriadas} obra(s) criada(s).`,
       );
       if (Array.isArray(dados.naoClassificados) && dados.naoClassificados.length > 0) {
         toast.warning(`${dados.naoClassificados.length} produto(s) sem de-para definido.`);
       }
+      if (dados.ucsSemMediaConfiavel > 0) {
+        toast.warning(
+          `${dados.ucsSemMediaConfiavel} UC(s) sem consumo confiável — ficaram em branco.`,
+        );
+      }
       carregar();
+      // A lista de UCs tem carregamento próprio; remonta para refletir o sync.
+      setVersaoUcs((v) => v + 1);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(`Falha ao sincronizar: ${msg}`);
@@ -257,6 +268,12 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
         />
       </div>
 
+      {/* Na Associação o trabalho é por UC, não por proposta: a caixa
+          "A cadastrar" vira a lista de UCs assinadas, com kWh e documentos.
+          As outras duas caixas continuam por proposta, porque são exceções da
+          VENDA (produto sem destino, adesão sem venda ganha) e não de uma UC. */}
+      {modulo === "assoc" && <UcsAssinadasCrm key={versaoUcs} />}
+
       {loading ? (
         <Card>
           <CardContent className="p-10 text-center text-sm text-muted-foreground">
@@ -264,7 +281,7 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
           </CardContent>
         </Card>
       ) : (
-        CAIXAS.map((caixa) => {
+        CAIXAS.filter((c) => !(modulo === "assoc" && c.chave === "PENDENTE")).map((caixa) => {
           const daCaixa = filtrados.filter((i) => i.situacao === caixa.chave);
           const Icone = caixa.icone;
           const descricao =

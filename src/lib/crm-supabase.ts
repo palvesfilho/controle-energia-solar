@@ -147,12 +147,57 @@ export interface AdesaoCrm {
   id: number;
   cliente_nome: string | null;
   cliente_documento: string | null;
+  cliente_tipo: string | null;
+  cliente_email: string | null;
+  cliente_telefone: string | null;
   concessionaria: string | null;
+  cep: string | null;
+  endereco: string | null;
+  numero: string | null;
+  complemento: string | null;
+  bairro: string | null;
   cidade: string | null;
+  representante_nome: string | null;
+  representante_cpf: string | null;
+  representante_cargo: string | null;
   unidades_consumidoras: unknown;
+  /**
+   * DEPRECADO no CRM: está null nas 23 adesões (conferido em 15/08/2026). O
+   * campo vivo é `medias_mensais_kwh`, um array com uma média por UC. Lido
+   * ainda como fallback, para adesão antiga que porventura só tenha ele.
+   */
   media_mensal_kwh: number | null;
+  /** Uma média por UC, pareada por POSIÇÃO com `unidades_consumidoras`. */
+  medias_mensais_kwh: unknown;
   proposta_id: number | null;
   proprietario_usina: boolean | null;
+  criado_em: string | null;
+}
+
+/** Envelope de assinatura eletrônica (ClickSign) de um Termo de Adesão. */
+export interface EnvelopeAssinaturaCrm {
+  id: string;
+  adesao_id: number | null;
+  status: string | null;
+  criado_em: string | null;
+  assinado_em: string | null;
+}
+
+/**
+ * Documento anexado à adesão. Mora no R2 (bucket do CRM), em `r2_key`.
+ *
+ * `categoria`: identidade | cartao_cnpj | contrato_social | fatura_energia |
+ * outros. A fatura de energia NÃO é importada — ela serve à conferência de
+ * comissão do vendedor, e fica no CRM. Ver [[listarDocumentosAdesao]].
+ */
+export interface DocumentoAdesaoCrm {
+  id: number;
+  adesao_id: number | null;
+  categoria: string | null;
+  nome_arquivo: string | null;
+  r2_key: string | null;
+  mime: string | null;
+  tamanho: number | null;
   criado_em: string | null;
 }
 
@@ -224,8 +269,118 @@ export function listarClientes(): Promise<ClienteCrm[]> {
 export function listarAdesoes(): Promise<AdesaoCrm[]> {
   return crmSelect<AdesaoCrm>(
     "adesoes",
-    "id,cliente_nome,cliente_documento,concessionaria,cidade,unidades_consumidoras,media_mensal_kwh,proposta_id,proprietario_usina,criado_em",
+    "id,cliente_nome,cliente_documento,cliente_tipo,cliente_email,cliente_telefone," +
+      "concessionaria,cep,endereco,numero,complemento,bairro,cidade," +
+      "representante_nome,representante_cpf,representante_cargo," +
+      "unidades_consumidoras,media_mensal_kwh,medias_mensais_kwh," +
+      "proposta_id,proprietario_usina,criado_em",
   );
+}
+
+/**
+ * Envelopes de assinatura. Sem o PDF: `pdf_termo_assinado` é base64 de ~330 KB
+ * por envelope, e trazer 24 deles a cada sync seria ~8 MB de tráfego para
+ * exibir uma data. O PDF é buscado sob demanda, quando alguém clica.
+ */
+export function listarEnvelopesAssinatura(): Promise<EnvelopeAssinaturaCrm[]> {
+  return crmSelect<EnvelopeAssinaturaCrm>(
+    "envelopes_assinatura",
+    "id,adesao_id,status,criado_em,assinado_em",
+  );
+}
+
+/**
+ * Base64 de UM dos dois PDFs assinados do envelope, para servir sob demanda.
+ *
+ * Cuidado com o nome das colunas: `pdf_termo_assinado` é masculino e
+ * `pdf_procuracao_assinada` é FEMININO. Pedir a grafia errada devolve erro do
+ * PostgREST, não null — o que passaria por "envelope sem documento".
+ */
+export async function buscarPdfAssinado(
+  envelopeId: string,
+  tipo: "termo" | "procuracao",
+): Promise<string | null> {
+  const coluna = tipo === "termo" ? "pdf_termo_assinado" : "pdf_procuracao_assinada";
+  const linhas = await crmSelect<Record<string, string | null>>(
+    "envelopes_assinatura",
+    coluna,
+    { id: `eq.${envelopeId}` },
+  );
+  return linhas[0]?.[coluna] ?? null;
+}
+
+/**
+ * Documentos anexados às adesões, EXCETO a fatura de energia.
+ *
+ * A fatura fica de fora por decisão do Paulo em 15/08/2026: o que o Gestor
+ * precisa é do NÚMERO da UC, que já vem em `unidades_consumidoras`; o PDF da
+ * fatura serve à conferência de comissão do vendedor e continua no CRM.
+ *
+ * Isso também elimina a única ambiguidade que existia: os documentos do CRM
+ * são amarrados à ADESÃO, não à UC. Identidade, cartão CNPJ e contrato social
+ * são do CLIENTE, então valem para todas as UCs dele sem chute. A fatura era o
+ * único que pertencia a uma UC específica sem o CRM dizer qual.
+ */
+export function listarDocumentosAdesao(): Promise<DocumentoAdesaoCrm[]> {
+  return crmSelect<DocumentoAdesaoCrm>(
+    "adesao_documentos",
+    "id,adesao_id,categoria,nome_arquivo,r2_key,mime,tamanho,criado_em",
+    { categoria: "neq.fatura_energia" },
+  );
+}
+
+/** Anexos de UMA adesão, ainda sem a fatura de energia. */
+export function listarDocumentosDaAdesao(adesaoId: number): Promise<DocumentoAdesaoCrm[]> {
+  return crmSelect<DocumentoAdesaoCrm>(
+    "adesao_documentos",
+    "id,adesao_id,categoria,nome_arquivo,r2_key,mime,tamanho,criado_em",
+    { adesao_id: `eq.${adesaoId}`, categoria: "neq.fatura_energia" },
+  );
+}
+
+/**
+ * Envelope de UMA adesão COM os dois PDFs assinados.
+ *
+ * Só na cópia — são ~670 KB de base64 por envelope. A listagem geral usa
+ * `listarEnvelopesAssinatura`, que não traz os PDFs.
+ *
+ * Atenção ao nome da coluna: `pdf_procuracao_assinada` é FEMININO, enquanto o
+ * do termo é `pdf_termo_assinado`. Pedir `_assinado` para a procuração devolve
+ * erro do PostgREST, não null.
+ */
+export async function buscarEnvelopeDaAdesao(adesaoId: number): Promise<
+  | (EnvelopeAssinaturaCrm & {
+      pdf_termo_assinado: string | null;
+      pdf_procuracao_assinada: string | null;
+      signatario_nome: string | null;
+      signatario_cpf: string | null;
+    })
+  | null
+> {
+  const linhas = await crmSelect<
+    EnvelopeAssinaturaCrm & {
+      pdf_termo_assinado: string | null;
+      pdf_procuracao_assinada: string | null;
+      signatario_nome: string | null;
+      signatario_cpf: string | null;
+    }
+  >(
+    "envelopes_assinatura",
+    "id,adesao_id,status,criado_em,assinado_em,signatario_nome,signatario_cpf," +
+      "pdf_termo_assinado,pdf_procuracao_assinada",
+    { adesao_id: `eq.${adesaoId}` },
+  );
+  return linhas[0] ?? null;
+}
+
+/** Um documento específico, para a rota que serve o arquivo. */
+export async function buscarDocumentoAdesao(id: number): Promise<DocumentoAdesaoCrm | null> {
+  const linhas = await crmSelect<DocumentoAdesaoCrm>(
+    "adesao_documentos",
+    "id,adesao_id,categoria,nome_arquivo,r2_key,mime,tamanho,criado_em",
+    { id: `eq.${id}` },
+  );
+  return linhas[0] ?? null;
 }
 
 export function listarUsuarios(): Promise<UsuarioCrm[]> {
@@ -270,4 +425,91 @@ export function extrairCodigosUc(bruto: unknown): string[] {
   }
 
   return codigos;
+}
+
+/** Uma UC da adesão, já pareada com o consumo que foi assinado para ela. */
+export interface UnidadeDaAdesao {
+  /** Só dígitos — casa com ConsumerUnit.codigoUc. */
+  codigo: string;
+  /** Como veio no termo ("2.715.094.001-03"). */
+  bruto: string;
+  /** kWh/mês desta UC; null quando não dá para parear com honestidade. */
+  mediaKwh: number | null;
+}
+
+/**
+ * Extrai as UCs de uma adesão JÁ PAREADAS com o consumo de cada uma.
+ *
+ * `unidades_consumidoras[i]` corresponde a `medias_mensais_kwh[i]` — pareamento
+ * POSICIONAL, confirmado nas 23 adesões em 15/08/2026 (nenhuma desalinhada).
+ *
+ * Se os dois arrays tiverem tamanhos diferentes, o pareamento por posição
+ * deixa de ser confiável e a média sai `null` para TODAS as UCs daquela adesão.
+ * Preencher metade certo e metade errado seria pior que não preencher: o kWh
+ * errado vira dimensionamento errado da usina, e ninguém desconfia de um
+ * número plausível. Ver [[feedback_anomalias_sinalizar]].
+ *
+ * `media_mensal_kwh` (singular) só é usado quando a adesão tem UMA única UC —
+ * é o formato antigo do CRM, hoje null em todas as 23.
+ */
+export function extrairUnidades(
+  unidadesBrutas: unknown,
+  mediasBrutas: unknown,
+  mediaUnicaLegado?: number | null,
+): UnidadeDaAdesao[] {
+  const brutos: string[] = [];
+  if (Array.isArray(unidadesBrutas)) {
+    for (const item of unidadesBrutas) {
+      if (item && typeof item === "object") {
+        const obj = item as Record<string, unknown>;
+        const v = obj.codigo ?? obj.codigo_uc ?? obj.uc ?? obj.numero;
+        brutos.push(v == null ? "" : String(v));
+      } else {
+        brutos.push(item == null ? "" : String(item));
+      }
+    }
+  } else if (typeof unidadesBrutas === "string") {
+    brutos.push(...unidadesBrutas.split(/[;,\s]+/));
+  }
+
+  const medias = Array.isArray(mediasBrutas) ? mediasBrutas : null;
+  const alinhado = medias != null && medias.length === brutos.length;
+
+  const vistos = new Set<string>();
+  const saida: UnidadeDaAdesao[] = [];
+
+  brutos.forEach((bruto, i) => {
+    const codigo = apenasDigitos(bruto);
+    if (!codigo || vistos.has(codigo)) return;
+    vistos.add(codigo);
+
+    let mediaKwh: number | null = null;
+    if (alinhado) {
+      const n = Number(medias![i]);
+      mediaKwh = Number.isFinite(n) ? n : null;
+    } else if (brutos.length === 1 && mediaUnicaLegado != null) {
+      mediaKwh = mediaUnicaLegado;
+    }
+
+    saida.push({ codigo, bruto: String(bruto).trim(), mediaKwh });
+  });
+
+  return saida;
+}
+
+/**
+ * Conserta nome de arquivo gravado como UTF-8 e lido como Latin-1.
+ * O CRM tem casos assim ("cnpj unigÃ¡.pdf" quando o certo é "cnpj unigá.pdf").
+ * Ver [[project_mojibake_utf8_fonte]].
+ */
+export function corrigirMojibake(nome: string | null | undefined): string {
+  if (!nome) return "";
+  if (!/[ÃÂ][\x80-\xBF]/.test(nome)) return nome;
+  try {
+    const consertado = Buffer.from(nome, "latin1").toString("utf8");
+    // Só aceita se o conserto não introduziu caractere de substituição.
+    return consertado.includes("�") ? nome : consertado;
+  } catch {
+    return nome;
+  }
 }
