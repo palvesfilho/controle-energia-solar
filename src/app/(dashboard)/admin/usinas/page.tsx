@@ -19,6 +19,7 @@ import { formatCodigoUc } from "@/lib/uc-codigo";
 import { formatCpfCnpj } from "@/lib/documento";
 import { formatKWh } from "@/lib/formatters";
 import { matchBusca } from "@/lib/busca";
+import { concessionariaDaUsina } from "@/lib/concessionarias";
 import { ExcluirUsinaDialog } from "@/components/plants/excluir-usina-dialog";
 
 interface PlantData {
@@ -31,6 +32,8 @@ interface PlantData {
   geracaoMediaMensal: number | null;
   grupo: string | null;
   cpfCnpj: string | null;
+  // Os dois campos do mesmo conceito — ver concessionariaDaUsina().
+  concessionaria: string | null;
   distribuidora: string | null;
   acesso: string | null;
   statusContrato: string | null;
@@ -76,6 +79,9 @@ export default function UsinasPage() {
         p.numeroUsina,
         p.unidadeConsumidora,
         p.cpfCnpj,
+        // Buscar pelos DOIS: quem digita "RGE" tem que achar tanto a usina
+        // legada (distribuidora="RGE") quanto a nova (concessionaria="RGE/CPFL").
+        p.concessionaria,
         p.distribuidora,
       ]);
     });
@@ -147,7 +153,7 @@ export default function UsinasPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por nome, número, CPF/CNPJ ou distribuidora..."
+                placeholder="Buscar por nome, número, CPF/CNPJ ou concessionária..."
                 className="w-full pl-8 pr-3 py-1.5 text-sm border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
               />
             </div>
@@ -182,7 +188,7 @@ export default function UsinasPage() {
                     <SortHeader label="Potência" align="right" active={sort.key === "potencia"} dir={sort.dir} onClick={() => toggleSort("potencia")} />
                     <SortHeader label="Geração média/mês" align="right" active={sort.key === "geracao"} dir={sort.dir} onClick={() => toggleSort("geracao")} />
                     <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Grupo</th>
-                    <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Distribuidora</th>
+                    <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Concessionária</th>
                     <SortHeader label="UCs" align="center" active={sort.key === "ucs"} dir={sort.dir} onClick={() => toggleSort("ucs")} />
                     <SortHeader label="Status" align="center" active={sort.key === "status"} dir={sort.dir} onClick={() => toggleSort("status")} />
                     <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Ações</th>
@@ -203,7 +209,7 @@ export default function UsinasPage() {
                         <GeracaoMediaCell valor={plant.geracaoMediaMensal} />
                       </td>
                       <td className="py-2.5 px-3 text-center">{plant.grupo ?? "-"}</td>
-                      <td className="py-2.5 px-3">{plant.distribuidora ?? "-"}</td>
+                      <td className="py-2.5 px-3">{concessionariaDaUsina(plant) ?? "-"}</td>
                       <td className="py-2.5 px-3 text-center">
                         <Badge variant="secondary">{plant.consumerUnits.length}</Badge>
                       </td>

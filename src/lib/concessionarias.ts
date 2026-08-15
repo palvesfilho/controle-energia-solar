@@ -76,6 +76,31 @@ export function normalizeConcessionaria(
   return ALIASES[limpo] ?? null;
 }
 
+/**
+ * Concessionária da USINA para EXIBIÇÃO — resolve o fato de `Plant` guardar o
+ * mesmo conceito em dois campos.
+ *
+ * `concessionaria` é o que as telas de cadastro/edição gravam (o select de
+ * "Concessionária" em /admin/usinas/nova e /admin/usinas/[id]).
+ * `distribuidora` é um campo LEGADO que nenhuma tela preenche: só tem valor nas
+ * usinas que vieram da importação inicial. Ler só `distribuidora` faz toda usina
+ * cadastrada pela tela aparecer sem concessionária, mesmo tendo sido salva.
+ *
+ * Devolve `null` quando os dois estão vazios — nada é inventado aqui. O default
+ * "RGE/CPFL" existe SÓ na rota de credencial, onde o robô precisa de um alvo;
+ * numa listagem ele mentiria (ver feedback_anomalias_sinalizar).
+ */
+export function concessionariaDaUsina(plant: {
+  concessionaria?: string | null;
+  distribuidora?: string | null;
+}): string | null {
+  const bruto = plant.concessionaria?.trim() || plant.distribuidora?.trim() || null;
+  if (!bruto) return null;
+  // Grafia legada ("RGE", "CPFL PAULISTA") vira a canônica; o que a lista não
+  // reconhece é exibido como está, em vez de sumir da tela.
+  return normalizeConcessionaria(bruto) ?? bruto;
+}
+
 /** `true` quando o valor já está na lista canônica. */
 export function isConcessionariaValida(
   valor: string | null | undefined,

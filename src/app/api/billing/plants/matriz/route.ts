@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
+import { concessionariaDaUsina } from "@/lib/concessionarias";
 
 /**
  * GET /api/billing/plants/matriz?de=2025-08&ate=2026-07
@@ -114,6 +115,9 @@ export async function GET(req: NextRequest) {
         name: true,
         numeroUsina: true,
         cpfCnpj: true,
+        // O cadastro grava `concessionaria`; `distribuidora` é legado da
+        // importação. Ver concessionariaDaUsina().
+        concessionaria: true,
         distribuidora: true,
         dataAssinaturaContrato: true,
         investors: {
@@ -236,7 +240,7 @@ export async function GET(req: NextRequest) {
       name: p.name,
       numeroUsina: p.numeroUsina,
       cpfCnpj: p.cpfCnpj,
-      distribuidora: p.distribuidora,
+      distribuidora: concessionariaDaUsina(p),
       investorNames,
       celulas,
       qtdPendentes: pendentes.length,

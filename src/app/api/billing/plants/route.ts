@@ -56,6 +56,9 @@ export async function GET(req: NextRequest) {
         name: true,
         numeroUsina: true,
         cpfCnpj: true,
+        // Os dois campos do mesmo conceito: o cadastro grava `concessionaria`,
+        // `distribuidora` só existe nas usinas importadas. Ver concessionariaDaUsina().
+        concessionaria: true,
         distribuidora: true,
       },
     }),

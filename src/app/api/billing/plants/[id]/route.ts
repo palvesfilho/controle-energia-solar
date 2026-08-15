@@ -25,6 +25,9 @@ export async function GET(_req: NextRequest, ctx: RouteCtx) {
           name: true,
           numeroUsina: true,
           cpfCnpj: true,
+          // O cadastro grava `concessionaria`; `distribuidora` é legado da
+          // importação. Ver concessionariaDaUsina().
+          concessionaria: true,
           distribuidora: true,
           potenciaInstalada: true,
           dataAssinaturaContrato: true,

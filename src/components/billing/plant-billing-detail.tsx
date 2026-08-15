@@ -35,6 +35,7 @@ import { toast } from "sonner";
 import { UploadSlot } from "@/components/billing/upload-slot";
 import { BalancoHistoricoInvestidor } from "@/components/billing/balanco-historico-investidor";
 import { formatMonthYear, formatBRL } from "@/lib/formatters";
+import { concessionariaDaUsina } from "@/lib/concessionarias";
 import { isFinanceRole } from "@/lib/roles";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { formatCpfCnpj } from "@/lib/documento";
@@ -118,6 +119,8 @@ interface BillingDetail {
     name: string;
     numeroUsina: string | null;
     cpfCnpj: string | null;
+    // Mesmo conceito em dois campos — ver concessionariaDaUsina().
+    concessionaria: string | null;
     distribuidora: string | null;
     potenciaInstalada: number | null;
   };
@@ -750,8 +753,8 @@ export function PlantBillingDetail({
             <p className="font-medium">{formatCpfCnpj(data.plant.cpfCnpj)}</p>
           </div>
           <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">Distribuidora</p>
-            <p className="font-medium">{data.plant.distribuidora ?? "-"}</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Concessionária</p>
+            <p className="font-medium">{concessionariaDaUsina(data.plant) ?? "-"}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wide">Potência</p>

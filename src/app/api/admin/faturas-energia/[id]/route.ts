@@ -10,6 +10,7 @@ import {
   syncGeracaoInversorForBill,
 } from "@/lib/geracao-inversor";
 import { isMesEncerradoDaConsumerBill } from "@/lib/mes-encerrado";
+import { concessionariaDaUsina } from "@/lib/concessionarias";
 
 /**
  * GET /api/admin/faturas-energia/[id]
@@ -45,7 +46,12 @@ export async function GET(
         select: { codigoUc: true, nome: true, distribuidora: true },
       },
       plant: {
-        select: { unidadeConsumidora: true, name: true, distribuidora: true },
+        select: {
+          unidadeConsumidora: true,
+          name: true,
+          concessionaria: true,
+          distribuidora: true,
+        },
       },
     },
   });
@@ -62,7 +68,9 @@ export async function GET(
       ? {
           codigoUc: bill.plant.unidadeConsumidora ?? "—",
           nome: bill.plant.name,
-          distribuidora: bill.plant.distribuidora,
+          // A usina guarda o mesmo conceito em dois campos; o cadastro só grava
+          // `concessionaria`. Ver concessionariaDaUsina().
+          distribuidora: concessionariaDaUsina(bill.plant),
         }
       : null;
   return NextResponse.json({

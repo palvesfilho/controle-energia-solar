@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, CheckCircle2, FileText, Loader2, Minus, Search, ShieldCheck, XCircle } from "lucide-react";
 import { formatMonthYear, formatBRL } from "@/lib/formatters";
 import { matchBusca } from "@/lib/busca";
+import { concessionariaDaUsina } from "@/lib/concessionarias";
 
 interface Row {
   plant: {
@@ -15,6 +16,8 @@ interface Row {
     name: string;
     numeroUsina: string | null;
     cpfCnpj: string | null;
+    // Mesmo conceito em dois campos — ver concessionariaDaUsina().
+    concessionaria: string | null;
     distribuidora: string | null;
   };
   billing: {
@@ -213,7 +216,7 @@ export default function FaturamentoMesPage() {
                             <div className="text-xs text-muted-foreground">Nº {r.plant.numeroUsina}</div>
                           )}
                         </td>
-                        <td className="py-2.5 px-3 text-muted-foreground">{r.plant.distribuidora ?? "-"}</td>
+                        <td className="py-2.5 px-3 text-muted-foreground">{concessionariaDaUsina(r.plant) ?? "-"}</td>
                         <td className="py-2.5 px-3 text-right">
                           {r.billing?.valorTotal != null ? formatBRL(r.billing.valorTotal) : "-"}
                         </td>

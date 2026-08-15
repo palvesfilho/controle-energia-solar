@@ -22,12 +22,17 @@ import {
   X,
 } from "lucide-react";
 import { formatKWh } from "@/lib/formatters";
-import { CONCESSIONARIAS } from "@/lib/concessionarias";
+import {
+  CONCESSIONARIAS,
+  concessionariaDaUsina,
+  isConcessionariaValida,
+} from "@/lib/concessionarias";
 import { PlantCredentialsForm } from "@/components/plants/plant-credentials-form";
 import { PlantDocumentsCard } from "@/components/plants/plant-documents-card";
 import { MonitoringClientsPanel } from "@/components/plants/monitoring-clients-panel";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { ExcluirUsinaDialog } from "@/components/plants/excluir-usina-dialog";
+import { CidadeInput } from "@/components/ui/cidade-input";
 
 const PlantMonitoringCharts = dynamic(
   () =>
@@ -158,6 +163,9 @@ interface PlantData {
   unidadeConsumidora: string | null;
   unidadeConsumidoraAntiga: string | null;
   concessionaria: string | null;
+  // Campo legado do mesmo conceito, só preenchido nas usinas importadas.
+  // Ver concessionariaDaUsina().
+  distribuidora: string | null;
   formatoLeitura: string | null;
   regraInstalacao: string | null;
   dataAssinaturaContrato: string | null;
@@ -319,7 +327,10 @@ export default function UsinaPage() {
     setSelectedRegra(plantData?.regraInstalacao ?? "");
     setSelectedFormatoLeitura(plantData?.formatoLeitura ?? "");
     setSelectedEnquadramento(plantData?.enquadramento ?? "");
-    setSelectedConcessionaria(plantData?.concessionaria ?? "");
+    // Carrega o campo legado quando `concessionaria` está vazia (usinas da
+    // importação) e normaliza a grafia — sem isso o valor não casa com nenhuma
+    // <option>, o select abre vazio e o salvar apaga o campo em silêncio.
+    setSelectedConcessionaria(plantData ? (concessionariaDaUsina(plantData) ?? "") : "");
     setSelectedMarca(plantData?.inversorMarca ?? "");
     setSelectedModelo(plantData?.inversorModelo ?? "");
     setSelectedPlataforma(plantData?.monitoramentoPlataforma ?? "");
@@ -570,7 +581,7 @@ export default function UsinaPage() {
                 ["Geração Média Mensal", plant.geracaoMediaMensal ? formatKWh(plant.geracaoMediaMensal) : "-"],
                 ["Enquadramento", plant.enquadramento ?? "-"],
                 ["Unidade Consumidora", formatCodigoUc(plant.unidadeConsumidora) ?? "-"],
-                ["Concessionária", plant.concessionaria ?? "-"],
+                ["Concessionária", concessionariaDaUsina(plant) ?? "-"],
                 ["Formato Leitura", plant.formatoLeitura ?? "-"],
                 ["Marca Inversor", plant.inversorMarca ?? "-"],
                 ["Modelo Inversor", plant.inversorModelo ?? "-"],
@@ -640,7 +651,7 @@ export default function UsinaPage() {
         <form key={`dados-${plant.id}`} onSubmit={handleSaveDados} className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Nome da usina" name="name" defaultValue={plant.name} required />
-            <Field label="Localização" name="location" defaultValue={plant.location} />
+            <CidadeInput label="Cidade" name="location" defaultValue={plant.location} />
             {/*
               "Potência Instalada" é o tamanho da usina que TODAS as listagens
               usam — a coluna e o KPI de /admin/usinas leem `potenciaInstalada`,
@@ -678,6 +689,11 @@ export default function UsinaPage() {
                 {CONCESSIONARIAS.map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
+                {selectedConcessionaria && !isConcessionariaValida(selectedConcessionaria) && (
+                  <option value={selectedConcessionaria}>
+                    {selectedConcessionaria} (fora da lista)
+                  </option>
+                )}
               </select>
             </div>
             <div>
