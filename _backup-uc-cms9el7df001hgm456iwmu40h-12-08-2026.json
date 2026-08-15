@@ -1,0 +1,15 @@
+{
+  "uc": {
+    "id": "cms9el7df001hgm456iwmu40h",
+    "nome": "JEFERSON PIRES",
+    "codigoUc": "344264900159",
+    "codigoUcAntigo": null,
+    "_count": {
+      "bills": 0,
+      "billings": 0,
+      "investorPayables": 0,
+      "brasilSolarBeneficiarias": 0
+    }
+  },
+  "beneficiarias": []
+}

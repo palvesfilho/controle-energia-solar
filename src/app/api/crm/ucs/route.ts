@@ -13,6 +13,8 @@ import { corrigirMojibake, listarDocumentosAdesao } from "@/lib/crm-supabase";
  * constam no termo, e os documentos do cliente.
  *
  * ?situacao=PENDENTE|CONCLUIDA|IGNORADA  (padrão: PENDENTE)
+ * ?situacao=TODAS devolve as quatro abas de uma vez — é o que a tela usa, para
+ * a busca achar a UC em qualquer aba e não só na que está aberta.
  *
  * Os documentos são lidos do CRM ao vivo e não copiados: a lista muda lá
  * (cliente manda o contrato social depois) e a gente não quer cópia velha.
@@ -42,7 +44,10 @@ export async function GET(req: NextRequest) {
     // `adesaoCriadaEm` nulo — e em DESC o Postgres jogaria os nulos para o topo,
     // pondo justamente as mais antigas na frente. O próximo sync preenche.
     const ucs = await prisma.crmUcImportada.findMany({
-      where: { situacao, ...(vendaGanha === undefined ? {} : { vendaGanha }) },
+      where: {
+        ...(situacao === "TODAS" ? {} : { situacao }),
+        ...(vendaGanha === undefined ? {} : { vendaGanha }),
+      },
       orderBy: [
         { adesaoCriadaEm: { sort: "desc", nulls: "last" } },
         { adesaoIdCrm: "desc" },

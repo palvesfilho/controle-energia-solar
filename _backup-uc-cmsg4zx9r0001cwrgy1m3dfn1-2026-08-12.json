@@ -1,0 +1,108 @@
+{
+  "uc": {
+    "id": "cmsg4zx9r0001cwrgy1m3dfn1",
+    "nome": "ROSELAINE FERREIRA MACHADO",
+    "codigoUc": "184850200104",
+    "codigoUcAntigo": "3091402435",
+    "_count": {
+      "billings": 0,
+      "investorPayables": 0,
+      "bills": 12
+    }
+  },
+  "faturas": [
+    {
+      "id": "cmsqar9bv00ck31ee0fx051nu",
+      "mesReferencia": 6,
+      "anoReferencia": 2026,
+      "valorTotal": 220.18,
+      "createdAt": "2026-08-12T16:21:44.059Z"
+    },
+    {
+      "id": "cmsqarae800cm31ee6x60ct54",
+      "mesReferencia": 5,
+      "anoReferencia": 2026,
+      "valorTotal": null,
+      "createdAt": "2026-08-12T16:21:45.440Z"
+    },
+    {
+      "id": "cmsqarbf500co31eegwstsiu2",
+      "mesReferencia": 4,
+      "anoReferencia": 2026,
+      "valorTotal": 115.56,
+      "createdAt": "2026-08-12T16:21:46.768Z"
+    },
+    {
+      "id": "cmsqarcbg00cq31eeteyvge4i",
+      "mesReferencia": 3,
+      "anoReferencia": 2026,
+      "valorTotal": 111.99,
+      "createdAt": "2026-08-12T16:21:47.931Z"
+    },
+    {
+      "id": "cmsqardgl00cs31eetnjto0ty",
+      "mesReferencia": 2,
+      "anoReferencia": 2026,
+      "valorTotal": 92.89,
+      "createdAt": "2026-08-12T16:21:49.413Z"
+    },
+    {
+      "id": "cmsqarel400cu31eejausrvxr",
+      "mesReferencia": 1,
+      "anoReferencia": 2026,
+      "valorTotal": 92.57,
+      "createdAt": "2026-08-12T16:21:50.872Z"
+    },
+    {
+      "id": "cmsqarfkr00cw31eetv912o1n",
+      "mesReferencia": 12,
+      "anoReferencia": 2025,
+      "valorTotal": 28.9,
+      "createdAt": "2026-08-12T16:21:52.152Z"
+    },
+    {
+      "id": "cmsqargjn00cy31eesoasjwfh",
+      "mesReferencia": 11,
+      "anoReferencia": 2025,
+      "valorTotal": null,
+      "createdAt": "2026-08-12T16:21:53.410Z"
+    },
+    {
+      "id": "cmsqarhsr00d031eejp41fp3a",
+      "mesReferencia": 10,
+      "anoReferencia": 2025,
+      "valorTotal": null,
+      "createdAt": "2026-08-12T16:21:55.035Z"
+    },
+    {
+      "id": "cmsqariqk00d231eefmv6wcs3",
+      "mesReferencia": 9,
+      "anoReferencia": 2025,
+      "valorTotal": 115.77,
+      "createdAt": "2026-08-12T16:21:56.252Z"
+    },
+    {
+      "id": "cmsqarjx700d431eegg4xezex",
+      "mesReferencia": 8,
+      "anoReferencia": 2025,
+      "valorTotal": 328.49,
+      "createdAt": "2026-08-12T16:21:57.787Z"
+    },
+    {
+      "id": "cmsqarl3v00d631ee1itnx0yi",
+      "mesReferencia": 6,
+      "anoReferencia": 2025,
+      "valorTotal": 344.18,
+      "createdAt": "2026-08-12T16:21:59.323Z"
+    }
+  ],
+  "beneficiarias": [
+    {
+      "id": "cmsqaq1da00ci31eemvhpujmn",
+      "codigoUc": "184850200104",
+      "codigoUcAntigo": "3091402435",
+      "nome": "USINA - MÃE THIAGO",
+      "percentual": 0
+    }
+  ]
+}

@@ -18,14 +18,31 @@ export async function GET() {
           investor: { include: { user: { select: { name: true } } } },
         },
       },
-      consumerUnits: {
-        select: { id: true },
+      // Quantidade de UCs ligadas à usina = SÓ as que estão no rateio VIGENTE.
+      // O campo ConsumerUnit.plantId é cadastro (a UC que o operador marcou no
+      // formulário) e NÃO conta aqui: marcar a usina no form não prova que a
+      // concessionária compensa créditos dela pra aquela UC — só o rateio
+      // submetido e aceito prova. Usina sem rateio vigente = 0 UCs.
+      // O plantId continua existindo e alimenta a tela de Rateios, onde é a
+      // lista de candidatas pra montar o rateio.
+      rateioVersions: {
+        where: { status: "VIGENTE" },
+        select: { items: { select: { consumerUnitId: true } } },
       },
     },
     orderBy: { name: "asc" },
   });
 
-  return NextResponse.json(plants);
+  // Deduplicado por UC: normalmente há uma única versão VIGENTE por usina, mas
+  // contar por Set evita inflar caso apareça mais de uma.
+  const comContagem = plants.map(({ rateioVersions, ...plant }) => ({
+    ...plant,
+    ucsRateioCount: new Set(
+      rateioVersions.flatMap((v) => v.items.map((i) => i.consumerUnitId)),
+    ).size,
+  }));
+
+  return NextResponse.json(comContagem);
 }
 
 export async function POST(req: NextRequest) {

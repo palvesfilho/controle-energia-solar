@@ -42,7 +42,9 @@ interface PlantData {
     valorKwhContrato: number | null;
     investor: { user: { name: string } };
   }[];
-  consumerUnits: { id: string }[];
+  // UCs do rateio VIGENTE da usina — não é a contagem do ConsumerUnit.plantId.
+  // Usina sem rateio vigente vem 0. Ver comentário em /api/plants.
+  ucsRateioCount: number;
 }
 
 type SortKey = "name" | "potencia" | "geracao" | "ucs" | "status";
@@ -66,7 +68,7 @@ export default function UsinasPage() {
   const stats = useMemo(() => {
     const ativas = plants.filter((p) => p.statusContrato === "Ativo").length;
     const totalPotencia = plants.reduce((acc, p) => acc + (p.potenciaInstalada ?? 0), 0);
-    const totalUcs = plants.reduce((acc, p) => acc + p.consumerUnits.length, 0);
+    const totalUcs = plants.reduce((acc, p) => acc + p.ucsRateioCount, 0);
     return { total: plants.length, ativas, totalPotencia, totalUcs };
   }, [plants]);
 
@@ -105,7 +107,7 @@ export default function UsinasPage() {
           return (av - bv) * dir;
         }
         case "ucs":
-          return (a.consumerUnits.length - b.consumerUnits.length) * dir;
+          return (a.ucsRateioCount - b.ucsRateioCount) * dir;
         case "status":
           return ((a.statusContrato ?? "").localeCompare(b.statusContrato ?? "")) * dir;
       }
@@ -142,7 +144,7 @@ export default function UsinasPage() {
           value={`${stats.totalPotencia.toLocaleString("pt-BR")} kWp`}
           accent="blue"
         />
-        <StatCard icon={<Users className="h-4 w-4" />} label="UCs vinculadas" value={stats.totalUcs} accent="zinc" />
+        <StatCard icon={<Users className="h-4 w-4" />} label="UCs no rateio" value={stats.totalUcs} accent="zinc" />
       </div>
 
       <Card>
@@ -211,7 +213,17 @@ export default function UsinasPage() {
                       <td className="py-2.5 px-3 text-center">{plant.grupo ?? "-"}</td>
                       <td className="py-2.5 px-3">{concessionariaDaUsina(plant) ?? "-"}</td>
                       <td className="py-2.5 px-3 text-center">
-                        <Badge variant="secondary">{plant.consumerUnits.length}</Badge>
+                        <Badge
+                          variant={plant.ucsRateioCount > 0 ? "secondary" : "outline"}
+                          className={plant.ucsRateioCount > 0 ? "" : "text-muted-foreground"}
+                          title={
+                            plant.ucsRateioCount > 0
+                              ? `${plant.ucsRateioCount} UC(s) no rateio vigente`
+                              : "Sem rateio vigente — nenhuma UC ligada a esta usina"
+                          }
+                        >
+                          {plant.ucsRateioCount}
+                        </Badge>
                       </td>
                       <td className="py-2.5 px-3 text-center">
                         <Badge

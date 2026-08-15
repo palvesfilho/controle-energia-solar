@@ -11,6 +11,9 @@ import { pertenceAoModulo, type ModuloCrm } from "@/lib/crm-modulo";
  *
  * ?situacao=PENDENTE|ASSINADA_SEM_VENDA|NAO_CLASSIFICADO|CONCLUIDA|IGNORADA
  * Sem o parâmetro, devolve tudo que exige atenção humana.
+ * ?situacao=TODAS devolve também as já cadastradas e ignoradas — é o que a
+ * tela usa para a BUSCA achar quem já saiu da fila. Sem isso, procurar um
+ * cliente que já foi cadastrado não devolvia nada e a busca parecia quebrada.
  *
  * ?modulo=assoc|bs  restringe ao módulo do AURA. Ver [[crm-modulo]]: a
  * Associação vê só as adesões de desconto na fatura; a Brasil Solar vê obra e
@@ -36,10 +39,14 @@ export async function GET(req: NextRequest) {
   const modulo = moduloBruto as ModuloCrm | null;
 
   try {
+    const situacaoAlvo = situacao?.toUpperCase();
     const linhas = await prisma.crmVendaImportada.findMany({
-      where: situacao
-        ? { situacao: situacao.toUpperCase() }
-        : { situacao: { in: EXIGEM_ATENCAO } },
+      where:
+        situacaoAlvo === "TODAS"
+          ? {}
+          : situacaoAlvo
+            ? { situacao: situacaoAlvo }
+            : { situacao: { in: EXIGEM_ATENCAO } },
       orderBy: [{ situacao: "asc" }, { fechadoEm: "desc" }],
     });
 

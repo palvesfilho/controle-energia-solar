@@ -527,9 +527,13 @@ export async function computeAnaliseCreditos(
   // 7) UCs sem rateio
   const rateios = await prisma.rateioVersion.findMany({
     where: { plantId: { in: plantIds }, status: "VIGENTE" },
-    select: { plantId: true },
+    select: { plantId: true, items: { select: { consumerUnitId: true } } },
   });
   const plantsComRateio = new Set(rateios.map((r) => r.plantId));
+  // Este KPI é justamente o da DIVERGÊNCIA: conta UCs que o cadastro amarrou
+  // numa usina (ConsumerUnit.plantId) sem que exista rateio vigente lá. Por
+  // isso ele continua olhando o plantId — é o único lugar onde o vínculo de
+  // cadastro é a métrica desejada, e não a contagem oficial de UCs da usina.
   const ucsSemRateio = ucs.filter(
     (u) => u.plantId && !plantsComRateio.has(u.plantId),
   ).length;
@@ -792,20 +796,29 @@ export async function computeAnaliseCreditos(
     if (!a.plantId) continue;
     acoesPorPlant.set(a.plantId, (acoesPorPlant.get(a.plantId) ?? 0) + 1);
   }
+  // UCs da usina = as do rateio VIGENTE, não as do ConsumerUnit.plantId. Usina
+  // sem rateio vigente fica com 0 aqui, mesmo tendo UC amarrada no cadastro —
+  // a divergência aparece no KPI "UCs sem rateio vigente" (item 7).
   const ucsPorPlantCount = new Map<string, number>();
   const ucsFaltantesPorPlant = new Map<string, number>();
-  for (const uc of ucs) {
-    if (!uc.plantId) continue;
-    ucsPorPlantCount.set(
-      uc.plantId,
-      (ucsPorPlantCount.get(uc.plantId) ?? 0) + 1,
-    );
+  for (const r of rateios) {
+    const jaContadas = ucsPorPlantCount.get(r.plantId) ?? 0;
+    ucsPorPlantCount.set(r.plantId, jaContadas + r.items.length);
+  }
+  // Faltantes por usina segue a MESMA base do ucsCount acima (rateio vigente),
+  // senão a linha ficaria incoerente: "0 UCs" com "7 faltantes". Uma UC amarrada
+  // no cadastro mas fora do rateio continua contando na completude GLOBAL de
+  // faturas (item 4) — só não é atribuída a esta usina.
+  const plantDoUcNoRateio = new Map<string, string>();
+  for (const r of rateios) {
+    for (const it of r.items) plantDoUcNoRateio.set(it.consumerUnitId, r.plantId);
   }
   for (const f of ucsFaltantes) {
-    if (!f.plantId) continue;
+    const plantId = plantDoUcNoRateio.get(f.consumerUnitId);
+    if (!plantId) continue;
     ucsFaltantesPorPlant.set(
-      f.plantId,
-      (ucsFaltantesPorPlant.get(f.plantId) ?? 0) + 1,
+      plantId,
+      (ucsFaltantesPorPlant.get(plantId) ?? 0) + 1,
     );
   }
 

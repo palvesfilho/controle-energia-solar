@@ -10,6 +10,13 @@
  * Por que duas rotas em vez de uma com querystring: o AURA descobre o módulo
  * pelo PATH (`detectAdminModule`). Uma rota só faria o sidebar da Brasil Solar
  * pular para o da Associação no clique.
+ *
+ * BUSCA (corrigida em 15/08/2026): é uma só, aqui no topo, e vale para a tela
+ * inteira — inclusive para a lista de UCs assinadas, que tinha campo próprio.
+ * Eram dois campos: o de cima, que parece ser "a busca da tela", não mexia na
+ * lista de baixo. E ela só enxergava a fila de pendências: procurar um cliente
+ * já cadastrado não devolvia nada, porque a API nem trazia os resolvidos. Agora
+ * a tela carrega TODAS as situações e a busca varre tudo.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -30,6 +37,8 @@ import {
   FileSignature,
   HelpCircle,
   HardHat,
+  CheckCheck,
+  Undo2,
 } from "lucide-react";
 import { matchBusca } from "@/lib/busca";
 import { formatCpfCnpjComRotulo } from "@/lib/documento";
@@ -102,6 +111,20 @@ const CAIXAS = [
   },
 ] as const;
 
+/**
+ * Caixa que só aparece com busca ativa: as vendas que já saíram da fila
+ * (cadastradas ou ignoradas). Fora da busca ela não existe, para a tela
+ * continuar sendo a lista do que falta fazer.
+ */
+const CAIXA_RESOLVIDAS = {
+  chave: "RESOLVIDAS",
+  titulo: "Já resolvidas",
+  descricao:
+    "Vendas que já foram cadastradas ou ignoradas. Aparecem porque a busca está ativa — é onde o cliente que você procura costuma estar quando some da fila.",
+  icone: CheckCheck,
+  cor: "from-sky-500 to-indigo-600",
+} as const;
+
 function formatarData(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -128,9 +151,11 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
 
   const textos = TEXTOS[modulo];
 
+  // `situacao=TODAS`: as caixas continuam mostrando só o que exige atenção, mas
+  // as vendas já cadastradas/ignoradas ficam carregadas para a busca alcançar.
   const carregar = useCallback(() => {
     setLoading(true);
-    fetch(`/api/crm/fila?modulo=${modulo}`)
+    fetch(`/api/crm/fila?modulo=${modulo}&situacao=TODAS`)
       .then(async (res) => {
         if (!res.ok) {
           const texto = await res.text();
@@ -187,7 +212,10 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
     }
   }
 
-  async function decidir(item: ItemFila, situacao: "CONCLUIDA" | "IGNORADA") {
+  async function decidir(
+    item: ItemFila,
+    situacao: "CONCLUIDA" | "IGNORADA" | "PENDENTE",
+  ) {
     setActing(item.id);
     try {
       const res = await fetch(`/api/crm/fila/${item.id}`, {
@@ -197,9 +225,17 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
       });
       if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
       toast.success(
-        situacao === "CONCLUIDA" ? "Marcada como cadastrada." : "Item ignorado.",
+        situacao === "CONCLUIDA"
+          ? "Marcada como cadastrada."
+          : situacao === "IGNORADA"
+            ? "Item ignorado."
+            : "Item reaberto — voltou para a fila.",
       );
-      setItens((prev) => prev.filter((i) => i.id !== item.id));
+      // Muda a situação em vez de remover: sai das caixas de pendência sozinho,
+      // e continua achável pela busca (é justamente o que faltava).
+      setItens((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, situacao } : i)),
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(`Falha ao atualizar: ${msg}`);
@@ -207,6 +243,8 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
       setActing(null);
     }
   }
+
+  const buscando = search.trim() !== "";
 
   const filtrados = itens.filter((i) =>
     matchBusca(search, [
@@ -216,7 +254,15 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
       i.codigosUc,
       i.cidade,
       i.numeroProposta,
+      String(i.propostaIdCrm),
+      i.vendedorEmail,
     ]),
+  );
+
+  // Vendas que já saíram da fila. Só aparecem com busca ativa: sem termo, a
+  // tela é a lista de trabalho, não o histórico.
+  const resolvidos = filtrados.filter(
+    (i) => i.situacao === "CONCLUIDA" || i.situacao === "IGNORADA",
   );
 
   return (
@@ -258,21 +304,33 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
         </Card>
       )}
 
+      {/* Uma busca só para a tela inteira — inclusive para a lista de UCs
+          abaixo, que tinha um campo próprio e ficava surda a este. */}
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           className="pl-9"
-          placeholder="Buscar por cliente, produto, UC, documento…"
+          placeholder="Buscar por cliente, produto, UC, documento, proposta…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        {buscando && (
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            title="Limpar busca"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* Na Associação o trabalho é por UC, não por proposta: a caixa
           "A cadastrar" vira a lista de UCs assinadas, com kWh e documentos.
           As outras duas caixas continuam por proposta, porque são exceções da
           VENDA (produto sem destino, adesão sem venda ganha) e não de uma UC. */}
-      {modulo === "assoc" && <UcsAssinadasCrm key={versaoUcs} />}
+      {modulo === "assoc" && <UcsAssinadasCrm key={versaoUcs} search={search} />}
 
       {loading ? (
         <Card>
@@ -281,8 +339,17 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
           </CardContent>
         </Card>
       ) : (
-        CAIXAS.filter((c) => !(modulo === "assoc" && c.chave === "PENDENTE")).map((caixa) => {
-          const daCaixa = filtrados.filter((i) => i.situacao === caixa.chave);
+        [
+          ...CAIXAS.filter((c) => !(modulo === "assoc" && c.chave === "PENDENTE")),
+          // Caixa que só existe durante a busca: o histórico não é lista de
+          // trabalho, mas precisa ser encontrável.
+          ...(buscando && resolvidos.length > 0 ? [CAIXA_RESOLVIDAS] : []),
+        ].map((caixa) => {
+          const daCaixa =
+            caixa.chave === "RESOLVIDAS"
+              ? resolvidos
+              : filtrados.filter((i) => i.situacao === caixa.chave);
+          if (buscando && daCaixa.length === 0) return null;
           const Icone = caixa.icone;
           const descricao =
             caixa.chave === "PENDENTE" ? textos.pendente : caixa.descricao;
@@ -321,6 +388,11 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
                               <div className="flex flex-wrap items-center gap-2">
                                 <h3 className="truncate font-semibold">{item.clienteNome}</h3>
                                 <Badge variant="secondary">{item.nomeProduto}</Badge>
+                                {caixa.chave === "RESOLVIDAS" && (
+                                  <Badge variant="outline">
+                                    {item.situacao === "CONCLUIDA" ? "cadastrada" : "ignorada"}
+                                  </Badge>
+                                )}
                                 {item.obraId && <Badge variant="outline">obra criada</Badge>}
                                 {item.situacao === "ASSINADA_SEM_VENDA" && (
                                   <Badge variant="outline" className="gap-1">
@@ -354,7 +426,17 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
                               </div>
                             </div>
 
-                            {caixa.chave !== "NAO_CLASSIFICADO" && (
+                            {caixa.chave === "RESOLVIDAS" ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={acting === item.id}
+                                onClick={() => decidir(item, "PENDENTE")}
+                              >
+                                <Undo2 className="mr-1 h-4 w-4" />
+                                Reabrir
+                              </Button>
+                            ) : caixa.chave !== "NAO_CLASSIFICADO" ? (
                               <div className="flex shrink-0 items-center gap-2">
                                 <Button
                                   size="sm"
@@ -374,7 +456,7 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
                                   Já cadastrei
                                 </Button>
                               </div>
-                            )}
+                            ) : null}
                           </div>
                         </CardContent>
                       </Card>
@@ -385,6 +467,17 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
             </section>
           );
         })
+      )}
+
+      {/* Com busca ativa as caixas vazias somem; sem esta linha, buscar algo
+          inexistente deixaria a tela em branco e pareceria a busca travada. */}
+      {!loading && buscando && filtrados.length === 0 && (
+        <Card>
+          <CardContent className="p-6 text-center text-sm text-muted-foreground">
+            Nenhuma venda do CRM casa com &ldquo;{search}&rdquo; — nem entre as já
+            cadastradas ou ignoradas.
+          </CardContent>
+        </Card>
       )}
     </div>
   );

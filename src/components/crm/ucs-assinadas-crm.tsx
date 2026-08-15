@@ -11,6 +11,12 @@
  * A fatura de energia não aparece de propósito: o que o Gestor precisa é do
  * número da UC, que já vem no termo. O PDF da fatura serve à conferência de
  * comissão do vendedor e fica no CRM.
+ *
+ * A BUSCA vem de fora, do topo da tela (ver [[fila-crm]]): esta lista tinha um
+ * campo próprio, e com dois campos na mesma página o de cima — o que parece ser
+ * "a busca da tela" — não mexia nesta lista. Agora é um só. E, com termo
+ * digitado, a busca ignora a aba aberta e varre as quatro: procurar uma UC que
+ * já foi cadastrada devolvia "nada aqui" só porque a aba era outra.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -19,11 +25,9 @@ import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
   Plug,
-  Search,
   Check,
   X,
   FileText,
@@ -154,26 +158,21 @@ function enderecoCompleto(u: UcAssinada): string {
   return [linha, local, cep].filter(Boolean).join(" — ");
 }
 
-export function UcsAssinadasCrm() {
+export function UcsAssinadasCrm({ search = "" }: { search?: string }) {
   const [ucs, setUcs] = useState<UcAssinada[]>([]);
   const [aviso, setAviso] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
   const [acting, setActing] = useState<string | null>(null);
   const [aba, setAba] = useState<Aba>("PENDENTE");
-  const [contagens, setContagens] = useState<Record<Aba, number | null>>({
-    PENDENTE: null,
-    SEM_VENDA: null,
-    CONCLUIDA: null,
-    IGNORADA: null,
-  });
 
+  /**
+   * Carrega as QUATRO abas de uma vez e divide aqui. São dezenas de linhas, não
+   * milhares — e é o que permite a busca achar em aba fechada. Buscar só dentro
+   * da aba aberta é o que fazia a busca parecer morta.
+   */
   const carregar = useCallback(() => {
     setLoading(true);
-    const cfg = ABAS.find((a) => a.chave === aba)!;
-    const qs = new URLSearchParams({ situacao: cfg.situacao });
-    if (cfg.vendaGanha) qs.set("vendaGanha", cfg.vendaGanha);
-    fetch(`/api/crm/ucs?${qs.toString()}`)
+    fetch(`/api/crm/ucs?situacao=TODAS`)
       .then(async (res) => {
         const texto = await res.text();
         let corpo: { ucs?: UcAssinada[]; avisoDocumentos?: string; error?: string; hint?: string } = {};
@@ -188,17 +187,15 @@ export function UcsAssinadasCrm() {
         return corpo;
       })
       .then((corpo) => {
-        const lista = Array.isArray(corpo.ucs) ? corpo.ucs : [];
-        setUcs(lista);
+        setUcs(Array.isArray(corpo.ucs) ? corpo.ucs : []);
         setAviso(corpo.avisoDocumentos ?? null);
-        setContagens((c) => ({ ...c, [aba]: lista.length }));
       })
       .catch((err: Error) => {
         console.error("Erro ao carregar UCs do CRM:", err);
         toast.error(`Erro ao carregar as UCs: ${err.message}`);
       })
       .finally(() => setLoading(false));
-  }, [aba]);
+  }, []);
 
   useEffect(() => {
     carregar();
@@ -219,14 +216,11 @@ export function UcsAssinadasCrm() {
         });
         if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
 
-        const de = abaDe(uc.situacao, uc.vendaGanha);
+        // Muda a situação em vez de tirar da lista: a linha continua carregada
+        // e some só da aba de origem. Removê-la faria a UC desaparecer também
+        // da aba de destino até o próximo F5 — e da busca.
         const para = abaDe(situacao, uc.vendaGanha);
-        setUcs((prev) => prev.filter((x) => x.id !== uc.id));
-        setContagens((c) => ({
-          ...c,
-          [de]: Math.max(0, (c[de] ?? 1) - 1),
-          [para]: (c[para] ?? 0) + 1,
-        }));
+        setUcs((prev) => prev.map((x) => (x.id === uc.id ? { ...x, situacao } : x)));
 
         if (avisar) {
           const rotulo = ABAS.find((a) => a.chave === para)?.rotulo ?? situacao;
@@ -275,13 +269,9 @@ export function UcsAssinadasCrm() {
       if (d.falhas?.length) {
         toast.warning(`Não copiados: ${d.falhas.join(" · ")}`);
       }
-      const de = abaDe(uc.situacao, uc.vendaGanha);
-      setUcs((prev) => prev.filter((x) => x.id !== uc.id));
-      setContagens((c) => ({
-        ...c,
-        [de]: Math.max(0, (c[de] ?? 1) - 1),
-        CONCLUIDA: (c.CONCLUIDA ?? 0) + 1,
-      }));
+      setUcs((prev) =>
+        prev.map((x) => (x.id === uc.id ? { ...x, situacao: "CONCLUIDA" } : x)),
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error(`Falha ao vincular: ${msg}`);
@@ -290,7 +280,9 @@ export function UcsAssinadasCrm() {
     }
   }
 
-  const filtradas = ucs.filter((u) =>
+  const buscando = search.trim() !== "";
+
+  const casaBusca = (u: UcAssinada) =>
     matchBusca(search, [
       u.codigoUc,
       u.codigoUcBruto,
@@ -302,7 +294,24 @@ export function UcsAssinadasCrm() {
       u.logradouro,
       u.representanteNome,
       u.concessionaria,
-    ]),
+    ]);
+
+  const achadas = ucs.filter(casaBusca);
+  // Com termo digitado a aba deixa de filtrar: quem procura um cliente quer
+  // achá-lo mesmo que ele já tenha sido cadastrado ou ignorado. Cada card
+  // mostra a aba a que pertence, então não se perde de vista o estado dele.
+  const filtradas = buscando
+    ? achadas
+    : achadas.filter((u) => abaDe(u.situacao, u.vendaGanha) === aba);
+
+  // Contagem sempre sobre a lista inteira — a aba mostra quantas existem, não
+  // quantas sobraram do filtro.
+  const contagens = ABAS.reduce(
+    (acc, a) => {
+      acc[a.chave] = ucs.filter((u) => abaDe(u.situacao, u.vendaGanha) === a.chave).length;
+      return acc;
+    },
+    {} as Record<Aba, number>,
   );
 
   const totalKwh = filtradas.reduce((s, u) => s + (u.mediaMensalKwh ?? 0), 0);
@@ -332,7 +341,10 @@ export function UcsAssinadasCrm() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1 border-b">
+      {/* Buscando, as abas param de recortar a lista — ficam desbotadas para
+          deixar isso explícito, em vez de a aba marcada mentir sobre o que
+          está na tela. */}
+      <div className={cn("flex flex-wrap gap-1 border-b", buscando && "opacity-60")}>
         {ABAS.map((a) => (
           <button
             key={a.chave}
@@ -340,20 +352,27 @@ export function UcsAssinadasCrm() {
             onClick={() => setAba(a.chave)}
             className={cn(
               "-mb-px border-b-2 px-3 py-2 text-sm transition-colors",
-              aba === a.chave
+              aba === a.chave && !buscando
                 ? "border-primary font-medium text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             {a.rotulo}
-            {contagens[a.chave] != null && (
-              <span className="ml-1.5 text-xs text-muted-foreground">
-                {contagens[a.chave]}
-              </span>
-            )}
+            <span className="ml-1.5 text-xs text-muted-foreground">
+              {buscando
+                ? achadas.filter((u) => abaDe(u.situacao, u.vendaGanha) === a.chave).length
+                : contagens[a.chave]}
+            </span>
           </button>
         ))}
       </div>
+
+      {buscando && (
+        <p className="text-xs text-muted-foreground">
+          Busca ativa: mostrando as {filtradas.length} UC(s) que casam em <b>todas</b> as
+          abas. Limpe a busca para voltar a ver só a aba aberta.
+        </p>
+      )}
 
       {semKwh > 0 && (
         <Card className="border-amber-500/40">
@@ -377,16 +396,6 @@ export function UcsAssinadasCrm() {
         </Card>
       )}
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          className="pl-9"
-          placeholder="Buscar por UC, cliente, documento, cidade, e-mail…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-
       {loading ? (
         <Card>
           <CardContent className="p-10 text-center text-sm text-muted-foreground">
@@ -396,18 +405,24 @@ export function UcsAssinadasCrm() {
       ) : filtradas.length === 0 ? (
         <Card>
           <CardContent className="p-6 text-center text-sm text-muted-foreground">
-            {aba === "PENDENTE"
-              ? "Nenhuma UC assinada esperando cadastro."
-              : aba === "SEM_VENDA"
-                ? "Nenhuma adesão assinada com a venda em aberto."
-              : aba === "CONCLUIDA"
-                ? "Nenhuma UC cadastrada a partir do CRM ainda."
-                : "Nenhuma UC ignorada."}
+            {buscando
+              ? `Nenhuma UC do CRM casa com "${search}" — em nenhuma das abas.`
+              : aba === "PENDENTE"
+                ? "Nenhuma UC assinada esperando cadastro."
+                : aba === "SEM_VENDA"
+                  ? "Nenhuma adesão assinada com a venda em aberto."
+                  : aba === "CONCLUIDA"
+                    ? "Nenhuma UC cadastrada a partir do CRM ainda."
+                    : "Nenhuma UC ignorada."}
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-3">
-          {filtradas.map((u) => (
+          {filtradas.map((u) => {
+            // A aba é do CARD, não a selecionada: buscando, a lista mistura as
+            // quatro, e os botões precisam ser os do estado daquela UC.
+            const abaDoCard = abaDe(u.situacao, u.vendaGanha);
+            return (
             <Card key={u.id}>
               <CardContent className="space-y-3 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-4">
@@ -416,6 +431,11 @@ export function UcsAssinadasCrm() {
                       <span className="font-mono text-base font-semibold">
                         {u.codigoUcBruto || u.codigoUc}
                       </span>
+                      {buscando && (
+                        <Badge variant="outline">
+                          {ABAS.find((a) => a.chave === abaDoCard)?.rotulo}
+                        </Badge>
+                      )}
                       <Badge variant="secondary" className="gap-1">
                         <Zap className="h-3 w-3" />
                         {u.mediaMensalKwh != null
@@ -493,7 +513,7 @@ export function UcsAssinadasCrm() {
                     {/* Sem venda fechada não é trabalho, é espera: só dá para
                         ignorar. Cadastrar aqui seria cadastrar um negócio que
                         ainda pode não acontecer. */}
-                    {aba === "SEM_VENDA" ? (
+                    {abaDoCard === "SEM_VENDA" ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -503,7 +523,7 @@ export function UcsAssinadasCrm() {
                         <X className="mr-1 h-4 w-4" />
                         Ignorar
                       </Button>
-                    ) : aba === "PENDENTE" ? (
+                    ) : abaDoCard === "PENDENTE" ? (
                       <>
                         <Button
                           size="sm"
@@ -617,7 +637,8 @@ export function UcsAssinadasCrm() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>
