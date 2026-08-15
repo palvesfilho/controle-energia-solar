@@ -354,9 +354,11 @@ function RegimeDommoToggle({
 
       {checked && (
         <p className="mt-2 text-xs text-amber-800 dark:text-amber-300 border-t border-amber-300/60 pt-2">
-          🚧 A fórmula de remuneração deste regime ainda <b>não está implementada</b>.
-          Enquanto isso o sistema <b>não gera</b> parcelas nem relatório para esta
-          usina — de propósito, para não pagar um valor errado.
+          A remuneração é apurada como <b>valor cheio menos o desconto do cliente</b>,
+          somando consumo instantâneo, energia compensada e bandeiras. O cap de
+          injeção não se aplica. Quando faltar dado para apurar — tarifa da fatura
+          corrompida ou UC sem desconto cadastrado — a parcela <b>não</b> é gerada, e
+          o motivo aparece na tela de faturamento da usina.
         </p>
       )}
 

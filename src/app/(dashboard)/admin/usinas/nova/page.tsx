@@ -369,9 +369,9 @@ export default function NovaUsinaPage() {
                       </label>
                       {isUsinaDommo && (
                         <p className="mt-2 text-xs text-amber-800 dark:text-amber-300 border-t border-amber-300/60 pt-2">
-                          🚧 A fórmula deste regime ainda <b>não está implementada</b>:
-                          o sistema <b>não gera</b> parcelas nem relatório para esta
-                          usina até ela ser definida.
+                          A remuneração é apurada como <b>valor cheio menos o desconto
+                          do cliente</b> (instantâneo + compensado + bandeiras). O cap
+                          de injeção não se aplica.
                         </p>
                       )}
                     </div>
