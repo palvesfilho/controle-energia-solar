@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, CheckCircle2, Loader2, Upload, Zap } from "lucide-react";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { formatCpfCnpj } from "@/lib/documento";
 
 interface Proprietario {
   id: string;
@@ -156,7 +157,7 @@ export default function ValidarInversorPage() {
                   {proprietarios.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.nome}
-                      {p.cpfCnpj ? ` · ${p.cpfCnpj}` : ""}
+                      {p.cpfCnpj ? ` · ${formatCpfCnpj(p.cpfCnpj)}` : ""}
                     </option>
                   ))}
                 </select>

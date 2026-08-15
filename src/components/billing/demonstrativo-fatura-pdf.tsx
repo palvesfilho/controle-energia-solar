@@ -16,6 +16,7 @@ import type {
   DemonstrativoFaturaBoleto,
 } from "@/lib/demonstrativo-fatura";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { formatCpfCnpj } from "@/lib/documento";
 
 // Paleta do handoff Brasil Solar
 const C = {
@@ -411,7 +412,7 @@ export function DemonstrativoFaturaPdf({ data }: { data: DemonstrativoFaturaData
         <View style={s.topbar}>
           <View style={{ flex: 1 }}>
             <Text style={s.clienteNome}>{data.cliente.nome}</Text>
-            {data.cliente.cnpj ? <Text style={s.clienteSub}>CPF/CNPJ {data.cliente.cnpj}</Text> : null}
+            {data.cliente.cnpj ? <Text style={s.clienteSub}>CPF/CNPJ {formatCpfCnpj(data.cliente.cnpj)}</Text> : null}
             {data.cliente.endereco ? <Text style={s.clienteSub}>{data.cliente.endereco}</Text> : null}
           </View>
           <View style={s.brandWrap}>

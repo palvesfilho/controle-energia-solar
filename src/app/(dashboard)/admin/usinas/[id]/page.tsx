@@ -150,6 +150,7 @@ interface PlantData {
   id: string;
   name: string;
   location: string | null;
+  potenciaInstalada: number | null;
   potenciaModulos: number | null;
   potenciaInversor: number | null;
   geracaoMediaMensal: number | null;
@@ -527,7 +528,10 @@ export default function UsinaPage() {
         <StatCard
           icon={<Zap className="h-4 w-4" />}
           label="Potência"
-          value={`${plant.potenciaModulos ?? "-"} kWp`}
+          // Lia `potenciaModulos`, que está null nas 29 usinas da frota — o card
+          // mostrava "- kWp" para todas. O tamanho da usina de verdade mora em
+          // `potenciaInstalada`, o mesmo campo da lista e do KPI de /admin/usinas.
+          value={plant.potenciaInstalada != null ? `${plant.potenciaInstalada} kWp` : "-"}
           accent="amber"
         />
         <StatCard
@@ -560,6 +564,7 @@ export default function UsinaPage() {
             <div className="text-sm font-medium mb-2">Dados técnicos</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
               {[
+                ["Potência Instalada", plant.potenciaInstalada != null ? `${plant.potenciaInstalada} kWp` : "-"],
                 ["Potência Módulos", `${plant.potenciaModulos ?? "-"} kWp`],
                 ["Potência Inversor", `${plant.potenciaInversor ?? "-"} kW`],
                 ["Geração Média Mensal", plant.geracaoMediaMensal ? formatKWh(plant.geracaoMediaMensal) : "-"],
@@ -636,6 +641,15 @@ export default function UsinaPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Nome da usina" name="name" defaultValue={plant.name} required />
             <Field label="Localização" name="location" defaultValue={plant.location} />
+            {/*
+              "Potência Instalada" é o tamanho da usina que TODAS as listagens
+              usam — a coluna e o KPI de /admin/usinas leem `potenciaInstalada`,
+              não os dois campos abaixo. Ficou de fora deste formulário até
+              15/08/2026: dava pra editar módulos e inversor, mas o número que
+              as telas mostram vinha da carga inicial e não tinha por onde ser
+              corrigido (o VITOR PAULO BOLZAN travou em 35 por isso).
+            */}
+            <Field label="Potência Instalada (kWp)" name="potenciaInstalada" type="number" step="0.01" defaultValue={plant.potenciaInstalada} />
             <Field label="Potência Módulos (kWp)" name="potenciaModulos" type="number" step="0.01" defaultValue={plant.potenciaModulos} />
             <Field label="Potência Inversor (kW)" name="potenciaInversor" type="number" step="0.01" defaultValue={plant.potenciaInversor} />
             <Field label="Geração Média Mensal (kWh)" name="geracaoMediaMensal" type="number" step="0.01" defaultValue={plant.geracaoMediaMensal} />

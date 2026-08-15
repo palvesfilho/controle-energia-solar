@@ -235,6 +235,12 @@ export default function NovaUsinaPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <FormField label="Nome da usina" name="name" required placeholder="Ex: Usina Solar Centro" />
                   <FormField label="Localização" name="location" placeholder="Cidade, Estado" />
+                  {/*
+                    "Potência Instalada" é o tamanho da usina que as listagens
+                    usam (coluna e KPI de /admin/usinas). Sem ele aqui, toda
+                    usina nascia com o campo null e só a API conseguia preencher.
+                  */}
+                  <FormField label="Potência Instalada (kWp)" name="potenciaInstalada" type="number" step="0.01" />
                   <FormField label="Potência Módulos (kWp)" name="potenciaModulos" type="number" step="0.01" />
                   <FormField label="Potência Inversor (kW)" name="potenciaInversor" type="number" step="0.01" />
                   <FormField label="Geração Média Mensal (kWh)" name="geracaoMediaMensal" type="number" step="0.01" />

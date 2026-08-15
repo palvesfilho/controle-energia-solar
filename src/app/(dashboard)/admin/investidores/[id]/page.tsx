@@ -29,6 +29,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { formatCpfCnpj } from "@/lib/documento";
 
 interface ConsumerData {
   id: string;
@@ -322,7 +323,7 @@ export default function DetalhesInvestidorPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <InfoItem icon={Mail} label="Email" value={investor.user.email} />
             <InfoItem icon={Phone} label="Telefone" value={investor.phone} />
-            <InfoItem icon={FileText} label="CPF" value={investor.cpf || investor.document} />
+            <InfoItem icon={FileText} label="CPF" value={formatCpfCnpj(investor.cpf || investor.document, "")} />
             <InfoItem
               icon={Calendar}
               label="Data de Nascimento"
@@ -352,7 +353,7 @@ export default function DetalhesInvestidorPage() {
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <InfoItem icon={Building2} label="Nome da Empresa" value={investor.nomeEmpresa} />
-            <InfoItem icon={FileText} label="CNPJ" value={investor.cnpj} />
+            <InfoItem icon={FileText} label="CNPJ" value={formatCpfCnpj(investor.cnpj, "")} />
             <InfoItem icon={MapPin} label="Endereço" value={investor.enderecoEmpresa} />
             <InfoItem label="Número" value={investor.numeroEmpresa} />
             <InfoItem label="Complemento" value={investor.complementoEmpresa} />

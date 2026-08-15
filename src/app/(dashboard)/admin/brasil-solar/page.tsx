@@ -22,6 +22,7 @@ import {
   History,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatCpfCnpj } from "@/lib/documento";
 import { toast } from "sonner";
 
 interface BrasilSolarClient {
@@ -358,7 +359,7 @@ export default function BrasilSolarPage() {
                           />
                         </div>
                         {client.cpfCnpj && (
-                          <p className="text-[10px] text-muted-foreground">{client.cpfCnpj}</p>
+                          <p className="text-[10px] text-muted-foreground">{formatCpfCnpj(client.cpfCnpj)}</p>
                         )}
                       </td>
                       <td className="py-2.5 px-3">

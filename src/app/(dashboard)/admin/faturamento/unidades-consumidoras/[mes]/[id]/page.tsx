@@ -10,6 +10,7 @@ import { formatMonthYear, formatBRL } from "@/lib/formatters";
 import { brand, brandGradient } from "@/lib/brand-colors";
 import { parseInstallments, type BillingInstallment } from "@/lib/billing-installments";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { formatCpfCnpj } from "@/lib/documento";
 
 interface BillingDetail {
   id: string;
@@ -254,7 +255,7 @@ export default function CobrancaUCDetalhePage() {
             >
               CPF/CNPJ
             </p>
-            <p className="font-medium">{data.consumerUnit.cpfCnpj ?? "-"}</p>
+            <p className="font-medium">{formatCpfCnpj(data.consumerUnit.cpfCnpj)}</p>
           </div>
           <div>
             <p

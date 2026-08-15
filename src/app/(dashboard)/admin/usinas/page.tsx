@@ -16,6 +16,8 @@ import {
   Factory,
 } from "lucide-react";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { formatCpfCnpj } from "@/lib/documento";
+import { formatKWh } from "@/lib/formatters";
 import { matchBusca } from "@/lib/busca";
 import { ExcluirUsinaDialog } from "@/components/plants/excluir-usina-dialog";
 
@@ -26,6 +28,7 @@ interface PlantData {
   numeroUsina: string | null;
   unidadeConsumidora: string | null;
   potenciaInstalada: number | null;
+  geracaoMediaMensal: number | null;
   grupo: string | null;
   cpfCnpj: string | null;
   distribuidora: string | null;
@@ -39,7 +42,7 @@ interface PlantData {
   consumerUnits: { id: string }[];
 }
 
-type SortKey = "name" | "potencia" | "ucs" | "status";
+type SortKey = "name" | "potencia" | "geracao" | "ucs" | "status";
 type SortDir = "asc" | "desc";
 
 export default function UsinasPage() {
@@ -84,6 +87,17 @@ export default function UsinasPage() {
           return a.name.localeCompare(b.name) * dir;
         case "potencia":
           return ((a.potenciaInstalada ?? 0) - (b.potenciaInstalada ?? 0)) * dir;
+        case "geracao": {
+          // Usina sem projeção cadastrada vai SEMPRE pro fim da lista, nos dois
+          // sentidos — hoje são 28 de 29, e deixá-las ordenar como zero faria a
+          // ordem crescente abrir com um paredão de traços.
+          const av = a.geracaoMediaMensal;
+          const bv = b.geracaoMediaMensal;
+          if (av == null && bv == null) return 0;
+          if (av == null) return 1;
+          if (bv == null) return -1;
+          return (av - bv) * dir;
+        }
         case "ucs":
           return (a.consumerUnits.length - b.consumerUnits.length) * dir;
         case "status":
@@ -166,6 +180,7 @@ export default function UsinasPage() {
                     <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">UC</th>
                     <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">CPF/CNPJ</th>
                     <SortHeader label="Potência" align="right" active={sort.key === "potencia"} dir={sort.dir} onClick={() => toggleSort("potencia")} />
+                    <SortHeader label="Geração média/mês" align="right" active={sort.key === "geracao"} dir={sort.dir} onClick={() => toggleSort("geracao")} />
                     <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Grupo</th>
                     <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Distribuidora</th>
                     <SortHeader label="UCs" align="center" active={sort.key === "ucs"} dir={sort.dir} onClick={() => toggleSort("ucs")} />
@@ -180,9 +195,12 @@ export default function UsinasPage() {
                       <td className="py-2.5 px-3 font-mono text-xs">
                         {formatCodigoUc(plant.unidadeConsumidora) ?? plant.numeroUsina ?? "-"}
                       </td>
-                      <td className="py-2.5 px-3 text-muted-foreground">{plant.cpfCnpj ?? "-"}</td>
+                      <td className="py-2.5 px-3 text-muted-foreground">{formatCpfCnpj(plant.cpfCnpj)}</td>
                       <td className="py-2.5 px-3 text-right">
                         {plant.potenciaInstalada ? `${plant.potenciaInstalada} kWp` : "-"}
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <GeracaoMediaCell valor={plant.geracaoMediaMensal} />
                       </td>
                       <td className="py-2.5 px-3 text-center">{plant.grupo ?? "-"}</td>
                       <td className="py-2.5 px-3">{plant.distribuidora ?? "-"}</td>
@@ -234,6 +252,43 @@ export default function UsinasPage() {
       />
     </div>
   );
+}
+
+/**
+ * Geração média mensal PROJETADA — o valor que veio do cadastro da usina
+ * (`Plant.geracaoMediaMensal`), sem fallback: nada é medido nem estimado aqui.
+ *
+ * Em 14/08/2026 só 1 das 29 usinas tinha o campo preenchido, então o estado
+ * normal desta coluna é o traço. Ele é rotulado como "não cadastrada" em vez de
+ * "0" de propósito — em branco significa que ninguém informou, não que a usina
+ * não gera.
+ *
+ * O valor negativo tem tratamento próprio porque existe de verdade na base
+ * (VITOR PAULO BOLZAN estava com -0,02): geração projetada não pode ser ≤ 0, e
+ * um número desses passando como legítimo na lista contamina qualquer leitura
+ * de frota feita em cima da tela.
+ */
+function GeracaoMediaCell({ valor }: { valor: number | null }) {
+  if (valor == null) {
+    return (
+      <span className="text-muted-foreground" title="Geração média mensal não cadastrada nesta usina">
+        —
+      </span>
+    );
+  }
+
+  if (valor <= 0) {
+    return (
+      <span
+        className="text-red-600 dark:text-red-400"
+        title="Valor inválido no cadastro: geração média projetada precisa ser maior que zero. Corrija em Editar usina."
+      >
+        {formatKWh(valor)} ⚠
+      </span>
+    );
+  }
+
+  return <span>{formatKWh(valor)}</span>;
 }
 
 function SortHeader({

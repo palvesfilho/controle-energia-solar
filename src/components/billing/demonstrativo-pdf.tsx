@@ -14,6 +14,7 @@ import {
 } from "@react-pdf/renderer";
 import type { DemonstrativoData, HistoricoMes } from "@/lib/demonstrativo";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { formatCpfCnpj } from "@/lib/documento";
 
 // Paleta espelha src/lib/brand-colors.ts e a capa do PDF do investidor.
 // Aliases legacy (green*, blue*) preservados para minimizar churn no resto do arquivo.
@@ -313,7 +314,7 @@ export function DemonstrativoPDF({
         <View style={s.headerRow}>
           <View style={s.headerLeft}>
             <Text style={s.clienteNome}>{data.clienteNome}</Text>
-            {data.cpfCnpj && <Text style={s.clienteDoc}>CNPJ/CPF: {data.cpfCnpj}</Text>}
+            {data.cpfCnpj && <Text style={s.clienteDoc}>CNPJ/CPF: {formatCpfCnpj(data.cpfCnpj)}</Text>}
             <Text style={s.clienteEndereco}>{enderecoCompleto}</Text>
           </View>
           <View style={s.headerRight}>

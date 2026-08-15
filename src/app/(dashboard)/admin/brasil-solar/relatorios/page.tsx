@@ -9,6 +9,7 @@ import type {
   RelatorioCell,
 } from "@/app/api/brasil-solar/relatorios/visao-geral/route";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { formatCpfCnpj } from "@/lib/documento";
 import { matchBusca } from "@/lib/busca";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
@@ -302,7 +303,7 @@ export default function RelatoriosVisaoGeralPage() {
                           </a>
                         </div>
                         {r.cpfCnpj && (
-                          <div className="text-[11px] text-muted-foreground font-mono">{r.cpfCnpj}</div>
+                          <div className="text-[11px] text-muted-foreground font-mono">{formatCpfCnpj(r.cpfCnpj)}</div>
                         )}
                       </td>
                       <td className="px-3 py-2 font-mono text-xs">

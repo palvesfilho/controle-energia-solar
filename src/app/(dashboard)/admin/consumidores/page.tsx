@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { matchBusca } from "@/lib/busca";
+import { formatCpfCnpj } from "@/lib/documento";
 import {
   Plus,
   Pencil,
@@ -161,7 +162,7 @@ export default function ConsumidoresPage() {
                     <tr key={consumer.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                       <td className="py-2.5 px-3 font-medium">{consumer.name}</td>
                       <td className="py-2.5 px-3 text-muted-foreground">
-                        {consumer.cpfCnpj ?? consumer.document ?? "-"}
+                        {formatCpfCnpj(consumer.cpfCnpj ?? consumer.document)}
                       </td>
                       <td className="py-2.5 px-3">{consumer.phone ?? "-"}</td>
                       <td className="py-2.5 px-3 text-xs text-muted-foreground max-w-[240px] truncate">

@@ -54,6 +54,7 @@ import { ConviteAcessoModal } from "@/components/brasil-solar/convite-acesso-mod
 import { AcaoComercialModal } from "@/components/brasil-solar/acao-comercial-modal";
 import { ShieldCheck, ShieldAlert, ShieldOff, Clock, CheckCircle2 } from "lucide-react";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { formatCpfCnpj } from "@/lib/documento";
 
 interface Planta {
   id: string;
@@ -545,7 +546,7 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
           <div>
             <h1 className="text-2xl font-bold">{data.nome}</h1>
             {data.cpfCnpj && (
-              <p className="text-sm text-muted-foreground font-mono">{data.cpfCnpj}</p>
+              <p className="text-sm text-muted-foreground font-mono">{formatCpfCnpj(data.cpfCnpj)}</p>
             )}
           </div>
         </div>

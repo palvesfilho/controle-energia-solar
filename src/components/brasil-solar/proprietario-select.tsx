@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { ChevronDown, X, Search, Loader2 } from "lucide-react";
 import { matchBusca } from "@/lib/busca";
+import { formatCpfCnpj } from "@/lib/documento";
 
 interface Proprietario {
   id: string;
@@ -90,7 +91,7 @@ export function ProprietarioSelect({ value, onChange, label = "Proprietario" }: 
               <span>
                 {selected.nome}
                 {selected.cpfCnpj && (
-                  <span className="text-xs text-muted-foreground ml-1.5">({selected.cpfCnpj})</span>
+                  <span className="text-xs text-muted-foreground ml-1.5">({formatCpfCnpj(selected.cpfCnpj)})</span>
                 )}
               </span>
             ) : (
@@ -148,7 +149,7 @@ export function ProprietarioSelect({ value, onChange, label = "Proprietario" }: 
                   >
                     <span className="font-medium">{p.nome}</span>
                     {p.cpfCnpj && (
-                      <span className="text-xs text-muted-foreground ml-1.5">{p.cpfCnpj}</span>
+                      <span className="text-xs text-muted-foreground ml-1.5">{formatCpfCnpj(p.cpfCnpj)}</span>
                     )}
                   </button>
                 ))

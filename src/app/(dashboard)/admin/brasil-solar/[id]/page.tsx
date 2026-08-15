@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { formatCpfCnpj } from "@/lib/documento";
 import { PLATAFORMAS_INTRADIA, temCurvaIntradiaria } from "@/lib/plataformas-intradia";
 import { esperadaMensalBaseKwh } from "@/lib/geracao-esperada";
 
@@ -506,7 +507,7 @@ export default function ClientDetailPage() {
               <CardTitle className="text-sm font-medium">Dados do Cliente</CardTitle>
             </CardHeader>
             <CardContent className="space-y-1">
-              <InfoRow icon={FileText} label="CPF/CNPJ" value={client.cpfCnpj} />
+              <InfoRow icon={FileText} label="CPF/CNPJ" value={client.cpfCnpj ? formatCpfCnpj(client.cpfCnpj) : client.cpfCnpj} />
               <InfoRow icon={Mail} label="Email" value={client.email} />
               <InfoRow icon={Phone} label="Telefone" value={client.telefone} />
               <InfoRow icon={MapPin} label="Endereco" value={client.endereco} />

@@ -5,6 +5,7 @@ import { Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatKWh } from "@/lib/formatters";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { formatCpfCnpj } from "@/lib/documento";
 
 interface LinkedClient {
   id: string;
@@ -368,7 +369,7 @@ function ClientPicker({
                         {c.plataformaMonitoramento && <span>[{c.plataformaMonitoramento}]</span>}
                         {c.codigoUc && <span>UC {formatCodigoUc(c.codigoUc)}</span>}
                         {c.cidade && <span>{c.cidade}/{c.uf ?? ""}</span>}
-                        {c.cpfCnpj && <span>{c.cpfCnpj}</span>}
+                        {c.cpfCnpj && <span>{formatCpfCnpj(c.cpfCnpj)}</span>}
                       </div>
                       {c.proprietario?.nome && (
                         <div className="text-xs text-muted-foreground">

@@ -37,6 +37,7 @@ import { BalancoHistoricoInvestidor } from "@/components/billing/balanco-histori
 import { formatMonthYear, formatBRL } from "@/lib/formatters";
 import { isFinanceRole } from "@/lib/roles";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { formatCpfCnpj } from "@/lib/documento";
 
 interface UcCompensacao {
   payableId: string;
@@ -746,7 +747,7 @@ export function PlantBillingDetail({
         <CardContent className="grid gap-4 p-4 md:grid-cols-4 text-sm">
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wide">CPF/CNPJ</p>
-            <p className="font-medium">{data.plant.cpfCnpj ?? "-"}</p>
+            <p className="font-medium">{formatCpfCnpj(data.plant.cpfCnpj)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wide">Distribuidora</p>

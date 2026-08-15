@@ -17,6 +17,7 @@ import {
   HelpCircle,
 } from "lucide-react";
 import { matchBusca } from "@/lib/busca";
+import { formatCpfCnpjComRotulo } from "@/lib/documento";
 
 interface ItemFila {
   id: string;
@@ -77,14 +78,10 @@ function formatarValor(v: number | null): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function formatarDocumento(doc: string | null): string {
-  if (!doc) return "sem documento";
-  const d = doc.replace(/\D/g, "");
-  if (d.length === 11) return `CPF ${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-  if (d.length === 14)
-    return `CNPJ ${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
-  return doc;
-}
+// A máscara vive em `@/lib/documento` desde 15/08/2026 — esta cópia local era a
+// única formatação de documento do sistema, enquanto ~15 outras telas mostravam
+// CPF/CNPJ crus. Mantida só como alias pra não espalhar a troca de nome aqui.
+const formatarDocumento = (doc: string | null) => formatCpfCnpjComRotulo(doc);
 
 export default function FilaCrmPage() {
   const [itens, setItens] = useState<ItemFila[]>([]);
