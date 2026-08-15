@@ -80,15 +80,24 @@ export const adminNavItems: NavEntry[] = [
   { kind: "leaf", module: "assoc", section: "agenda", title: "Agenda da Semana", href: "/admin/agenda", icon: CalendarClock },
   // Folha única de propósito: quem usa é o pós-venda, que não enxerga o grupo
   // Gestão de Créditos. Ver [[feedback_menu_hub_pattern]].
+  //
+  // O grupo existe nos DOIS módulos, mas com rotas diferentes e conteúdo
+  // diferente: a Associação vê só as adesões de desconto na fatura, a Brasil
+  // Solar vê monitoramento e obra. Divisão fechada com o Paulo em 15/08/2026,
+  // implementada em [[crm-modulo]].
+  //
+  // Não dá para usar `module: "both"` com uma rota só: `detectAdminModule` lê o
+  // PATH, então `/admin/crm/fila` jogaria quem está na Brasil Solar de volta
+  // para o sidebar da Associação.
   {
     kind: "group",
-    module: "both",
+    module: "assoc",
     section: "crmIntegracao",
     title: "Vendas do CRM",
     icon: Inbox,
     children: [
-      { kind: "leaf", module: "both", section: "crmIntegracao", title: "Fila", href: "/admin/crm/fila", icon: Inbox },
-      { kind: "leaf", module: "both", section: "crmIntegracao", title: "Produtos", href: "/admin/crm/produtos", icon: Settings2 },
+      { kind: "leaf", module: "assoc", section: "crmIntegracao", title: "Fila", href: "/admin/crm/fila", icon: Inbox },
+      { kind: "leaf", module: "assoc", section: "crmIntegracao", title: "Produtos", href: "/admin/crm/produtos", icon: Settings2 },
     ],
   },
   {
@@ -162,6 +171,19 @@ export const adminNavItems: NavEntry[] = [
       { kind: "leaf", module: "bs", section: "brasilSolar", title: "Plantas Fotovoltaicas", href: "/admin/brasil-solar", icon: SunMedium },
       { kind: "leaf", module: "bs", section: "brasilSolar", title: "Relatórios — Visão Geral", href: "/admin/brasil-solar/relatorios", icon: FileBarChart },
       { kind: "leaf", module: "bs", section: "brasilSolar", title: "Geração Manual", href: "/admin/brasil-solar/geracao-manual", icon: KeyboardIcon },
+    ],
+  },
+  // Espelho do grupo da Associação, com as rotas sob /admin/brasil-solar/ para
+  // o sidebar não trocar de módulo. Ver o comentário lá em cima.
+  {
+    kind: "group",
+    module: "bs",
+    section: "crmIntegracao",
+    title: "Vendas do CRM",
+    icon: Inbox,
+    children: [
+      { kind: "leaf", module: "bs", section: "crmIntegracao", title: "Fila", href: "/admin/brasil-solar/vendas-crm", icon: Inbox },
+      { kind: "leaf", module: "bs", section: "crmIntegracao", title: "Produtos", href: "/admin/brasil-solar/vendas-crm/produtos", icon: Settings2 },
     ],
   },
   {
