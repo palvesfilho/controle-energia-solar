@@ -2351,7 +2351,21 @@ model CrmUcImportada {
   envelopeIdCrm    String?   @map("envelope_id_crm")
 
   // PENDENTE | CONCLUIDA | IGNORADA — o cadastro é decidido por UC.
+  //
+  // Este campo é do OPERADOR. O sync nunca o reescreve: quem marcou como
+  // cadastrada não vê o trabalho voltar numa re-sincronização.
   situacao String @default("PENDENTE")
+
+  // Estes dois são do CRM, e por isso vivem separados de `situacao`. A venda
+  // pode ter termo assinado e ainda estar em negociação — foi o caso do
+  // RESIDENCIAL MORADA DO LESTE, com 10 UCs assinadas numa proposta
+  // `em_negociacao`. Sem separar, essas 10 apareciam em "A cadastrar" como se
+  // o negócio estivesse fechado.
+  //
+  // O sync atualiza os dois livremente: se a venda fechar amanhã, a UC entra
+  // na fila principal sozinha, sem ninguém precisar reabrir nada.
+  vendaGanha    Boolean @default(true) @map("venda_ganha")
+  statusNegocio String? @map("status_negocio")
 
   // Preenchido quando a UC vira cadastro aqui. É o elo com a usina.
   consumerUnitId String? @map("consumer_unit_id")

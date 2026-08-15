@@ -317,6 +317,11 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
         // Ordem do CRM, para a fila daqui bater com a lista de lá.
         adesaoCriadaEm: primeiraDataValida(a.criado_em),
         ordemNaAdesao: u.ordem,
+        // Do CRM, e por isso reescritos a cada rodada. Fechou a venda lá, a UC
+        // entra na fila principal aqui sozinha. `situacao` fica de fora — é do
+        // operador, e o sync não a toca.
+        vendaGanha: ehVendaGanha,
+        statusNegocio: proposta.status_negocio ?? null,
         codigoUcBruto: u.bruto || null,
         mediaMensalKwh: u.mediaKwh,
         clienteNome: a.cliente_nome ?? clienteNome,

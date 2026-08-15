@@ -25,6 +25,12 @@ export async function GET(req: NextRequest) {
   }
 
   const situacao = (req.nextUrl.searchParams.get("situacao") ?? "PENDENTE").toUpperCase();
+  // Eixo separado: "a venda fechou?" é do CRM, `situacao` é do operador. Sem
+  // este filtro, UC de proposta ainda em negociação aparece em "A cadastrar"
+  // como se o negócio estivesse fechado.
+  const vendaGanhaParam = req.nextUrl.searchParams.get("vendaGanha");
+  const vendaGanha =
+    vendaGanhaParam === "true" ? true : vendaGanhaParam === "false" ? false : undefined;
 
   try {
     // MESMA ORDEM DO CRM, de propósito: lá a lista de adesões é ordenada por
@@ -36,7 +42,7 @@ export async function GET(req: NextRequest) {
     // `adesaoCriadaEm` nulo — e em DESC o Postgres jogaria os nulos para o topo,
     // pondo justamente as mais antigas na frente. O próximo sync preenche.
     const ucs = await prisma.crmUcImportada.findMany({
-      where: { situacao },
+      where: { situacao, ...(vendaGanha === undefined ? {} : { vendaGanha }) },
       orderBy: [
         { adesaoCriadaEm: { sort: "desc", nulls: "last" } },
         { adesaoIdCrm: "desc" },

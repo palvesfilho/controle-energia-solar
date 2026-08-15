@@ -37,6 +37,8 @@ import {
   TriangleAlert,
   Undo2,
   UserPlus,
+  Factory,
+  Clock,
 } from "lucide-react";
 import { matchBusca } from "@/lib/busca";
 import { formatCpfCnpjComRotulo } from "@/lib/documento";
@@ -76,8 +78,17 @@ interface UcAssinada {
   assinadoEm: string | null;
   envelopeIdCrm: string | null;
   situacao: string;
+  vendaGanha: boolean;
+  statusNegocio: string | null;
   documentos: DocumentoCrm[];
   jaCadastrada: { id: string; codigoUc: string; nome: string } | null;
+}
+
+/** Em qual aba a UC cai, dados os dois eixos. */
+function abaDe(situacao: string, vendaGanha: boolean): Aba {
+  if (situacao === "CONCLUIDA") return "CONCLUIDA";
+  if (situacao === "IGNORADA") return "IGNORADA";
+  return vendaGanha ? "PENDENTE" : "SEM_VENDA";
 }
 
 const ROTULO_CATEGORIA: Record<string, string> = {
@@ -88,14 +99,24 @@ const ROTULO_CATEGORIA: Record<string, string> = {
 };
 
 /**
- * As três abas. Sem "Cadastradas" e "Ignoradas" visíveis, um clique errado em
- * "Já cadastrei" faz a UC sumir sem lugar nenhum para procurá-la — os dados
+ * As quatro abas, sobre DOIS eixos: `situacao` é do operador, `vendaGanha` é do
+ * CRM. Sem "Cadastradas" e "Ignoradas" visíveis, um clique errado em "Já
+ * cadastrei" faz a UC sumir sem lugar nenhum para procurá-la — os dados
  * continuariam no banco, mas fora de alcance de quem usa a tela.
  */
 const ABAS = [
-  { chave: "PENDENTE", rotulo: "A cadastrar" },
-  { chave: "CONCLUIDA", rotulo: "Cadastradas" },
-  { chave: "IGNORADA", rotulo: "Ignoradas" },
+  { chave: "PENDENTE", rotulo: "A cadastrar", situacao: "PENDENTE", vendaGanha: "true" },
+  // Termo assinado, venda ainda em negociação no CRM. Fica FORA de "A
+  // cadastrar" porque não é trabalho — é espera. Mas não pode sumir: se o
+  // vendedor esqueceu de marcar a venda, alguém precisa enxergar.
+  {
+    chave: "SEM_VENDA",
+    rotulo: "Sem venda fechada",
+    situacao: "PENDENTE",
+    vendaGanha: "false",
+  },
+  { chave: "CONCLUIDA", rotulo: "Cadastradas", situacao: "CONCLUIDA", vendaGanha: "" },
+  { chave: "IGNORADA", rotulo: "Ignoradas", situacao: "IGNORADA", vendaGanha: "" },
 ] as const;
 
 type Aba = (typeof ABAS)[number]["chave"];
@@ -142,13 +163,17 @@ export function UcsAssinadasCrm() {
   const [aba, setAba] = useState<Aba>("PENDENTE");
   const [contagens, setContagens] = useState<Record<Aba, number | null>>({
     PENDENTE: null,
+    SEM_VENDA: null,
     CONCLUIDA: null,
     IGNORADA: null,
   });
 
   const carregar = useCallback(() => {
     setLoading(true);
-    fetch(`/api/crm/ucs?situacao=${aba}`)
+    const cfg = ABAS.find((a) => a.chave === aba)!;
+    const qs = new URLSearchParams({ situacao: cfg.situacao });
+    if (cfg.vendaGanha) qs.set("vendaGanha", cfg.vendaGanha);
+    fetch(`/api/crm/ucs?${qs.toString()}`)
       .then(async (res) => {
         const texto = await res.text();
         let corpo: { ucs?: UcAssinada[]; avisoDocumentos?: string; error?: string; hint?: string } = {};
@@ -184,7 +209,7 @@ export function UcsAssinadasCrm() {
    * desfazer não empilhar em cima do toast que o ofereceu.
    */
   const mover = useCallback(
-    async (uc: UcAssinada, situacao: Aba, avisar = true) => {
+    async (uc: UcAssinada, situacao: "PENDENTE" | "CONCLUIDA" | "IGNORADA", avisar = true) => {
       setActing(uc.id);
       try {
         const res = await fetch(`/api/crm/ucs/${uc.id}`, {
@@ -193,18 +218,23 @@ export function UcsAssinadasCrm() {
           body: JSON.stringify({ situacao }),
         });
         if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
+
+        const de = abaDe(uc.situacao, uc.vendaGanha);
+        const para = abaDe(situacao, uc.vendaGanha);
         setUcs((prev) => prev.filter((x) => x.id !== uc.id));
         setContagens((c) => ({
           ...c,
-          [uc.situacao as Aba]: Math.max(0, (c[uc.situacao as Aba] ?? 1) - 1),
-          [situacao]: (c[situacao] ?? 0) + 1,
+          [de]: Math.max(0, (c[de] ?? 1) - 1),
+          [para]: (c[para] ?? 0) + 1,
         }));
+
         if (avisar) {
-          const rotulo = ABAS.find((a) => a.chave === situacao)?.rotulo ?? situacao;
+          const rotulo = ABAS.find((a) => a.chave === para)?.rotulo ?? situacao;
+          const anterior = uc.situacao as "PENDENTE" | "CONCLUIDA" | "IGNORADA";
           toast.success(`${uc.codigoUcBruto || uc.codigoUc} → ${rotulo}.`, {
             action: {
               label: "Desfazer",
-              onClick: () => void mover({ ...uc, situacao }, uc.situacao as Aba, false),
+              onClick: () => void mover({ ...uc, situacao }, anterior, false),
             },
           });
         }
@@ -245,10 +275,11 @@ export function UcsAssinadasCrm() {
       if (d.falhas?.length) {
         toast.warning(`Não copiados: ${d.falhas.join(" · ")}`);
       }
+      const de = abaDe(uc.situacao, uc.vendaGanha);
       setUcs((prev) => prev.filter((x) => x.id !== uc.id));
       setContagens((c) => ({
         ...c,
-        PENDENTE: Math.max(0, (c.PENDENTE ?? 1) - 1),
+        [de]: Math.max(0, (c[de] ?? 1) - 1),
         CONCLUIDA: (c.CONCLUIDA ?? 0) + 1,
       }));
     } catch (err) {
@@ -367,6 +398,8 @@ export function UcsAssinadasCrm() {
           <CardContent className="p-6 text-center text-sm text-muted-foreground">
             {aba === "PENDENTE"
               ? "Nenhuma UC assinada esperando cadastro."
+              : aba === "SEM_VENDA"
+                ? "Nenhuma adesão assinada com a venda em aberto."
               : aba === "CONCLUIDA"
                 ? "Nenhuma UC cadastrada a partir do CRM ainda."
                 : "Nenhuma UC ignorada."}
@@ -391,7 +424,16 @@ export function UcsAssinadasCrm() {
                       </Badge>
                       {u.concessionaria && <Badge variant="outline">{u.concessionaria}</Badge>}
                       {u.proprietarioUsina && (
-                        <Badge variant="outline">cede o telhado</Badge>
+                        <Badge variant="outline" className="gap-1 border-amber-500/50">
+                          <Factory className="h-3 w-3 text-amber-500" />
+                          proprietário de usina
+                        </Badge>
+                      )}
+                      {!u.vendaGanha && (
+                        <Badge variant="outline" className="gap-1 border-amber-500/50">
+                          <Clock className="h-3 w-3 text-amber-500" />
+                          {u.statusNegocio ?? "sem venda fechada"}
+                        </Badge>
                       )}
                       {u.jaCadastrada && (
                         <Badge variant="outline" className="gap-1 border-emerald-500/50">
@@ -448,7 +490,20 @@ export function UcsAssinadasCrm() {
                   </div>
 
                   <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    {aba === "PENDENTE" ? (
+                    {/* Sem venda fechada não é trabalho, é espera: só dá para
+                        ignorar. Cadastrar aqui seria cadastrar um negócio que
+                        ainda pode não acontecer. */}
+                    {aba === "SEM_VENDA" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={acting === u.id}
+                        onClick={() => void mover(u, "IGNORADA")}
+                      >
+                        <X className="mr-1 h-4 w-4" />
+                        Ignorar
+                      </Button>
+                    ) : aba === "PENDENTE" ? (
                       <>
                         <Button
                           size="sm"
@@ -473,13 +528,28 @@ export function UcsAssinadasCrm() {
                             Já cadastrei
                           </Button>
                         )}
-                        <Link
-                          href={`/admin/unidades-consumidoras/nova?crmUc=${u.id}`}
-                          className={cn(buttonVariants({ size: "sm" }))}
-                        >
-                          <UserPlus className="mr-1 h-4 w-4" />
-                          Cadastrar UC
-                        </Link>
+                        {/* Proprietário de usina NÃO é consumidor: quem cede o
+                            telhado entra como investidor, com a usina dele. A
+                            adesão traz essa marca do CRM (`proprietario_usina`),
+                            então o botão muda de destino em vez de mandar todo
+                            mundo para o cadastro de UC. */}
+                        {u.proprietarioUsina ? (
+                          <Link
+                            href={`/admin/investidores/novo?crmUc=${u.id}`}
+                            className={cn(buttonVariants({ size: "sm" }))}
+                          >
+                            <Factory className="mr-1 h-4 w-4" />
+                            Cadastrar proprietário
+                          </Link>
+                        ) : (
+                          <Link
+                            href={`/admin/unidades-consumidoras/nova?crmUc=${u.id}`}
+                            className={cn(buttonVariants({ size: "sm" }))}
+                          >
+                            <UserPlus className="mr-1 h-4 w-4" />
+                            Cadastrar UC
+                          </Link>
+                        )}
                       </>
                     ) : (
                       <Button
