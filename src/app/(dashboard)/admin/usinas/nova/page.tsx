@@ -8,9 +8,16 @@ import { ArrowLeft, Eye, EyeOff, Monitor, Zap } from "lucide-react";
 import Link from "next/link";
 import { CONCESSIONARIAS } from "@/lib/concessionarias";
 import { CidadeInput } from "@/components/ui/cidade-input";
+import {
+  isInvestidorDommo,
+  CNPJ_DOMMO_SOLUCOES_FORMATADO,
+  NOME_REGIME_DOMMO,
+} from "@/lib/usina-dommo";
 
 interface InvestorOption {
   id: string;
+  cnpj: string | null;
+  document: string | null;
   user: { name: string };
 }
 
@@ -94,6 +101,7 @@ function FormField({
   step,
   defaultValue,
   className,
+  disabled,
 }: {
   label: string;
   name: string;
@@ -103,6 +111,7 @@ function FormField({
   step?: string;
   defaultValue?: string | number;
   className?: string;
+  disabled?: boolean;
 }) {
   return (
     <div className={className}>
@@ -116,7 +125,8 @@ function FormField({
         required={required}
         step={step}
         defaultValue={defaultValue}
-        className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+        disabled={disabled}
+        className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-muted"
       />
     </div>
   );
@@ -164,6 +174,7 @@ export default function NovaUsinaPage() {
   const [loading, setLoading] = useState(false);
   const [investors, setInvestors] = useState<InvestorOption[]>([]);
   const [selectedInvestor, setSelectedInvestor] = useState("");
+  const [isUsinaDommo, setIsUsinaDommo] = useState(false);
   const [selectedMarca, setSelectedMarca] = useState("");
   const [selectedModelo, setSelectedModelo] = useState("");
   const [selectedPlataforma, setSelectedPlataforma] = useState("");
@@ -182,6 +193,8 @@ export default function NovaUsinaPage() {
     const formData = new FormData(e.currentTarget);
     const data: Record<string, unknown> = Object.fromEntries(formData.entries());
     if (selectedInvestor) data.investorId = selectedInvestor;
+    // Regime Dommo: a API zera valorKwhContrato/gestaoFixaContrato quando true.
+    data.isUsinaDommo = isUsinaDommo;
     if (selectedMarca) data.inversorMarca = selectedMarca;
     if (selectedModelo) data.inversorModelo = selectedModelo;
     if (selectedPlataforma) data.monitoramentoPlataforma = selectedPlataforma;
@@ -306,7 +319,14 @@ export default function NovaUsinaPage() {
                     <label className="text-xs font-medium text-muted-foreground">Investidor</label>
                     <select
                       value={selectedInvestor}
-                      onChange={(e) => setSelectedInvestor(e.target.value)}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setSelectedInvestor(id);
+                        // Pré-marca pelo CNPJ; quem decide é o operador.
+                        setIsUsinaDommo(
+                          isInvestidorDommo(investors.find((i) => i.id === id)),
+                        );
+                      }}
                       className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                     >
                       <option value="">Selecione um investidor</option>
@@ -318,8 +338,47 @@ export default function NovaUsinaPage() {
                     </select>
                   </div>
                   <FormField label="Participação (%)" name="sharePercent" type="number" step="0.01" defaultValue="100" />
-                  <FormField label="Valor kWh Contrato (R$)" name="valorKwhContrato" type="number" step="0.01" placeholder="Ex: 0.63" />
-                  <FormField label="Gestão Fixa Mensal (R$)" name="gestaoFixaContrato" type="number" step="0.01" placeholder="Ex: 250.00" />
+
+                  <div className="sm:col-span-2">
+                    <div
+                      className={`rounded-lg border p-3 transition-colors ${
+                        isUsinaDommo
+                          ? "border-amber-400 bg-amber-50 dark:bg-amber-950/30"
+                          : "bg-muted/30"
+                      }`}
+                    >
+                      <label
+                        htmlFor="dommo-nova-usina"
+                        className="flex items-start gap-2.5 cursor-pointer"
+                      >
+                        <input
+                          id="dommo-nova-usina"
+                          type="checkbox"
+                          checked={isUsinaDommo}
+                          onChange={(e) => setIsUsinaDommo(e.target.checked)}
+                          className="mt-0.5 h-4 w-4 rounded border-input accent-amber-500"
+                        />
+                        <span className="text-sm">
+                          <span className="font-medium">{NOME_REGIME_DOMMO}</span>
+                          <span className="block text-xs text-muted-foreground mt-0.5">
+                            A Dommo Soluções ({CNPJ_DOMMO_SOLUCOES_FORMATADO}) fica
+                            com 100% do lucro da operação: sem gestão fixa e sem
+                            R$/kWh de contrato.
+                          </span>
+                        </span>
+                      </label>
+                      {isUsinaDommo && (
+                        <p className="mt-2 text-xs text-amber-800 dark:text-amber-300 border-t border-amber-300/60 pt-2">
+                          🚧 A fórmula deste regime ainda <b>não está implementada</b>:
+                          o sistema <b>não gera</b> parcelas nem relatório para esta
+                          usina até ela ser definida.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <FormField label="Valor kWh Contrato (R$)" name="valorKwhContrato" type="number" step="0.01" placeholder="Ex: 0.63" disabled={isUsinaDommo} />
+                  <FormField label="Gestão Fixa Mensal (R$)" name="gestaoFixaContrato" type="number" step="0.01" placeholder="Ex: 250.00" disabled={isUsinaDommo} />
                   <FormField
                     label="Data de assinatura do contrato"
                     name="dataAssinaturaContrato"

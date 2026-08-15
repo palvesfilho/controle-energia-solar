@@ -8,6 +8,12 @@ import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
+  avisoDivergenciaDommo,
+  isInvestidorDommo,
+  CNPJ_DOMMO_SOLUCOES_FORMATADO,
+  NOME_REGIME_DOMMO,
+} from "@/lib/usina-dommo";
+import {
   ArrowLeft,
   ChevronRight,
   Zap,
@@ -143,11 +149,19 @@ interface InvestorLink {
   sharePercent: number | null;
   valorKwhContrato: number | null;
   gestaoFixaContrato: number | null;
-  investor: { id: string; user: { id: string; name: string } };
+  isUsinaDommo: boolean;
+  investor: {
+    id: string;
+    cnpj: string | null;
+    document: string | null;
+    user: { id: string; name: string };
+  };
 }
 
 interface InvestorOption {
   id: string;
+  cnpj: string | null;
+  document: string | null;
   user: { id: string; name: string; email: string };
 }
 
@@ -263,6 +277,8 @@ function Field({
   required,
   className,
   placeholder,
+  disabled,
+  hint,
 }: {
   label: string;
   name: string;
@@ -272,6 +288,8 @@ function Field({
   required?: boolean;
   className?: string;
   placeholder?: string;
+  disabled?: boolean;
+  hint?: string;
 }) {
   return (
     <div className={className}>
@@ -285,8 +303,66 @@ function Field({
         defaultValue={defaultValue ?? ""}
         required={required}
         placeholder={placeholder}
-        className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+        disabled={disabled}
+        className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-muted"
       />
+      {hint && <p className="text-[11px] text-muted-foreground mt-1">{hint}</p>}
+    </div>
+  );
+}
+
+/**
+ * Marcação do regime "Usina Dommo Soluções" num vínculo usina↔investidor.
+ *
+ * 🎛 O checkbox é a verdade; o CNPJ só confere — `aviso` é o que a regra única
+ * (lib/usina-dommo.ts) devolve quando os dois discordam. Aviso, nunca bloqueio:
+ * é legítimo marcar o regime antes de o CNPJ estar cadastrado.
+ */
+function RegimeDommoToggle({
+  id,
+  checked,
+  onChange,
+  aviso,
+}: {
+  id: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  aviso: string | null;
+}) {
+  return (
+    <div
+      className={`mb-3 rounded-lg border p-3 transition-colors ${
+        checked ? "border-amber-400 bg-amber-50 dark:bg-amber-950/30" : "bg-muted/30"
+      }`}
+    >
+      <label htmlFor={id} className="flex items-start gap-2.5 cursor-pointer">
+        <input
+          id={id}
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-input accent-amber-500"
+        />
+        <span className="text-sm">
+          <span className="font-medium">{NOME_REGIME_DOMMO}</span>
+          <span className="block text-xs text-muted-foreground mt-0.5">
+            A Dommo Soluções ({CNPJ_DOMMO_SOLUCOES_FORMATADO}) fica com 100% do
+            lucro da operação: sem gestão fixa e sem R$/kWh de contrato.
+          </span>
+        </span>
+      </label>
+
+      {checked && (
+        <p className="mt-2 text-xs text-amber-800 dark:text-amber-300 border-t border-amber-300/60 pt-2">
+          🚧 A fórmula de remuneração deste regime ainda <b>não está implementada</b>.
+          Enquanto isso o sistema <b>não gera</b> parcelas nem relatório para esta
+          usina — de propósito, para não pagar um valor errado.
+        </p>
+      )}
+
+      {aviso && (
+        <p className="mt-2 text-xs text-orange-700 dark:text-orange-400">⚠️ {aviso}</p>
+      )}
     </div>
   );
 }
@@ -318,12 +394,25 @@ export default function UsinaPage() {
   const [linkSharePercent, setLinkSharePercent] = useState("");
   const [linkValorKwh, setLinkValorKwh] = useState("");
   const [linkGestaoFixa, setLinkGestaoFixa] = useState("");
+  const [linkIsDommo, setLinkIsDommo] = useState(false);
   const [linkSaving, setLinkSaving] = useState(false);
   const [investoresSaving, setInvestoresSaving] = useState(false);
+  // Marcação "Usina Dommo Soluções" por vínculo. Controlada (e não via
+  // FormData) porque ela DESLIGA os campos de contrato na tela — os dois
+  // precisam reagir no mesmo render.
+  const [dommoMarks, setDommoMarks] = useState<Record<string, boolean>>({});
 
   const loadPlant = useCallback(async () => {
     const plantData = await fetch(`/api/plants/${plantId}`).then((r) => r.json());
     setPlant(plantData);
+    setDommoMarks(
+      Object.fromEntries(
+        ((plantData?.investors ?? []) as InvestorLink[]).map((l) => [
+          l.id,
+          l.isUsinaDommo,
+        ]),
+      ),
+    );
     setSelectedRegra(plantData?.regraInstalacao ?? "");
     setSelectedFormatoLeitura(plantData?.formatoLeitura ?? "");
     setSelectedEnquadramento(plantData?.enquadramento ?? "");
@@ -411,16 +500,24 @@ export default function UsinaPage() {
             valorKwhContrato: fd.get(`valorKwhContrato_${link.id}`) || null,
             gestaoFixaContrato: fd.get(`gestaoFixaContrato_${link.id}`) || null,
             sharePercent: fd.get(`sharePercent_${link.id}`) || null,
+            isUsinaDommo: dommoMarks[link.id] ?? false,
           }),
-        }).then((r) => r.ok)
+        }).then(async (r) => ({
+          ok: r.ok,
+          aviso: r.ok ? ((await r.json()).aviso as string | null) : null,
+        }))
       )
     );
 
-    const allOk = results.every(Boolean);
+    const allOk = results.every((r) => r.ok);
     if (!allOk) {
       toast.error("Alguns vínculos não foram atualizados");
     } else {
       toast.success("Investidores atualizados");
+    }
+    // Divergência marcação × CNPJ não bloqueia o salvamento — só avisa.
+    for (const aviso of results.map((r) => r.aviso).filter(Boolean)) {
+      toast.warning(aviso as string);
     }
     await loadPlant();
     setInvestoresSaving(false);
@@ -432,6 +529,7 @@ export default function UsinaPage() {
     setLinkSharePercent("");
     setLinkValorKwh("");
     setLinkGestaoFixa("");
+    setLinkIsDommo(false);
     try {
       const res = await fetch("/api/investors");
       const data: InvestorOption[] = await res.json();
@@ -457,6 +555,7 @@ export default function UsinaPage() {
           sharePercent: linkSharePercent || null,
           valorKwhContrato: linkValorKwh || null,
           gestaoFixaContrato: linkGestaoFixa || null,
+          isUsinaDommo: linkIsDommo,
         }),
       });
       const data = await res.json();
@@ -466,6 +565,7 @@ export default function UsinaPage() {
       }
       setLinkerOpen(false);
       toast.success("Investidor vinculado");
+      if (data.aviso) toast.warning(data.aviso, { duration: 12000 });
       await loadPlant();
     } finally {
       setLinkSaving(false);
@@ -799,7 +899,10 @@ export default function UsinaPage() {
           </div>
         ) : (
           <form key={`inv-${plant.id}`} onSubmit={handleSaveInvestores} className="space-y-3">
-            {plant.investors.map((link) => (
+            {plant.investors.map((link) => {
+              const marcado = dommoMarks[link.id] ?? false;
+              const aviso = avisoDivergenciaDommo(marcado, link.investor);
+              return (
               <div key={link.id} className="border rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-medium">{link.investor.user.name}</div>
@@ -812,6 +915,16 @@ export default function UsinaPage() {
                     Desvincular
                   </button>
                 </div>
+
+                <RegimeDommoToggle
+                  id={`dommo-${link.id}`}
+                  checked={marcado}
+                  onChange={(v) =>
+                    setDommoMarks((prev) => ({ ...prev, [link.id]: v }))
+                  }
+                  aviso={aviso}
+                />
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Field
                     label="Valor kWh Contrato (R$)"
@@ -819,6 +932,7 @@ export default function UsinaPage() {
                     type="number"
                     step="0.01"
                     defaultValue={link.valorKwhContrato}
+                    disabled={marcado}
                   />
                   <Field
                     label="Gestão Fixa Mensal (R$)"
@@ -826,6 +940,7 @@ export default function UsinaPage() {
                     type="number"
                     step="0.01"
                     defaultValue={link.gestaoFixaContrato}
+                    disabled={marcado}
                   />
                   <Field
                     label="Participação (%)"
@@ -836,7 +951,8 @@ export default function UsinaPage() {
                   />
                 </div>
               </div>
-            ))}
+              );
+            })}
             <div className="flex justify-end">
               <button
                 type="submit"
@@ -994,7 +1110,14 @@ export default function UsinaPage() {
                 <label className="text-xs font-medium text-muted-foreground">Investidor</label>
                 <select
                   value={linkInvestorId}
-                  onChange={(e) => setLinkInvestorId(e.target.value)}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setLinkInvestorId(id);
+                    // Detecção PRÉ-MARCA, não decide: o operador ainda pode
+                    // desmarcar. Ver lib/usina-dommo.ts.
+                    const inv = availableInvestors.find((i) => i.id === id);
+                    setLinkIsDommo(isInvestidorDommo(inv));
+                  }}
                   className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background"
                 >
                   <option value="">— selecione —</option>
@@ -1010,6 +1133,16 @@ export default function UsinaPage() {
                   </p>
                 )}
               </div>
+              <RegimeDommoToggle
+                id="dommo-novo-vinculo"
+                checked={linkIsDommo}
+                onChange={setLinkIsDommo}
+                aviso={avisoDivergenciaDommo(
+                  linkIsDommo,
+                  availableInvestors.find((i) => i.id === linkInvestorId),
+                )}
+              />
+
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs font-medium text-muted-foreground">Participação (%)</label>
@@ -1028,7 +1161,8 @@ export default function UsinaPage() {
                     step="0.01"
                     value={linkValorKwh}
                     onChange={(e) => setLinkValorKwh(e.target.value)}
-                    className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background"
+                    disabled={linkIsDommo}
+                    className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-muted"
                   />
                 </div>
                 <div>
@@ -1038,7 +1172,8 @@ export default function UsinaPage() {
                     step="0.01"
                     value={linkGestaoFixa}
                     onChange={(e) => setLinkGestaoFixa(e.target.value)}
-                    className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background"
+                    disabled={linkIsDommo}
+                    className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-muted"
                   />
                 </div>
               </div>

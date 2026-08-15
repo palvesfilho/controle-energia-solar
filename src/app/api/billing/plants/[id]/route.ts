@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 import { resolveDebitoPanel } from "@/lib/investor-debito-panel";
+import { MOTIVO_REGRA_NAO_IMPLEMENTADA } from "@/lib/usina-dommo";
 
 interface RouteCtx {
   params: Promise<{ id: string }>;
@@ -32,7 +33,7 @@ export async function GET(_req: NextRequest, ctx: RouteCtx) {
           potenciaInstalada: true,
           dataAssinaturaContrato: true,
           investors: {
-            select: { gestaoFixaContrato: true },
+            select: { gestaoFixaContrato: true, isUsinaDommo: true },
             take: 1,
           },
         },
@@ -82,7 +83,15 @@ export async function GET(_req: NextRequest, ctx: RouteCtx) {
   });
   const faturasUsinaDescontadas = billUsinaMesAtual ? [billUsinaMesAtual] : [];
   const valorContaUcUsina = billUsinaMesAtual?.valorTotal ?? null;
-  const gestaoFixaMensal = billing.plant.investors[0]?.gestaoFixaContrato ?? null;
+  // 🚧 Regime "Usina Dommo Soluções": gestão fixa não existe nesse contrato, e a
+  // remuneração tem fórmula própria ainda não implementada. Diferente do PDF —
+  // que RECUSA gerar —, esta rota é a tela de consulta: devolve os números que
+  // tem e sinaliza a pendência, para o operador não ler o líquido como final.
+  const isUsinaDommo = billing.plant.investors[0]?.isUsinaDommo ?? false;
+  const gestaoFixaMensal = isUsinaDommo
+    ? null
+    : (billing.plant.investors[0]?.gestaoFixaContrato ?? null);
+  const avisoRegimeDommo = isUsinaDommo ? MOTIVO_REGRA_NAO_IMPLEMENTADA : null;
 
   // Compensação por UC do rateio no mês de referência: junta InvestorPayable
   // (nossa fonte de verdade do que foi destinado ao investidor) com
@@ -510,6 +519,8 @@ export async function GET(_req: NextRequest, ctx: RouteCtx) {
     ucsCompensacao,
     valorContaUcUsina,
     gestaoFixaMensal,
+    isUsinaDommo,
+    avisoRegimeDommo,
     valorBrutoRealizado,
     valorAjustesGerais,
     debitoPanel,

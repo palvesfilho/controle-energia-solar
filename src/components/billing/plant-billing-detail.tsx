@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertTriangle,
   ArrowLeft,
   Ban,
   CircleCheck,
@@ -127,6 +128,10 @@ interface BillingDetail {
   ucsCompensacao: UcCompensacao[];
   valorContaUcUsina: number | null;
   gestaoFixaMensal: number | null;
+  /** Regime "Usina Dommo Soluções" — ver lib/usina-dommo.ts. */
+  isUsinaDommo?: boolean;
+  /** Preenchido só quando `isUsinaDommo`: a fórmula ainda não existe. */
+  avisoRegimeDommo?: string | null;
   valorBrutoRealizado: number;
   /** Painel do saldo devedor (null quando não há dívida amortizada no mês). */
   debitoPanel: {
@@ -646,6 +651,23 @@ export function PlantBillingDetail({
           <ArrowLeft className="h-4 w-4" />
           Voltar
         </Link>
+      )}
+
+      {/* Regime Dommo sem fórmula: os números abaixo NÃO são o fechamento —
+          as parcelas nem chegam a ser geradas. Avisa antes de tudo, senão o
+          bruto zerado se lê como "mês sem compensação". */}
+      {data.avisoRegimeDommo && (
+        <Card className="border-amber-400 bg-amber-50 dark:bg-amber-950/30">
+          <CardContent className="flex items-start gap-3 p-4">
+            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold text-sm">Regra de remuneração pendente</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {data.avisoRegimeDommo}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {isEncerrado && (

@@ -232,6 +232,13 @@ model InvestorPlant {
   valorKwhContrato   Float? @map("valor_kwh_contrato") // R$/kWh pago ao investidor
   gestaoFixaContrato Float? @map("gestao_fixa_contrato") // R$ gestao fixa mensal
 
+  // Regime "USINA DOMMO SOLUCOES": a gestora fica com 100% do lucro da operacao.
+  // Quando true, `valorKwhContrato` e `gestaoFixaContrato` NAO se aplicam — a
+  // remuneracao tem formula propria (kWh compensado no preco vigente menos o
+  // desconto dado ao cliente). 🚧 Essa formula ainda NAO esta implementada: os
+  // caminhos que gerariam dinheiro recusam em voz alta. Ver lib/usina-dommo.ts.
+  isUsinaDommo Boolean @default(false) @map("is_usina_dommo")
+
   investor  Investor           @relation(fields: [investorId], references: [id], onDelete: Cascade)
   plant     Plant              @relation(fields: [plantId], references: [id], onDelete: Cascade)
   contracts InvestorContract[]

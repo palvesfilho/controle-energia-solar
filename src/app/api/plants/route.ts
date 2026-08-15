@@ -80,13 +80,19 @@ export async function POST(req: NextRequest) {
   });
 
   if (body.investorId) {
+    // Regime Dommo: gestora fica com 100% do lucro — sem gestão fixa e sem
+    // R$/kWh de contrato. Ver lib/usina-dommo.ts.
+    const isUsinaDommo = body.isUsinaDommo === true;
     await prisma.investorPlant.create({
       data: {
         investorId: body.investorId,
         plantId: plant.id,
         sharePercent: body.sharePercent ? Number(body.sharePercent) : 100,
-        valorKwhContrato: body.valorKwhContrato ? Number(body.valorKwhContrato) : null,
-        gestaoFixaContrato: body.gestaoFixaContrato ? Number(body.gestaoFixaContrato) : null,
+        valorKwhContrato:
+          isUsinaDommo || !body.valorKwhContrato ? null : Number(body.valorKwhContrato),
+        gestaoFixaContrato:
+          isUsinaDommo || !body.gestaoFixaContrato ? null : Number(body.gestaoFixaContrato),
+        isUsinaDommo,
       },
     });
   }

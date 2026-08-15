@@ -16,6 +16,7 @@ import {
 } from "@/lib/investor-debits";
 import { resolveDebitoPanel } from "@/lib/investor-debito-panel";
 import { injecaoDisponivelParaRateio } from "@/lib/injecao-usina";
+import { MOTIVO_REGRA_NAO_IMPLEMENTADA } from "@/lib/usina-dommo";
 
 export const runtime = "nodejs";
 
@@ -82,6 +83,7 @@ export async function POST(
           id: true,
           valorKwhContrato: true,
           gestaoFixaContrato: true,
+          isUsinaDommo: true,
           investor: {
             select: {
               id: true,
@@ -102,6 +104,17 @@ export async function POST(
   if (!investorLink) {
     return NextResponse.json(
       { error: "Esta usina não possui investidor vinculado." },
+      { status: 400 },
+    );
+  }
+
+  // 🚧 Regime "Usina Dommo Soluções": recusa em voz alta em vez de emitir
+  // relatório com o número errado. Sem a fórmula própria, as payables do mês
+  // nem existem (investor-payables pula), então valorBruto sairia 0 e a conta
+  // da usina viraria um InvestorDebit indevido — publicado, seria dívida real.
+  if (investorLink.isUsinaDommo) {
+    return NextResponse.json(
+      { error: MOTIVO_REGRA_NAO_IMPLEMENTADA },
       { status: 400 },
     );
   }

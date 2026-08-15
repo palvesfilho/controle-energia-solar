@@ -25,6 +25,7 @@ import { parseInstallments } from "@/lib/billing-installments";
 import { applyInvestorDebitsToPayable } from "@/lib/investor-debits";
 import { applyInjectionCapToPlant } from "@/lib/investor-injection-cap";
 import { resolvePlantBillOrigin } from "@/lib/payable-origin";
+import { MOTIVO_REGRA_NAO_IMPLEMENTADA } from "@/lib/usina-dommo";
 
 export interface PayableSyncResult {
   billId: string;
@@ -206,6 +207,7 @@ export async function syncInvestorPayablesFromBill(
       investorId: true,
       sharePercent: true,
       valorKwhContrato: true,
+      isUsinaDommo: true,
     },
   });
 
@@ -231,6 +233,16 @@ export async function syncInvestorPayablesFromBill(
   const touchedIds: string[] = [];
 
   for (const ip of investorPlants) {
+    // 🚧 Regime "Usina Dommo Soluções": a remuneração tem fórmula própria que
+    // ainda não existe. Cair no cálculo padrão daria valorKwhContrato = 0 e
+    // gravaria uma payable de R$ 0,00 com cara de correta — meia implementação
+    // que falha calada. Pula e diz por quê; a pendência aparece no resultado
+    // do sync em vez de virar dinheiro errado.
+    if (ip.isUsinaDommo) {
+      result.skipped.push(MOTIVO_REGRA_NAO_IMPLEMENTADA);
+      continue;
+    }
+
     const shareCriacao = ip.sharePercent ?? 100;
     const valorKwhCriacao = ip.valorKwhContrato ?? 0;
 
