@@ -27,9 +27,21 @@ export async function GET(req: NextRequest) {
   const situacao = (req.nextUrl.searchParams.get("situacao") ?? "PENDENTE").toUpperCase();
 
   try {
+    // MESMA ORDEM DO CRM, de propósito: lá a lista de adesões é ordenada por
+    // `criado_em` descendente (backend/src/routes/adesoes.js), e dentro de cada
+    // adesão as UCs saem na ordem do termo. Assim dá para conferir as duas
+    // telas lado a lado, linha a linha, em vez de caçar por nome.
+    //
+    // `nulls: "last"` porque linha lida antes desta coluna existir tem
+    // `adesaoCriadaEm` nulo — e em DESC o Postgres jogaria os nulos para o topo,
+    // pondo justamente as mais antigas na frente. O próximo sync preenche.
     const ucs = await prisma.crmUcImportada.findMany({
       where: { situacao },
-      orderBy: [{ clienteNome: "asc" }, { codigoUc: "asc" }],
+      orderBy: [
+        { adesaoCriadaEm: { sort: "desc", nulls: "last" } },
+        { adesaoIdCrm: "desc" },
+        { ordemNaAdesao: "asc" },
+      ],
     });
 
     // A UC já cadastrada aqui é marcada na tela, para o operador não cadastrar

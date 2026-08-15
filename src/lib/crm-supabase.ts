@@ -435,6 +435,12 @@ export interface UnidadeDaAdesao {
   bruto: string;
   /** kWh/mês desta UC; null quando não dá para parear com honestidade. */
   mediaKwh: number | null;
+  /**
+   * Posição no array `unidades_consumidoras` — a ordem em que a UC aparece no
+   * termo assinado. Preservada para a fila do Gestor sair na mesma ordem da
+   * tela do CRM, o que torna a conferência linha a linha.
+   */
+  ordem: number;
 }
 
 /**
@@ -491,7 +497,10 @@ export function extrairUnidades(
       mediaKwh = mediaUnicaLegado;
     }
 
-    saida.push({ codigo, bruto: String(bruto).trim(), mediaKwh });
+    // `i` e não `saida.length`: a posição é a do array original. UC repetida ou
+    // vazia é pulada, e usar o tamanho da saída renumeraria as seguintes,
+    // desalinhando a lista daqui com a do termo.
+    saida.push({ codigo, bruto: String(bruto).trim(), mediaKwh, ordem: i });
   });
 
   return saida;

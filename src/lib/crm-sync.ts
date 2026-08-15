@@ -314,6 +314,9 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
 
       const dadosUc = {
         propostaIdCrm: proposta.id,
+        // Ordem do CRM, para a fila daqui bater com a lista de lá.
+        adesaoCriadaEm: primeiraDataValida(a.criado_em),
+        ordemNaAdesao: u.ordem,
         codigoUcBruto: u.bruto || null,
         mediaMensalKwh: u.mediaKwh,
         clienteNome: a.cliente_nome ?? clienteNome,

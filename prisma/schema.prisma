@@ -2304,6 +2304,14 @@ model CrmUcImportada {
   // justamente porque a proposta se repete.
   propostaIdCrm Int    @map("proposta_id_crm")
   adesaoIdCrm   Int    @map("adesao_id_crm")
+
+  // Ordem de exibição, copiada do CRM para a conferência ficar linha a linha.
+  // O CRM lista adesões com `criado_em` DESCENDENTE (a mais nova primeiro) —
+  // ver backend/src/routes/adesoes.js na rota GET /. Dentro de uma adesão,
+  // `ordemNaAdesao` é a posição no array `unidades_consumidoras`, que é a
+  // ordem em que as UCs aparecem no próprio termo assinado.
+  adesaoCriadaEm DateTime? @map("adesao_criada_em")
+  ordemNaAdesao  Int       @default(0) @map("ordem_na_adesao")
   // Só dígitos, para casar com ConsumerUnit.codigoUc. Ver [[whereCodigoUc]].
   codigoUc      String @map("codigo_uc")
   // Como veio do CRM ("2.715.094.001-03"), para exibir igual ao termo.
