@@ -29,6 +29,7 @@ import {
   corrigirMojibake,
   listarDocumentosDaAdesao,
 } from "@/lib/crm-supabase";
+import { separarTermoEProcuracao } from "@/lib/crm-envelope-pdfs";
 
 /** Campos de `ConsumerUnit` preenchidos por esta cópia. */
 export interface DocumentosCopiados {
@@ -134,16 +135,34 @@ export async function copiarDocumentosDaAdesao(adesaoId: number): Promise<Result
   };
 
   // 1 e 2 — termo e procuração, do envelope de assinatura.
+  //
+  // Qual é qual sai do CONTEÚDO, não do nome da coluna: em 14 das 22 adesões do
+  // CRM as duas colunas estão trocadas na origem. Ver crm-envelope-pdfs.ts.
   const envelope = await buscarEnvelopeDaAdesao(adesaoId).catch(() => null);
-  if (envelope?.pdf_termo_assinado) {
-    await guardar("termo de adesão", "docTermoAdesao", "docTermoAdesaoNome",
-      `termo-adesao-${adesaoId}.pdf`,
-      async () => Buffer.from(envelope.pdf_termo_assinado!, "base64"));
-  }
-  if (envelope?.pdf_procuracao_assinada) {
-    await guardar("procuração", "docProcuracao", "docProcuracaoNome",
-      `procuracao-${adesaoId}.pdf`,
-      async () => Buffer.from(envelope.pdf_procuracao_assinada!, "base64"));
+  if (envelope?.pdf_termo_assinado || envelope?.pdf_procuracao_assinada) {
+    const { termo, procuracao, invertido } = await separarTermoEProcuracao({
+      colunaTermo: envelope.pdf_termo_assinado
+        ? Buffer.from(envelope.pdf_termo_assinado, "base64")
+        : null,
+      colunaProcuracao: envelope.pdf_procuracao_assinada
+        ? Buffer.from(envelope.pdf_procuracao_assinada, "base64")
+        : null,
+    });
+
+    if (invertido) {
+      console.warn(
+        `[crm-copia-documentos] adesão ${adesaoId}: colunas do envelope trocadas no CRM — corrigido pelo conteúdo.`,
+      );
+    }
+
+    if (termo) {
+      await guardar("termo de adesão", "docTermoAdesao", "docTermoAdesaoNome",
+        `termo-adesao-${adesaoId}.pdf`, async () => termo);
+    }
+    if (procuracao) {
+      await guardar("procuração", "docProcuracao", "docProcuracaoNome",
+        `procuracao-${adesaoId}.pdf`, async () => procuracao);
+    }
   }
 
   // 3 a 6 — anexos do bucket do CRM.
