@@ -11,6 +11,7 @@ import {
 } from "@/lib/geracao-inversor";
 import { isMesEncerradoDaConsumerBill } from "@/lib/mes-encerrado";
 import { concessionariaDaUsina } from "@/lib/concessionarias";
+import { PRECO_KWH_MAX } from "@/lib/preco-kwh";
 
 /**
  * GET /api/admin/faturas-energia/[id]
@@ -122,6 +123,8 @@ export async function PATCH(
     consumoKwh?: number | null;
     energiaCompensada?: number | null;
     energiaInjetadaMedidorKwh?: number | null;
+    tarifaTeComTributos?: number | null;
+    tarifaTusdComTributos?: number | null;
     sincronizarGeracao?: boolean;
   } | null;
 
@@ -228,6 +231,34 @@ export async function PATCH(
     });
   }
 
+  // 6. Tarifas TE/TUSD com tributos — conserto do OCR rotacionado, que grava um
+  //    VALOR no lugar da tarifa (R$ 852/kWh no SANDRO). Gravar aqui carimba
+  //    `tarifasManuaisEm`: a partir daí o reparse do PDF não sobrescreve mais
+  //    esses dois campos. Escolha explícita ganha de detecção.
+  const tarifasManuais: Record<string, number | null> = {};
+  for (const f of ["tarifaTeComTributos", "tarifaTusdComTributos"] as const) {
+    if (f in body) {
+      const v = body[f];
+      if (v != null && (!Number.isFinite(v) || v < 0 || v > PRECO_KWH_MAX)) {
+        return NextResponse.json(
+          {
+            error: `${f} deve ser R$/kWh entre 0 e ${PRECO_KWH_MAX.toFixed(2)} (ou vazio). Tarifa acima disso é dado corrompido, não tarifa.`,
+          },
+          { status: 400 },
+        );
+      }
+      tarifasManuais[f] = v ?? null;
+    }
+  }
+  if (Object.keys(tarifasManuais).length > 0) {
+    // Limpar os dois (ambos null) desmarca — volta a valer o reparse.
+    const limpou = Object.values(tarifasManuais).every((v) => v == null);
+    await prisma.consumerBill.update({
+      where: { id },
+      data: { ...tarifasManuais, tarifasManuaisEm: limpou ? null : new Date() },
+    });
+  }
+
   // Re-aplica cobrança + payables. populateBillingFromBill vai re-derivar
   // consumoInstantaneoKwh a partir de geracaoInversorKwh quando aplicável.
   await populateBillingFromBill(id).catch(() => {});
@@ -244,6 +275,9 @@ export async function PATCH(
       consumoKwh: true,
       energiaCompensada: true,
       valorTotal: true,
+      tarifaTeComTributos: true,
+      tarifaTusdComTributos: true,
+      tarifasManuaisEm: true,
     },
   });
 

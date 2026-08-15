@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { PRECO_KWH_MAX } from "@/lib/preco-kwh";
 import {
   ArrowLeft,
   AlertTriangle,
@@ -62,6 +63,10 @@ interface BillData {
   valorTotal: number | null;
   tarifaTE: number | null;
   tarifaTUSD: number | null;
+  tarifaTeComTributos: number | null;
+  tarifaTusdComTributos: number | null;
+  /** Preenchida quando TE/TUSD foram digitados à mão — reparse não sobrescreve. */
+  tarifasManuaisEm: string | null;
   dataLeituraAnterior: string | null;
   dataLeituraAtual: string | null;
 }
@@ -538,6 +543,10 @@ function BillEditor({ bill, onChanged }: { bill: BillData; onChanged: () => void
     bill.energiaInjetadaMedidorKwh?.toString() ?? "",
   );
   const [valorTotal, setValorTotal] = useState(bill.valorTotal?.toString() ?? "");
+  const [tarifaTe, setTarifaTe] = useState(bill.tarifaTeComTributos?.toString() ?? "");
+  const [tarifaTusd, setTarifaTusd] = useState(
+    bill.tarifaTusdComTributos?.toString() ?? "",
+  );
   const [saving, setSaving] = useState(false);
   const [reparseing, setReparseing] = useState(false);
   const [feedback, setFeedback] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -546,13 +555,26 @@ function BillEditor({ bill, onChanged }: { bill: BillData; onChanged: () => void
     (consumoKwh || "") !== (bill.consumoKwh?.toString() ?? "") ||
     (energiaCompensada || "") !== (bill.energiaCompensada?.toString() ?? "") ||
     (energiaInjetada || "") !== (bill.energiaInjetadaMedidorKwh?.toString() ?? "") ||
-    (valorTotal || "") !== (bill.valorTotal?.toString() ?? "");
+    (valorTotal || "") !== (bill.valorTotal?.toString() ?? "") ||
+    (tarifaTe || "") !== (bill.tarifaTeComTributos?.toString() ?? "") ||
+    (tarifaTusd || "") !== (bill.tarifaTusdComTributos?.toString() ?? "");
 
   function parse(v: string): number | null {
     const t = v.trim().replace(",", ".");
     if (!t) return null;
     const n = Number(t);
     return Number.isFinite(n) ? n : null;
+  }
+
+  // Qual das duas tarifas está fora da faixa de plausibilidade (se alguma).
+  // Mesma constante que o back-end usa — a tela não inventa limite próprio.
+  const tarifaPodre =
+    [bill.tarifaTeComTributos, bill.tarifaTusdComTributos].find(
+      (v) => v != null && v > PRECO_KWH_MAX,
+    ) ?? null;
+
+  function formatTarifa(v: number): string {
+    return `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
   }
 
   async function salvar() {
@@ -567,6 +589,8 @@ function BillEditor({ bill, onChanged }: { bill: BillData; onChanged: () => void
           energiaCompensada: parse(energiaCompensada),
           energiaInjetadaMedidorKwh: parse(energiaInjetada),
           valorTotal: parse(valorTotal),
+          tarifaTeComTributos: parse(tarifaTe),
+          tarifaTusdComTributos: parse(tarifaTusd),
         }),
       });
       const j = await res.json().catch(() => ({}));
@@ -632,6 +656,46 @@ function BillEditor({ bill, onChanged }: { bill: BillData; onChanged: () => void
             onChange={setEnergiaInjetada}
           />
           <Field label="Valor total (R$)" value={valorTotal} onChange={setValorTotal} />
+        </div>
+
+        {/* Tarifas com tributos — o campo que o OCR rotacionado corrompe.
+            Fica em bloco próprio porque é R$/kWh, não R$ nem kWh: misturado
+            aos de cima, alguém digita o valor da conta aqui. */}
+        <div className="rounded-lg border p-3 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium">Tarifa com tributos (R$/kWh)</span>
+            {bill.tarifasManuaisEm && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                preenchida à mão — o reparse não sobrescreve
+              </span>
+            )}
+          </div>
+
+          {tarifaPodre && (
+            <p className="text-xs text-red-700 dark:text-red-400">
+              ⚠️ A tarifa gravada está implausível ({formatTarifa(tarifaPodre)}/kWh).
+              O OCR da Infosimples rotaciona as colunas e grava um <b>valor</b> no
+              lugar da tarifa. Enquanto isso não for corrigido, a parcela de
+              consumo instantâneo fica <b>fora</b> do cálculo — nem da cobrança do
+              cliente, nem da remuneração. Tente <b>re-extrair do PDF</b> primeiro;
+              se não resolver, digite TE e TUSD como estão impressos na fatura.
+            </p>
+          )}
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <Field
+              label="TE com tributos (R$/kWh)"
+              hint="Ex.: 0,4282 — como impresso na fatura, já com ICMS/PIS/COFINS."
+              value={tarifaTe}
+              onChange={setTarifaTe}
+            />
+            <Field
+              label="TUSD com tributos (R$/kWh)"
+              hint="Ex.: 0,1994. Deixe os dois vazios para voltar a aceitar o reparse."
+              value={tarifaTusd}
+              onChange={setTarifaTusd}
+            />
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 pt-2">

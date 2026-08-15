@@ -31,7 +31,12 @@ export async function POST(
   const { id } = await params;
   const bill = await prisma.consumerBill.findUnique({
     where: { id },
-    select: { id: true, pdfUrl: true, consumerUnitId: true },
+    select: {
+      id: true,
+      pdfUrl: true,
+      consumerUnitId: true,
+      tarifasManuaisEm: true,
+    },
   });
   if (!bill) {
     return NextResponse.json({ error: "Fatura não encontrada" }, { status: 404 });
@@ -76,6 +81,17 @@ export async function POST(
   // salvo e reescreve a fonte. Preserva ambos, atualiza só os campos extraídos.
   const { pdfUrl: _pdfUrl, fonteConsulta: _fonte, ...billData } = parsed.bill;
   void _pdfUrl; void _fonte;
+
+  // Escolha explícita ganha de detecção — inclusive AQUI, no reparse manual.
+  // Se o operador digitou TE/TUSD (porque o OCR rotacionado corrompeu a tarifa),
+  // re-extrair o PDF não pode apagar o que ele digitou. Sem esta guarda a
+  // promessa "o que você preencheu não é sobrescrito" valeria só no sync
+  // automático e furaria no botão "Re-extrair do PDF" — meia correção.
+  if (bill.tarifasManuaisEm) {
+    delete (billData as Record<string, unknown>).tarifaTeComTributos;
+    delete (billData as Record<string, unknown>).tarifaTusdComTributos;
+  }
+
   await prisma.consumerBill.update({
     where: { id },
     data: { ...billData, syncedAt: new Date() },

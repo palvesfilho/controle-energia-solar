@@ -82,10 +82,28 @@ export async function applyInjectionCapToPlant(
 
   const plant = await prisma.plant.findUnique({
     where: { id: plantId },
-    select: { id: true, regraInstalacao: true },
+    select: {
+      id: true,
+      regraInstalacao: true,
+      investors: { select: { isUsinaDommo: true }, take: 1 },
+    },
   });
   if (!plant) {
     result.warnings.push("plant não encontrada");
+    return result;
+  }
+
+  // 🚫 Regime "Usina Dommo Soluções": o cap NÃO se aplica (decisão do Paulo,
+  // 15/08/2026). Ele existe para não pagar um INVESTIDOR por crédito que a
+  // usina dele não gerou; na Dommo não há terceiro a proteger — o valor é a
+  // receita real cobrada do cliente pelo que foi compensado, venha o crédito
+  // de onde vier.
+  //
+  // ⚠️ Sair aqui não é só respeitar a regra: a linha que recalcula
+  // `valorBruto = (base + ajuste) × valorKwhContrato` ZERARIA a remuneração
+  // Dommo, porque nesse regime não existe R$/kWh de contrato (é null → 0).
+  // Rodar o cap numa payable Dommo apagaria o valor em silêncio.
+  if (plant.investors[0]?.isUsinaDommo) {
     return result;
   }
 

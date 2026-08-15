@@ -53,6 +53,11 @@ export async function GET(
       valorTotal: true,
       tarifaTE: true,
       tarifaTUSD: true,
+      // Tarifas COM tributos — editáveis à mão quando o OCR rotacionado as
+      // corrompe (grava um valor no lugar da tarifa). Ver lib/preco-kwh.ts.
+      tarifaTeComTributos: true,
+      tarifaTusdComTributos: true,
+      tarifasManuaisEm: true,
       dataLeituraAnterior: true,
       dataLeituraAtual: true,
     },

@@ -4,7 +4,11 @@ import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 import { resolveDebitoPanel } from "@/lib/investor-debito-panel";
-import { MOTIVO_REGRA_NAO_IMPLEMENTADA } from "@/lib/usina-dommo";
+import {
+  NOTA_REGIME_DOMMO,
+  SELECT_BILL_DOMMO,
+  apurarRemuneracaoDommo,
+} from "@/lib/usina-dommo";
 
 interface RouteCtx {
   params: Promise<{ id: string }>;
@@ -83,15 +87,42 @@ export async function GET(_req: NextRequest, ctx: RouteCtx) {
   });
   const faturasUsinaDescontadas = billUsinaMesAtual ? [billUsinaMesAtual] : [];
   const valorContaUcUsina = billUsinaMesAtual?.valorTotal ?? null;
-  // 🚧 Regime "Usina Dommo Soluções": gestão fixa não existe nesse contrato, e a
-  // remuneração tem fórmula própria ainda não implementada. Diferente do PDF —
-  // que RECUSA gerar —, esta rota é a tela de consulta: devolve os números que
-  // tem e sinaliza a pendência, para o operador não ler o líquido como final.
+  // Regime "Usina Dommo Soluções": gestão fixa não existe nesse contrato — forçar
+  // null impede que um resíduo antigo no vínculo vire desconto. A nota explica
+  // por que "Gestão de energia" aparece vazia e de onde sai o bruto.
   const isUsinaDommo = billing.plant.investors[0]?.isUsinaDommo ?? false;
   const gestaoFixaMensal = isUsinaDommo
     ? null
     : (billing.plant.investors[0]?.gestaoFixaContrato ?? null);
-  const avisoRegimeDommo = isUsinaDommo ? MOTIVO_REGRA_NAO_IMPLEMENTADA : null;
+  const avisoRegimeDommo = isUsinaDommo ? NOTA_REGIME_DOMMO : null;
+
+  // 🔎 Pendências do regime Dommo: UCs com fatura e compensação no mês que NÃO
+  // geraram parcela. Sem isto o operador só vê o total menor e não descobre por
+  // quê — a parcela some calada, que é o defeito que a recusa queria evitar.
+  // Reapura na leitura (barato: são as faturas de um mês) em vez de guardar o
+  // motivo numa coluna que envelheceria junto com a fatura.
+  const pendenciasDommo: { codigoUc: string; nome: string | null; motivo: string }[] = [];
+  if (isUsinaDommo) {
+    const billsDoMes = await prisma.consumerBill.findMany({
+      where: {
+        consumerUnit: { plantId: billing.plantId },
+        anoReferencia: billing.ano,
+        mesReferencia: billing.mes,
+        energiaCompensada: { gt: 0 },
+      },
+      select: { id: true, consumerUnitId: true, ...SELECT_BILL_DOMMO },
+    });
+    for (const b of billsDoMes) {
+      const apurado = apurarRemuneracaoDommo(b);
+      if (apurado.valor == null) {
+        pendenciasDommo.push({
+          codigoUc: b.consumerUnit?.codigoUc ?? "—",
+          nome: b.consumerUnit?.nome ?? null,
+          motivo: apurado.avisos.join(" | ") || "não foi possível apurar",
+        });
+      }
+    }
+  }
 
   // Compensação por UC do rateio no mês de referência: junta InvestorPayable
   // (nossa fonte de verdade do que foi destinado ao investidor) com
@@ -521,6 +552,7 @@ export async function GET(_req: NextRequest, ctx: RouteCtx) {
     gestaoFixaMensal,
     isUsinaDommo,
     avisoRegimeDommo,
+    pendenciasDommo,
     valorBrutoRealizado,
     valorAjustesGerais,
     debitoPanel,

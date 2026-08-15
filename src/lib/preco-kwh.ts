@@ -34,6 +34,42 @@
 /** Alíquota efetiva média (ICMS+PIS+COFINS) — só para gross-up de emergência. */
 export const TRIBUTOS_EFETIVOS_PADRAO = 0.25;
 
+/**
+ * 🚧 **Faixa de plausibilidade do preço do kWh (R$/kWh, com tributos).**
+ *
+ * O OCR do Infosimples rotaciona colunas e, em 43 faturas, `tarifaTusdComTributos`
+ * guarda um VALOR em vez de uma tarifa: **R$ 852,00/kWh** no SANDRO, **R$ 7.059,00**
+ * na DIMARZARI, onde o real é ~R$ 0,66. Sem trava, esse número entra na conta e
+ * infla o resultado ~1.290×.
+ *
+ * O teto é folgado de propósito: a tarifa legítima mais cara medida na base é
+ * **R$ 1,56/kWh** (Grupo A, posto de ponta, GRÁFICA JACUI). R$ 3,00 é quase o
+ * dobro disso — nenhuma fatura real chega perto, e todo lixo do OCR é barrado.
+ *
+ * O piso pega o outro lado da rotação (campo que virou 0 ou centavo solto).
+ *
+ * Fora da faixa devolvemos `precoKwh: null` com motivo — **não** um palpite.
+ * Quem chama decide o que fazer, mas nunca recebe um número inventado.
+ * Conserto do dado: reparse do PDF ou preenchimento manual de TE/TUSD na
+ * "Manutenção da fatura".
+ */
+export const PRECO_KWH_MIN = 0.05;
+export const PRECO_KWH_MAX = 3.0;
+
+function foraDaFaixa(preco: number): boolean {
+  return !Number.isFinite(preco) || preco < PRECO_KWH_MIN || preco > PRECO_KWH_MAX;
+}
+
+/** Motivo padrão — texto único, aparece igual na cobrança e na remuneração. */
+function motivoImplausivel(preco: number, posto: string): string {
+  return (
+    `Preço do kWh implausível (R$ ${preco.toFixed(2)}/kWh no posto ${posto}) — ` +
+    `fora da faixa R$ ${PRECO_KWH_MIN.toFixed(2)}–${PRECO_KWH_MAX.toFixed(2)}. ` +
+    `A tarifa da fatura está corrompida (OCR rotacionado). Corrija re-extraindo ` +
+    `o PDF ou preenchendo TE/TUSD à mão em "Manutenção da fatura".`
+  );
+}
+
 export interface PrecoKwhInput {
   // --- Grupo A, posto FORA PONTA ---
   /** Quantidade faturada de TE fora ponta (kWh) */
@@ -65,6 +101,12 @@ export interface PrecoKwhResultado {
   estimado: boolean;
   /** Texto pronto para virar aviso — vem quando `precoKwh` é null OU `estimado`. */
   motivo?: string;
+  /**
+   * `true` quando a tarifa da fatura está corrompida (fora de
+   * [PRECO_KWH_MIN, PRECO_KWH_MAX]). `precoKwh` vem null junto. Distingue
+   * "dado podre, conserta a fatura" de "dado ausente, não dá pra calcular".
+   */
+  implausivel?: boolean;
 }
 
 /** Uma parcela (TE ou TUSD): preferir valor÷kWh da fatura; senão gross-up. */
@@ -126,8 +168,18 @@ export function precoKwhSolar(bill: PrecoKwhInput): PrecoKwhResultado {
           " fora ponta — não dá para valorar o solar sem inventar tarifa",
       };
     }
+    const soma = te.preco + tusd.preco;
+    if (foraDaFaixa(soma)) {
+      return {
+        precoKwh: null,
+        posto: "FORA_PONTA",
+        estimado: false,
+        implausivel: true,
+        motivo: motivoImplausivel(soma, "fora ponta"),
+      };
+    }
     return {
-      precoKwh: te.preco + tusd.preco,
+      precoKwh: soma,
       posto: "FORA_PONTA",
       estimado: te.estimado || tusd.estimado,
     };
@@ -145,6 +197,17 @@ export function precoKwhSolar(bill: PrecoKwhInput): PrecoKwhResultado {
   if (te != null || tusd != null) {
     const soma = (te ?? 0) + (tusd ?? 0);
     if (soma > 0) {
+      // 🚧 É AQUI que mora o R$ 852/kWh do SANDRO: `tarifaTusdComTributos`
+      // guardando um valor. Barra antes de virar dinheiro.
+      if (foraDaFaixa(soma)) {
+        return {
+          precoKwh: null,
+          posto: "UNICO",
+          estimado: false,
+          implausivel: true,
+          motivo: motivoImplausivel(soma, "único"),
+        };
+      }
       const faltando = te == null ? "TE" : tusd == null ? "TUSD" : null;
       return {
         precoKwh: soma,
@@ -159,8 +222,18 @@ export function precoKwhSolar(bill: PrecoKwhInput): PrecoKwhResultado {
 
   const base = (bill.tarifaTE ?? 0) + (bill.tarifaTUSD ?? 0);
   if (base > 0) {
+    const grossUp = base / (1 - TRIBUTOS_EFETIVOS_PADRAO);
+    if (foraDaFaixa(grossUp)) {
+      return {
+        precoKwh: null,
+        posto: "UNICO",
+        estimado: false,
+        implausivel: true,
+        motivo: motivoImplausivel(grossUp, "único (base sem tributos)"),
+      };
+    }
     return {
-      precoKwh: base / (1 - TRIBUTOS_EFETIVOS_PADRAO),
+      precoKwh: grossUp,
       posto: "UNICO",
       estimado: true,
     };

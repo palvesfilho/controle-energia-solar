@@ -25,7 +25,11 @@ import { parseInstallments } from "@/lib/billing-installments";
 import { applyInvestorDebitsToPayable } from "@/lib/investor-debits";
 import { applyInjectionCapToPlant } from "@/lib/investor-injection-cap";
 import { resolvePlantBillOrigin } from "@/lib/payable-origin";
-import { MOTIVO_REGRA_NAO_IMPLEMENTADA } from "@/lib/usina-dommo";
+import {
+  apurarRemuneracaoDommo,
+  NOME_REGIME_DOMMO,
+  SELECT_BILL_DOMMO,
+} from "@/lib/usina-dommo";
 
 export interface PayableSyncResult {
   billId: string;
@@ -33,6 +37,12 @@ export interface PayableSyncResult {
   updated: number;
   skipped: string[];
   payableIds: string[];
+  /**
+   * Problemas que NÃO impediram a gravação, mas que o operador precisa ver —
+   * hoje só o regime Dommo produz (tarifa podre barrada, desconto ausente).
+   * Anomalia se sinaliza, não se esconde.
+   */
+  avisos: string[];
 }
 
 const STATUS_FINAIS = new Set(["PAGO", "EM_COBRANCA_JUDICIAL"]);
@@ -78,6 +88,7 @@ export async function syncInvestorPayablesFromBill(
     updated: 0,
     skipped: [],
     payableIds: [],
+    avisos: [],
   };
 
   const bill = await prisma.consumerBill.findUnique({
@@ -91,6 +102,11 @@ export async function syncInvestorPayablesFromBill(
       energiaCompensada: true,
       energiaInjetadaMedidorKwh: true,
       dataLeituraAtual: true,
+      // --- Campos usados SÓ pelo regime Dommo (fórmula por parcelas em R$).
+      // Vem da constante compartilhada: um `select` incompleto aqui faria a
+      // gravação e a tela de faturamento apurarem valores diferentes da mesma
+      // fatura, sem erro nenhum. Ver lib/usina-dommo.ts.
+      ...SELECT_BILL_DOMMO,
     },
   });
 
@@ -232,14 +248,26 @@ export async function syncInvestorPayablesFromBill(
   // IDs criados/atualizados nesta passada — usados pra reaplicar débitos APÓS o cap.
   const touchedIds: string[] = [];
 
+  // Regime Dommo: a remuneração é a soma de parcelas em R$ (instantâneo +
+  // compensado + bandeira), não kWh × tarifa de contrato. Calculada uma vez,
+  // fora do laço, porque não depende do investidor.
+  const temDommo = investorPlants.some((ip) => ip.isUsinaDommo);
+  const dommo = temDommo ? apurarRemuneracaoDommo(bill) : null;
+  if (dommo) result.avisos.push(...dommo.avisos);
+
   for (const ip of investorPlants) {
-    // 🚧 Regime "Usina Dommo Soluções": a remuneração tem fórmula própria que
-    // ainda não existe. Cair no cálculo padrão daria valorKwhContrato = 0 e
-    // gravaria uma payable de R$ 0,00 com cara de correta — meia implementação
-    // que falha calada. Pula e diz por quê; a pendência aparece no resultado
-    // do sync em vez de virar dinheiro errado.
-    if (ip.isUsinaDommo) {
-      result.skipped.push(MOTIVO_REGRA_NAO_IMPLEMENTADA);
+    // No regime Dommo, sem valor apurado não se grava R$ 0,00 — isso passaria
+    // por "mês sem compensação". Pula dizendo por quê (tarifa podre barrada,
+    // desconto da UC ausente, fatura sem linhas oUC).
+    if (ip.isUsinaDommo && dommo?.valor == null) {
+      const motivo = `${NOME_REGIME_DOMMO}: remuneração não apurada — ${dommo?.avisos.join(" | ") ?? "motivo desconhecido"}`;
+      result.skipped.push(motivo);
+      // Todos os chamadores descartam o retorno (`.catch(() => {})`), então sem
+      // este log a pendência não deixaria rastro nenhum. A tela de faturamento
+      // reapura e mostra a lista; aqui fica o rastro pra diagnóstico.
+      console.warn(
+        `[investor-payables] bill=${billId} UC=${bill.consumerUnit?.codigoUc ?? "—"} ${bill.mesReferencia}/${bill.anoReferencia}: ${motivo}`,
+      );
       continue;
     }
 
@@ -284,7 +312,11 @@ export async function syncInvestorPayablesFromBill(
       const valorAjuste = existing.valorAjuste;
 
       const kwhBase = kwhDoRateio;
-      const valorBruto = (kwhBase + kwhAjuste) * valorKwh;
+      // Dommo: valor vem das parcelas em R$; o ajuste manual em kWh não tem
+      // tarifa por onde multiplicar, então só o ajuste em R$ se aplica.
+      const valorBruto = ip.isUsinaDommo
+        ? (dommo?.valor ?? 0)
+        : (kwhBase + kwhAjuste) * valorKwh;
       const valorLiquido = valorBruto + valorAjuste;
       const novoStatus = clientePagou ? "DISPONIVEL" : "AGUARDANDO_PAGAMENTO";
       const now = new Date();
@@ -321,7 +353,9 @@ export async function syncInvestorPayablesFromBill(
     } else {
       // sharePercent é organizacional — não multiplica o kWh remunerável.
       const kwhBase = kwhDoRateio;
-      const valorBruto = kwhBase * valorKwhCriacao;
+      const valorBruto = ip.isUsinaDommo
+        ? (dommo?.valor ?? 0)
+        : kwhBase * valorKwhCriacao;
       const now = new Date();
 
       const created = await prisma.investorPayable.create({

@@ -130,8 +130,13 @@ interface BillingDetail {
   gestaoFixaMensal: number | null;
   /** Regime "Usina Dommo Soluções" — ver lib/usina-dommo.ts. */
   isUsinaDommo?: boolean;
-  /** Preenchido só quando `isUsinaDommo`: a fórmula ainda não existe. */
+  /** Nota de contexto do regime (não é erro) — preenchida quando `isUsinaDommo`. */
   avisoRegimeDommo?: string | null;
+  /**
+   * UCs com compensação no mês que NÃO geraram parcela, e por quê. Sem esta
+   * lista o total apareceria menor sem explicação.
+   */
+  pendenciasDommo?: { codigoUc: string; nome: string | null; motivo: string }[];
   valorBrutoRealizado: number;
   /** Painel do saldo devedor (null quando não há dívida amortizada no mês). */
   debitoPanel: {
@@ -653,18 +658,53 @@ export function PlantBillingDetail({
         </Link>
       )}
 
-      {/* Regime Dommo sem fórmula: os números abaixo NÃO são o fechamento —
-          as parcelas nem chegam a ser geradas. Avisa antes de tudo, senão o
-          bruto zerado se lê como "mês sem compensação". */}
+      {/* Regime Dommo: nota de contexto (por que não há gestão fixa) e, o que
+          importa de verdade, a lista de UCs que ficaram FORA do total e por quê.
+          Sem essa lista o operador só veria o número menor. */}
       {data.avisoRegimeDommo && (
-        <Card className="border-amber-400 bg-amber-50 dark:bg-amber-950/30">
+        <Card
+          className={
+            data.pendenciasDommo?.length
+              ? "border-amber-400 bg-amber-50 dark:bg-amber-950/30"
+              : "border-muted"
+          }
+        >
           <CardContent className="flex items-start gap-3 p-4">
-            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-            <div>
-              <p className="font-semibold text-sm">Regra de remuneração pendente</p>
+            <AlertTriangle
+              className={`h-5 w-5 mt-0.5 shrink-0 ${
+                data.pendenciasDommo?.length
+                  ? "text-amber-600 dark:text-amber-400"
+                  : "text-muted-foreground"
+              }`}
+            />
+            <div className="min-w-0">
+              <p className="font-semibold text-sm">Usina Dommo Soluções</p>
               <p className="text-xs text-muted-foreground mt-1">
                 {data.avisoRegimeDommo}
               </p>
+
+              {!!data.pendenciasDommo?.length && (
+                <div className="mt-3">
+                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                    {data.pendenciasDommo.length} UC
+                    {data.pendenciasDommo.length === 1 ? "" : "s"} com compensação no
+                    mês que <b>não entrou</b> no total:
+                  </p>
+                  <ul className="mt-1.5 space-y-1.5">
+                    {data.pendenciasDommo.map((p) => (
+                      <li key={p.codigoUc} className="text-xs">
+                        <span className="font-medium">
+                          {p.nome ?? "—"}{" "}
+                          <span className="font-mono text-muted-foreground">
+                            {p.codigoUc}
+                          </span>
+                        </span>
+                        <span className="block text-muted-foreground">{p.motivo}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

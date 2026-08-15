@@ -828,6 +828,11 @@ model ConsumerBill {
   // (consumo instantâneo) para refletir o valor real economizado.
   tarifaTeComTributos           Float?  @map("tarifa_te_com_tributos")
   tarifaTusdComTributos         Float?  @map("tarifa_tusd_com_tributos")
+  // Quando o operador digitou TE/TUSD a mao (tela "Manutencao da fatura"),
+  // porque o OCR rotacionado corrompeu a tarifa. Marcado, o reparse do PDF
+  // NAO sobrescreve mais esses dois campos: escolha explicita ganha de
+  // deteccao. Ver lib/infosimples-pdf-fallback.ts e lib/preco-kwh.ts.
+  tarifasManuaisEm              DateTime? @map("tarifas_manuais_em")
   bandeiraTarifaria             String? @map("bandeira_tarifaria")
   bandeiraValor                 Float?  @map("bandeira_valor") // Soma R$ de todas as linhas de bandeira da fatura
   // Adicional de Bandeira por cor — preenchido na linha "Adicional de Bandeira X".

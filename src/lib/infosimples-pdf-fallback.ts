@@ -31,6 +31,7 @@
  */
 import { parseFaturaPdf } from "./fatura-pdf-parser";
 import { readFromStorage } from "./file-storage";
+import { PRECO_KWH_MAX } from "./preco-kwh";
 
 /** Campos do medidor de injeção que o Infosimples às vezes deixa null. */
 const INJECTION_METER_FIELDS = [
@@ -230,6 +231,30 @@ function pdfTemValorTotal(parsed: BillData): boolean {
 }
 
 /**
+ * Tarifas com tributos — o 4º bloco que a rotação do OCR estraga.
+ *
+ * `tarifaTusdComTributos` recebe um VALOR em vez de uma tarifa: R$ 852,00/kWh
+ * no SANDRO, R$ 7.059,00 na DIMARZARI, onde o real é ~R$ 0,66. Ninguém repunha
+ * esses campos: o parser do PDF os extrai corretos (regex no texto, imune à
+ * rotação) e o fallback simplesmente não os olhava.
+ */
+const TARIFA_FIELDS = ["tarifaTeComTributos", "tarifaTusdComTributos"] as const;
+
+/** Uma tarifa isolada acima do teto de plausibilidade já denuncia a rotação. */
+function tarifaLooksBroken(bill: BillData): boolean {
+  return TARIFA_FIELDS.some((f) => {
+    const v = num(bill[f]);
+    return v != null && (v > PRECO_KWH_MAX || v < 0);
+  });
+}
+
+/** O PDF só serve se trouxer tarifa dentro da faixa — senão trocamos lixo por lixo. */
+function pdfTemTarifaSa(parsed: BillData, field: string): boolean {
+  const v = num(parsed[field]);
+  return v != null && v > 0 && v <= PRECO_KWH_MAX;
+}
+
+/**
  * Mescla campos do PDF na fatura vinda do Infosimples. Ver o cabeçalho do
  * arquivo para as regras de substituição.
  */
@@ -240,6 +265,10 @@ export async function enrichBillFromPdfFallback(
   const meterBroken = meterLooksBroken(billData) || meterLooksLikeTariff(billData);
   const creditBroken = creditBlockLooksBroken(billData);
   const consumoBroken = consumoBlockLooksBroken(billData);
+  // Escolha explícita ganha de detecção: TE/TUSD digitados à mão nunca são
+  // tocados pelo reparse, nem para "consertar".
+  const tarifasManuais = billData.tarifasManuaisEm != null;
+  const tarifaBroken = !tarifasManuais && tarifaLooksBroken(billData);
   const nothing: FallbackResult = {
     enriched: billData,
     usedFallback: false,
@@ -247,7 +276,12 @@ export async function enrichBillFromPdfFallback(
     fieldsReplaced: [],
   };
 
-  if (!meterBroken && !creditBroken && !consumoBroken) return nothing;
+  // ⚠️ `tarifaBroken` PRECISA estar nesta porta. Há faturas com medidor, crédito
+  // e consumo sãos e só a tarifa podre — sem ele, a função saía aqui e a tarifa
+  // ficava corrompida para sempre.
+  if (!meterBroken && !creditBroken && !consumoBroken && !tarifaBroken) {
+    return nothing;
+  }
   if (!pdfUrl) return { ...nothing, reason: "sem PDF salvo" };
 
   const file = await readFromStorage(pdfUrl);
@@ -348,6 +382,26 @@ export async function enrichBillFromPdfFallback(
     }
     fill("vencimento");
     fill("codigoBarras");
+  }
+
+  // Bloco 4 — tarifas com tributos. Só mexe quando NÃO foram preenchidas à mão.
+  if (!tarifasManuais) {
+    for (const field of TARIFA_FIELDS) {
+      const atual = num(billData[field]);
+      const podre = atual != null && (atual > PRECO_KWH_MAX || atual < 0);
+      if (podre) {
+        if (pdfTemTarifaSa(parsedBill, field)) {
+          replace(field);
+        } else {
+          avisos.push(
+            `${field} do OCR está implausível (R$ ${atual.toFixed(2)}/kWh) e o PDF ` +
+              `não trouxe tarifa dentro da faixa — preencha TE/TUSD à mão`,
+          );
+        }
+      } else if (atual == null && pdfTemTarifaSa(parsedBill, field)) {
+        fill(field);
+      }
+    }
   }
 
   return {

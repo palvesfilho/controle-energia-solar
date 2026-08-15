@@ -16,7 +16,6 @@ import {
 } from "@/lib/investor-debits";
 import { resolveDebitoPanel } from "@/lib/investor-debito-panel";
 import { injecaoDisponivelParaRateio } from "@/lib/injecao-usina";
-import { MOTIVO_REGRA_NAO_IMPLEMENTADA } from "@/lib/usina-dommo";
 
 export const runtime = "nodejs";
 
@@ -108,16 +107,6 @@ export async function POST(
     );
   }
 
-  // 🚧 Regime "Usina Dommo Soluções": recusa em voz alta em vez de emitir
-  // relatório com o número errado. Sem a fórmula própria, as payables do mês
-  // nem existem (investor-payables pula), então valorBruto sairia 0 e a conta
-  // da usina viraria um InvestorDebit indevido — publicado, seria dívida real.
-  if (investorLink.isUsinaDommo) {
-    return NextResponse.json(
-      { error: MOTIVO_REGRA_NAO_IMPLEMENTADA },
-      { status: 400 },
-    );
-  }
 
   const existing = await prisma.monthlyReport.findFirst({
     where: {
@@ -401,8 +390,15 @@ export async function POST(
   const kwhCredito =
     kwhInjetado != null ? Math.max(0, kwhInjetado - kwhCompensado) : null;
 
-  const valorKwhContrato = investorLink.valorKwhContrato ?? null;
-  const gestaoFixa = investorLink.gestaoFixaContrato ?? null;
+  // Regime Dommo: por definição não há R$/kWh de contrato nem gestão fixa —
+  // a gestora fica com 100% do lucro. Forçar null aqui (em vez de confiar em
+  // quem gravou) impede que um resíduo antigo no vínculo vire desconto.
+  const valorKwhContrato = investorLink.isUsinaDommo
+    ? null
+    : (investorLink.valorKwhContrato ?? null);
+  const gestaoFixa = investorLink.isUsinaDommo
+    ? null
+    : (investorLink.gestaoFixaContrato ?? null);
 
   // Conta da usina: SO o mes atual. Regra de negocio (2026-07-23): TODO mes eh
   // publicado, inclusive os SEM compensacao. Num mes sem compensacao valorBruto=0

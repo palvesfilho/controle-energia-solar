@@ -195,6 +195,18 @@ export async function populateBillingFromBill(
       tarifaTUSD: bill.tarifaTUSD,
       tarifaTeComTributos: bill.tarifaTeComTributos,
       tarifaTusdComTributos: bill.tarifaTusdComTributos,
+      // 🔑 Grupo A — posto FORA PONTA. Estes seis eram SELECIONADOS aqui e
+      // nunca repassados: sem eles `temPostoForaPonta()` dá false, a fatura
+      // Grupo A cai no ramo de posto único e o preço do kWh sai da tarifa de
+      // PONTA (2,32 na GRÁFICA JACUI, contra 0,63 do fora ponta — 3,7×).
+      // Era exatamente o erro que lib/preco-kwh.ts existe para evitar: o
+      // módulo estava certo, o chamador é que não o alimentava.
+      consumoTeForaPontaKwh: bill.consumoTeForaPontaKwh,
+      consumoTeForaPontaValor: bill.consumoTeForaPontaValor,
+      consumoTusdForaPontaKwh: bill.consumoTusdForaPontaKwh,
+      consumoTusdForaPontaValor: bill.consumoTusdForaPontaValor,
+      tarifaTeForaPonta: bill.tarifaTeForaPonta,
+      tarifaTusdForaPonta: bill.tarifaTusdForaPonta,
       energiaInjetadaPropriaTeValor: bill.energiaInjetadaPropriaTeValor,
       energiaInjetadaPropriaTusdValor: bill.energiaInjetadaPropriaTusdValor,
     },
