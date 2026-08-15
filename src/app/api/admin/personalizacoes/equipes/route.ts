@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
   if (!nome) {
     return NextResponse.json(
-      { error: "Nome da equipe Ã© obrigatÃ³rio." },
+      { error: "Nome da equipe é obrigatório." },
       { status: 400 }
     );
   }
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("Unique constraint")) {
       return NextResponse.json(
-        { error: `JÃ¡ existe uma equipe com o nome "${nome}".` },
+        { error: `Já existe uma equipe com o nome "${nome}".` },
         { status: 409 }
       );
     }

@@ -508,8 +508,14 @@ export function extrairUnidades(
 
 /**
  * Conserta nome de arquivo gravado como UTF-8 e lido como Latin-1.
- * O CRM tem casos assim ("cnpj unigÃ¡.pdf" quando o certo é "cnpj unigá.pdf").
- * Ver [[project_mojibake_utf8_fonte]].
+ *
+ * O CRM tem casos assim: em "cnpj unigá.pdf", o "á" chega com os bytes
+ * `C3 83 C2 A1` (o `C3 A1` correto, re-codificado mais uma vez) e a tela
+ * mostra dois caracteres no lugar de um.
+ *
+ * O exemplo está descrito em BYTES de propósito. Escrever o texto quebrado
+ * aqui faria uma varredura de acentuação "consertar" o comentário e apagar
+ * justamente o exemplo. Ver [[project_mojibake_utf8_fonte]].
  */
 export function corrigirMojibake(nome: string | null | undefined): string {
   if (!nome) return "";

@@ -33,10 +33,10 @@ export async function GET(req: NextRequest) {
     : "mensal";
 
   if (!Number.isInteger(ano) || ano < 2000 || ano > 2100) {
-    return NextResponse.json({ error: "Ano invÃ¡lido." }, { status: 400 });
+    return NextResponse.json({ error: "Ano inválido." }, { status: 400 });
   }
   if (!Number.isInteger(mes) || mes < 1 || mes > 12) {
-    return NextResponse.json({ error: "MÃªs invÃ¡lido." }, { status: 400 });
+    return NextResponse.json({ error: "Mês inválido." }, { status: 400 });
   }
 
   try {

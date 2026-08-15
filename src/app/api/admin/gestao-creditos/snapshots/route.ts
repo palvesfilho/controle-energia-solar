@@ -7,7 +7,7 @@ import { listarSnapshots } from "@/lib/analise-snapshot";
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session || !canAccessSection(session.user.role, "gestaoCreditos")) {
-    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
   try {
     const items = await listarSnapshots({ escopoTipo: "FULL", escopoId: null });

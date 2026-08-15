@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const mes = Number(searchParams.get("mes") ?? now.getMonth() + 1);
 
   if (!Number.isInteger(ano) || !Number.isInteger(mes) || mes < 1 || mes > 12) {
-    return NextResponse.json({ error: "ano/mes invÃ¡lidos" }, { status: 400 });
+    return NextResponse.json({ error: "ano/mes inválidos" }, { status: 400 });
   }
 
   // Balanço Mensal é tela da Gestão de Créditos (módulo Associação): UCs do

@@ -5,7 +5,7 @@ import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getAllStations, getStationRealKpi, type HuaweiStation } from "@/lib/huawei";
 
-// POST /api/brasil-solar/sync-huawei - Sincronizar plantas Huawei FusionSolar â†’ BrasilSolarClient
+// POST /api/brasil-solar/sync-huawei - Sincronizar plantas Huawei FusionSolar → BrasilSolarClient
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user || !canAccessSection(session.user.role, "brasilSolar")) {

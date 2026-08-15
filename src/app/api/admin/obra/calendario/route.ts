@@ -34,7 +34,7 @@ export interface CalendarioObraRow {
 
 export interface CalendarioObraResponse {
   rows: CalendarioObraRow[];
-  // Ponto Ãºnico usado pra previsÃ£o do tempo no calendÃ¡rio â€” sede da empresa.
+  // Ponto único usado pra previsão do tempo no calendário — sede da empresa.
   // Aparece em todos os dias da janela Open-Meteo (D+0..D+15).
   weatherBase: { lat: number; lon: number; label: string } | null;
 }
@@ -42,7 +42,7 @@ export interface CalendarioObraResponse {
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || !canAccessSection(session.user.role, "obra")) {
-    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
   const { searchParams } = new URL(req.url);

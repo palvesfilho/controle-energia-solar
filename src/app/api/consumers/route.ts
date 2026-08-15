@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
   const { name, plantId, cotaPercent, descontoPercent } = body;
 
   if (!name) {
-    return NextResponse.json({ error: "Nome Ã© obrigatÃ³rio" }, { status: 400 });
+    return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
   }
 
   const consumer = await prisma.consumer.create({

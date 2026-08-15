@@ -21,19 +21,19 @@ type ParsedRow = {
 
 const HEADER_MAP: Record<string, keyof ParsedRow> = {
   "potencia (w)": "potenciaW",
-  "potÃªncia (w)": "potenciaW",
+  "potência (w)": "potenciaW",
   "disjuntor (a)": "disjuntorA",
-  "cabo (mmÂ²)": "caboMm2",
+  "cabo (mm²)": "caboMm2",
   "cabo (mm2)": "caboMm2",
   "cd (posicoes)": "cdPosicoes",
-  "cd (posiÃ§Ãµes)": "cdPosicoes",
+  "cd (posições)": "cdPosicoes",
   "dps 275vca": "dpsQtd",
   barramento: "barramento",
   canaleta: "canaleta",
   "caixa de passagem": "caixaPassagem",
   "placa rge": "placaRge",
   "placa pisar modulos": "placaPisarModulos",
-  "placa pisar mÃ³dulos": "placaPisarModulos",
+  "placa pisar módulos": "placaPisarModulos",
   "placa gerador": "placaGerador",
 };
 
@@ -72,13 +72,13 @@ export async function POST(req: NextRequest) {
   const replaceAll = form.get("replaceAll") === "true";
 
   if (!(file instanceof File)) {
-    return NextResponse.json({ error: "Arquivo nÃ£o enviado" }, { status: 400 });
+    return NextResponse.json({ error: "Arquivo não enviado" }, { status: 400 });
   }
 
   const buf = Buffer.from(await file.arrayBuffer());
   const workbook = new ExcelJS.Workbook();
   try {
-    // exceljs declara seu prÃ³prio `interface Buffer extends ArrayBuffer` â€” incompatÃ­vel
+    // exceljs declara seu próprio `interface Buffer extends ArrayBuffer` — incompatível
     // com o Buffer<ArrayBufferLike> do @types/node 22. Cast por unknown pra contornar.
     await workbook.xlsx.load(buf as unknown as Parameters<typeof workbook.xlsx.load>[0]);
   } catch (err) {
@@ -160,14 +160,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "CabeÃ§alho nÃ£o reconhecido. A primeira linha precisa conter colunas como 'PotÃªncia (W)', 'Disjuntor (A)', 'Cabo (mmÂ²)'...",
+          "Cabeçalho não reconhecido. A primeira linha precisa conter colunas como 'Potência (W)', 'Disjuntor (A)', 'Cabo (mm²)'...",
       },
       { status: 400 }
     );
   }
 
   if (!rows.length) {
-    return NextResponse.json({ error: "Nenhuma linha vÃ¡lida encontrada" }, { status: 400 });
+    return NextResponse.json({ error: "Nenhuma linha válida encontrada" }, { status: 400 });
   }
 
   try {

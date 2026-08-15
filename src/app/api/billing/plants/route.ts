@@ -6,8 +6,8 @@ import { isAdminRole } from "@/lib/roles";
 
 /**
  * GET /api/billing/plants?ano=2026&mes=4
- *   Lista faturamentos de usinas do mÃªs.
- *   Cria placeholders (em memÃ³ria) para usinas sem faturamento ainda.
+ *   Lista faturamentos de usinas do mês.
+ *   Cria placeholders (em memória) para usinas sem faturamento ainda.
  *
  * GET /api/billing/plants?meses=1
  *   Lista os meses distintos que possuem faturamento.
@@ -42,13 +42,13 @@ export async function GET(req: NextRequest) {
   const ano = Number(searchParams.get("ano"));
   const mes = Number(searchParams.get("mes"));
   if (!ano || !mes) {
-    return NextResponse.json({ error: "ano e mes sÃ£o obrigatÃ³rios" }, { status: 400 });
+    return NextResponse.json({ error: "ano e mes são obrigatórios" }, { status: 400 });
   }
 
   const [plants, billings, ucGeradoraBills] = await Promise.all([
     prisma.plant.findMany({
-      // Gestora de Energia â€” sÃ³ plantas marcadas como "Usina de Investidor".
-      // Plantas projetadas sÃ³ pra clientes RBS ficam fora desta lista.
+      // Gestora de Energia — só plantas marcadas como "Usina de Investidor".
+      // Plantas projetadas só pra clientes RBS ficam fora desta lista.
       where: { active: true, usinaDeInvestidor: true },
       orderBy: { name: "asc" },
       select: {
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
       },
     }),
     prisma.plantBilling.findMany({ where: { ano, mes } }),
-    // Fatura da UC geradora pra recuperar a Ãºltima validaÃ§Ã£o salva.
+    // Fatura da UC geradora pra recuperar a última validação salva.
     prisma.consumerBill.findMany({
       where: {
         consumerUnitId: null,
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
   ]);
 
   const billingByPlant = new Map(billings.map((b) => [b.plantId, b]));
-  // Pega a fatura mais recente por plant (jÃ¡ vem ordenada por syncedAt desc).
+  // Pega a fatura mais recente por plant (já vem ordenada por syncedAt desc).
   const ucBillByPlant = new Map<string, (typeof ucGeradoraBills)[number]>();
   for (const ub of ucGeradoraBills) {
     if (ub.plantId && !ucBillByPlant.has(ub.plantId)) {
@@ -111,7 +111,7 @@ export async function GET(req: NextRequest) {
 
 /**
  * POST /api/billing/plants
- *   Cria (ou recupera) o registro de faturamento para uma usina/mÃªs.
+ *   Cria (ou recupera) o registro de faturamento para uma usina/mês.
  *   Body: { plantId, ano, mes }
  */
 export async function POST(req: NextRequest) {
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { plantId, ano, mes } = body;
   if (!plantId || !ano || !mes) {
-    return NextResponse.json({ error: "plantId, ano e mes sÃ£o obrigatÃ³rios" }, { status: 400 });
+    return NextResponse.json({ error: "plantId, ano e mes são obrigatórios" }, { status: 400 });
   }
 
   const billing = await prisma.plantBilling.upsert({

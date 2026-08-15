@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   if (!body.name) {
-    return NextResponse.json({ error: "Nome Ã© obrigatÃ³rio" }, { status: 400 });
+    return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
   }
 
   const plant = await prisma.plant.create({

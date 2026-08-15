@@ -5,11 +5,11 @@ import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 
 // GET /api/admin/codigos-erro-inversor/lookup?fabricante=FRONIUS&codigo=103
-// Devolve o cÃ³digo + aÃ§Ãµes pra a pÃ¡gina de erros mostrar a sugestÃ£o.
+// Devolve o código + ações pra a página de erros mostrar a sugestão.
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user || !canAccessSection(session.user.role, "persCodigosErroView")) {
-    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
   const fabricante = req.nextUrl.searchParams.get("fabricante")?.trim().toUpperCase();

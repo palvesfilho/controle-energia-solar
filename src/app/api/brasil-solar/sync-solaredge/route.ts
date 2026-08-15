@@ -5,7 +5,7 @@ import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getAllSites, type SolarEdgeSite } from "@/lib/solaredge";
 
-// POST /api/brasil-solar/sync-solaredge - Sincronizar plantas SolarEdge â†’ BrasilSolarClient
+// POST /api/brasil-solar/sync-solaredge - Sincronizar plantas SolarEdge → BrasilSolarClient
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user || !canAccessSection(session.user.role, "brasilSolar")) {

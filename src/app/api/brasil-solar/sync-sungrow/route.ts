@@ -5,7 +5,7 @@ import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getAllStations, getStationCapacityKwp, type SungrowStation } from "@/lib/sungrow";
 
-// POST /api/brasil-solar/sync-sungrow - Sincronizar plantas Sungrow iSolarCloud â†’ BrasilSolarClient
+// POST /api/brasil-solar/sync-sungrow - Sincronizar plantas Sungrow iSolarCloud → BrasilSolarClient
 export async function POST(_req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user || !canAccessSection(session.user.role, "brasilSolar")) {

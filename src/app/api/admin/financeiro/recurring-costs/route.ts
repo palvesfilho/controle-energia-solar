@@ -41,14 +41,14 @@ export async function POST(req: NextRequest) {
   const nome = toStr(body.nome);
   if (!nome) {
     return NextResponse.json(
-      { error: "Nome da rubrica Ã© obrigatÃ³rio." },
+      { error: "Nome da rubrica é obrigatório." },
       { status: 400 },
     );
   }
   const valorPadrao = Number(body.valorPadrao ?? 0);
   if (!Number.isFinite(valorPadrao) || valorPadrao < 0) {
     return NextResponse.json(
-      { error: "Valor padrÃ£o invÃ¡lido." },
+      { error: "Valor padrão inválido." },
       { status: 400 },
     );
   }
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("Unique constraint")) {
       return NextResponse.json(
-        { error: `JÃ¡ existe rubrica com o nome "${nome}".` },
+        { error: `Já existe rubrica com o nome "${nome}".` },
         { status: 409 },
       );
     }

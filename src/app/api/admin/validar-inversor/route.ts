@@ -17,7 +17,7 @@ const TOLERANCE_PCT = 2;
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user || !canAccessSection(session.user.role, "brasilSolar")) {
-    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
   const formData = await req.formData();
@@ -25,10 +25,10 @@ export async function POST(req: NextRequest) {
   const file = formData.get("file");
 
   if (typeof brasilSolarClientId !== "string" || !brasilSolarClientId) {
-    return NextResponse.json({ error: "brasilSolarClientId obrigatÃ³rio" }, { status: 400 });
+    return NextResponse.json({ error: "brasilSolarClientId obrigatório" }, { status: 400 });
   }
   if (!(file instanceof File)) {
-    return NextResponse.json({ error: "file (PDF) obrigatÃ³rio" }, { status: 400 });
+    return NextResponse.json({ error: "file (PDF) obrigatório" }, { status: 400 });
   }
 
   const client = await prisma.brasilSolarClient.findUnique({
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     },
   });
   if (!client) {
-    return NextResponse.json({ error: "Usina nÃ£o encontrada" }, { status: 404 });
+    return NextResponse.json({ error: "Usina não encontrada" }, { status: 404 });
   }
 
   const platform = client.plataformaMonitoramento?.toUpperCase() ?? null;
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
 
   if (!mesReferencia || !anoReferencia) {
     return NextResponse.json(
-      { error: "NÃ£o foi possÃ­vel extrair mÃªs/ano de referÃªncia da fatura" },
+      { error: "Não foi possível extrair mês/ano de referência da fatura" },
       { status: 400 },
     );
   }
@@ -88,14 +88,14 @@ export async function POST(req: NextRequest) {
     } else if (platform === "SOLAREDGE") {
       const siteId = parseInt(client.monitoramentoPlantId, 10);
       if (Number.isNaN(siteId)) {
-        inversorError = "Site ID SolarEdge invÃ¡lido (nÃ£o numÃ©rico)";
+        inversorError = "Site ID SolarEdge inválido (não numérico)";
       } else {
         inversor = await solaredgeMonthlyTotal(siteId, anoReferencia, mesReferencia);
       }
     } else if (platform === "GROWATT") {
       inversor = await growattMonthlyTotal(client.monitoramentoPlantId, anoReferencia, mesReferencia);
     } else {
-      inversorError = `Plataforma '${platform}' nÃ£o suportada`;
+      inversorError = `Plataforma '${platform}' não suportada`;
     }
   } catch (e) {
     inversorError = e instanceof Error ? e.message : String(e);

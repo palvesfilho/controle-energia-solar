@@ -6,17 +6,17 @@ import { prisma } from "@/lib/prisma";
 import { buscarIds } from "@/lib/busca-sql";
 
 /**
- * GET /api/brasil-solar/linkable â€” lista leve de BrasilSolarClient com
- * monitoramento real ativo (monitoramentoPlantId preenchido) disponÃ­veis para
- * vincular a uma Plant do Gestor de CrÃ©ditos.
+ * GET /api/brasil-solar/linkable — lista leve de BrasilSolarClient com
+ * monitoramento real ativo (monitoramentoPlantId preenchido) disponíveis para
+ * vincular a uma Plant do Gestor de Créditos.
  *
  * Query params:
- *  - plantId: inclui tambÃ©m os jÃ¡ vinculados A ESTA plant (permite "re-show"
- *    no seletor caso o usuÃ¡rio queira reconfirmar).
+ *  - plantId: inclui também os já vinculados A ESTA plant (permite "re-show"
+ *    no seletor caso o usuário queira reconfirmar).
  *  - search: filtra por nome, CPF/CNPJ, codigoUc, cidade.
- *  - skip / limit: paginaÃ§Ã£o ("carregar mais" do seletor). A resposta sempre
- *    traz `total` â€” a base passa de 1.800 usinas monitoradas e uma pÃ¡gina
- *    truncada em silÃªncio faz o operador achar que a usina nÃ£o existe.
+ *  - skip / limit: paginação ("carregar mais" do seletor). A resposta sempre
+ *    traz `total` — a base passa de 1.800 usinas monitoradas e uma página
+ *    truncada em silêncio faz o operador achar que a usina não existe.
  */
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);

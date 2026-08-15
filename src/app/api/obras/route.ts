@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   if (aprovacaoParam) {
     where.aprovacao = aprovacaoParam.toUpperCase();
   } else {
-    // PadrÃ£o: cronograma sÃ³ mostra obras jÃ¡ aceitas
+    // Padrão: cronograma só mostra obras já aceitas
     where.aprovacao = "ACEITA";
   }
 
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   if (!body.nome) {
-    return NextResponse.json({ error: "Nome Ã© obrigatÃ³rio" }, { status: 400 });
+    return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
   }
 
   const obra = await prisma.obra.create({

@@ -221,7 +221,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({
-      message: "HistÃ³rico importado com sucesso para todas as marcas",
+      message: "Histórico importado com sucesso para todas as marcas",
       clientesProcessados: clients.length,
       totalLogs,
       porPlataforma: resultsByPlatform,

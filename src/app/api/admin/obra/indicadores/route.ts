@@ -17,25 +17,25 @@ export interface ObraIndicadoresPayload {
   aIniciar7d: { count: number };
   concluidasMes: { count: number; kwpTotal: number };
   conflitosEquipe: { count: number };
-  // Fase 2 â€” saÃºde operacional. Base: obras CONCLUIDAS dos Ãºltimos 90 dias.
+  // Fase 2 — saúde operacional. Base: obras CONCLUIDAS dos últimos 90 dias.
   leadTime: {
     amostra: number;
     diasRealMedio: number | null;
     diasPlanejadoMedio: number | null;
-    deltaDias: number | null; // real - planejado (positivo = atrasou em mÃ©dia)
+    deltaDias: number | null; // real - planejado (positivo = atrasou em média)
   };
   aderenciaPrazo: {
     amostra: number;
-    percent: number | null; // % de obras CONCLUIDAS no prazo (dataFimReal â‰¤ dataFimPrevista)
+    percent: number | null; // % de obras CONCLUIDAS no prazo (dataFimReal ≤ dataFimPrevista)
   };
   obraEnergizacao: {
     amostra: number;
     diasMedio: number | null;
   };
   semListaMaterial: {
-    count: number; // obras c/ inÃ­cio em â‰¤14d sem ObraListaMaterial
+    count: number; // obras c/ início em ≤14d sem ObraListaMaterial
   };
-  // Fase B â€” Pipeline visual + decisÃµes da semana
+  // Fase B — Pipeline visual + decisões da semana
   funil: {
     planejamento: { count: number; kwpTotal: number };
     emExecucao: { count: number; kwpTotal: number };
@@ -46,7 +46,7 @@ export interface ObraIndicadoresPayload {
     kwpTotal: number;
   };
   decisoesSemana: DecisaoSemana[];
-  // Fase C â€” diretoria
+  // Fase C — diretoria
   tendencia12m: TendenciaMes[];
   equipeCarga: EquipeCarga[];
   comparativoMes: ComparativoMes;
@@ -94,9 +94,9 @@ export interface DecisaoSemana {
   tipo: DecisaoTipo;
   obraId: string;
   obraNome: string;
-  detalhe: string; // texto curto pra UI ("InÃ­cio 02/06", "+5d de atraso", etc.)
+  detalhe: string; // texto curto pra UI ("Início 02/06", "+5d de atraso", etc.)
   prioridade: number; // menor = mais urgente
-  link: string; // rota pro local da aÃ§Ã£o
+  link: string; // rota pro local da ação
 }
 
 type ObraComMeta = {
@@ -113,17 +113,17 @@ type ObraComMeta = {
   observacoes: string | null;
 };
 
-// DiferenÃ§a em dias entre duas datas, em base diÃ¡ria (zera horas). Sempre
-// retorna nÃºmero nÃ£o-negativo; ordem dos args nÃ£o importa.
+// Diferença em dias entre duas datas, em base diária (zera horas). Sempre
+// retorna número não-negativo; ordem dos args não importa.
 function diffDias(a: Date, b: Date): number {
   const da = startOfDay(a).getTime();
   const db = startOfDay(b).getTime();
   return Math.abs(db - da) / (24 * 60 * 60 * 1000);
 }
 
-// kWp vem em ordem de preferÃªncia: meta.potenciaKwp (set no cadastro) â†’
+// kWp vem em ordem de preferência: meta.potenciaKwp (set no cadastro) →
 // proprietario.potenciaInstalada (quando vinculado a BrasilSolarProprietario).
-// Sem nenhum dos dois, soma 0 (o card mostra "â€”" abaixo do nÃºmero).
+// Sem nenhum dos dois, soma 0 (o card mostra "—" abaixo do número).
 function resolverKwp(
   obra: ObraComMeta,
   proprietarioPotenciaById: Map<string, number | null>,
@@ -140,7 +140,7 @@ function resolverKwp(
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session || !canAccessSection(session.user.role, "obra")) {
-    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
   try {
@@ -150,9 +150,9 @@ export async function GET() {
     const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
     const inicioProxMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1);
 
-    // Uma query sÃ³ pra todas as obras ativas â€” depois fatiamos no app.
-    // Filtros por status/data sÃ£o baratos com poucos milhares de obras;
-    // se crescer, vira queries especÃ­ficas com count().
+    // Uma query só pra todas as obras ativas — depois fatiamos no app.
+    // Filtros por status/data são baratos com poucos milhares de obras;
+    // se crescer, vira queries específicas com count().
     const obras = await prisma.obra.findMany({
       where: { active: true },
       select: {
@@ -170,7 +170,7 @@ export async function GET() {
       },
     });
 
-    // PrÃ©-carrega potÃªncia dos proprietÃ¡rios referenciados na meta
+    // Pré-carrega potência dos proprietários referenciados na meta
     const proprietarioIds = new Set<string>();
     for (const o of obras) {
       const { meta } = parseObraMeta(o.observacoes);
@@ -193,7 +193,7 @@ export async function GET() {
     let aIniciar7dCount = 0;
     let concluidasMesCount = 0;
     let concluidasMesKwp = 0;
-    // Fase B â€” funil + pipeline 60d
+    // Fase B — funil + pipeline 60d
     let planejamentoCount = 0;
     let planejamentoKwp = 0;
     let pausadasCount = 0;
@@ -209,7 +209,7 @@ export async function GET() {
     const porEquipe = new Map<string, ObraComMeta[]>();
 
     for (const o of obras) {
-      // 1. Em execuÃ§Ã£o agora
+      // 1. Em execução agora
       if (o.status === "EM_EXECUCAO") {
         emExecucaoCount++;
         emExecucaoKwp += resolverKwp(o, propMap);
@@ -221,13 +221,13 @@ export async function GET() {
         obrasAtrasadas.push(o);
       }
 
-      // 3. AprovaÃ§Ãµes pendentes
+      // 3. Aprovações pendentes
       if (o.aprovacao === "PENDENTE") {
         aprovacoesPendentesCount++;
         obrasPendentes.push(o);
       }
 
-      // Funil â€” agrega counts por status
+      // Funil — agrega counts por status
       if (o.status === "PLANEJAMENTO") {
         planejamentoCount++;
         planejamentoKwp += resolverKwp(o, propMap);
@@ -235,7 +235,7 @@ export async function GET() {
         pausadasCount++;
       }
 
-      // Pipeline 60d â€” obras que entram em execuÃ§Ã£o em atÃ© 60 dias
+      // Pipeline 60d — obras que entram em execução em até 60 dias
       if (
         o.status === "PLANEJAMENTO" &&
         o.dataInicioPrevista &&
@@ -256,7 +256,7 @@ export async function GET() {
         aIniciar7dCount++;
       }
 
-      // 5. ConcluÃ­das no mÃªs
+      // 5. Concluídas no mês
       if (
         o.status === "CONCLUIDA" &&
         o.dataFimReal &&
@@ -267,7 +267,7 @@ export async function GET() {
         concluidasMesKwp += resolverKwp(o, propMap);
       }
 
-      // 6. Conflitos: sÃ³ obras com equipe + datas + nÃ£o concluÃ­das/canceladas
+      // 6. Conflitos: só obras com equipe + datas + não concluídas/canceladas
       if (
         o.equipeId &&
         o.dataInicioPrevista &&
@@ -281,8 +281,8 @@ export async function GET() {
       }
     }
 
-    // Conta obras Ãºnicas envolvidas em qualquer conflito (nÃ£o o nÂº de pares).
-    // Ã‰ o que faz sentido pra mostrar no card "X obras com conflito".
+    // Conta obras únicas envolvidas em qualquer conflito (não o nº de pares).
+    // É o que faz sentido pra mostrar no card "X obras com conflito".
     const obrasEmConflito = new Set<string>();
     for (const grupo of porEquipe.values()) {
       for (let i = 0; i < grupo.length; i++) {
@@ -304,9 +304,9 @@ export async function GET() {
       }
     }
 
-    // â”€â”€â”€ Fase 2: saÃºde operacional â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // Janela: Ãºltimas obras CONCLUIDAS em 90 dias (corta cauda histÃ³rica que
-    // distorce mÃ©dia â€” gestor quer saber tendÃªncia recente, nÃ£o vida toda).
+    // ─── Fase 2: saúde operacional ───────────────────────────────────────
+    // Janela: últimas obras CONCLUIDAS em 90 dias (corta cauda histórica que
+    // distorce média — gestor quer saber tendência recente, não vida toda).
     const noventaDiasAtras = new Date(hoje);
     noventaDiasAtras.setDate(noventaDiasAtras.getDate() - 90);
 
@@ -317,7 +317,7 @@ export async function GET() {
         o.dataFimReal >= noventaDiasAtras,
     );
 
-    // 7. Lead time mÃ©dio â€” sÃ³ obras com inÃ­cio e fim real preenchidos
+    // 7. Lead time médio — só obras com início e fim real preenchidos
     let somaReal = 0;
     let somaPlanejado = 0;
     let amostraLeadTime = 0;
@@ -340,7 +340,7 @@ export async function GET() {
         ? diasRealMedio - diasPlanejadoMedio
         : null;
 
-    // 8. AderÃªncia ao prazo â€” % das CONCLUIDAS recentes entregues no prazo
+    // 8. Aderência ao prazo — % das CONCLUIDAS recentes entregues no prazo
     let noPrazo = 0;
     let amostraAderencia = 0;
     for (const o of concluidasRecentes) {
@@ -357,8 +357,8 @@ export async function GET() {
     const percentAderencia =
       amostraAderencia > 0 ? (noPrazo / amostraAderencia) * 100 : null;
 
-    // 9. Obra â†’ energizaÃ§Ã£o â€” dias entre dataFimReal e primeira ConsumerBill
-    //    (anoRef/mesRef) da Plant vinculada que cobre perÃ­odo pÃ³s-obra.
+    // 9. Obra → energização — dias entre dataFimReal e primeira ConsumerBill
+    //    (anoRef/mesRef) da Plant vinculada que cobre período pós-obra.
     const obrasComPlant = concluidasRecentes.filter(
       (o): o is typeof o & { plantId: string; dataFimReal: Date } =>
         o.plantId != null && o.dataFimReal != null,
@@ -367,7 +367,7 @@ export async function GET() {
     let amostraEnergizacao = 0;
     if (obrasComPlant.length > 0) {
       const plantIds = obrasComPlant.map((o) => o.plantId);
-      // Carrega todas as bills relevantes em 1 query â€” depois mapeia por plant.
+      // Carrega todas as bills relevantes em 1 query — depois mapeia por plant.
       const billsByPlant = await prisma.consumerBill.findMany({
         where: { plantId: { in: plantIds } },
         select: { plantId: true, anoReferencia: true, mesReferencia: true },
@@ -386,8 +386,8 @@ export async function GET() {
       for (const o of obrasComPlant) {
         const dataBill = primeiraBillPorPlant.get(o.plantId);
         if (!dataBill) continue;
-        // SÃ³ conta bills posteriores Ã  conclusÃ£o da obra. Se a bill Ã© anterior
-        // (ex.: usina jÃ¡ existia e foi retrofitada), pula.
+        // Só conta bills posteriores à conclusão da obra. Se a bill é anterior
+        // (ex.: usina já existia e foi retrofitada), pula.
         if (dataBill < startOfDay(o.dataFimReal)) continue;
         somaEnergizacao += diffDias(o.dataFimReal, dataBill);
         amostraEnergizacao++;
@@ -396,7 +396,7 @@ export async function GET() {
     const diasMedioEnergizacao =
       amostraEnergizacao > 0 ? somaEnergizacao / amostraEnergizacao : null;
 
-    // 10. Sem lista de material â€” obras com inÃ­cio em â‰¤14d sem ObraListaMaterial
+    // 10. Sem lista de material — obras com início em ≤14d sem ObraListaMaterial
     const em14d = new Date(hoje);
     em14d.setDate(em14d.getDate() + 14);
     const candidatasSemMaterial = obras.filter(
@@ -421,14 +421,14 @@ export async function GET() {
       }
     }
 
-    // â”€â”€â”€ Fase B: DecisÃµes da semana â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // Lista priorizada de aÃ§Ãµes que o gestor precisa tomar AGORA. Cada item
-    // vira uma linha clicÃ¡vel na UI com link direto pro local da aÃ§Ã£o.
-    // Prioridade: menor nÃºmero = mais urgente.
-    //  1 = atrasada (operacional crÃ­tico)
-    //  2 = sem material c/ inÃ­cio iminente
+    // ─── Fase B: Decisões da semana ─────────────────────────────────────
+    // Lista priorizada de ações que o gestor precisa tomar AGORA. Cada item
+    // vira uma linha clicável na UI com link direto pro local da ação.
+    // Prioridade: menor número = mais urgente.
+    //  1 = atrasada (operacional crítico)
+    //  2 = sem material c/ início iminente
     //  3 = conflito de equipe
-    //  4 = aprovaÃ§Ã£o pendente (bloqueia entrada no cronograma)
+    //  4 = aprovação pendente (bloqueia entrada no cronograma)
     const decisoes: DecisaoSemana[] = [];
     const obrasById = new Map<string, ObraComMeta>(obras.map((o) => [o.id, o]));
 
@@ -458,9 +458,9 @@ export async function GET() {
         detalhe:
           dias != null
             ? dias === 0
-              ? "comeÃ§a hoje"
-              : `comeÃ§a em ${dias}d`
-            : "inÃ­cio indefinido",
+              ? "começa hoje"
+              : `começa em ${dias}d`
+            : "início indefinido",
         prioridade: 2,
         link: `/admin/obra/${o.id}/lista-materiais`,
       });
@@ -484,7 +484,7 @@ export async function GET() {
         tipo: "APROVAR",
         obraId: o.id,
         obraNome: o.nome,
-        detalhe: "aguarda aprovaÃ§Ã£o",
+        detalhe: "aguarda aprovação",
         prioridade: 4,
         link: `/admin/obra/aprovacao`,
       });
@@ -492,8 +492,8 @@ export async function GET() {
 
     decisoes.sort((a, b) => a.prioridade - b.prioridade);
 
-    // â”€â”€â”€ Fase C: diretoria â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // 11. TendÃªncia 12m â€” agrega concluÃ­das/kWp/aderÃªncia por mÃªs
+    // ─── Fase C: diretoria ───────────────────────────────────────────────
+    // 11. Tendência 12m — agrega concluídas/kWp/aderência por mês
     const mesesLabel = [
       "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
       "Jul", "Ago", "Set", "Out", "Nov", "Dez",
@@ -536,7 +536,7 @@ export async function GET() {
       });
     }
 
-    // 12. Carga por equipe â€” obras EM_EXECUCAO agora + concluÃ­das Ãºltimos 30d
+    // 12. Carga por equipe — obras EM_EXECUCAO agora + concluídas últimos 30d
     const equipes = await prisma.equipeExecucao.findMany({
       where: { active: true },
       select: { id: true, nome: true, cor: true },
@@ -570,9 +570,9 @@ export async function GET() {
       };
     });
 
-    // 13. Comparativo: mÃªs atual vs mÃªs anterior
+    // 13. Comparativo: mês atual vs mês anterior
     const mesAnteriorRef = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
-    const mesAnteriorProx = inicioMes; // 1Âº dia do mÃªs atual = limite superior
+    const mesAnteriorProx = inicioMes; // 1º dia do mês atual = limite superior
     const sliceMes = (de: Date, ate: Date, label: string): ComparativoSlice => {
       let count = 0;
       let kwp = 0;

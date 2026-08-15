@@ -49,14 +49,14 @@ export async function POST(req: NextRequest) {
 
   if (!name || !email || !password || !role) {
     return NextResponse.json(
-      { error: "Campos obrigatÃ³rios: nome, email, senha e perfil" },
+      { error: "Campos obrigatórios: nome, email, senha e perfil" },
       { status: 400 }
     );
   }
 
   if (!ASSIGNABLE_ROLES.includes(role)) {
     return NextResponse.json(
-      { error: "Perfil invÃ¡lido" },
+      { error: "Perfil inválido" },
       { status: 400 }
     );
   }
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) {
     return NextResponse.json(
-      { error: "Email jÃ¡ cadastrado" },
+      { error: "Email já cadastrado" },
       { status: 400 }
     );
   }

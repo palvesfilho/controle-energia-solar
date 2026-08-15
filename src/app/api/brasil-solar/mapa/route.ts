@@ -33,7 +33,7 @@ const STATUS_ERRO = ["OFFLINE", "ALERTA", "SEM_DADOS"] as const;
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user || !canAccessSection(session.user.role, "brasilSolar")) {
-    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
   const rows = await prisma.brasilSolarClient.findMany({

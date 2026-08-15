@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   }
   if (!process.env.ASAAS_API_KEY) {
     return NextResponse.json(
-      { error: "ASAAS_API_KEY nÃ£o configurado no servidor" },
+      { error: "ASAAS_API_KEY não configurado no servidor" },
       { status: 500 },
     );
   }

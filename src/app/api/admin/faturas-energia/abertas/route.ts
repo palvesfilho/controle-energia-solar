@@ -15,10 +15,10 @@ import { prisma } from "@/lib/prisma";
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user || !isAdminRole(session.user.role)) {
-    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
-  // Bills em aberto: nÃ£o pagas (contaPaga=false) e ainda nÃ£o registramos
+  // Bills em aberto: não pagas (contaPaga=false) e ainda não registramos
   // pagamento manual (pagoEm null). Ignora UC geradora (consumerUnitId null).
   const bills = await prisma.consumerBill.findMany({
     where: {
@@ -112,7 +112,7 @@ export async function GET() {
   }
 
   const ucs = Array.from(map.values());
-  // Ordena UCs pelo menor vencimento (UCs sem vencimento vÃ£o pro fim).
+  // Ordena UCs pelo menor vencimento (UCs sem vencimento vão pro fim).
   ucs.sort((a, b) => {
     if (a.menorVencimento && b.menorVencimento) {
       return a.menorVencimento < b.menorVencimento ? -1 : 1;

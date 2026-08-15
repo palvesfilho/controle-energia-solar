@@ -69,9 +69,9 @@ export async function POST(req: NextRequest) {
               statusMonitoramento: newStatus,
               ultimaLeitura: new Date(status.lastReading),
               ultimaGeracao: status.currentPowerW
-                ? status.currentPowerW / 1000 // W â†’ kW (potÃªncia instantÃ¢nea)
+                ? status.currentPowerW / 1000 // W → kW (potência instantânea)
                 : undefined,
-              // MÃ©tricas instantÃ¢neas (quando o canal correspondente vem no flowdata)
+              // Métricas instantâneas (quando o canal correspondente vem no flowdata)
               tensaoRede: status.voltageAC ?? undefined,
               temperaturaInversor: status.temperature ?? undefined,
               frequenciaRede: status.frequency ?? undefined,

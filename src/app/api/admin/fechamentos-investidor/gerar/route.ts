@@ -10,8 +10,8 @@ import {
 /**
  * POST /api/admin/fechamentos-investidor/gerar
  * Body:
- *   { ano: number, mes: number }                  â†’ gera DRAFT pra todos os investidores com payables DISPONIVEL
- *   { ano, mes, investorId: string }              â†’ gera DRAFT sÃ³ pra um investidor
+ *   { ano: number, mes: number }                  → gera DRAFT pra todos os investidores com payables DISPONIVEL
+ *   { ano, mes, investorId: string }              → gera DRAFT só pra um investidor
  */
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
   if (!ano || !mes || mes < 1 || mes > 12) {
     return NextResponse.json(
-      { error: "Ano e mÃªs de fechamento sÃ£o obrigatÃ³rios (1..12)" },
+      { error: "Ano e mês de fechamento são obrigatórios (1..12)" },
       { status: 400 },
     );
   }

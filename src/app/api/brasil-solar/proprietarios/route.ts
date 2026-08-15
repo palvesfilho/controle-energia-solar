@@ -121,9 +121,9 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/brasil-solar/proprietarios - Criar proprietario
-// Aceita opcionalmente body.planta {...} com os dados tÃ©cnicos extraÃ­dos
-// do Anexo F (latitude, longitude, mÃ³dulos, inversor, UC, concessionÃ¡ria).
-// Esses campos ficam no prÃ³prio ProprietÃ¡rio â€” a usina em si Ã© sincronizada
+// Aceita opcionalmente body.planta {...} com os dados técnicos extraídos
+// do Anexo F (latitude, longitude, módulos, inversor, UC, concessionária).
+// Esses campos ficam no próprio Proprietário — a usina em si é sincronizada
 // por API (Fronius/SolarEdge/...) e vinculada manualmente depois.
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -134,16 +134,16 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   if (!body.nome?.trim()) {
-    return NextResponse.json({ error: "Nome Ã© obrigatÃ³rio" }, { status: 400 });
+    return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
   }
 
   // executadoPor define se Brasil Solar executa a obra (fluxo completo,
-  // com Obra+tarefas auto) ou se Ã© sÃ³ monitoramento de usina de terceiro.
+  // com Obra+tarefas auto) ou se é só monitoramento de usina de terceiro.
   const executadoPor =
     typeof body.executadoPor === "string" ? body.executadoPor.trim() : "BRASIL_SOLAR";
   if (!EXECUTADO_POR_VALORES.has(executadoPor)) {
     return NextResponse.json(
-      { error: "Campo 'executadoPor' invÃ¡lido (use BRASIL_SOLAR ou TERCEIRO)" },
+      { error: "Campo 'executadoPor' inválido (use BRASIL_SOLAR ou TERCEIRO)" },
       { status: 400 }
     );
   }
@@ -213,7 +213,7 @@ export async function POST(req: NextRequest) {
     );
     if (!dp) {
       return NextResponse.json(
-        { error: "Data de pagamento invÃ¡lida ou ausente" },
+        { error: "Data de pagamento inválida ou ausente" },
         { status: 400 }
       );
     }
@@ -243,7 +243,7 @@ export async function POST(req: NextRequest) {
   const planta = body.planta && typeof body.planta === "object" ? body.planta : {};
 
   // codigoUc e concessionaria podem vir direto no body (form de cadastro manual)
-  // ou dentro de `planta` (prefill do Anexo F). Direto no body tem precedÃªncia.
+  // ou dentro de `planta` (prefill do Anexo F). Direto no body tem precedência.
   const codigoUcInput =
     normalizeCodigoUc(
       (typeof body.codigoUc === "string" && body.codigoUc.trim()) ||
@@ -310,9 +310,9 @@ export async function POST(req: NextRequest) {
   // faturas antigas", como "Nenhuma UC com credencial" (GRÁFICA JACUI, 05/08/26).
   const avisos: string[] = [];
 
-  // Cria automaticamente a ConsumerUnit quando o cÃ³digo UC foi informado.
-  // NÃ£o falha o cadastro do proprietÃ¡rio se a UC nÃ£o puder ser criada
-  // (ex.: cÃ³digo jÃ¡ em uso).
+  // Cria automaticamente a ConsumerUnit quando o código UC foi informado.
+  // Não falha o cadastro do proprietário se a UC não puder ser criada
+  // (ex.: código já em uso).
   let consumerUnitId: string | null = null;
   let motivoUcFalhou: string | null = null;
   if (codigoUcInput) {
@@ -348,10 +348,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Cria a credencial de acesso Ã  concessionÃ¡ria (CpflCredential, usada tambÃ©m
-  // para RGE) quando o bloco `portal` veio no body e a UC jÃ¡ existe. Senha Ã©
-  // sempre criptografada (AES-GCM via encrypt()). Falha aqui nÃ£o derruba o
-  // cadastro do proprietÃ¡rio/UC.
+  // Cria a credencial de acesso à concessionária (CpflCredential, usada também
+  // para RGE) quando o bloco `portal` veio no body e a UC já existe. Senha é
+  // sempre criptografada (AES-GCM via encrypt()). Falha aqui não derruba o
+  // cadastro do proprietário/UC.
   const portal =
     body.portal && typeof body.portal === "object" ? body.portal : null;
   const AVISO_CADASTRAR_DEPOIS =
@@ -492,7 +492,7 @@ export async function POST(req: NextRequest) {
       });
     }
   } catch (e) {
-    // NÃ£o falhar a criaÃ§Ã£o do proprietÃ¡rio se a obra/tarefas nÃ£o puderem ser criadas.
+    // Não falhar a criação do proprietário se a obra/tarefas não puderem ser criadas.
     console.error("[POST /brasil-solar/proprietarios] auto-obra falhou:", e);
     avisos.push(
       `A obra e as tarefas do cronograma não foram criadas: ${e instanceof Error ? e.message : String(e)}`,

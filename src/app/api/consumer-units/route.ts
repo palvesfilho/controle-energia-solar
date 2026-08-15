@@ -30,15 +30,15 @@ export async function GET(req: NextRequest) {
     where.OR = [{ codigoUc: norm }, { codigoUcAntigo: norm }];
   }
 
-  // Esconde UCs que representam usinas sem investidor (sÃ£o da Ã¡rea Brasil
-  // Solar, nÃ£o devem aparecer em Clientes). UCs com cliente fÃ­sico vinculado
-  // (consumerId) ou sem plant continuam visÃ­veis. Override com ?showAll=1.
-  // TambÃ©m esconde UCs de cliente Brasil Solar (titular + beneficiÃ¡rias):
-  // elas tÃªm gestÃ£o prÃ³pria na Ã¡rea Brasil Solar e nÃ£o devem poluir a tela
-  // de gestÃ£o de UCs que recebem crÃ©ditos de investidor.
+  // Esconde UCs que representam usinas sem investidor (são da área Brasil
+  // Solar, não devem aparecer em Clientes). UCs com cliente físico vinculado
+  // (consumerId) ou sem plant continuam visíveis. Override com ?showAll=1.
+  // Também esconde UCs de cliente Brasil Solar (titular + beneficiárias):
+  // elas têm gestão própria na área Brasil Solar e não devem poluir a tela
+  // de gestão de UCs que recebem créditos de investidor.
   //
-  // Consultas POR codigoUc especÃ­fico nÃ£o aplicam esses filtros â€” quem busca
-  // um cÃ³digo quer aquela UC exata (usado p/ ex. pela pÃ¡gina do proprietÃ¡rio
+  // Consultas POR codigoUc específico não aplicam esses filtros — quem busca
+  // um código quer aquela UC exata (usado p/ ex. pela página do proprietário
   // Brasil Solar pra achar a UC titular).
   const showAll = searchParams.get("showAll") === "1";
   if (!showAll && !codigoUc) {
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
 
   if (!body.nome || !body.codigoUc) {
     return NextResponse.json(
-      { error: "Nome e CÃ³digo da UC sÃ£o obrigatÃ³rios" },
+      { error: "Nome e Código da UC são obrigatórios" },
       { status: 400 }
     );
   }

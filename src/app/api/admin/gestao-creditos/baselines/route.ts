@@ -6,11 +6,11 @@ import { canAccessSection } from "@/lib/roles";
 
 // POST /api/admin/gestao-creditos/baselines
 // Body: { consumerUnitId, motivo, observacao?, meses? (default 3) }
-// Cria baseline que silencia CONSUMO_ANOMALO da UC pelos prÃ³ximos N meses.
+// Cria baseline que silencia CONSUMO_ANOMALO da UC pelos próximos N meses.
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || !canAccessSection(session.user.role, "gestaoCreditos")) {
-    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
   let body: {
@@ -22,12 +22,12 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "JSON invÃ¡lido" }, { status: 400 });
+    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
   if (!body.consumerUnitId) {
     return NextResponse.json(
-      { error: "consumerUnitId obrigatÃ³rio" },
+      { error: "consumerUnitId obrigatório" },
       { status: 400 },
     );
   }
@@ -70,17 +70,17 @@ export async function POST(request: NextRequest) {
 }
 
 // DELETE /api/admin/gestao-creditos/baselines?consumerUnitId=X
-// Remove TODAS as baselines ativas da UC. Ãštil pra reabrir investigaÃ§Ã£o.
+// Remove TODAS as baselines ativas da UC. Útil pra reabrir investigação.
 export async function DELETE(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || !canAccessSection(session.user.role, "gestaoCreditos")) {
-    return NextResponse.json({ error: "NÃ£o autorizado" }, { status: 401 });
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
   const consumerUnitId = request.nextUrl.searchParams.get("consumerUnitId");
   if (!consumerUnitId) {
     return NextResponse.json(
-      { error: "consumerUnitId obrigatÃ³rio (query string)" },
+      { error: "consumerUnitId obrigatório (query string)" },
       { status: 400 },
     );
   }

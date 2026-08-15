@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     );
     const stationCodes = clients.map((c) => c.monitoramentoPlantId!);
 
-    // Busca status agregado + mÃ©tricas instantÃ¢neas por inversor em paralelo
+    // Busca status agregado + métricas instantâneas por inversor em paralelo
     const [statusResults, metricsResults] = await Promise.all([
       getPlantStatusBatch(stationCodes),
       getDeviceMetricsBatch(stationCodes),

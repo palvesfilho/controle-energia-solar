@@ -58,18 +58,18 @@ export async function POST(req: NextRequest) {
   const emailCc = toStr(body.emailCc);
 
   if (!distribuidora) {
-    return NextResponse.json({ error: "Distribuidora Ã© obrigatÃ³ria." }, { status: 400 });
+    return NextResponse.json({ error: "Distribuidora é obrigatória." }, { status: 400 });
   }
   if (!emailDestino || !isEmail(emailDestino)) {
-    return NextResponse.json({ error: "Email de destino invÃ¡lido." }, { status: 400 });
+    return NextResponse.json({ error: "Email de destino inválido." }, { status: 400 });
   }
   if (!emailRemetente || !isEmail(emailRemetente)) {
-    return NextResponse.json({ error: "Email de remetente invÃ¡lido." }, { status: 400 });
+    return NextResponse.json({ error: "Email de remetente inválido." }, { status: 400 });
   }
   const invalidCc = validateEmailList(emailCc);
   if (invalidCc) {
     return NextResponse.json(
-      { error: `Email em cÃ³pia invÃ¡lido: "${invalidCc}". Separe mÃºltiplos por ";".` },
+      { error: `Email em cópia inválido: "${invalidCc}". Separe múltiplos por ";".` },
       { status: 400 },
     );
   }
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("Unique constraint")) {
       return NextResponse.json(
-        { error: `JÃ¡ existe cadastro para a distribuidora "${distribuidora}".` },
+        { error: `Já existe cadastro para a distribuidora "${distribuidora}".` },
         { status: 409 },
       );
     }
