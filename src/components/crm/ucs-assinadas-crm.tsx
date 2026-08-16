@@ -43,6 +43,7 @@ import {
   UserPlus,
   Factory,
   Clock,
+  BadgeCheck,
 } from "lucide-react";
 import { matchBusca } from "@/lib/busca";
 import { conferirDesconto } from "@/lib/crm-desconto";
@@ -67,6 +68,11 @@ interface UcAssinada {
   descontoPercent: number | null;
   planoContrato: string | null;
   fidelidadeMeses: number | null;
+  /** Quem FECHOU o negócio (vendedor da proposta), nome completo. */
+  vendedorNome: string | null;
+  vendedorEmail: string | null;
+  /** Quem gerou o termo, quando NÃO é a mesma pessoa. */
+  vendedorAdesaoNome: string | null;
   clienteNome: string;
   clienteDocumento: string | null;
   clienteTipo: string | null;
@@ -509,6 +515,19 @@ export function UcsAssinadasCrm({ search = "" }: { search?: string }) {
                           )}
                         </div>
                       )}
+                      <div className="inline-flex items-center gap-1">
+                        <BadgeCheck className="h-3 w-3" />
+                        {u.vendedorNome ? (
+                          <>
+                            Vendida por <strong className="font-medium">{u.vendedorNome}</strong>
+                            {u.vendedorAdesaoNome && (
+                              <span> · termo gerado por {u.vendedorAdesaoNome}</span>
+                            )}
+                          </>
+                        ) : (
+                          <span>Vendedor não informado no CRM</span>
+                        )}
+                      </div>
                       <div>
                         Proposta {u.propostaIdCrm} · adesão {u.adesaoIdCrm} · assinada em{" "}
                         {formatarData(u.assinadoEm)}

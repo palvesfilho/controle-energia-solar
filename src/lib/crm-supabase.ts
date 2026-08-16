@@ -234,6 +234,12 @@ export interface AdesaoCrm {
   medias_mensais_kwh: unknown;
   proposta_id: number | null;
   proprietario_usina: boolean | null;
+  /**
+   * Quem GEROU O TERMO. Não é necessariamente quem vendeu: em 2 das 22 adesões
+   * (medido 16/08/2026) difere do `vendedor_id` da proposta, porque o termo foi
+   * emitido por outra pessoa. Quem fechou o negócio é o da PROPOSTA.
+   */
+  vendedor_id: string | null;
   criado_em: string | null;
 }
 
@@ -336,7 +342,7 @@ export function listarAdesoes(): Promise<AdesaoCrm[]> {
       "concessionaria,cep,endereco,numero,complemento,bairro,cidade," +
       "representante_nome,representante_cpf,representante_cargo," +
       "unidades_consumidoras,media_mensal_kwh,medias_mensais_kwh," +
-      "proposta_id,proprietario_usina,criado_em",
+      "proposta_id,proprietario_usina,vendedor_id,criado_em",
   );
 }
 

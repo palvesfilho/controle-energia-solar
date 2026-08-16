@@ -2321,6 +2321,9 @@ model CrmVendaImportada {
   clienteIdCrm     Int?    @map("cliente_id_crm")
   cidade           String?
   vendedorEmail    String? @map("vendedor_email")
+  // Nome completo, de `usuarios.nome` no CRM. O e-mail sozinho obriga quem lê
+  // a traduzir "carolina@solvesm.eng.br" para uma pessoa.
+  vendedorNome     String? @map("vendedor_nome")
 
   valorInvestimento Float?    @map("valor_investimento")
   fechadoEm         DateTime? @map("fechado_em")
@@ -2403,6 +2406,16 @@ model CrmUcImportada {
   descontoPercent Float?  @map("desconto_percent")
   planoContrato   String? @map("plano_contrato")
   fidelidadeMeses Int?    @map("fidelidade_meses")
+
+  // Quem FECHOU o negócio: o vendedor da PROPOSTA (`usuarios.nome` no CRM, que
+  // já é o nome completo). É esse que a comissão segue.
+  //
+  // `vendedorAdesaoNome` é quem GEROU O TERMO, e só é gravado quando difere —
+  // aconteceu em 2 das 22 adesões (medido 16/08/2026). Guardar os dois evita
+  // escolher um em silêncio; ver [[feedback_anomalias_sinalizar]].
+  vendedorNome       String? @map("vendedor_nome")
+  vendedorEmail      String? @map("vendedor_email")
+  vendedorAdesaoNome String? @map("vendedor_adesao_nome")
 
   // Consumidor, como assinado na adesão.
   clienteNome      String  @map("cliente_nome")

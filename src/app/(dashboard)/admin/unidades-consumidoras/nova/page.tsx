@@ -22,6 +22,10 @@ interface UcDoCrm {
   descontoPercent: number | null;
   planoContrato: string | null;
   fidelidadeMeses: number | null;
+  /** Quem FECHOU o negócio (vendedor da proposta), nome completo. */
+  vendedorNome: string | null;
+  /** Quem gerou o termo, quando NÃO é a mesma pessoa. */
+  vendedorAdesaoNome: string | null;
   clienteNome: string;
   clienteDocumento: string | null;
   clienteEmail: string | null;
@@ -217,12 +221,22 @@ function NovaUCConteudo() {
               {" — já preenchido abaixo como Desconto de Contrato de "}
               {descontoParaInputPercentCobrado(ucCrm.descontoPercent)}% cobrados sobre a energia
               compensada.
+              {ucCrm.vendedorNome && (
+                <>
+                  {" "}
+                  Vendida por <strong>{ucCrm.vendedorNome}</strong>
+                  {ucCrm.vendedorAdesaoNome && ` (termo gerado por ${ucCrm.vendedorAdesaoNome})`}.
+                </>
+              )}
             </>
           ) : (
             <>
               <strong>A proposta não trouxe o desconto combinado.</strong> Os campos de desconto
               ficaram em branco de propósito — preencha com o que foi acordado, senão a cobrança
               não é calculada.
+              {ucCrm.vendedorNome && (
+                <> Quem fechou o negócio foi <strong>{ucCrm.vendedorNome}</strong>.</>
+              )}
             </>
           )}
         </div>

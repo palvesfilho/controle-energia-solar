@@ -184,6 +184,8 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
   const produtoPorId = new Map(produtos.map((p) => [p.id, p]));
   const clientePorId = new Map(clientes.map((c) => [c.id, c]));
   const emailPorUsuarioId = new Map(usuarios.map((u) => [u.id, u.email ?? null]));
+  // `usuarios.nome` no CRM já vem completo e em caixa alta ("CAROLINA MORCELLI").
+  const nomePorUsuarioId = new Map(usuarios.map((u) => [u.id, u.nome?.trim() || null]));
   const deParaPorCodigo = new Map(dePara.map((d) => [d.codigoProduto, d]));
 
   const envelopePorAdesao = new Map<number, EnvelopeAssinaturaCrm>();
@@ -274,6 +276,7 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
       clienteIdCrm: proposta.cliente_id,
       cidade: adesao?.cidade ?? proposta.cidade_instalacao ?? cliente?.cidade ?? null,
       vendedorEmail: proposta.vendedor_id ? emailPorUsuarioId.get(proposta.vendedor_id) ?? null : null,
+      vendedorNome: proposta.vendedor_id ? nomePorUsuarioId.get(proposta.vendedor_id) ?? null : null,
       valorInvestimento: proposta.valor_investimento,
       fechadoEm: primeiraDataValida(proposta.fechado_em, proposta.data_fechamento),
       statusNegocio: proposta.status_negocio ?? "desconhecido",
@@ -339,6 +342,15 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
         descontoPercent: desconto.percentual,
         planoContrato: desconto.plano,
         fidelidadeMeses: desconto.fidelidadeMeses,
+        // Quem fechou o negócio é o vendedor da PROPOSTA. O da adesão é quem
+        // emitiu o termo, e só viaja quando é outra pessoa — assim a tela
+        // mostra a diferença em vez de esconder uma das duas.
+        vendedorNome: dados.vendedorNome,
+        vendedorEmail: dados.vendedorEmail,
+        vendedorAdesaoNome:
+          a.vendedor_id && a.vendedor_id !== proposta.vendedor_id
+            ? nomePorUsuarioId.get(a.vendedor_id) ?? null
+            : null,
         clienteNome: a.cliente_nome ?? clienteNome,
         clienteDocumento: a.cliente_documento ?? documento,
         clienteTipo: a.cliente_tipo,
@@ -399,7 +411,13 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
           aprovacao: "PENDENTE",
           observacoes: [
             `Origem: CRM, proposta ${proposta.numero ?? proposta.id}`,
-            dados.vendedorEmail ? `Vendedor: ${dados.vendedorEmail}` : null,
+            // Nome na frente, e-mail entre parênteses: quem lê a observação da
+            // obra reconhece a pessoa, não o endereço dela.
+            dados.vendedorNome || dados.vendedorEmail
+              ? `Vendedor: ${[dados.vendedorNome, dados.vendedorEmail && `(${dados.vendedorEmail})`]
+                  .filter(Boolean)
+                  .join(" ")}`
+              : null,
             documento ? `Documento do cliente: ${documento}` : null,
             codigosUc.length > 0 ? `UC(s): ${codigosUc.join(", ")}` : null,
           ]

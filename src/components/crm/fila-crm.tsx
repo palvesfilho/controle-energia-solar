@@ -55,6 +55,8 @@ interface ItemFila {
   clienteDocumento: string | null;
   cidade: string | null;
   vendedorEmail: string | null;
+  /** Nome completo de quem fechou o negócio, de `usuarios.nome` no CRM. */
+  vendedorNome: string | null;
   valorInvestimento: number | null;
   fechadoEm: string | null;
   statusNegocio: string;
@@ -256,6 +258,7 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
       i.numeroProposta,
       String(i.propostaIdCrm),
       i.vendedorEmail,
+      i.vendedorNome,
     ]),
   );
 
@@ -422,7 +425,14 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
                                   <span> · média {item.mediaMensalKwh} kWh/mês</span>
                                 )}
                                 <span> · {formatarValor(item.valorInvestimento)}</span>
-                                {item.vendedorEmail && <span> · {item.vendedorEmail}</span>}
+                                {/* Nome quando existe; o e-mail vira o título,
+                                    para não gastar a linha com o endereço. */}
+                                {(item.vendedorNome || item.vendedorEmail) && (
+                                  <span title={item.vendedorEmail ?? undefined}>
+                                    {" "}
+                                    · {item.vendedorNome ?? item.vendedorEmail}
+                                  </span>
+                                )}
                               </div>
                             </div>
 
