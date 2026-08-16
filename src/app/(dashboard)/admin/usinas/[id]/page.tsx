@@ -24,6 +24,8 @@ import {
   Eye,
   EyeOff,
   Plus,
+  Power,
+  PowerOff,
   Trash2,
   X,
 } from "lucide-react";
@@ -38,6 +40,7 @@ import { PlantDocumentsCard } from "@/components/plants/plant-documents-card";
 import { MonitoringClientsPanel } from "@/components/plants/monitoring-clients-panel";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { ExcluirUsinaDialog } from "@/components/plants/excluir-usina-dialog";
+import { DesativarUsinaDialog } from "@/components/plants/desativar-usina-dialog";
 import { CidadeInput } from "@/components/ui/cidade-input";
 
 const PlantMonitoringCharts = dynamic(
@@ -195,6 +198,24 @@ interface PlantData {
   monitoramentoUrl: string | null;
   investors: InvestorLink[];
   consumers: ConsumerPlantData[];
+  statusChanges: PlantStatusChange[];
+}
+
+interface PlantStatusChange {
+  id: string;
+  ativa: boolean;
+  motivo: string;
+  usuarioNome: string;
+  usuarioEmail: string | null;
+  createdAt: string;
+}
+
+function formatDataHora(iso: string) {
+  return new Date(iso).toLocaleString("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "America/Sao_Paulo",
+  });
 }
 
 const ACCENT_CLASSES = {
@@ -377,6 +398,8 @@ export default function UsinaPage() {
   const [plant, setPlant] = useState<PlantData | null>(null);
   const [loading, setLoading] = useState(true);
   const [excluirOpen, setExcluirOpen] = useState(false);
+  const [desativarOpen, setDesativarOpen] = useState(false);
+  const [historicoAberto, setHistoricoAberto] = useState(false);
 
   const [selectedRegra, setSelectedRegra] = useState("");
   const [selectedFormatoLeitura, setSelectedFormatoLeitura] = useState("");
@@ -595,6 +618,9 @@ export default function UsinaPage() {
     return <div className="p-8 text-center text-sm text-muted-foreground">Usina não encontrada.</div>;
   }
 
+  // Última mudança de status (a API já devolve em ordem decrescente). Usinas
+  // que nunca foram desativadas não têm registro — a faixa nem aparece.
+  const ultimoStatus = plant.statusChanges?.[0] ?? null;
   const totalConsumers = plant.consumers?.length ?? 0;
   const totalInvestors = plant.investors?.length ?? 0;
   const marcaHasModelos =
@@ -619,21 +645,90 @@ export default function UsinaPage() {
           >
             {plant.active ? "Ativa" : "Inativa"}
           </Badge>
-          <button
-            type="button"
-            onClick={() => setExcluirOpen(true)}
-            title="Excluir usina"
-            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 dark:border-red-900 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-          >
-            <Trash2 className="h-4 w-4" />
-            Excluir usina
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDesativarOpen(true)}
+              title={
+                plant.active
+                  ? "Tira a usina do faturamento, da agenda e dos painéis, sem apagar nada"
+                  : "Devolve a usina ao faturamento, à agenda e aos painéis"
+              }
+              className={
+                plant.active
+                  ? "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors"
+                  : "inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
+              }
+            >
+              {plant.active ? (
+                <PowerOff className="h-4 w-4" />
+              ) : (
+                <Power className="h-4 w-4" />
+              )}
+              {plant.active ? "Desativar usina" : "Reativar usina"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setExcluirOpen(true)}
+              title="Excluir usina"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-200 dark:border-red-900 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+            >
+              <Trash2 className="h-4 w-4" />
+              Excluir usina
+            </button>
+          </div>
         </div>
         {plant.location && (
           <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
             <MapPin className="h-3.5 w-3.5" />
             {plant.location}
           </p>
+        )}
+
+        {ultimoStatus && (
+          <div className="mt-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              <span className="font-medium">
+                {ultimoStatus.ativa ? "Reativada" : "Desativada"} em{" "}
+                {formatDataHora(ultimoStatus.createdAt)}
+              </span>
+              <span className="text-muted-foreground">
+                por {ultimoStatus.usuarioNome}
+                {ultimoStatus.usuarioEmail ? ` (${ultimoStatus.usuarioEmail})` : ""}
+              </span>
+              {plant.statusChanges.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setHistoricoAberto((v) => !v)}
+                  className="ml-auto text-xs text-primary hover:underline"
+                >
+                  {historicoAberto
+                    ? "Ocultar histórico"
+                    : `Ver histórico (${plant.statusChanges.length})`}
+                </button>
+              )}
+            </div>
+            <p className="text-muted-foreground mt-0.5">
+              Motivo: {ultimoStatus.motivo}
+            </p>
+
+            {historicoAberto && (
+              <ul className="mt-2 space-y-1.5 border-t pt-2">
+                {plant.statusChanges.slice(1).map((mudanca) => (
+                  <li key={mudanca.id} className="text-xs">
+                    <span className="font-medium">
+                      {mudanca.ativa ? "Reativada" : "Desativada"} em{" "}
+                      {formatDataHora(mudanca.createdAt)}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {" "}
+                      por {mudanca.usuarioNome} — {mudanca.motivo}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
       </div>
 
@@ -1201,6 +1296,15 @@ export default function UsinaPage() {
           </div>
         </div>
       )}
+
+      <DesativarUsinaDialog
+        plantId={plant.id}
+        plantName={plant.name}
+        ativa={plant.active}
+        open={desativarOpen}
+        onOpenChange={setDesativarOpen}
+        onConcluido={loadPlant}
+      />
 
       <ExcluirUsinaDialog
         plantId={plant.id}

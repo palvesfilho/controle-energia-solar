@@ -171,8 +171,29 @@ model Plant {
   documents         PlantDocument[]
   investorPayables  InvestorPayable[]
   acoesRecomendadas AcaoRecomendada[]
+  statusChanges     PlantStatusChange[]
 
   @@map("plants")
+}
+
+// Trilha de auditoria do liga/desliga da usina: uma linha por desativação E por
+// reativação, com o motivo digitado pelo operador. Nome e e-mail são gravados
+// como CÓPIA (não relação com User) pra o registro sobreviver a renomeação ou
+// exclusão do usuário — auditoria não pode mudar de resposta depois.
+model PlantStatusChange {
+  id           String   @id @default(cuid())
+  plantId      String   @map("plant_id")
+  ativa        Boolean // estado que a usina passou a ter: true = reativada, false = desativada
+  motivo       String
+  usuarioId    String?  @map("usuario_id")
+  usuarioNome  String   @map("usuario_nome")
+  usuarioEmail String?  @map("usuario_email")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  plant Plant @relation(fields: [plantId], references: [id], onDelete: Cascade)
+
+  @@index([plantId, createdAt])
+  @@map("plant_status_changes")
 }
 
 model PlantDocument {

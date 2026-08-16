@@ -66,7 +66,11 @@ export default function UsinasPage() {
   }, []);
 
   const stats = useMemo(() => {
-    const ativas = plants.filter((p) => p.statusContrato === "Ativo").length;
+    // Conta pelo `active`, o campo que os filtros de Faturamento, Agenda e
+    // painel admin usam de fato. O `statusContrato` é texto solto da importação
+    // (9 das 29 usinas estão em branco) e contava menos usinas do que a operação
+    // realmente tem em circulação.
+    const ativas = plants.filter((p) => p.active).length;
     const totalPotencia = plants.reduce((acc, p) => acc + (p.potenciaInstalada ?? 0), 0);
     const totalUcs = plants.reduce((acc, p) => acc + p.ucsRateioCount, 0);
     return { total: plants.length, ativas, totalPotencia, totalUcs };
@@ -74,8 +78,8 @@ export default function UsinasPage() {
 
   const filtered = useMemo(() => {
     const rows = plants.filter((p) => {
-      if (statusFilter === "ativo" && p.statusContrato !== "Ativo") return false;
-      if (statusFilter === "inativo" && p.statusContrato === "Ativo") return false;
+      if (statusFilter === "ativo" && !p.active) return false;
+      if (statusFilter === "inativo" && p.active) return false;
       return matchBusca(search, [
         p.name,
         p.numeroUsina,
@@ -109,7 +113,7 @@ export default function UsinasPage() {
         case "ucs":
           return (a.ucsRateioCount - b.ucsRateioCount) * dir;
         case "status":
-          return ((a.statusContrato ?? "").localeCompare(b.statusContrato ?? "")) * dir;
+          return ((a.active ? 0 : 1) - (b.active ? 0 : 1)) * dir;
       }
     });
     return rows;
@@ -165,8 +169,8 @@ export default function UsinasPage() {
               className="text-sm border rounded-lg px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
             >
               <option value="">Todos os status</option>
-              <option value="ativo">Ativos</option>
-              <option value="inativo">Inativos</option>
+              <option value="ativo">Ativas</option>
+              <option value="inativo">Inativas</option>
             </select>
             <span className="ml-auto text-xs text-muted-foreground">
               {filtered.length} de {stats.total}
@@ -227,10 +231,10 @@ export default function UsinasPage() {
                       </td>
                       <td className="py-2.5 px-3 text-center">
                         <Badge
-                          variant={plant.statusContrato === "Ativo" ? "default" : "secondary"}
-                          className={plant.statusContrato === "Ativo" ? "bg-emerald-500 hover:bg-emerald-600" : ""}
+                          variant={plant.active ? "default" : "secondary"}
+                          className={plant.active ? "bg-emerald-500 hover:bg-emerald-600" : ""}
                         >
-                          {plant.statusContrato ?? "—"}
+                          {plant.active ? "Ativa" : "Inativa"}
                         </Badge>
                       </td>
                       <td className="py-2.5 px-3 text-center">

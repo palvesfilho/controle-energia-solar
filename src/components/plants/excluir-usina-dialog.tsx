@@ -136,8 +136,8 @@ export function ExcluirUsinaDialog({
               ))}
             </ul>
             <div className="mt-2 text-xs text-red-600/80 dark:text-red-300/80">
-              Para tirar a usina de circulação sem perder o histórico, mude o
-              status do contrato para inativo na tela de edição.
+              Para tirar a usina de circulação sem perder o histórico, use o
+              botão &quot;Desativar usina&quot; no topo desta tela.
             </div>
           </div>
         ) : (

@@ -32,6 +32,8 @@ export async function GET(
       consumerUnits: {
         select: { id: true, nome: true, codigoUc: true, consumoMedio: true, statusContrato: true },
       },
+      // Auditoria do liga/desliga — a tela mostra a última e a lista completa.
+      statusChanges: { orderBy: { createdAt: "desc" }, take: 20 },
     },
   });
 
@@ -74,7 +76,9 @@ export async function PUT(
       ...(body.concessionaria !== undefined && { concessionaria: body.concessionaria || null }),
       ...(body.formatoLeitura !== undefined && { formatoLeitura: body.formatoLeitura || null }),
       ...(body.regraInstalacao !== undefined && { regraInstalacao: body.regraInstalacao || null }),
-      ...(body.active !== undefined && { active: body.active }),
+      // `active` NÃO entra aqui de propósito: ativar/desativar exige motivo e
+      // grava auditoria, e isso mora em POST /api/plants/[id]/status. Aceitar o
+      // campo neste PUT genérico abriria um caminho sem rastro.
       ...(body.inversorMarca !== undefined && { inversorMarca: body.inversorMarca || null }),
       ...(body.inversorModelo !== undefined && { inversorModelo: body.inversorModelo || null }),
       ...(body.monitoramentoPlataforma !== undefined && { monitoramentoPlataforma: body.monitoramentoPlataforma || null }),
@@ -91,6 +95,8 @@ export async function PUT(
       ...(body.cpfCnpj !== undefined && { cpfCnpj: body.cpfCnpj || null }),
       ...(body.distribuidora !== undefined && { distribuidora: body.distribuidora || null }),
       ...(body.acesso !== undefined && { acesso: body.acesso || null }),
+      // Texto legado do contrato. Nenhuma tela envia hoje — quem mantém ele em
+      // sincronia com `active` é a rota /status.
       ...(body.statusContrato !== undefined && { statusContrato: body.statusContrato || null }),
       ...(body.dataAssinaturaContrato !== undefined && {
         dataAssinaturaContrato: body.dataAssinaturaContrato
