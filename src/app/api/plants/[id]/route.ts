@@ -24,13 +24,39 @@ export async function GET(
           investor: { include: { user: { select: { id: true, name: true } } } },
         },
       },
-      consumers: {
-        include: {
-          consumer: { select: { id: true, name: true, unidadeConsumidora: true, active: true } },
-        },
-      },
       consumerUnits: {
         select: { id: true, nome: true, codigoUc: true, consumoMedio: true, statusContrato: true },
+      },
+      // Consumidores que RECEBEM os créditos = só os do rateio VIGENTE, a mesma
+      // regra do contador da lista (GET /api/plants). `ConsumerUnit.plantId` é
+      // cadastro: marcar a usina no formulário não prova que a concessionária
+      // compensa créditos dela para aquela UC — só o rateio aceito prova.
+      // Usina sem rateio vigente = nenhum consumidor recebendo.
+      rateioVersions: {
+        where: { status: "VIGENTE" },
+        orderBy: { vigenteAPartirDe: "desc" },
+        select: {
+          id: true,
+          vigenteAPartirDe: true,
+          aceitoEm: true,
+          items: {
+            select: {
+              id: true,
+              percentual: true,
+              consumerUnit: {
+                select: {
+                  id: true,
+                  nome: true,
+                  codigoUc: true,
+                  cidade: true,
+                  consumoMedio: true,
+                  active: true,
+                  consumer: { select: { id: true, name: true } },
+                },
+              },
+            },
+          },
+        },
       },
       // Auditoria do liga/desliga — a tela mostra a última e a lista completa.
       statusChanges: { orderBy: { createdAt: "desc" }, take: 20 },
@@ -41,7 +67,55 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json(plant);
+  const { rateioVersions, ...plantSemRateios } = plant;
+
+  // Normalmente há uma única versão VIGENTE por usina; se aparecer mais de uma,
+  // vale a mais recente (ordenadas por vigência desc) e a UC não é contada duas
+  // vezes — contagem e lista saem sempre do MESMO conjunto.
+  const vistas = new Set<string>();
+  const itensVigentes = rateioVersions
+    .flatMap((v) =>
+      v.items.map((item) => ({
+        id: item.id,
+        percentual: item.percentual,
+        vigenteAPartirDe: v.vigenteAPartirDe,
+        consumerUnit: item.consumerUnit,
+      })),
+    )
+    .filter((item) => {
+      if (vistas.has(item.consumerUnit.id)) return false;
+      vistas.add(item.consumerUnit.id);
+      return true;
+    })
+    .sort(
+      (a, b) =>
+        b.percentual - a.percentual ||
+        (a.consumerUnit.consumer?.name ?? a.consumerUnit.nome).localeCompare(
+          b.consumerUnit.consumer?.name ?? b.consumerUnit.nome,
+          "pt-BR",
+        ),
+    );
+
+  // Quem RECEBE crédito é quem tem fatia > 0. A própria UC geradora pode entrar
+  // no rateio com 0% (a tela de Rateios permite, para a usina aparecer no
+  // documento enviado à concessionária) — ela não é consumidora e por isso sai
+  // da contagem. Vai separada, e não em silêncio: a tela avisa que existe.
+  const consumidoresRateio = itensVigentes.filter((i) => i.percentual > 0);
+  const ucsRateioSemCredito = itensVigentes
+    .filter((i) => i.percentual <= 0)
+    .map((i) => ({
+      id: i.consumerUnit.id,
+      nome: i.consumerUnit.nome,
+      codigoUc: i.consumerUnit.codigoUc,
+    }));
+
+  return NextResponse.json({
+    ...plantSemRateios,
+    consumidoresRateio,
+    ucsRateioSemCredito,
+    ucsRateioCount: consumidoresRateio.length,
+    rateioVigenteEm: rateioVersions[0]?.vigenteAPartirDe ?? null,
+  });
 }
 
 export async function PUT(

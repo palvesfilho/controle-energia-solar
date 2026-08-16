@@ -135,15 +135,23 @@ const PLATAFORMAS_MONITORAMENTO = [
   "Outro",
 ];
 
-interface ConsumerPlantData {
+/**
+ * Uma UC do rateio VIGENTE da usina — ou seja, um consumidor que de fato
+ * recebe os créditos hoje. Vem de GET /api/plants/[id], que só devolve itens
+ * da versão VIGENTE (o `plantId` da UC é cadastro, não prova compensação).
+ */
+interface ConsumidorRateio {
   id: string;
-  cotaPercent: number | null;
-  descontoPercent: number | null;
-  consumer: {
+  percentual: number;
+  vigenteAPartirDe: string;
+  consumerUnit: {
     id: string;
-    name: string;
-    unidadeConsumidora: string | null;
+    nome: string;
+    codigoUc: string;
+    cidade: string | null;
+    consumoMedio: number | null;
     active: boolean;
+    consumer: { id: string; name: string } | null;
   };
 }
 
@@ -197,7 +205,12 @@ interface PlantData {
   monitoramentoSenha: string | null;
   monitoramentoUrl: string | null;
   investors: InvestorLink[];
-  consumers: ConsumerPlantData[];
+  consumidoresRateio: ConsumidorRateio[];
+  // UCs que estão no rateio vigente com 0% — normalmente a própria geradora.
+  // Não recebem crédito, então não entram na contagem; a tela só as avisa.
+  ucsRateioSemCredito: { id: string; nome: string; codigoUc: string }[];
+  ucsRateioCount: number;
+  rateioVigenteEm: string | null;
   statusChanges: PlantStatusChange[];
 }
 
@@ -208,6 +221,19 @@ interface PlantStatusChange {
   usuarioNome: string;
   usuarioEmail: string | null;
   createdAt: string;
+}
+
+function formatPercentual(valor: number) {
+  return valor.toLocaleString("pt-BR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatData(iso: string) {
+  return new Date(iso).toLocaleDateString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+  });
 }
 
 function formatDataHora(iso: string) {
@@ -230,19 +256,26 @@ function StatCard({
   label,
   value,
   accent,
+  hint,
+  title,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | number;
   accent: keyof typeof ACCENT_CLASSES;
+  hint?: string;
+  title?: string;
 }) {
   return (
-    <Card>
+    <Card title={title}>
       <CardContent className="p-3 flex items-center gap-3">
         <div className={`p-2 rounded-lg ${ACCENT_CLASSES[accent]}`}>{icon}</div>
-        <div>
+        <div className="min-w-0">
           <div className="text-xs text-muted-foreground">{label}</div>
           <div className="text-lg font-semibold">{value}</div>
+          {hint && (
+            <div className="text-[11px] text-muted-foreground truncate">{hint}</div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -621,7 +654,11 @@ export default function UsinaPage() {
   // Última mudança de status (a API já devolve em ordem decrescente). Usinas
   // que nunca foram desativadas não têm registro — a faixa nem aparece.
   const ultimoStatus = plant.statusChanges?.[0] ?? null;
-  const totalConsumers = plant.consumers?.length ?? 0;
+  // Consumidores = UCs do rateio VIGENTE (mesma regra do contador da lista de
+  // usinas). Sem rateio vigente, ninguém recebe crédito desta usina: zero.
+  const consumidores = plant.consumidoresRateio ?? [];
+  const semCredito = plant.ucsRateioSemCredito ?? [];
+  const totalConsumers = plant.ucsRateioCount ?? consumidores.length;
   const totalInvestors = plant.investors?.length ?? 0;
   const marcaHasModelos =
     selectedMarca && selectedMarca !== "Outro" && INVERSOR_MARCAS[selectedMarca]?.length > 0;
@@ -759,6 +796,16 @@ export default function UsinaPage() {
           label="Consumidores"
           value={totalConsumers}
           accent="emerald"
+          hint={
+            totalConsumers === 0
+              ? "sem rateio vigente"
+              : `no rateio vigente${
+                  plant.rateioVigenteEm
+                    ? ` desde ${formatData(plant.rateioVigenteEm)}`
+                    : ""
+                }`
+          }
+          title="Quantidade de unidades consumidoras que recebem os créditos desta usina pelo rateio vigente"
         />
       </div>
 
@@ -801,43 +848,107 @@ export default function UsinaPage() {
           </div>
 
           <div>
-            <div className="text-sm font-medium mb-2">Consumidores ({totalConsumers})</div>
+            <div className="flex flex-wrap items-baseline gap-x-2 mb-2">
+              <span className="text-sm font-medium">
+                Consumidores vigentes ({totalConsumers})
+              </span>
+              <span className="text-xs text-muted-foreground">
+                — quem recebe os créditos desta usina pelo rateio vigente
+                {plant.rateioVigenteEm
+                  ? `, em vigor desde ${formatData(plant.rateioVigenteEm)}`
+                  : ""}
+              </span>
+              <Link
+                href="/admin/gestao-creditos/rateios"
+                className="ml-auto text-xs text-primary hover:underline"
+              >
+                Ver rateios
+              </Link>
+            </div>
             {totalConsumers === 0 ? (
               <div className="p-6 text-center text-sm text-muted-foreground border rounded-lg">
-                Nenhum consumidor vinculado.
+                {plant.rateioVigenteEm
+                  ? "O rateio vigente não destina crédito a nenhuma unidade consumidora."
+                  : "Nenhum consumidor recebendo créditos: esta usina não tem rateio vigente. Marcar a usina no cadastro da UC não basta — o rateio precisa estar aceito na tela de Rateios."}
               </div>
             ) : (
               <div className="overflow-x-auto border rounded-lg">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b text-muted-foreground">
-                      <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Consumidor</th>
-                      <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">UC</th>
-                      <th className="text-right py-2 px-3 font-medium text-xs uppercase tracking-wide">Cota (%)</th>
-                      <th className="text-right py-2 px-3 font-medium text-xs uppercase tracking-wide">Desconto (%)</th>
+                      <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Cliente</th>
+                      <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Unidade consumidora</th>
+                      <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Código UC</th>
+                      <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Cidade</th>
+                      <th className="text-right py-2 px-3 font-medium text-xs uppercase tracking-wide">Rateio (%)</th>
                       <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {plant.consumers.map((cp) => (
-                      <tr key={cp.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                        <td className="py-2.5 px-3 font-medium">{cp.consumer.name}</td>
-                        <td className="py-2.5 px-3 text-muted-foreground">{formatCodigoUc(cp.consumer.unidadeConsumidora) ?? "-"}</td>
-                        <td className="py-2.5 px-3 text-right">{cp.cotaPercent ?? "-"}%</td>
-                        <td className="py-2.5 px-3 text-right">{cp.descontoPercent ?? "-"}%</td>
+                    {consumidores.map((item) => (
+                      <tr key={item.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                        <td className="py-2.5 px-3 font-medium">
+                          {item.consumerUnit.consumer?.name ?? item.consumerUnit.nome}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <Link
+                            href={`/admin/unidades-consumidoras/${item.consumerUnit.id}`}
+                            className="hover:underline"
+                          >
+                            {item.consumerUnit.nome}
+                          </Link>
+                        </td>
+                        <td className="py-2.5 px-3 text-muted-foreground">
+                          {formatCodigoUc(item.consumerUnit.codigoUc) ?? "-"}
+                        </td>
+                        <td className="py-2.5 px-3 text-muted-foreground">
+                          {item.consumerUnit.cidade ?? "-"}
+                        </td>
+                        <td className="py-2.5 px-3 text-right tabular-nums">
+                          {formatPercentual(item.percentual)}%
+                        </td>
                         <td className="py-2.5 px-3 text-center">
                           <Badge
-                            variant={cp.consumer.active ? "default" : "secondary"}
-                            className={cp.consumer.active ? "bg-emerald-500 hover:bg-emerald-600" : ""}
+                            variant={item.consumerUnit.active ? "default" : "secondary"}
+                            className={item.consumerUnit.active ? "bg-emerald-500 hover:bg-emerald-600" : ""}
                           >
-                            {cp.consumer.active ? "Ativo" : "Inativo"}
+                            {item.consumerUnit.active ? "Ativa" : "Inativa"}
                           </Badge>
                         </td>
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr className="border-t bg-muted/30 font-medium">
+                      <td className="py-2 px-3" colSpan={4}>
+                        Total rateado
+                      </td>
+                      <td className="py-2 px-3 text-right tabular-nums">
+                        {formatPercentual(
+                          consumidores.reduce((acc, i) => acc + i.percentual, 0),
+                        )}
+                        %
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
+            )}
+
+            {semCredito.length > 0 && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Fora da contagem:{" "}
+                {semCredito
+                  .map(
+                    (uc) =>
+                      `${uc.nome} (${formatCodigoUc(uc.codigoUc) ?? uc.codigoUc})`,
+                  )
+                  .join(", ")}{" "}
+                — {semCredito.length === 1 ? "está" : "estão"} no rateio vigente
+                com 0%, então não {semCredito.length === 1 ? "recebe" : "recebem"}{" "}
+                créditos.
+              </p>
             )}
           </div>
         </div>
