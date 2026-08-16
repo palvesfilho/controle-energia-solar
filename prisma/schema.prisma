@@ -579,10 +579,29 @@ model ConsumerUnit {
 
   consumoBaselines         ConsumoBaseline[]
   brasilSolarBeneficiarias BrasilSolarBeneficiaria[]
+  statusChanges            ConsumerUnitStatusChange[]
 
   @@index([consumerId])
   @@index([plantId])
   @@map("consumer_units")
+}
+
+// Gêmea de PlantStatusChange, para a UC. Mesmo formato de propósito: as duas
+// telas usam o mesmo diálogo e a mesma leitura de auditoria.
+model ConsumerUnitStatusChange {
+  id             String   @id @default(cuid())
+  consumerUnitId String   @map("consumer_unit_id")
+  ativa          Boolean // estado que a UC passou a ter: true = reativada, false = desativada
+  motivo         String
+  usuarioId      String?  @map("usuario_id")
+  usuarioNome    String   @map("usuario_nome")
+  usuarioEmail   String?  @map("usuario_email")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  consumerUnit ConsumerUnit @relation(fields: [consumerUnitId], references: [id], onDelete: Cascade)
+
+  @@index([consumerUnitId, createdAt])
+  @@map("consumer_unit_status_changes")
 }
 
 model ConsumerUnitBilling {

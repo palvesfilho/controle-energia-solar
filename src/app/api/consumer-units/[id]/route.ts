@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 import { normalizeCodigoUc } from "@/lib/uc-codigo";
+import { avaliarExclusaoUc } from "@/lib/consumer-unit-exclusao";
 
 export async function GET(
   _req: NextRequest,
@@ -20,6 +21,8 @@ export async function GET(
     include: {
       consumer: { select: { id: true, name: true } },
       plant: { select: { id: true, name: true } },
+      // Auditoria do liga/desliga — mesma leitura da tela da usina.
+      statusChanges: { orderBy: { createdAt: "desc" }, take: 20 },
     },
   });
 
@@ -104,13 +107,23 @@ export async function PUT(
       ...(body.loginDistribuidora !== undefined && { loginDistribuidora: body.loginDistribuidora || null }),
       ...(body.senhaDistribuidora !== undefined && { senhaDistribuidora: body.senhaDistribuidora || null }),
       ...(body.temGeracaoPropria !== undefined && { temGeracaoPropria: !!body.temGeracaoPropria }),
-      ...(body.active !== undefined && { active: body.active }),
+      // `active` NÃO entra aqui de propósito: ativar/desativar exige motivo e
+      // grava auditoria, e isso mora em POST /api/consumer-units/[id]/status.
+      // Mesma regra da usina — aceitar o campo neste PUT genérico abriria um
+      // caminho sem rastro.
     },
   });
 
   return NextResponse.json({ success: true });
 }
 
+// Exclusão permanente da UC. Recusa (409) enquanto existir histórico
+// financeiro/energético apontando pra ela — nesses casos o caminho é desativar
+// (POST /api/consumer-units/[id]/status), não apagar.
+//
+// ⚠️ Sem esta guarda o delete PASSAVA: as faturas, os faturamentos e os itens de
+// rateio da UC são `onDelete: Cascade`, então o banco os apagava em silêncio,
+// sem erro nenhum. Mesma proteção que a usina já tinha.
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -121,7 +134,34 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  await prisma.consumerUnit.delete({ where: { id } });
+  const impacto = await avaliarExclusaoUc(id);
+  if (!impacto) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (impacto.bloqueios.length > 0) {
+    return NextResponse.json(
+      {
+        error: "UC possui histórico e não pode ser excluída",
+        details: impacto.bloqueios,
+      },
+      { status: 409 },
+    );
+  }
+
+  try {
+    await prisma.consumerUnit.delete({ where: { id } });
+  } catch {
+    // Rede de segurança: alguma relação nova sem cascade que o preview ainda
+    // não conhece. Melhor 409 legível do que 500.
+    return NextResponse.json(
+      {
+        error: "UC possui vínculos e não pode ser excluída",
+        details: ["Registros vinculados impedem a exclusão"],
+      },
+      { status: 409 },
+    );
+  }
 
   return NextResponse.json({ message: "UC removida com sucesso" });
 }

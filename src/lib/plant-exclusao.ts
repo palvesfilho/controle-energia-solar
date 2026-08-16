@@ -1,24 +1,16 @@
 import { prisma } from "@/lib/prisma";
+import { ImpactoExclusao, plural } from "@/lib/exclusao";
 
 // Avaliação de impacto antes de excluir uma usina. Fonte única usada pelo
 // preview (GET /api/plants/[id]/exclusao) e pelo próprio DELETE — os dois
 // precisam concordar, senão a tela libera e a API recusa (ou pior: o contrário).
 //
-// bloqueios: dados históricos/financeiros que impedem a exclusão. Todos são
-//   relações sem cascade no schema — o Postgres recusaria o delete de qualquer
-//   forma (P2003); aqui a recusa vira mensagem legível.
-// avisos: vínculos que a exclusão desfaz sozinha (cascade ou set null). Não
-//   impedem, mas o operador precisa ver antes de confirmar.
+// Contrato (bloqueios × avisos) descrito em @/lib/exclusao. Aqui todos os
+// bloqueios são relações sem cascade no schema — o Postgres recusaria o delete
+// de qualquer forma (P2003); a avaliação transforma a recusa em mensagem
+// legível. Na UC não é assim, ver consumer-unit-exclusao.ts.
 
-export interface ImpactoExclusaoUsina {
-  nome: string;
-  bloqueios: string[];
-  avisos: string[];
-}
-
-function plural(n: number, singular: string, pluralForma: string) {
-  return `${n} ${n === 1 ? singular : pluralForma}`;
-}
+export type ImpactoExclusaoUsina = ImpactoExclusao;
 
 export async function avaliarExclusaoUsina(
   id: string,

@@ -2,30 +2,29 @@
 
 import { ExcluirCadastroDialog } from "@/components/shared/excluir-cadastro-dialog";
 
-const FRASE_CONFIRMACAO = "quero mesmo excluir usina";
+const FRASE_CONFIRMACAO = "quero mesmo excluir uc";
 
-// Exclusão de usina — a regra e a tela moram no ExcluirCadastroDialog, que
-// atende também a UC. Aqui ficam só os rótulos e a raiz da API.
-export function ExcluirUsinaDialog({
-  plantId,
-  plantName,
+// Exclusão de unidade consumidora — mesmo diálogo e mesmas regras da usina.
+export function ExcluirUcDialog({
+  ucId,
+  ucNome,
   open,
   onOpenChange,
   onExcluida,
 }: {
-  plantId: string | null;
-  plantName: string;
+  ucId: string | null;
+  ucNome: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onExcluida: (id: string) => void;
 }) {
   return (
     <ExcluirCadastroDialog
-      registroId={plantId}
-      nome={plantName}
-      rotulo="usina"
+      registroId={ucId}
+      nome={ucNome}
+      rotulo="unidade consumidora"
       frase={FRASE_CONFIRMACAO}
-      basePath="/api/plants"
+      basePath="/api/consumer-units"
       open={open}
       onOpenChange={onOpenChange}
       onExcluido={onExcluida}

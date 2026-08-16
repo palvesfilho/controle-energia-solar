@@ -62,7 +62,10 @@ export default function UnidadesConsumidorasPage() {
   );
 
   const stats = useMemo(() => {
-    const ativas = ucs.filter((u) => u.statusContrato === "Ativo").length;
+    // Conta pelo `active` — é ele que decide se a UC entra no Faturamento, na
+    // Agenda e na Análise de Créditos. O `statusContrato` é texto do cadastro
+    // (30 das 140 UCs estão em branco) e contava menos do que a operação tem.
+    const ativas = ucs.filter((u) => u.active).length;
     const consumoTotal = ucs.reduce((acc, u) => acc + (u.consumoMedio ?? 0), 0);
     return { total: ucs.length, ativas, consumoTotal, distribuidoras: distribuidoras.length };
   }, [ucs, distribuidoras]);
@@ -82,7 +85,11 @@ export default function UnidadesConsumidorasPage() {
         case "consumo":
           return ((a.consumoMedio ?? 0) - (b.consumoMedio ?? 0)) * dir;
         case "status":
-          return (a.statusContrato ?? "").localeCompare(b.statusContrato ?? "") * dir;
+          // Inativas juntas primeiro (ou por último), depois o texto do contrato.
+          return (
+            (((a.active ? 0 : 1) - (b.active ? 0 : 1)) ||
+              (a.statusContrato ?? "").localeCompare(b.statusContrato ?? "")) * dir
+          );
       }
     });
     return rows;
@@ -228,11 +235,18 @@ export default function UnidadesConsumidorasPage() {
                         {uc.consumoMedio ? `${uc.consumoMedio.toLocaleString("pt-BR")} kWh` : "-"}
                       </td>
                       <td className="py-2.5 px-3 text-center">
+                        {/* UC desativada manda no rótulo: mostrar "Ativo" do
+                            texto do contrato numa UC fora do faturamento era
+                            justamente a contradição entre as duas telas. */}
                         <Badge
-                          variant={uc.statusContrato === "Ativo" ? "default" : "secondary"}
-                          className={uc.statusContrato === "Ativo" ? "bg-emerald-500 hover:bg-emerald-600" : ""}
+                          variant={uc.active && uc.statusContrato !== "Pendente" ? "default" : "secondary"}
+                          className={
+                            uc.active && uc.statusContrato !== "Pendente"
+                              ? "bg-emerald-500 hover:bg-emerald-600"
+                              : ""
+                          }
                         >
-                          {uc.statusContrato ?? "—"}
+                          {!uc.active ? "Inativa" : (uc.statusContrato ?? "Ativo")}
                         </Badge>
                       </td>
                       <td className="py-2.5 px-3 text-center">

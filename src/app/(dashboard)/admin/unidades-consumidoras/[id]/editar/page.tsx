@@ -1,25 +1,36 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Trash2, AlertTriangle } from "lucide-react";
-import { toast } from "sonner";
+import { ArrowLeft, Trash2, AlertTriangle, Power, PowerOff } from "lucide-react";
 import { UCForm, UCFormData, EMPTY_UC_FORM, percentDbToInput } from "@/components/consumer-units/uc-form";
 import { UcCredentialsForm } from "@/components/consumer-units/uc-credentials-form";
 import { UcBills } from "@/components/consumer-units/uc-bills";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { ExcluirUcDialog } from "@/components/consumer-units/excluir-uc-dialog";
+import { DesativarUcDialog } from "@/components/consumer-units/desativar-uc-dialog";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+
+interface UcStatusChange {
+  id: string;
+  ativa: boolean;
+  motivo: string;
+  usuarioNome: string;
+  usuarioEmail: string | null;
+  createdAt: string;
+}
+
+function formatDataHora(iso: string) {
+  return new Date(iso).toLocaleString("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "America/Sao_Paulo",
+  });
+}
 
 export default function EditarUCPage() {
   const router = useRouter();
@@ -31,16 +42,21 @@ export default function EditarUCPage() {
   const [error, setError] = useState("");
   const [initialData, setInitialData] = useState<UCFormData>(EMPTY_UC_FORM);
   const [billsRefreshKey, setBillsRefreshKey] = useState(0);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [excluirOpen, setExcluirOpen] = useState(false);
+  const [desativarOpen, setDesativarOpen] = useState(false);
+  const [historicoAberto, setHistoricoAberto] = useState(false);
+  const [ativa, setAtiva] = useState(true);
+  const [statusChanges, setStatusChanges] = useState<UcStatusChange[]>([]);
 
-  useEffect(() => {
-    fetch(`/api/consumer-units/${id}`)
+  const carregarUc = useCallback(() => {
+    return fetch(`/api/consumer-units/${id}`)
       .then((res) => {
         if (!res.ok) throw new Error("UC não encontrada");
         return res.json();
       })
       .then((uc) => {
+        setAtiva(!!uc.active);
+        setStatusChanges(uc.statusChanges ?? []);
         setInitialData({
           nome: uc.nome ?? "",
           // Exibe no padrão da concessionária; a API normaliza pra dígitos ao salvar.
@@ -81,23 +97,9 @@ export default function EditarUCPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      const res = await fetch(`/api/consumer-units/${id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({ error: "Erro ao excluir UC" }));
-        toast.error(d.error || "Erro ao excluir UC");
-        setDeleting(false);
-        return;
-      }
-      toast.success("Unidade consumidora excluída");
-      router.push("/admin/unidades-consumidoras");
-    } catch {
-      toast.error("Erro de conexão");
-      setDeleting(false);
-    }
-  };
+  useEffect(() => {
+    carregarUc();
+  }, [carregarUc]);
 
   const handleSubmit = async (data: UCFormData) => {
     setError("");
@@ -127,6 +129,10 @@ export default function EditarUCPage() {
     );
   }
 
+  // Última mudança de status (a API já devolve em ordem decrescente). UC que
+  // nunca foi desativada não tem registro — a faixa nem aparece.
+  const ultimoStatus = statusChanges[0] ?? null;
+
   return (
     <div className="space-y-4 max-w-4xl">
       <Link
@@ -138,8 +144,77 @@ export default function EditarUCPage() {
       </Link>
 
       <div>
-        <h1 className="text-2xl font-bold">Editar Unidade Consumidora</h1>
-        <p className="text-sm text-muted-foreground">Atualize os dados da UC</p>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold">Editar Unidade Consumidora</h1>
+          <Badge
+            variant={ativa ? "default" : "secondary"}
+            className={ativa ? "bg-emerald-500 hover:bg-emerald-600" : ""}
+          >
+            {ativa ? "Ativa" : "Inativa"}
+          </Badge>
+          <button
+            type="button"
+            onClick={() => setDesativarOpen(true)}
+            title={
+              ativa
+                ? "Tira a UC do faturamento, da agenda e dos painéis, sem apagar nada"
+                : "Devolve a UC ao faturamento, à agenda e aos painéis"
+            }
+            className={
+              ativa
+                ? "ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors"
+                : "ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors"
+            }
+          >
+            {ativa ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+            {ativa ? "Desativar UC" : "Reativar UC"}
+          </button>
+        </div>
+        <p className="text-sm text-muted-foreground mt-1">Atualize os dados da UC</p>
+
+        {ultimoStatus && (
+          <div className="mt-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              <span className="font-medium">
+                {ultimoStatus.ativa ? "Reativada" : "Desativada"} em{" "}
+                {formatDataHora(ultimoStatus.createdAt)}
+              </span>
+              <span className="text-muted-foreground">
+                por {ultimoStatus.usuarioNome}
+                {ultimoStatus.usuarioEmail ? ` (${ultimoStatus.usuarioEmail})` : ""}
+              </span>
+              {statusChanges.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setHistoricoAberto((v) => !v)}
+                  className="ml-auto text-xs text-primary hover:underline"
+                >
+                  {historicoAberto
+                    ? "Ocultar histórico"
+                    : `Ver histórico (${statusChanges.length})`}
+                </button>
+              )}
+            </div>
+            <p className="text-muted-foreground mt-0.5">Motivo: {ultimoStatus.motivo}</p>
+
+            {historicoAberto && (
+              <ul className="mt-2 space-y-1.5 border-t pt-2">
+                {statusChanges.slice(1).map((mudanca) => (
+                  <li key={mudanca.id} className="text-xs">
+                    <span className="font-medium">
+                      {mudanca.ativa ? "Reativada" : "Desativada"} em{" "}
+                      {formatDataHora(mudanca.createdAt)}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {" "}
+                      por {mudanca.usuarioNome} — {mudanca.motivo}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
       <UCForm
@@ -179,13 +254,14 @@ export default function EditarUCPage() {
             <div>
               <p className="text-sm font-medium">Excluir esta unidade consumidora</p>
               <p className="text-xs text-muted-foreground">
-                Remove a UC e todos os dados vinculados (credenciais, faturas sincronizadas, billings).
-                Esta ação não pode ser desfeita.
+                Só é permitido enquanto a UC não tiver histórico. Faturas,
+                faturamentos, rateios ou pagamentos vinculados bloqueiam a
+                exclusão — nesse caso o caminho é desativar a UC.
               </p>
             </div>
             <Button
               variant="destructive"
-              onClick={() => setConfirmOpen(true)}
+              onClick={() => setExcluirOpen(true)}
               className="shrink-0"
             >
               <Trash2 className="h-4 w-4 mr-1.5" />
@@ -195,41 +271,22 @@ export default function EditarUCPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-red-600" />
-              Confirmar exclusão
-            </DialogTitle>
-            <DialogDescription>
-              Tem certeza que deseja excluir a unidade consumidora{" "}
-              <span className="font-semibold text-foreground">{initialData.nome}</span>{" "}
-              (código <span className="font-mono">{initialData.codigoUc}</span>)?
-              <br />
-              <br />
-              Essa operação removerá permanentemente a UC e todos os registros
-              relacionados. Não é possível desfazer.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirmOpen(false)}
-              disabled={deleting}
-            >
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={deleting}
-            >
-              {deleting ? "Excluindo..." : "Sim, excluir"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DesativarUcDialog
+        ucId={id}
+        ucNome={initialData.nome}
+        ativa={ativa}
+        open={desativarOpen}
+        onOpenChange={setDesativarOpen}
+        onConcluido={carregarUc}
+      />
+
+      <ExcluirUcDialog
+        ucId={id}
+        ucNome={initialData.nome}
+        open={excluirOpen}
+        onOpenChange={setExcluirOpen}
+        onExcluida={() => router.push("/admin/unidades-consumidoras")}
+      />
     </div>
   );
 }
