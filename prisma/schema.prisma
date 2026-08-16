@@ -2391,6 +2391,19 @@ model CrmUcImportada {
   // não baterem, o sync grava null em vez de parear errado.
   mediaMensalKwh Float? @map("media_mensal_kwh")
 
+  // O que foi COMBINADO com o cliente na apresentação da proposta, copiado de
+  // `propostas.dados_snapshot->dados_desconto_fatura` no CRM.
+  //
+  // `descontoPercent` é o DESCONTO (15 = 15% off), não a fatia cobrada — o
+  // oposto de `ConsumerUnit.percentCompensado`, que guarda 0,85. A conversão
+  // mora num lugar só: `descontoParaPercentCobrado()` em lib/crm-desconto.ts.
+  //
+  // Null = a proposta não disse. Não vira 15 em lugar nenhum: desconto
+  // presumido é o que a operação precisa enxergar, não o que ela deve herdar.
+  descontoPercent Float?  @map("desconto_percent")
+  planoContrato   String? @map("plano_contrato")
+  fidelidadeMeses Int?    @map("fidelidade_meses")
+
   // Consumidor, como assinado na adesão.
   clienteNome      String  @map("cliente_nome")
   clienteDocumento String? @map("cliente_documento")

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { UCForm, UCFormData } from "@/components/consumer-units/uc-form";
+import { descontoParaInputPercentCobrado } from "@/lib/crm-desconto";
 import {
   DocumentosAdesao,
   type FichaDocumento,
@@ -17,6 +18,10 @@ interface UcDoCrm {
   codigoUc: string;
   codigoUcBruto: string | null;
   mediaMensalKwh: number | null;
+  /** Desconto COMBINADO na proposta (15 = 15% off). Null = a proposta não disse. */
+  descontoPercent: number | null;
+  planoContrato: string | null;
+  fidelidadeMeses: number | null;
   clienteNome: string;
   clienteDocumento: string | null;
   clienteEmail: string | null;
@@ -153,6 +158,16 @@ function NovaUCConteudo() {
         cpfCnpj: ucCrm.clienteDocumento ?? "",
         distribuidora: ucCrm.concessionaria ?? "",
         consumoMedio: ucCrm.mediaMensalKwh != null ? String(ucCrm.mediaMensalKwh) : "",
+        // O desconto que o vendedor combinou na apresentação da proposta. O
+        // campo do form é a fatia COBRADA (85 para 15% de desconto) — a
+        // conversão é de `lib/crm-desconto.ts`, nunca feita à mão aqui.
+        //
+        // A bandeira recebe o mesmo percentual: deixá-la em branco faria o
+        // cálculo cobrar ZERO de bandeira em silêncio (billing-calculator só
+        // soma a parcela quando `percentBandeira` existe). Foi assim que as
+        // duas UCs do CRM já cadastradas à mão foram preenchidas.
+        percentCompensado: descontoParaInputPercentCobrado(ucCrm.descontoPercent),
+        percentBandeira: descontoParaInputPercentCobrado(ucCrm.descontoPercent),
         // Marco zero = data em que o termo foi assinado. É a única data que o
         // CRM tem; se a regra do contrato for outra, o operador corrige aqui.
         dataInicioContrato: ucCrm.assinadoEm ? ucCrm.assinadoEm.slice(0, 10) : "",
@@ -185,6 +200,33 @@ function NovaUCConteudo() {
               : "Cadastre uma nova UC no sistema"}
         </p>
       </div>
+
+      {ucCrm && (
+        <div
+          className={`rounded-lg border px-3 py-2 text-sm ${
+            ucCrm.descontoPercent != null
+              ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200"
+              : "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+          }`}
+        >
+          {ucCrm.descontoPercent != null ? (
+            <>
+              <strong>Desconto combinado na proposta: {ucCrm.descontoPercent}%</strong>
+              {ucCrm.planoContrato ? ` · plano ${ucCrm.planoContrato}` : ""}
+              {ucCrm.fidelidadeMeses != null ? ` · fidelidade ${ucCrm.fidelidadeMeses} meses` : ""}
+              {" — já preenchido abaixo como Desconto de Contrato de "}
+              {descontoParaInputPercentCobrado(ucCrm.descontoPercent)}% cobrados sobre a energia
+              compensada.
+            </>
+          ) : (
+            <>
+              <strong>A proposta não trouxe o desconto combinado.</strong> Os campos de desconto
+              ficaram em branco de propósito — preencha com o que foi acordado, senão a cobrança
+              não é calculada.
+            </>
+          )}
+        </div>
+      )}
 
       {/* `key` força o formulário a remontar quando os dados do CRM chegam:
           sem isso, o estado inicial ficaria congelado no vazio. */}

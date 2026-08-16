@@ -62,7 +62,10 @@ export async function GET(req: NextRequest) {
     const jaCadastradas = codigos.length
       ? await prisma.consumerUnit.findMany({
           where: { codigoUc: { in: codigos } },
-          select: { id: true, codigoUc: true, nome: true },
+          // `percentCompensado` vem junto para a tela confrontar o cadastro com
+          // o desconto que a proposta combinou — é a fração COBRADA (0,85),
+          // convertida em desconto por `lib/crm-desconto.ts`.
+          select: { id: true, codigoUc: true, nome: true, percentCompensado: true },
         })
       : [];
     const cadastradaPorCodigo = new Map(jaCadastradas.map((c) => [c.codigoUc, c]));

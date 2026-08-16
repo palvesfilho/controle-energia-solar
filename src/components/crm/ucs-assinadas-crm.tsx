@@ -45,6 +45,7 @@ import {
   Clock,
 } from "lucide-react";
 import { matchBusca } from "@/lib/busca";
+import { conferirDesconto } from "@/lib/crm-desconto";
 import { formatCpfCnpjComRotulo } from "@/lib/documento";
 
 interface DocumentoCrm {
@@ -62,6 +63,10 @@ interface UcAssinada {
   codigoUc: string;
   codigoUcBruto: string | null;
   mediaMensalKwh: number | null;
+  /** Desconto COMBINADO na proposta (15 = 15% off). Null = a proposta não disse. */
+  descontoPercent: number | null;
+  planoContrato: string | null;
+  fidelidadeMeses: number | null;
   clienteNome: string;
   clienteDocumento: string | null;
   clienteTipo: string | null;
@@ -85,7 +90,8 @@ interface UcAssinada {
   vendaGanha: boolean;
   statusNegocio: string | null;
   documentos: DocumentoCrm[];
-  jaCadastrada: { id: string; codigoUc: string; nome: string } | null;
+  /** `percentCompensado` é a fração COBRADA no cadastro daqui (0,85 = 15% off). */
+  jaCadastrada: { id: string; codigoUc: string; nome: string; percentCompensado: number | null } | null;
 }
 
 /** Em qual aba a UC cai, dados os dois eixos. */
@@ -461,6 +467,7 @@ export function UcsAssinadasCrm({ search = "" }: { search?: string }) {
                           já cadastrada aqui
                         </Badge>
                       )}
+                      <BadgeDesconto uc={u} />
                     </div>
 
                     <div className="text-sm font-medium">{u.clienteNome}</div>
@@ -643,4 +650,56 @@ export function UcsAssinadasCrm({ search = "" }: { search?: string }) {
       )}
     </section>
   );
+}
+
+/**
+ * O desconto combinado na proposta, e o que o cadastro daqui pratica.
+ *
+ * Três estados, todos visíveis de propósito:
+ *   - proposta sem desconto      → âmbar: ninguém vai adivinhar depois;
+ *   - cadastro diverge do combinado → vermelho: é dinheiro cobrado a mais ou a
+ *     menos, e só aparece se alguém mostrar;
+ *   - tudo certo                 → neutro, só o número.
+ */
+function BadgeDesconto({ uc }: { uc: UcAssinada }) {
+  const c = conferirDesconto(uc.descontoPercent, uc.jaCadastrada?.percentCompensado);
+
+  if (c.descontoProposta == null) {
+    return (
+      <Badge variant="outline" className="gap-1 border-amber-500/50">
+        <TriangleAlert className="h-3 w-3 text-amber-500" />
+        proposta sem desconto
+      </Badge>
+    );
+  }
+
+  const rotulo = `${c.descontoProposta}% de desconto${uc.planoContrato ? ` · ${uc.planoContrato}` : ""}`;
+
+  if (uc.jaCadastrada && c.divergente) {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1 border-red-500/60 text-red-700 dark:text-red-300"
+        title={`A proposta combinou ${c.descontoProposta}%, mas a UC cadastrada aqui pratica ${c.descontoCadastrado}%.`}
+      >
+        <TriangleAlert className="h-3 w-3" />
+        {rotulo} · cadastro em {c.descontoCadastrado}%
+      </Badge>
+    );
+  }
+
+  if (uc.jaCadastrada && c.semCadastro) {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1 border-amber-500/50"
+        title="A UC existe aqui, mas sem Desconto de Contrato — sem ele a cobrança não é calculada."
+      >
+        <TriangleAlert className="h-3 w-3 text-amber-500" />
+        {rotulo} · cadastro em branco
+      </Badge>
+    );
+  }
+
+  return <Badge variant="secondary">{rotulo}</Badge>;
 }

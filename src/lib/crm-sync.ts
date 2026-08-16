@@ -18,6 +18,7 @@
 import { prisma } from "@/lib/prisma";
 import {
   crmConfigurado,
+  descontoDaProposta,
   extrairUnidades,
   listarAdesoes,
   listarClientes,
@@ -102,6 +103,8 @@ export interface ResultadoSync {
   ucsAtualizadas: number;
   /** Adesões cujos arrays UC × kWh não bateram: a média saiu null. */
   ucsSemMediaConfiavel: number;
+  /** UCs cuja proposta não trouxe o desconto combinado — cadastro fica em branco. */
+  ucsSemDesconto: number;
   erros: string[];
 }
 
@@ -154,6 +157,7 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
     ucsNovas: 0,
     ucsAtualizadas: 0,
     ucsSemMediaConfiavel: 0,
+    ucsSemDesconto: 0,
     erros: [],
   };
 
@@ -237,6 +241,11 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
     );
     const codigosUc = [...new Set(unidades.map((u) => u.codigo))];
 
+    // O que foi combinado na apresentação da proposta. Vale para todas as UCs
+    // da proposta: a simulação de desconto é uma só, e as adesões que saem
+    // dela são o mesmo negócio repartido por unidade.
+    const desconto = descontoDaProposta(proposta);
+
     const regra = deParaPorCodigo.get(codigoProduto);
     const geraObra = ehVendaGanha && (regra?.ativo ?? false) && regra!.geraObra;
     const destinoGestao = (regra?.ativo ? regra.destinoGestao : "NENHUM") as DestinoGestao;
@@ -311,6 +320,7 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
       const a = u.adesao;
       const envelope = envelopePorAdesao.get(a.id);
       if (u.mediaKwh == null) resultado.ucsSemMediaConfiavel += 1;
+      if (desconto.percentual == null) resultado.ucsSemDesconto += 1;
 
       const dadosUc = {
         propostaIdCrm: proposta.id,
@@ -324,6 +334,11 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
         statusNegocio: proposta.status_negocio ?? null,
         codigoUcBruto: u.bruto || null,
         mediaMensalKwh: u.mediaKwh,
+        // Também do CRM: se o vendedor corrigir o desconto na proposta, a
+        // próxima rodada traz o valor novo para a fila.
+        descontoPercent: desconto.percentual,
+        planoContrato: desconto.plano,
+        fidelidadeMeses: desconto.fidelidadeMeses,
         clienteNome: a.cliente_nome ?? clienteNome,
         clienteDocumento: a.cliente_documento ?? documento,
         clienteTipo: a.cliente_tipo,

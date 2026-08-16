@@ -131,6 +131,69 @@ export interface PropostaCrm {
   concessionaria: string | null;
   teste: boolean | null;
   substituida_por_id: number | null;
+  /**
+   * Recorte de `dados_snapshot->dados_desconto_fatura`, a cópia congelada da
+   * simulação no momento em que a proposta foi apresentada. É AQUI que mora o
+   * desconto combinado com o cliente.
+   *
+   * Pedimos só este ramo do JSON porque o `dados_snapshot` inteiro carrega o
+   * cadastro completo do cliente — payload grande e sem uso aqui.
+   *
+   * ⚠️ NÃO confundir com a coluna `propostas.desconto_pct`: aquela é do fluxo
+   * de venda de equipamento e está **zerada nas 37 propostas de desconto**
+   * (medido em 15/08/2026). Quem lê a coluna acha que ninguém deu desconto.
+   */
+  dados_desconto_fatura: DadosDescontoFaturaCrm | null;
+}
+
+export interface DadosDescontoFaturaCrm {
+  /** Percentual de DESCONTO combinado (15 = 15% off). */
+  desconto?: number | null;
+  /** Nome comercial do plano ("OURO", "A DEFINIR"…). */
+  plano?: string | null;
+  /** Meses de fidelidade do contrato. */
+  fidelidade?: number | null;
+  /** R$/kWh cheio usado na simulação (0 quando o vendedor não preencheu). */
+  custoKwh?: number | null;
+  te?: number | null;
+  tusd?: number | null;
+  consumo?: number | null;
+}
+
+/**
+ * Colunas pedidas em toda leitura de `propostas`.
+ *
+ * O `->` no fim é o operador de JSON do PostgREST: traz só o ramo
+ * `dados_desconto_fatura` de dentro de `dados_snapshot`, com esse nome.
+ */
+const COLUNAS_PROPOSTA =
+  "id,numero,produto_id,cliente_id,vendedor_id,status_negocio,valor_investimento," +
+  "fechado_em,data_fechamento,cidade_instalacao,concessionaria,teste,substituida_por_id," +
+  "dados_desconto_fatura:dados_snapshot->dados_desconto_fatura";
+
+/** Desconto combinado na proposta, já normalizado. */
+export interface DescontoDaProposta {
+  /** Percentual de desconto (15 = 15%). Null quando a proposta não traz. */
+  percentual: number | null;
+  plano: string | null;
+  fidelidadeMeses: number | null;
+}
+
+/**
+ * Extrai o desconto combinado do snapshot da proposta.
+ *
+ * Devolve `percentual: null` quando o campo não existe ou está fora de
+ * 0–100 — nunca um chute. Desconto ausente tem que aparecer como ausente:
+ * preencher 15 por padrão esconderia exatamente o caso que a operação
+ * precisa ver (ver [[feedback_nao_estimar_realidade_do_cliente]]).
+ */
+export function descontoDaProposta(proposta: PropostaCrm): DescontoDaProposta {
+  const d = proposta.dados_desconto_fatura;
+  const bruto = typeof d?.desconto === "number" ? d.desconto : null;
+  const percentual = bruto != null && bruto >= 0 && bruto <= 100 ? bruto : null;
+  const plano = typeof d?.plano === "string" && d.plano.trim() ? d.plano.trim() : null;
+  const fidelidade = typeof d?.fidelidade === "number" ? d.fidelidade : null;
+  return { percentual, plano, fidelidadeMeses: fidelidade };
 }
 
 export interface ClienteCrm {
@@ -229,7 +292,7 @@ export function listarProdutos(): Promise<ProdutoCrm[]> {
 export async function listarVendasGanhas(): Promise<PropostaCrm[]> {
   const propostas = await crmSelect<PropostaCrm>(
     "propostas",
-    "id,numero,produto_id,cliente_id,vendedor_id,status_negocio,valor_investimento,fechado_em,data_fechamento,cidade_instalacao,concessionaria,teste,substituida_por_id",
+    COLUNAS_PROPOSTA,
     { status_negocio: "eq.ganha" },
   );
   return propostas.filter((p) => !p.teste && !p.substituida_por_id);
@@ -253,7 +316,7 @@ export async function listarPropostasPorIds(ids: number[]): Promise<PropostaCrm[
     const lote = unicos.slice(i, i + TAMANHO_LOTE);
     const parte = await crmSelect<PropostaCrm>(
       "propostas",
-      "id,numero,produto_id,cliente_id,vendedor_id,status_negocio,valor_investimento,fechado_em,data_fechamento,cidade_instalacao,concessionaria,teste,substituida_por_id",
+      COLUNAS_PROPOSTA,
       { id: `in.(${lote.join(",")})` },
     );
     resultado.push(...parte);
