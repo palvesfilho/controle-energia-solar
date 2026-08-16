@@ -203,7 +203,15 @@ export default function UsinasPage() {
                 <tbody>
                   {filtered.map((plant) => (
                     <tr key={plant.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                      <td className="py-2.5 px-3 font-medium">{plant.name}</td>
+                      <td className="py-2.5 px-3 font-medium">
+                        <Link
+                          href={`/admin/usinas/${plant.id}`}
+                          title="Abrir / editar"
+                          className="text-left hover:text-primary hover:underline underline-offset-2 transition-colors"
+                        >
+                          {plant.name}
+                        </Link>
+                      </td>
                       <td className="py-2.5 px-3 font-mono text-xs">
                         {formatCodigoUc(plant.unidadeConsumidora) ?? plant.numeroUsina ?? "-"}
                       </td>

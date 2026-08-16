@@ -185,13 +185,41 @@ export default function UnidadesConsumidorasPage() {
                 <tbody>
                   {filtered.map((uc) => (
                     <tr key={uc.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                      <td className="py-2.5 px-3 font-medium">{uc.nome}</td>
+                      <td className="py-2.5 px-3 font-medium">
+                        <Link
+                          href={`/admin/unidades-consumidoras/${uc.id}/editar`}
+                          title="Editar"
+                          className="text-left hover:text-primary hover:underline underline-offset-2 transition-colors"
+                        >
+                          {uc.nome}
+                        </Link>
+                      </td>
                       <td className="py-2.5 px-3 font-mono text-xs">{formatCodigoUc(uc.codigoUc) || "-"}</td>
                       <td className="py-2.5 px-3">
-                        {uc.consumer?.name ?? <span className="text-muted-foreground">-</span>}
+                        {uc.consumer ? (
+                          <Link
+                            href={`/admin/consumidores/${uc.consumer.id}`}
+                            title="Editar consumidor"
+                            className="hover:text-primary hover:underline underline-offset-2 transition-colors"
+                          >
+                            {uc.consumer.name}
+                          </Link>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
                       </td>
                       <td className="py-2.5 px-3">
-                        {uc.plant?.name ?? <span className="text-muted-foreground">-</span>}
+                        {uc.plant ? (
+                          <Link
+                            href={`/admin/usinas/${uc.plant.id}`}
+                            title="Abrir / editar usina"
+                            className="hover:text-primary hover:underline underline-offset-2 transition-colors"
+                          >
+                            {uc.plant.name}
+                          </Link>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
                       </td>
                       <td className="py-2.5 px-3">
                         {uc.distribuidora ?? <span className="text-muted-foreground">-</span>}

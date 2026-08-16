@@ -160,7 +160,15 @@ export default function ConsumidoresPage() {
                 <tbody>
                   {filtered.map((consumer) => (
                     <tr key={consumer.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                      <td className="py-2.5 px-3 font-medium">{consumer.name}</td>
+                      <td className="py-2.5 px-3 font-medium">
+                        <Link
+                          href={`/admin/consumidores/${consumer.id}`}
+                          title="Editar"
+                          className="text-left hover:text-primary hover:underline underline-offset-2 transition-colors"
+                        >
+                          {consumer.name}
+                        </Link>
+                      </td>
                       <td className="py-2.5 px-3 text-muted-foreground">
                         {formatCpfCnpj(consumer.cpfCnpj ?? consumer.document)}
                       </td>

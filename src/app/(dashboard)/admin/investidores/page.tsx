@@ -23,7 +23,7 @@ interface InvestorData {
   phone: string | null;
   document: string | null;
   user: { id: string; email: string; name: string; active: boolean };
-  plants: { plant: { name: string } }[];
+  plants: { plant: { id: string; name: string } }[];
 }
 
 type SortKey = "name" | "email" | "usinas" | "status";
@@ -198,7 +198,15 @@ export default function InvestidoresPage() {
                 <tbody>
                   {filtered.map((inv) => (
                     <tr key={inv.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                      <td className="py-2.5 px-3 font-medium">{inv.user.name}</td>
+                      <td className="py-2.5 px-3 font-medium">
+                        <Link
+                          href={`/admin/investidores/${inv.id}/editar`}
+                          title="Editar"
+                          className="text-left hover:text-primary hover:underline underline-offset-2 transition-colors"
+                        >
+                          {inv.user.name}
+                        </Link>
+                      </td>
                       <td className="py-2.5 px-3 text-muted-foreground">{inv.user.email}</td>
                       <td className="py-2.5 px-3">{inv.phone ?? "-"}</td>
                       <td className="py-2.5 px-3">
@@ -207,7 +215,19 @@ export default function InvestidoresPage() {
                             <Sun className="h-3 w-3 text-amber-500" />
                             {inv.plants.length}{" "}
                             <span className="text-muted-foreground truncate max-w-[200px]">
-                              · {inv.plants.map((p) => p.plant.name).join(", ")}
+                              ·{" "}
+                              {inv.plants.map((p, i) => (
+                                <span key={p.plant.id}>
+                                  {i > 0 && ", "}
+                                  <Link
+                                    href={`/admin/usinas/${p.plant.id}`}
+                                    title="Abrir / editar usina"
+                                    className="hover:text-primary hover:underline underline-offset-2 transition-colors"
+                                  >
+                                    {p.plant.name}
+                                  </Link>
+                                </span>
+                              ))}
                             </span>
                           </span>
                         ) : (
