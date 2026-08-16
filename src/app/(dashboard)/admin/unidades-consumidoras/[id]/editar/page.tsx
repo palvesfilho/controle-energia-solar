@@ -13,6 +13,11 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ExcluirUcDialog } from "@/components/consumer-units/excluir-uc-dialog";
 import { DesativarUcDialog } from "@/components/consumer-units/desativar-uc-dialog";
+import { DocumentosAdesao } from "@/components/consumer-units/documentos-adesao";
+import {
+  fichasDosDocumentosSalvos,
+  type DocumentosDoCadastro,
+} from "@/lib/documentos-adesao";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 
 interface UcStatusChange {
@@ -47,6 +52,10 @@ export default function EditarUCPage() {
   const [historicoAberto, setHistoricoAberto] = useState(false);
   const [ativa, setAtiva] = useState(true);
   const [statusChanges, setStatusChanges] = useState<UcStatusChange[]>([]);
+  // A papelada da adesão, copiada para dentro da UC quando ela foi cadastrada
+  // pela fila do CRM. Fica fora de `initialData` de propósito: o formulário não
+  // edita nem envia esses campos, só os exibe.
+  const [documentos, setDocumentos] = useState<DocumentosDoCadastro | null>(null);
 
   const carregarUc = useCallback(() => {
     return fetch(`/api/consumer-units/${id}`)
@@ -57,6 +66,7 @@ export default function EditarUCPage() {
       .then((uc) => {
         setAtiva(!!uc.active);
         setStatusChanges(uc.statusChanges ?? []);
+        setDocumentos(uc as DocumentosDoCadastro);
         setInitialData({
           nome: uc.nome ?? "",
           // Exibe no padrão da concessionária; a API normaliza pra dígitos ao salvar.
@@ -134,7 +144,9 @@ export default function EditarUCPage() {
   const ultimoStatus = statusChanges[0] ?? null;
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    // Um pouco mais larga que as demais telas de edição: o painel de documentos
+    // ocupa a coluna da direita e, em `max-w-4xl`, espremia o formulário.
+    <div className="space-y-4 max-w-6xl">
       <Link
         href="/admin/unidades-consumidoras"
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -224,6 +236,16 @@ export default function EditarUCPage() {
         error={error}
         cancelHref="/admin/unidades-consumidoras"
         submitLabel="Salvar Alterações"
+        painelLateral={
+          // Mesmo lugar da tela de cadastro — ao lado da Identificação: são
+          // esses os campos que se conferem olhando o papel (o CNPJ digitado
+          // contra o cartão CNPJ).
+          <DocumentosAdesao
+            fichas={fichasDosDocumentosSalvos(documentos)}
+            adesaoIdCrm={documentos?.docsAdesaoIdCrm ?? null}
+            copiadosEm={documentos?.docsCopiadosEm ?? null}
+          />
+        }
       />
 
       <Separator />

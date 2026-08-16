@@ -30,6 +30,11 @@ import {
 } from "lucide-react";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { formatCpfCnpj } from "@/lib/documento";
+import { DocumentosAdesao } from "@/components/consumer-units/documentos-adesao";
+import {
+  fichasDosDocumentosSalvos,
+  type DocumentosDoCadastro,
+} from "@/lib/documentos-adesao";
 
 interface ConsumerData {
   id: string;
@@ -96,6 +101,13 @@ interface InvestorDetail {
   plants: InvestorPlantData[];
 }
 
+/**
+ * O investidor que entrou por uma venda do CRM marcada como
+ * `proprietario_usina` traz a mesma papelada da adesão — nas mesmas colunas
+ * `doc_*` da UC. A API devolve o registro inteiro, então basta declarar.
+ */
+type InvestorComDocumentos = InvestorDetail & DocumentosDoCadastro;
+
 const ACCENT_CLASSES = {
   blue: "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
   emerald: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
@@ -147,7 +159,7 @@ function InfoItem({
 export default function DetalhesInvestidorPage() {
   const params = useParams();
   const router = useRouter();
-  const [investor, setInvestor] = useState<InvestorDetail | null>(null);
+  const [investor, setInvestor] = useState<InvestorComDocumentos | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
@@ -315,6 +327,9 @@ export default function DetalhesInvestidorPage() {
         />
       </div>
 
+      {/* Documentos à direita dos Dados Pessoais, como na tela de cadastro: é
+          olhando o papel que se confere o CPF/CNPJ digitado ao lado. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.9fr)_minmax(300px,1fr)] lg:items-start">
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Dados Pessoais</CardTitle>
@@ -345,6 +360,13 @@ export default function DetalhesInvestidorPage() {
           </div>
         </CardContent>
       </Card>
+
+        <DocumentosAdesao
+          fichas={fichasDosDocumentosSalvos(investor)}
+          adesaoIdCrm={investor.docsAdesaoIdCrm ?? null}
+          copiadosEm={investor.docsCopiadosEm ?? null}
+        />
+      </div>
 
       <Card>
         <CardHeader className="pb-3">

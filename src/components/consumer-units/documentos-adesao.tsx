@@ -11,6 +11,7 @@
  * Antes de a UC ser salva os arquivos ainda estão no CRM, então as fichas
  * apontam para as rotas de leitura do CRM. Depois de salva, apontam para a
  * cópia guardada na própria UC — que é o que sobrevive a uma faxina no CRM.
+ * Quem monta as fichas de cada caso é a tela; ver [[documentos-adesao]].
  */
 
 import {
@@ -26,15 +27,9 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatCpfCnpjComRotulo } from "@/lib/documento";
+import type { FichaDocumento } from "@/lib/documentos-adesao";
 
-export interface FichaDocumento {
-  chave: string;
-  rotulo: string;
-  /** Nome do arquivo, ou a data de assinatura para termo e procuração. */
-  detalhe: string | null;
-  /** Link para abrir. Null = ficha vazia. */
-  href: string | null;
-}
+export type { FichaDocumento };
 
 const ICONE: Record<string, React.ElementType> = {
   termo: FileSignature,
@@ -123,29 +118,40 @@ export function DocumentosAdesao({
         })}
       </CardContent>
 
-      {adesaoIdCrm != null && (
-        <div className="border-t px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
-          {copiadosEm ? (
-            <>
-              Copiados da <strong className="text-foreground">adesão {adesaoIdCrm}</strong> do
-              CRM em {new Date(copiadosEm).toLocaleDateString("pt-BR")}. Ficam guardados
-              aqui — se a adesão for apagada lá, o arquivo continua nesta UC.
-            </>
-          ) : (
-            <>
-              Da <strong className="text-foreground">adesão {adesaoIdCrm}</strong> do CRM.
-              Serão copiados para dentro desta UC ao salvar.
-            </>
-          )}
-          {signatarioNome && (
-            <>
-              <br />
-              Assinou: <strong className="text-foreground">{signatarioNome}</strong>
-              {signatarioCpf && <> · {formatCpfCnpjComRotulo(signatarioCpf)}</>}
-            </>
-          )}
-        </div>
-      )}
+      <div className="border-t px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+        {adesaoIdCrm == null ? (
+          // Sem procedência não é o mesmo que "nada a dizer": o cadastro que
+          // nunca passou pela fila do CRM não tem de onde tirar papelada, e o
+          // painel precisa explicar isso em vez de exibir seis fichas mudas.
+          <>
+            Nenhum documento copiado do CRM. A papelada chega quando o cadastro é
+            feito pela fila de <strong className="text-foreground">Vendas do CRM</strong>;
+            cadastro anterior à integração não foi preenchido retroativamente.
+          </>
+        ) : (
+          <>
+            {copiadosEm ? (
+              <>
+                Copiados da <strong className="text-foreground">adesão {adesaoIdCrm}</strong> do
+                CRM em {new Date(copiadosEm).toLocaleDateString("pt-BR")}. Ficam guardados
+                aqui — se a adesão for apagada lá, o arquivo continua neste cadastro.
+              </>
+            ) : (
+              <>
+                Da <strong className="text-foreground">adesão {adesaoIdCrm}</strong> do CRM.
+                Serão copiados para dentro deste cadastro ao salvar.
+              </>
+            )}
+            {signatarioNome && (
+              <>
+                <br />
+                Assinou: <strong className="text-foreground">{signatarioNome}</strong>
+                {signatarioCpf && <> · {formatCpfCnpjComRotulo(signatarioCpf)}</>}
+              </>
+            )}
+          </>
+        )}
+      </div>
     </Card>
   );
 }
