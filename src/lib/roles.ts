@@ -34,7 +34,8 @@ export type AdminSection =
   | "persDistribuidoraEmails"
   | "persAlertasUsinas"
   | "persRelatorioParametros"
-  | "persAcessoPortal";
+  | "persAcessoPortal"
+  | "persFrequenciaMensagens";
 
 const FULL_ADMIN_TRIO: UserRole[] = ["ADMIN", "GESTOR", "FINANCEIRO"];
 
@@ -67,6 +68,11 @@ export const SECTION_ROLES: Record<AdminSection, UserRole[]> = {
   persAlertasUsinas: FULL_ADMIN_TRIO,
   persRelatorioParametros: FULL_ADMIN_TRIO,
   persAcessoPortal: FULL_ADMIN_TRIO,
+  // De propósito SEM `POS_VENDA`, que tem acesso a `mensagens`: quem é limitado
+  // pela trava de frequência não deveria ser quem a afrouxa. A guarda existe
+  // para proteger a base de quem está com pressa de vender — inclusive de quem
+  // tem toda a razão de estar com pressa.
+  persFrequenciaMensagens: FULL_ADMIN_TRIO,
 };
 
 export function canAccessSection(

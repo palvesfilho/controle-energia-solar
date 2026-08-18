@@ -25,6 +25,8 @@ export interface PreviaPublicoUI {
   total: number;
   comApp: number;
   aparelhos: number;
+  /** Quantos a trava de frequência barraria se o disparo fosse agora. */
+  bloqueadosPorFrequencia: number;
   resumo: string;
   amostra: Array<{ id: string; nome: string; cidade: string | null; uf: string | null; aparelhos: number }>;
 }
@@ -166,6 +168,20 @@ export function SeletorPublico({
               {previa?.resumo}
             </div>
           </div>
+
+          {/* A trava é invisível até morder. Dizer aqui, antes de escrever a
+              campanha, evita a descoberta no relatório de que metade do
+              público ficou de fora. */}
+          {previa && previa.bloqueadosPorFrequencia > 0 && (
+            <div className="mt-3 rounded-md border border-amber-300 bg-amber-50/70 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+              <strong>{previa.bloqueadosPorFrequencia}</strong> desse público ficaria de fora pela
+              trava de frequência (já recebeu mensagem demais nos últimos dias). O limite está em{" "}
+              <a href="/admin/personalizacoes/frequencia-mensagens" className="underline">
+                Personalizações › Frequência de mensagens
+              </a>
+              .
+            </div>
+          )}
 
           {previa && previa.amostra.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5 border-t pt-3">

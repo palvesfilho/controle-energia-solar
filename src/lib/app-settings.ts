@@ -14,6 +14,11 @@ export const APP_SETTING_KEYS = {
   // MENSAL/ANUAL usam o valor de tabela; PERSONALIZADO exige valor >= tabela.
   acessoValorMensalTabela: "acesso.valorMensalTabela",
   acessoValorAnualTabela: "acesso.valorAnualTabela",
+  // Trava de frequência das campanhas do módulo Mensagens. Ver
+  // `getFrequenciaMensagens` mais abaixo.
+  mensagensMaxPorPeriodo: "mensagens.maxPorPeriodo",
+  mensagensPeriodoDias: "mensagens.periodoDias",
+  mensagensIntervaloMinimoDias: "mensagens.intervaloMinimoDias",
 } as const;
 
 export const APP_SETTING_DEFAULTS = {
@@ -21,6 +26,12 @@ export const APP_SETTING_DEFAULTS = {
   [APP_SETTING_KEYS.depreciacaoModuloAnual]: 0.005,
   [APP_SETTING_KEYS.acessoValorMensalTabela]: 0,
   [APP_SETTING_KEYS.acessoValorAnualTabela]: 0,
+  // Defaults conservadores: no máximo 2 campanhas por mês para o mesmo
+  // cliente, e nunca duas na mesma semana. Quem quiser mais agressivo sobe o
+  // número de propósito; quem não configurou nada fica protegido.
+  [APP_SETTING_KEYS.mensagensMaxPorPeriodo]: 2,
+  [APP_SETTING_KEYS.mensagensPeriodoDias]: 30,
+  [APP_SETTING_KEYS.mensagensIntervaloMinimoDias]: 7,
 } as const;
 
 /**
@@ -83,4 +94,40 @@ export async function getAcessoValoresTabela(): Promise<{
     ),
   ]);
   return { mensal, anual };
+}
+
+/**
+ * Trava de frequência das campanhas (módulo Mensagens).
+ *
+ * Três números que respondem "com que insistência podemos falar com a mesma
+ * pessoa": no máximo `maxPorPeriodo` mensagens a cada `periodoDias`, e nunca
+ * duas separadas por menos de `intervaloMinimoDias`.
+ *
+ * Os dois limites não são redundantes: só o teto mensal permitiria mandar as 2
+ * do mês na mesma tarde, e só o intervalo mínimo permitiria mandar 4 por mês
+ * espaçadas de 7 em 7 dias. Juntos descrevem o ritmo, não só o volume.
+ *
+ * `maxPorPeriodo = 0` desliga a trava — é a saída explícita para quem quiser
+ * assumir o risco, e não um efeito colateral de campo em branco.
+ */
+export async function getFrequenciaMensagens(): Promise<{
+  maxPorPeriodo: number;
+  periodoDias: number;
+  intervaloMinimoDias: number;
+}> {
+  const [max, periodo, intervalo] = await Promise.all([
+    getNumberSetting(
+      APP_SETTING_KEYS.mensagensMaxPorPeriodo,
+      APP_SETTING_DEFAULTS[APP_SETTING_KEYS.mensagensMaxPorPeriodo],
+    ),
+    getNumberSetting(
+      APP_SETTING_KEYS.mensagensPeriodoDias,
+      APP_SETTING_DEFAULTS[APP_SETTING_KEYS.mensagensPeriodoDias],
+    ),
+    getNumberSetting(
+      APP_SETTING_KEYS.mensagensIntervaloMinimoDias,
+      APP_SETTING_DEFAULTS[APP_SETTING_KEYS.mensagensIntervaloMinimoDias],
+    ),
+  ]);
+  return { maxPorPeriodo: max, periodoDias: periodo, intervaloMinimoDias: intervalo };
 }

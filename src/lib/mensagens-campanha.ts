@@ -23,10 +23,18 @@ import {
   resolverPublico,
   type FiltroPublico,
 } from "@/lib/mensagens-publico";
+import { filtrarPorFrequencia } from "@/lib/mensagens-frequencia";
 
 export interface ResultadoCampanha {
   publico: number;
   comApp: number;
+  /**
+   * Barrados pela trava de frequência (Personalizações). Nunca é omitido: uma
+   * exclusão silenciosa faria o operador achar que a campanha alcançou o
+   * público inteiro.
+   */
+  bloqueadosPorFrequencia: number;
+  motivosFrequencia: string[];
   /** Aparelhos ACEITOS pelo serviço de push — não é "visto pelo cliente". */
   aparelhosEnviados: number;
   inscricoesRemovidas: number;
@@ -64,9 +72,25 @@ export async function dispararCampanha(campanhaId: string): Promise<ResultadoCam
   }
 
   const filtro = (campanha.publicoFiltro ?? {}) as FiltroPublico;
-  const publico = await resolverPublico(filtro);
-  if (publico.length === 0) {
+  const publicoBruto = await resolverPublico(filtro);
+  if (publicoBruto.length === 0) {
     throw new Error("O público está vazio — ajuste o filtro antes de enviar.");
+  }
+
+  // Trava de frequência: quem já ouviu demais este mês fica de fora DESTA
+  // campanha, e continua no público das próximas. Configurada em
+  // /admin/personalizacoes/frequencia-mensagens.
+  const freq = await filtrarPorFrequencia(publicoBruto.map((d) => d.id));
+  const liberados = new Set(freq.liberados);
+  const publico = publicoBruto.filter((d) => liberados.has(d.id));
+
+  if (publico.length === 0) {
+    throw new Error(
+      `Todo o público (${publicoBruto.length}) está bloqueado pela trava de frequência: ` +
+        `no máximo ${freq.regra.maxPorPeriodo} mensagem(ns) a cada ${freq.regra.periodoDias} dias, ` +
+        `com ${freq.regra.intervaloMinimoDias} dia(s) de intervalo mínimo. ` +
+        `Espere alguns dias ou ajuste a trava em Personalizações.`,
+    );
   }
 
   // ENVIANDO antes de começar: se a rota morrer no meio, a campanha não fica
@@ -80,6 +104,10 @@ export async function dispararCampanha(campanhaId: string): Promise<ResultadoCam
   const resultado: ResultadoCampanha = {
     publico: publico.length,
     comApp: publico.filter((d) => d.aparelhos > 0).length,
+    bloqueadosPorFrequencia: freq.bloqueados.length,
+    // Só uma amostra dos motivos: a tela precisa mostrar POR QUE ficaram de
+    // fora, não listar 200 linhas iguais.
+    motivosFrequencia: Array.from(new Set(freq.bloqueados.map((b) => b.motivo))).slice(0, 3),
     aparelhosEnviados: 0,
     inscricoesRemovidas: 0,
     falhas: 0,

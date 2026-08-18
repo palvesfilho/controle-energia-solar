@@ -19,6 +19,7 @@
  */
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { filtrarPorFrequencia } from "@/lib/mensagens-frequencia";
 
 /**
  * Recorte do público. Todo campo é opcional e todos se somam com E:
@@ -82,6 +83,12 @@ export interface PreviaPublico {
   total: number;
   comApp: number;
   aparelhos: number;
+  /**
+   * Quantos desse total a trava de frequência barraria se o disparo fosse
+   * agora. Aparece na tela ANTES de enviar — descobrir no relatório que metade
+   * do público ficou de fora é tarde demais.
+   */
+  bloqueadosPorFrequencia: number;
   resumo: string;
   /** Primeiros nomes, só para o operador conferir que o recorte faz sentido. */
   amostra: DestinatarioPublico[];
@@ -266,10 +273,12 @@ export function descreverFiltro(filtro: FiltroPublico): string {
 /** Prévia para a tela: contagem + amostra, sem disparar nada. */
 export async function previaPublico(filtro: FiltroPublico): Promise<PreviaPublico> {
   const lista = await resolverPublico(filtro);
+  const freq = await filtrarPorFrequencia(lista.map((d) => d.id));
   return {
     total: lista.length,
     comApp: lista.filter((d) => d.aparelhos > 0).length,
     aparelhos: lista.reduce((s, d) => s + d.aparelhos, 0),
+    bloqueadosPorFrequencia: freq.bloqueados.length,
     resumo: descreverFiltro(filtro),
     amostra: lista.slice(0, 12),
   };

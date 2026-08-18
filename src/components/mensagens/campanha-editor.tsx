@@ -121,9 +121,15 @@ export function CampanhaEditor() {
       return;
     }
 
+    // A trava de frequência entra na conta ANTES da confirmação: o número que
+    // a pessoa aprova tem de ser o número que vai receber de verdade.
+    const bloqueados = previa?.bloqueadosPorFrequencia ?? 0;
     const confirmado = window.confirm(
-      `Enviar AGORA para ${total} cliente(s)?\n\n` +
+      `Enviar AGORA para ${total - bloqueados} cliente(s)?\n\n` +
         `${comApp} têm o app e vão receber a notificação no celular; os demais verão o aviso ao abrir o portal.\n\n` +
+        (bloqueados > 0
+          ? `⚠️ ${bloqueados} do público ficam de fora pela trava de frequência — já receberam mensagem demais nos últimos dias.\n\n`
+          : "") +
         `“${titulo.trim()}”\n${mensagem.trim()}\n\n` +
         `Não é possível desfazer.`,
     );
@@ -140,6 +146,14 @@ export function CampanhaEditor() {
       toast.success(
         `Campanha enviada: ${d.publico} cliente(s) na caixa de avisos, ${d.aparelhosEnviados} aparelho(s) aceitos pelo serviço de push.`,
       );
+      // Nunca em silêncio: sem este aviso o operador acha que alcançou o
+      // público inteiro. Ver [[feedback_correcao_pela_metade_falha_calada]].
+      if (d.bloqueadosPorFrequencia > 0) {
+        toast.warning(
+          `${d.bloqueadosPorFrequencia} cliente(s) ficaram de fora pela trava de frequência — ${d.motivosFrequencia?.[0] ?? "limite atingido"}.`,
+          { duration: 9000 },
+        );
+      }
       router.push(`/admin/brasil-solar/mensagens/${id}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao disparar");

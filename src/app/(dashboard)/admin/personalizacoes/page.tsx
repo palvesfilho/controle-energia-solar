@@ -10,6 +10,7 @@ import {
   FileText,
   KeyRound,
   PackageSearch,
+  Gauge,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { getServerSession } from "@/lib/auth-compat";
@@ -114,6 +115,18 @@ const items: HubItem[] = [
     // Mesma section da fila: quem configura o de-para é quem opera as vendas do
     // CRM. Reusar evita que o card apareça para um perfil que a API recusa.
     section: "crmIntegracao",
+  },
+  {
+    title: "Frequência de mensagens",
+    description:
+      "Com que insistência podemos falar com o mesmo cliente: teto de mensagens por período e intervalo mínimo entre duas. Bloqueia campanhas que estourem o limite — ativações de usina passam, mas contam.",
+    href: "/admin/personalizacoes/frequencia-mensagens",
+    icon: Gauge,
+    group: "Clientes",
+    accent: "from-sky-600 to-indigo-600",
+    // Sem POS_VENDA de propósito: quem é limitado pela trava não deveria ser
+    // quem a afrouxa. Ver SECTION_ROLES em src/lib/roles.ts.
+    section: "persFrequenciaMensagens",
   },
 ];
 

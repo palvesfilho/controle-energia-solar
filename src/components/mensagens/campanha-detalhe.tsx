@@ -119,6 +119,12 @@ export function CampanhaDetalhe({ campanhaId }: { campanhaId: string }) {
       toast.success(
         `Enviada: ${d.publico} cliente(s) na caixa de avisos, ${d.aparelhosEnviados} aparelho(s) aceitos.`,
       );
+      if (d.bloqueadosPorFrequencia > 0) {
+        toast.warning(
+          `${d.bloqueadosPorFrequencia} ficaram de fora pela trava de frequência — ${d.motivosFrequencia?.[0] ?? "limite atingido"}.`,
+          { duration: 9000 },
+        );
+      }
       void carregar();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Falha ao disparar");
