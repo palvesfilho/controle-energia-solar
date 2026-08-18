@@ -1,0 +1,23 @@
+{
+  "$comentario": [
+    "Serviço de cron 'cron-fechamento-poda'.",
+    "Roda às 2h da manhã de Brasília (5h UTC — o cronSchedule do Railway é UTC).",
+    "",
+    "Separado do coletor de 15 min de propósito: fechamento e poda viviam no fim",
+    "da rodada das 20:40, junto com a coleta de fechamento (15h de janela, 1.274",
+    "chamadas só na Fronius). Quando aquela rodada morria no meio, o kWh diário",
+    "não era gravado — ~181 usinas por dia em 15–17/08/26, sempre as mesmas.",
+    "",
+    "Às 2h o dado atrasado do dia anterior já chegou (essas usinas entregam com",
+    "7,5 a 10h de atraso) e não há disputa com a coleta."
+  ],
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "startCommand": "npx prisma generate && npx tsx scripts/fechar-e-podar.ts --apply",
+    "cronSchedule": "0 5 * * *",
+    "restartPolicyType": "NEVER"
+  }
+}

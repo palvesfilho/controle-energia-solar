@@ -41,8 +41,8 @@ import {
   type PlataformaIntradia,
 } from "../src/lib/intraday-collector";
 import { atualizarGeracaoDoDia } from "../src/lib/intraday-generation";
-import { podarAmostras } from "../src/lib/intraday-prune";
 import { runAlertSync } from "../src/lib/sync-alerts";
+import { avaliarAtivacoes } from "../src/lib/mensagens-ativacoes";
 
 function arg(nome: string): string | undefined {
   const flag = `--${nome}=`;
@@ -162,31 +162,44 @@ async function main() {
       `[intraday] alertas: ${a.alertsCreated} criados · ${a.offlineDetected} usina(s) muda(s)` +
         `${comMotivo ? ` · ${a.erroInversorDetected} erro(s) de inversor` : " · motivo não buscado nesta rodada"}`,
     );
-  }
 
-  // Poda TODO DIA, depois do fechamento — não mais só aos domingos. A frota
-  // entrega ~37 MB/dia de curva: esperar o domingo acumulava até 260 MB de
-  // amostra já fora da janela, o que num volume de 1 GB é a diferença entre
-  // sobrar espaço e o Postgres parar de aceitar escrita.
-  //
-  // `podarAmostras` fecha os MonitoringLog pendentes antes de apagar — é essa
-  // chamada que garante que o kWh diário (base do mensal e do anual) já está
-  // salvo quando a curva se vai.
-  if (ultimaRodadaDoDia) {
-    const p = await podarAmostras({ aplicar: true });
-    const f = p.fechamento;
-    console.log(
-      `[intraday] poda: corte em ${p.corte.toISOString().slice(0, 10)} · ` +
-        `${p.linhasApagadas.toLocaleString("pt-BR")} de ${p.linhasTotal.toLocaleString("pt-BR")} linhas · ` +
-        `${(p.duracaoMs / 1000).toFixed(1)}s`,
-    );
-    if (f && (f.logsGravados > 0 || f.paresSemGeracao > 0)) {
-      console.log(
-        `[intraday] fechamento antes da poda: ${f.logsGravados} MonitoringLog gravado(s) · ` +
-          `${f.paresSemGeracao} par(es) usina/dia sem geração medida (datalogger mudo)`,
-      );
+    // Ativações do módulo Mensagens (divisão 2) pegam carona AQUI, logo depois
+    // do alert sync, por dois motivos: os alertas que elas leem acabaram de ser
+    // recalculados, e assim a divisão 2 não precisa de um serviço de cron
+    // próprio no Railway.
+    //
+    // Só avalia regra LIGADA — e nenhuma nasce ligada. Com a lista vazia isto
+    // é uma consulta que não devolve nada e custa milissegundos.
+    try {
+      const ativacoes = await avaliarAtivacoes();
+      const disparos = ativacoes.reduce((soma, r) => soma + r.enviados, 0);
+      if (ativacoes.length > 0) {
+        console.log(
+          `[intraday] ativações: ${ativacoes.length} regra(s) ligada(s) · ${disparos} mensagem(ns) enviada(s)`,
+        );
+        for (const r of ativacoes.filter((x) => x.erro)) {
+          console.error(`[intraday] ativação "${r.nome}" falhou: ${r.erro}`);
+        }
+      }
+    } catch (err) {
+      // Nunca derruba a coleta: geração é o dado crítico desta rodada, e uma
+      // mensagem que não saiu sai na próxima passada, 15 minutos depois.
+      console.error("[intraday] ativações falharam:", err);
     }
   }
+
+  // A poda e o fechamento dos dias pendentes NÃO moram mais aqui.
+  //
+  // Viviam no fim desta rodada — a mesma que faz a coleta de fechamento, com 15h
+  // de janela e 1.274 chamadas só na Fronius. Quando esta rodada morre no meio
+  // (`restartPolicyType: NEVER`), tudo que vinha depois não acontecia: em
+  // 15–17/08/26 as amostras chegavam ao banco e o `MonitoringLog` de ~181 usinas
+  // por dia não era gravado, sempre as mesmas. Pendurar a garantia do kWh diário
+  // na rodada mais pesada do dia era o próprio risco.
+  //
+  // Agora é um cron próprio às 2h da manhã, quando o dado atrasado do dia
+  // anterior já chegou: `scripts/fechar-e-podar.ts`
+  // (`railway.cron-fechamento-poda.json`).
 }
 
 main()
