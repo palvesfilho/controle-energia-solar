@@ -31,6 +31,7 @@ import {
   Eye,
   HandHeart,
   Phone,
+  CheckCheck,
 } from "lucide-react";
 import { formatInstantBR } from "@/lib/date-only";
 
@@ -48,6 +49,8 @@ interface Envio {
   lidoEm: string | null;
   interesseEm: string | null;
   dispensadoEm: string | null;
+  atendidoEm: string | null;
+  atendidoPorNome: string | null;
 }
 
 interface Campanha {
@@ -122,6 +125,21 @@ export function CampanhaDetalhe({ campanhaId }: { campanhaId: string }) {
       void carregar();
     } finally {
       setAgindo(false);
+    }
+  }
+
+  /** Baixa o lead sem sair da campanha — o pós-venda ligou daqui mesmo. */
+  async function atender(envioId: string) {
+    try {
+      const res = await fetch(`/api/admin/mensagens/interessados/${envioId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acao: "ATENDER" }),
+      });
+      if (!res.ok) throw new Error((await res.json())?.error ?? "Falha");
+      void carregar();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao atualizar o lead");
     }
   }
 
@@ -246,12 +264,21 @@ export function CampanhaDetalhe({ campanhaId }: { campanhaId: string }) {
                   <span className="ml-auto text-[11px] text-muted-foreground">
                     {e.interesseEm && formatInstantBR(new Date(e.interesseEm))}
                   </span>
-                  {wa && (
+                  {wa && !e.atendidoEm && (
                     <a href={wa} target="_blank" rel="noopener noreferrer">
                       <Button size="sm" variant="outline" className="gap-1.5">
                         <Phone className="h-3.5 w-3.5" /> WhatsApp
                       </Button>
                     </a>
+                  )}
+                  {e.atendidoEm ? (
+                    <span className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                      atendido por {e.atendidoPorNome ?? "alguém"}
+                    </span>
+                  ) : (
+                    <Button size="sm" className="gap-1.5" onClick={() => atender(e.id)}>
+                      <CheckCheck className="h-3.5 w-3.5" /> Atendido
+                    </Button>
                   )}
                 </div>
               );

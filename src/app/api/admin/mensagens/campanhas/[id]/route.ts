@@ -71,6 +71,8 @@ export async function GET(
       lidoEm: e.lidoEm,
       interesseEm: e.interesseEm,
       dispensadoEm: e.dispensadoEm,
+      atendidoEm: e.atendidoEm,
+      atendidoPorNome: e.atendidoPorNome,
     })),
   });
 }

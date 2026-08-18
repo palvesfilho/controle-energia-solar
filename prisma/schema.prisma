@@ -2572,6 +2572,13 @@ model CampanhaEnvio {
 
   lidoEm       DateTime? @map("lido_em")
   interesseEm  DateTime? @map("interesse_em")
+
+  /// Quem do pós-venda já falou com este cliente, e quando. Enquanto for null o
+  /// lead conta no sino do AURA — é o que separa "levantou a mão" de "já foi
+  /// atendido". Sem isto o aviso mostraria os mesmos leads para sempre e o time
+  /// aprenderia a ignorar o sino.
+  atendidoEm      DateTime? @map("atendido_em")
+  atendidoPorNome String?   @map("atendido_por_nome")
   /// Cliente tocou "não tenho interesse" — some da caixa e vira sinal de que
   /// aquela oferta não colou. Não silencia campanhas futuras.
   dispensadoEm DateTime? @map("dispensado_em")
@@ -2584,5 +2591,7 @@ model CampanhaEnvio {
   @@unique([campanhaId, proprietarioId])
   @@index([proprietarioId, dispensadoEm])
   @@index([campanhaId, interesseEm])
+  // O sino consulta exatamente por aqui: interesse dado e ainda sem atendimento.
+  @@index([interesseEm, atendidoEm])
   @@map("campanha_envios")
 }

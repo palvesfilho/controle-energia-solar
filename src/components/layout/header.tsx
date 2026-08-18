@@ -17,6 +17,8 @@ import { Button } from "@/components/ui/button";
 import { Menu } from "lucide-react";
 import { MobileNav } from "./mobile-nav";
 import { UserRole } from "@/types/next-auth";
+import { canAccessSection } from "@/lib/roles";
+import { SinoLeads } from "@/components/mensagens/sino-leads";
 
 const ROLE_LABELS: Record<UserRole, string> = {
   ADMIN: "Administrador",
@@ -108,7 +110,12 @@ export function Header({ role }: { role: UserRole }) {
         )}
       </div>
 
-      {/* User menu */}
+      {/* Sino de leads + menu do usuário. O sino só existe para quem trabalha
+          as campanhas: investidor e consumidor não têm o que fazer com um lead,
+          e a consulta de minuto em minuto não deve rodar para eles. */}
+      <div className="flex items-center gap-2">
+      {canAccessSection(role, "mensagens") && <SinoLeads />}
+
       <DropdownMenu>
         <DropdownMenuTrigger className="flex items-center gap-3 outline-none">
           <div className="hidden sm:flex flex-col items-end">
@@ -141,6 +148,7 @@ export function Header({ role }: { role: UserRole }) {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      </div>
     </header>
   );
 }

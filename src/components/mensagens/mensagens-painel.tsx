@@ -28,6 +28,8 @@ import {
   Phone,
   HandHeart,
   AlertTriangle,
+  CheckCheck,
+  Undo2,
 } from "lucide-react";
 import { formatInstantBR } from "@/lib/date-only";
 
@@ -52,6 +54,8 @@ interface CampanhaLinha {
 interface Interessado {
   id: string;
   interesseEm: string;
+  atendidoEm: string | null;
+  atendidoPorNome: string | null;
   campanhaId: string;
   campanhaNome: string;
   oferta: string;
@@ -108,9 +112,27 @@ export function MensagensPainel() {
     void carregar();
   }, [carregar]);
 
+  /** Baixa (ou reabre) o lead. É o que faz o sino do header parar de tocar. */
+  async function atender(id: string, atendido: boolean) {
+    try {
+      const res = await fetch(`/api/admin/mensagens/interessados/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acao: atendido ? "ATENDER" : "REABRIR" }),
+      });
+      if (!res.ok) throw new Error((await res.json())?.error ?? "Falha");
+      void carregar();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao atualizar o lead");
+    }
+  }
+
   const enviadas = campanhas.filter((c) => c.status === "ENVIADA");
   const alcanceTotal = enviadas.reduce((s, c) => s + c.destinatarios, 0);
   const leadsTotal = campanhas.reduce((s, c) => s + c.interessados, 0);
+  // A fila é o que ainda NÃO foi atendido — é esse número que exige ação hoje.
+  const aguardando = interessados.filter((i) => !i.atendidoEm);
+  const jaAtendidos = interessados.filter((i) => i.atendidoEm);
 
   return (
     <div className="space-y-6">
@@ -162,12 +184,18 @@ export function MensagensPainel() {
             </div>
           </CardContent>
         </Card>
-        <Card className={cn(leadsTotal > 0 && "border-emerald-500")}>
+        {/* Mostra a FILA, não o histórico: o número que exige ação hoje é quem
+            ainda não recebeu ligação. O total de interessados de todos os
+            tempos só cresce e nunca pede nada de ninguém. */}
+        <Card className={cn(aguardando.length > 0 && "border-emerald-500")}>
           <CardContent className="flex items-center gap-3 py-4">
             <HandHeart className="h-5 w-5 text-emerald-600" />
             <div>
-              <div className="text-2xl font-bold leading-none">{leadsTotal}</div>
-              <div className="text-[11px] text-muted-foreground">clientes interessados</div>
+              <div className="text-2xl font-bold leading-none">{aguardando.length}</div>
+              <div className="text-[11px] text-muted-foreground">
+                aguardando contato
+                {leadsTotal > 0 && ` · ${leadsTotal} no total`}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -176,7 +204,7 @@ export function MensagensPainel() {
       <Tabs defaultValue="campanhas">
         <TabsList>
           <TabsTrigger value="campanhas">Campanhas ({campanhas.length})</TabsTrigger>
-          <TabsTrigger value="interessados">Interessados ({interessados.length})</TabsTrigger>
+          <TabsTrigger value="interessados">Interessados ({aguardando.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="campanhas" className="space-y-2 pt-4">
@@ -256,45 +284,107 @@ export function MensagensPainel() {
               </CardContent>
             </Card>
           ) : (
-            interessados.map((i) => {
-              const wa = linkWhatsapp(i.telefone);
-              return (
-                <Card key={i.id}>
-                  <CardContent className="flex flex-wrap items-center gap-4 py-3">
-                    <div className="min-w-0 flex-1">
-                      <Link
-                        href={`/admin/brasil-solar/proprietarios/${i.proprietarioId}`}
-                        className="font-medium hover:underline"
-                      >
-                        {i.nome}
-                      </Link>
-                      <div className="text-xs text-muted-foreground">
-                        {[i.cidade, i.uf].filter(Boolean).join(" · ")}
-                        {i.telefone && ` · ${i.telefone}`}
-                      </div>
-                      <div className="mt-0.5 text-[11px]">
-                        <Badge variant="secondary" className="font-normal">
-                          {i.oferta}
-                        </Badge>{" "}
-                        <span className="text-muted-foreground">
-                          {i.campanhaNome} · {formatInstantBR(new Date(i.interesseEm))}
-                        </span>
-                      </div>
-                    </div>
-                    {wa && (
-                      <a href={wa} target="_blank" rel="noopener noreferrer">
-                        <Button size="sm" variant="outline" className="gap-1.5">
-                          <Phone className="h-3.5 w-3.5" /> WhatsApp
-                        </Button>
-                      </a>
-                    )}
+            <>
+              {aguardando.length === 0 && (
+                <Card>
+                  <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                    Fila zerada — todo mundo que levantou a mão já foi atendido.
                   </CardContent>
                 </Card>
-              );
-            })
+              )}
+
+              {aguardando.map((i) => (
+                <LinhaInteressado key={i.id} i={i} onAtender={atender} />
+              ))}
+
+              {jaAtendidos.length > 0 && (
+                <>
+                  <div className="pt-4 text-xs font-medium text-muted-foreground">
+                    Já atendidos ({jaAtendidos.length})
+                  </div>
+                  {jaAtendidos.map((i) => (
+                    <LinhaInteressado key={i.id} i={i} onAtender={atender} />
+                  ))}
+                </>
+              )}
+            </>
           )}
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+/**
+ * Uma linha da fila de leads. O botão muda de papel conforme o estado: baixa o
+ * lead quando está pendente, devolve para a fila quando alguém baixou por
+ * engano — reabrir é o desfazer de uma ação que apaga o cliente do sino.
+ */
+function LinhaInteressado({
+  i,
+  onAtender,
+}: {
+  i: Interessado;
+  onAtender: (id: string, atendido: boolean) => void;
+}) {
+  const wa = linkWhatsapp(i.telefone);
+  const atendido = !!i.atendidoEm;
+
+  return (
+    <Card className={cn(atendido && "opacity-60")}>
+      <CardContent className="flex flex-wrap items-center gap-4 py-3">
+        <div className="min-w-0 flex-1">
+          <Link
+            href={`/admin/brasil-solar/proprietarios/${i.proprietarioId}`}
+            className="font-medium hover:underline"
+          >
+            {i.nome}
+          </Link>
+          <div className="text-xs text-muted-foreground">
+            {[i.cidade, i.uf].filter(Boolean).join(" · ")}
+            {i.telefone && ` · ${i.telefone}`}
+          </div>
+          <div className="mt-0.5 text-[11px]">
+            <Badge variant="secondary" className="font-normal">
+              {i.oferta}
+            </Badge>{" "}
+            <span className="text-muted-foreground">
+              {i.campanhaNome} · {formatInstantBR(new Date(i.interesseEm))}
+            </span>
+          </div>
+          {atendido && (
+            <div className="mt-0.5 text-[11px] text-emerald-700 dark:text-emerald-400">
+              Atendido por {i.atendidoPorNome ?? "alguém"} em{" "}
+              {formatInstantBR(new Date(i.atendidoEm!))}
+            </div>
+          )}
+        </div>
+
+        {wa && !atendido && (
+          <a href={wa} target="_blank" rel="noopener noreferrer">
+            <Button size="sm" variant="outline" className="gap-1.5">
+              <Phone className="h-3.5 w-3.5" /> WhatsApp
+            </Button>
+          </a>
+        )}
+
+        <Button
+          size="sm"
+          variant={atendido ? "ghost" : "default"}
+          className="gap-1.5"
+          onClick={() => onAtender(i.id, !atendido)}
+        >
+          {atendido ? (
+            <>
+              <Undo2 className="h-3.5 w-3.5" /> Reabrir
+            </>
+          ) : (
+            <>
+              <CheckCheck className="h-3.5 w-3.5" /> Marcar como atendido
+            </>
+          )}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

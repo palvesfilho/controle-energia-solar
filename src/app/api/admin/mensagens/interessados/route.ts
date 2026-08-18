@@ -10,8 +10,12 @@ export const runtime = "nodejs";
  * GET /api/admin/mensagens/interessados
  *
  * A fila de trabalho do módulo: todo cliente que tocou no botão de interesse,
- * de qualquer campanha, do mais recente para o mais antigo — com telefone à
- * mão. Campanha que gera lead e não vira ligação não gerou venda nenhuma.
+ * de qualquer campanha, com telefone à mão. Campanha que gera lead e não vira
+ * ligação não gerou venda nenhuma.
+ *
+ * Vem ordenado com quem AINDA NÃO foi atendido em cima — dentro de cada grupo,
+ * do mais recente para o mais antigo. Misturar atendido com pendente faria a
+ * fila crescer para sempre e o time pararia de olhar.
  */
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -21,7 +25,7 @@ export async function GET() {
 
   const envios = await prisma.campanhaEnvio.findMany({
     where: { interesseEm: { not: null } },
-    orderBy: { interesseEm: "desc" },
+    orderBy: [{ atendidoEm: "asc" }, { interesseEm: "desc" }],
     take: 200,
     include: {
       campanha: { select: { id: true, nome: true, titulo: true, ctaLabel: true } },
@@ -35,6 +39,8 @@ export async function GET() {
     interessados: envios.map((e) => ({
       id: e.id,
       interesseEm: e.interesseEm,
+      atendidoEm: e.atendidoEm,
+      atendidoPorNome: e.atendidoPorNome,
       campanhaId: e.campanha.id,
       campanhaNome: e.campanha.nome,
       oferta: e.campanha.ctaLabel ?? e.campanha.titulo,
