@@ -142,6 +142,11 @@ export function UcCredentialsForm({ consumerUnitId, defaultInstalacao, onSyncCom
     }
 
     toast.success(credential ? "Credenciais atualizadas!" : "Credenciais cadastradas!");
+    // Quando esta UC é titular Brasil Solar, o mesmo acesso vale para as
+    // beneficiárias e é copiado pra elas — dizer isso na tela evita que o
+    // operador ache que só metade das UCs vai sincronizar.
+    const salvo = await res.json().catch(() => null);
+    if (salvo?.beneficiarias) toast.info(`Beneficiárias: ${salvo.beneficiarias}`);
     setSenhaCpfl("");
     setShowForm(false);
     await loadCredential();

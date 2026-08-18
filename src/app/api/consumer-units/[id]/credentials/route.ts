@@ -6,6 +6,10 @@ import { isAdminRole } from "@/lib/roles";
 import { encrypt } from "@/lib/crypto";
 import { normalizeCodigoUc } from "@/lib/uc-codigo";
 import { normalizeConcessionaria } from "@/lib/concessionarias";
+import {
+  propagarCredencialParaBeneficiarias,
+  resumoPropagacao,
+} from "@/lib/credencial-beneficiarias";
 
 /**
  * A concessionária da credencial NÃO é escolhida à parte: ela é sempre a mesma
@@ -109,12 +113,18 @@ export async function POST(
       data,
     });
 
+    // Se esta UC é titular de um proprietário Brasil Solar, as beneficiárias
+    // usam o MESMO login — a senha nova precisa chegar nelas, senão passam a
+    // falhar sozinhas. Ver `credencial-beneficiarias`.
+    const propagacao = await propagarCredencialParaBeneficiarias(id);
+
     return NextResponse.json({
       id: updated.id,
       emailCpfl: updated.emailCpfl,
       instalacao: updated.instalacao,
       distribuidora: updated.distribuidora,
       active: updated.active,
+      beneficiarias: resumoPropagacao(propagacao),
     });
   }
 
@@ -136,6 +146,10 @@ export async function POST(
     },
   });
 
+  // Cadastrar o acesso DEPOIS de salvar as beneficiárias era a janela morta que
+  // deixava a UC da beneficiária sem credencial para sempre.
+  const propagacao = await propagarCredencialParaBeneficiarias(id);
+
   return NextResponse.json(
     {
       id: credential.id,
@@ -143,6 +157,7 @@ export async function POST(
       instalacao: credential.instalacao,
       distribuidora: credential.distribuidora,
       active: credential.active,
+      beneficiarias: resumoPropagacao(propagacao),
     },
     { status: 201 }
   );

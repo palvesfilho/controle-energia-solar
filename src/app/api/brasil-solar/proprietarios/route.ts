@@ -10,6 +10,10 @@ import { normalizeCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
 import { buscarIds } from "@/lib/busca-sql";
 import { normalizeConcessionaria } from "@/lib/concessionarias";
 import {
+  propagarCredencialParaBeneficiarias,
+  resumoPropagacao,
+} from "@/lib/credencial-beneficiarias";
+import {
   TIPOS_TELHADO_VALIDOS,
   TIPOS_COM_ESTRUTURA,
   TIPOS_COM_DESCRICAO,
@@ -399,6 +403,12 @@ export async function POST(req: NextRequest) {
             },
           });
         }
+        // Beneficiárias já cadastradas herdam o acesso agora. No cadastro novo
+        // ainda não há nenhuma, mas o mesmo POST atende reedição — e é aqui que
+        // a ordem "UCs primeiro, senha depois" deixava de propagar.
+        const propagacao = await propagarCredencialParaBeneficiarias(consumerUnitId);
+        const resumo = resumoPropagacao(propagacao);
+        if (resumo) avisos.push(`Acesso à concessionária: ${resumo}.`);
       } else {
         // Faltou campo. A tela valida antes de enviar, então chegar aqui indica
         // payload de outra origem (import/API) — nunca silenciar.

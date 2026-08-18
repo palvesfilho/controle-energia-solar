@@ -4,6 +4,10 @@ import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { formatCodigoUc, normalizeCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
+import {
+  propagarCredencialParaBeneficiarias,
+  resumoPropagacao,
+} from "@/lib/credencial-beneficiarias";
 
 // GET /api/brasil-solar/proprietarios/[id]/beneficiarias
 // Lista todas as beneficiárias ativas do proprietário.
@@ -146,28 +150,15 @@ export async function PUT(
     },
   });
 
-  // Credencial da UC titular: se existir, será clonada pras beneficiárias
-  // (mesmo login/senha funciona pra todas as UCs do mesmo titular RGE).
-  let credencialTitular: {
-    emailCpfl: string;
-    senhaCpfl: string;
-    distribuidora: string;
-  } | null = null;
-  if (propFull?.codigoUc) {
-    const titularUc = await prisma.consumerUnit.findFirst({
-      // Casa também pelo código antigo — ver `whereCodigoUc`. Sem isso as
-      // beneficiárias não herdam a credencial do titular, caladas.
-      where: whereCodigoUc(propFull.codigoUc),
-      select: { id: true },
-    });
-    if (titularUc) {
-      const cred = await prisma.cpflCredential.findUnique({
-        where: { consumerUnitId: titularUc.id },
-        select: { emailCpfl: true, senhaCpfl: true, distribuidora: true },
-      });
-      if (cred) credencialTitular = cred;
-    }
-  }
+  // UC titular: é dela que sai a credencial herdada. Casa também pelo código
+  // antigo — ver `whereCodigoUc`; sem isso as beneficiárias não herdavam nada,
+  // caladas.
+  const titularUc = propFull?.codigoUc
+    ? await prisma.consumerUnit.findFirst({
+        where: whereCodigoUc(propFull.codigoUc),
+        select: { id: true },
+      })
+    : null;
 
   // Substituição em transação: apaga as ativas + recria. Para cada nova
   // beneficiária, find-or-create ConsumerUnit pelo codigoUc e linka via
@@ -226,36 +217,16 @@ export async function PUT(
   });
 
   // Clona a credencial da titular pras beneficiárias que ainda não têm uma.
-  // Senha já vem criptografada — só replicamos. Statussync PENDING permite
-  // que o sync agendado descubra e baixe.
-  if (credencialTitular) {
-    for (const [, ucId] of linkPorCodigo) {
-      try {
-        const existing = await prisma.cpflCredential.findUnique({
-          where: { consumerUnitId: ucId },
-          select: { id: true },
-        });
-        if (!existing) {
-          await prisma.cpflCredential.create({
-            data: {
-              consumerUnitId: ucId,
-              emailCpfl: credencialTitular.emailCpfl,
-              senhaCpfl: credencialTitular.senhaCpfl,
-              instalacao:
-                [...linkPorCodigo.entries()].find(([, v]) => v === ucId)?.[0] ??
-                "",
-              distribuidora: credencialTitular.distribuidora,
-              statusSync: "PENDING",
-            },
-          });
-        }
-      } catch (err) {
-        console.error(
-          "[PUT beneficiarias] clone credencial falhou pra UC",
-          ucId,
-          err,
-        );
-      }
+  // Mesma função usada ao salvar a credencial do titular — os dois sentidos
+  // precisam propagar, ver `credencial-beneficiarias`.
+  let avisoCredencial: string | null = null;
+  if (titularUc) {
+    try {
+      avisoCredencial = resumoPropagacao(
+        await propagarCredencialParaBeneficiarias(titularUc.id),
+      );
+    } catch (err) {
+      console.error("[PUT beneficiarias] propagar credencial falhou", err);
     }
   }
 
@@ -273,5 +244,5 @@ export async function PUT(
     },
   });
 
-  return NextResponse.json({ beneficiarias });
+  return NextResponse.json({ beneficiarias, avisoCredencial });
 }
