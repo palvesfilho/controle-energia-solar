@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { currentUser } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
 import { redirect } from "next/navigation";
@@ -15,6 +16,7 @@ import { PortalClienteBody } from "@/components/brasil-solar/portal-cliente-body
 import { PwaRegister } from "@/components/pwa/pwa-register";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { PushNotificacoesCard } from "@/components/pwa/push-notificacoes-card";
+import { AvisosClienteCard } from "@/components/mensagens/avisos-cliente-card";
 
 export const dynamic = "force-dynamic";
 
@@ -102,6 +104,16 @@ export default async function PortalClientePage() {
             não há para quem disparar, e o card só geraria erro. Fica aqui e
             NÃO no `PortalClienteBody` porque a Visão do cliente reaproveita
             aquele corpo: o pós-venda acabaria inscrevendo o próprio celular. */}
+        {/* Caixa de avisos das campanhas. Vem ANTES do card de push: quem
+            chegou tocando na notificação precisa achar a mensagem no topo, e
+            não abaixo de um convite para ativar avisos que ele já ativou.
+            Suspense por causa do `useSearchParams` (lê o `?aviso=` da URL). */}
+        {prop && (
+          <Suspense fallback={null}>
+            <AvisosClienteCard />
+          </Suspense>
+        )}
+
         {prop && <PushNotificacoesCard />}
       </main>
 

@@ -24,6 +24,7 @@ export type AdminSection =
   | "brasilSolar"
   | "obra"
   | "crmIntegracao"
+  | "mensagens"
   | "usuarios"
   | "personalizacoesHub"
   | "persObras"
@@ -51,6 +52,10 @@ export const SECTION_ROLES: Record<AdminSection, UserRole[]> = {
   // balanço de créditos é o pós-venda. Gestor de obras fica de fora — o que
   // é dele já chega na aprovação de obras.
   crmIntegracao: [...FULL_ADMIN_TRIO, "POS_VENDA"],
+  // Campanhas de mensagem para o cliente. Quem escreve e dispara é o pós-venda
+  // — é quem conhece a base e quem vai atender o interessado que responder.
+  // Gestor de obras fica de fora: a campanha é comercial, não operacional.
+  mensagens: [...FULL_ADMIN_TRIO, "POS_VENDA"],
   usuarios: ["ADMIN"],
   // Hub das personalizações: qualquer role com acesso a ao menos um card
   personalizacoesHub: [...FULL_ADMIN_TRIO, "POS_VENDA", "GESTOR_OBRA"],

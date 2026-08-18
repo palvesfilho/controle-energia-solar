@@ -33,6 +33,7 @@ import {
   FileBarChart,
   Inbox,
   KeyboardIcon,
+  MessageSquareHeart,
 } from "lucide-react";
 import { canAccessSection, type AdminSection } from "@/lib/roles";
 import { UserRole } from "@/types/next-auth";
@@ -170,6 +171,14 @@ export const adminNavItems: NavEntry[] = [
   // Espelho da folha da Associação, com a rota sob /admin/brasil-solar/ para o
   // sidebar não trocar de módulo. Ver o comentário lá em cima.
   { kind: "leaf", module: "bs", section: "crmIntegracao", title: "Vendas do CRM", href: "/admin/brasil-solar/vendas-crm", icon: Inbox },
+  // Mensagens (campanhas de push para o cliente). Mora sob /admin/brasil-solar/
+  // pelo mesmo motivo da fila do CRM: `detectAdminModule` lê o PATH, e uma rota
+  // fora daqui jogaria o operador para o sidebar da Associação no meio da
+  // campanha. O público também é de lá — quem tem app e usina é o cliente BS.
+  //
+  // Folha única apontando para uma tela com abas (campanhas · interessados),
+  // não grupo expansível. Ver [[feedback_menu_hub_pattern]].
+  { kind: "leaf", module: "bs", section: "mensagens", title: "Mensagens", href: "/admin/brasil-solar/mensagens", icon: MessageSquareHeart },
   {
     kind: "group",
     module: "bs",
