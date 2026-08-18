@@ -2559,8 +2559,15 @@ model Campanha {
 /// engajamento é `lidoEm` (abriu no portal) e sobretudo `interesseEm`, que é o
 /// lead: cliente tocou "quero" e o pós-venda tem de ligar.
 model CampanhaEnvio {
-  id             String @id @default(cuid())
-  campanhaId     String @map("campanha_id")
+  id String @id @default(cuid())
+
+  /// EXATAMENTE UM dos dois é preenchido. `campanhaId` = divisão 1 (campanha
+  /// escrita e disparada à mão); `ativacaoId` = divisão 2 (regra que disparou
+  /// sozinha). A caixa de avisos do cliente é a mesma para os dois: quem recebe
+  /// não distingue "campanha" de "ativação", recebe uma mensagem da empresa.
+  campanhaId String? @map("campanha_id")
+  ativacaoId String? @map("ativacao_id")
+
   proprietarioId String @map("proprietario_id")
 
   /// Aparelhos inscritos no instante do disparo.
@@ -2585,13 +2592,78 @@ model CampanhaEnvio {
 
   createdAt DateTime @default(now()) @map("created_at")
 
-  campanha     Campanha                @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
+  campanha     Campanha?               @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
+  ativacao     Ativacao?               @relation(fields: [ativacaoId], references: [id], onDelete: Cascade)
   proprietario BrasilSolarProprietario @relation(fields: [proprietarioId], references: [id], onDelete: Cascade)
 
+  /// Vale só para campanha: ninguém recebe a MESMA campanha duas vezes. Não
+  /// alcança as ativações porque no Postgres NULL nunca colide com NULL — e é
+  /// isso que se quer: a mesma regra pode reencontrar o mesmo cliente meses
+  /// depois, e quem controla essa repetição é o `cooldownDias`.
   @@unique([campanhaId, proprietarioId])
+  @@index([ativacaoId, proprietarioId])
   @@index([proprietarioId, dispensadoEm])
   @@index([campanhaId, interesseEm])
   // O sino consulta exatamente por aqui: interesse dado e ainda sem atendimento.
   @@index([interesseEm, atendidoEm])
   @@map("campanha_envios")
+}
+
+/// ATIVAÇÃO: regra que manda a mensagem SOZINHA quando o cliente entra em uma
+/// condição — a divisão 2 do módulo Mensagens.
+///
+/// A diferença para `Campanha` não é técnica, é de natureza: campanha é uma
+/// decisão comercial tomada num dia ("vamos oferecer limpeza este mês"), e
+/// ativação é uma promessa permanente ("sempre que a usina de alguém ficar
+/// muda, avise a pessoa"). Uma é escrita e disparada; a outra é ligada e
+/// esquecida — e é justamente por ser esquecida que precisa de trava.
+///
+/// 🔑 NÃO redetecta nada. Os gatilhos de inversor leem `MonitoringAlert`, que é
+/// recalculado a cada 15 min com thresholds configuráveis em Personalizações.
+/// Uma segunda definição de "usina parada" aqui divergiria da que o time usa,
+/// e o cliente receberia aviso de um problema que a tela do operador não mostra.
+///
+/// ⚠️ Nasce SEMPRE desligada (`ativa = false`). Ligar é ato explícito de gente,
+/// porque a partir dali a mensagem sai sem ninguém aprovar cada envio.
+model Ativacao {
+  id String @id @default(cuid())
+
+  /// Nome interno ("Wi-fi caiu — avisar cliente").
+  nome String
+
+  /// Qual condição observa. Catálogo em `src/lib/mensagens-gatilhos.ts`:
+  /// ALERTA_USINA | AGENDA_MENSAL | ANIVERSARIO_SISTEMA
+  gatilho String
+  /// Parâmetros do gatilho (tipos de alerta, dia do mês, meses…). Json de
+  /// propósito: gatilho novo não pode exigir migração de banco.
+  params Json?
+
+  titulo   String
+  mensagem String
+  ctaLabel String? @map("cta_label")
+  canal    String  @default("PUSH_E_PORTAL")
+
+  /// Desligada até alguém ligar. Ver o aviso acima.
+  ativa Boolean @default(false)
+
+  /// Dias que o MESMO cliente fica imune a ESTA regra depois de receber. Sem
+  /// isso, uma usina que passa três semanas muda geraria três semanas de aviso
+  /// diário sobre a mesma coisa, e a pessoa desinstala o app.
+  cooldownDias Int @default(30) @map("cooldown_dias")
+
+  criadoPorNome String?   @map("criado_por_nome")
+  /// Quando foi ligada pela última vez. Ao ligar, quem já está na condição é
+  /// marcado como visto SEM receber — senão acender a regra dispararia de uma
+  /// vez para todo mundo que já estava com problema há meses.
+  ativadaEm         DateTime? @map("ativada_em")
+  ultimaAvaliacaoEm DateTime? @map("ultima_avaliacao_em")
+  totalDisparos     Int       @default(0) @map("total_disparos")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  envios CampanhaEnvio[]
+
+  @@index([ativa])
+  @@map("ativacoes")
 }

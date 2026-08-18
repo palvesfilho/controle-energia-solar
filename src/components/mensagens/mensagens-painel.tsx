@@ -32,6 +32,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { formatInstantBR } from "@/lib/date-only";
+import { AtivacoesPainel } from "@/components/mensagens/ativacoes-painel";
 
 interface CampanhaLinha {
   id: string;
@@ -142,8 +143,9 @@ export function MensagensPainel() {
             <MessageSquareHeart className="h-6 w-6" /> Mensagens
           </h1>
           <p className="text-sm text-muted-foreground">
-            Campanhas para a base de clientes da Rede Brasil Solar — limpeza, seguro, manutenção,
-            reconexão de wi-fi.
+            Duas formas de falar com a base: <strong>campanhas</strong>, que você escreve e
+            dispara, e <strong>ativações</strong>, que disparam sozinhas quando algo acontece na
+            usina do cliente.
           </p>
         </div>
         <Link href="/admin/brasil-solar/mensagens/nova">
@@ -202,8 +204,13 @@ export function MensagensPainel() {
       </div>
 
       <Tabs defaultValue="campanhas">
+        {/* As duas divisões e a fila que as duas alimentam. Campanha e ativação
+            são separadas porque são naturezas diferentes — uma é decisão de um
+            dia, a outra é promessa permanente — mas o lead que sai delas é o
+            mesmo trabalho, e por isso Interessados é uma aba só. */}
         <TabsList>
           <TabsTrigger value="campanhas">Campanhas ({campanhas.length})</TabsTrigger>
+          <TabsTrigger value="ativacoes">Ativações</TabsTrigger>
           <TabsTrigger value="interessados">Interessados ({aguardando.length})</TabsTrigger>
         </TabsList>
 
@@ -273,6 +280,10 @@ export function MensagensPainel() {
               </Link>
             ))
           )}
+        </TabsContent>
+
+        <TabsContent value="ativacoes">
+          <AtivacoesPainel />
         </TabsContent>
 
         <TabsContent value="interessados" className="space-y-2 pt-4">

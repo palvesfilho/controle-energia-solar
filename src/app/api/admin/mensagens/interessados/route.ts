@@ -28,7 +28,11 @@ export async function GET() {
     orderBy: [{ atendidoEm: "asc" }, { interesseEm: "desc" }],
     take: 200,
     include: {
+      // Lead pode ter nascido dos dois lados do módulo: de uma campanha escrita
+      // à mão (divisão 1) ou de uma ativação automática (divisão 2). Para quem
+      // vai ligar tanto faz — o que importa é o nome, a oferta e o telefone.
       campanha: { select: { id: true, nome: true, titulo: true, ctaLabel: true } },
+      ativacao: { select: { id: true, nome: true, titulo: true, ctaLabel: true } },
       proprietario: {
         select: { id: true, nome: true, telefone: true, email: true, cidade: true, uf: true },
       },
@@ -36,20 +40,25 @@ export async function GET() {
   });
 
   return NextResponse.json({
-    interessados: envios.map((e) => ({
+    interessados: envios.flatMap((e) => {
+      const origem = e.campanha ?? e.ativacao;
+      if (!origem) return [];
+      return [{
       id: e.id,
       interesseEm: e.interesseEm,
       atendidoEm: e.atendidoEm,
       atendidoPorNome: e.atendidoPorNome,
-      campanhaId: e.campanha.id,
-      campanhaNome: e.campanha.nome,
-      oferta: e.campanha.ctaLabel ?? e.campanha.titulo,
+      origem: e.campanha ? ("CAMPANHA" as const) : ("ATIVACAO" as const),
+      campanhaId: e.campanha?.id ?? null,
+      campanhaNome: origem.nome,
+      oferta: origem.ctaLabel ?? origem.titulo,
       proprietarioId: e.proprietario.id,
       nome: e.proprietario.nome,
       telefone: e.proprietario.telefone,
       email: e.proprietario.email,
       cidade: e.proprietario.cidade,
       uf: e.proprietario.uf,
-    })),
+      }];
+    }),
   });
 }

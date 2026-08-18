@@ -36,7 +36,9 @@ export async function GET() {
       select: {
         id: true,
         interesseEm: true,
+        // Vale para os dois lados do módulo: campanha à mão e ativação automática.
         campanha: { select: { nome: true, ctaLabel: true, titulo: true } },
+        ativacao: { select: { nome: true, ctaLabel: true, titulo: true } },
         proprietario: { select: { id: true, nome: true, telefone: true } },
       },
     }),
@@ -44,14 +46,18 @@ export async function GET() {
 
   return NextResponse.json({
     total,
-    leads: recentes.map((e) => ({
-      id: e.id,
-      interesseEm: e.interesseEm,
-      oferta: e.campanha.ctaLabel ?? e.campanha.titulo,
-      campanhaNome: e.campanha.nome,
-      proprietarioId: e.proprietario.id,
-      nome: e.proprietario.nome,
-      telefone: e.proprietario.telefone,
-    })),
+    leads: recentes.flatMap((e) => {
+      const origem = e.campanha ?? e.ativacao;
+      if (!origem) return [];
+      return [{
+        id: e.id,
+        interesseEm: e.interesseEm,
+        oferta: origem.ctaLabel ?? origem.titulo,
+        campanhaNome: origem.nome,
+        proprietarioId: e.proprietario.id,
+        nome: e.proprietario.nome,
+        telefone: e.proprietario.telefone,
+      }];
+    }),
   });
 }
