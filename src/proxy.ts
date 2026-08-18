@@ -26,6 +26,11 @@ const PATH_SECTIONS: Array<[string, AdminSection]> = [
   ["/admin/personalizacoes/distribuidora-emails", "persDistribuidoraEmails"],
   ["/admin/personalizacoes/alertas-usinas", "persAlertasUsinas"],
   ["/admin/personalizacoes/relatorio-parametros", "persRelatorioParametros"],
+  // Precisa estar ANTES do fallback do hub: `personalizacoesHub` inclui
+  // POS_VENDA, e é justamente ele que a trava de frequência não pode afrouxar.
+  // Sem esta linha a página abre para quem a API depois recusa — e o operador
+  // vê uma tela quebrada em vez de um "não autorizado" honesto.
+  ["/admin/personalizacoes/frequencia-mensagens", "persFrequenciaMensagens"],
   ["/admin/personalizacoes", "personalizacoesHub"],
 ];
 
