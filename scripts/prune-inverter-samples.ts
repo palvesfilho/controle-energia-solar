@@ -1,6 +1,6 @@
 /**
  * Poda manual de `inverter_samples`. A lógica vive em `src/lib/intraday-prune.ts`,
- * porque o cron de 15 min também a executa (aos domingos) — ver
+ * porque o cron de 15 min também a executa (toda noite) — ver
  * `scripts/collect-intraday-15min.ts --cron`.
  *
  * Uso:

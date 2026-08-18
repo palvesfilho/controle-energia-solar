@@ -164,14 +164,28 @@ async function main() {
     );
   }
 
-  // Domingo, depois do fechamento: poda as amostras fora da janela de retenção.
-  if (ultimaRodadaDoDia && agoraUtc.getUTCDay() === 0) {
+  // Poda TODO DIA, depois do fechamento — não mais só aos domingos. A frota
+  // entrega ~37 MB/dia de curva: esperar o domingo acumulava até 260 MB de
+  // amostra já fora da janela, o que num volume de 1 GB é a diferença entre
+  // sobrar espaço e o Postgres parar de aceitar escrita.
+  //
+  // `podarAmostras` fecha os MonitoringLog pendentes antes de apagar — é essa
+  // chamada que garante que o kWh diário (base do mensal e do anual) já está
+  // salvo quando a curva se vai.
+  if (ultimaRodadaDoDia) {
     const p = await podarAmostras({ aplicar: true });
+    const f = p.fechamento;
     console.log(
       `[intraday] poda: corte em ${p.corte.toISOString().slice(0, 10)} · ` +
         `${p.linhasApagadas.toLocaleString("pt-BR")} de ${p.linhasTotal.toLocaleString("pt-BR")} linhas · ` +
         `${(p.duracaoMs / 1000).toFixed(1)}s`,
     );
+    if (f && (f.logsGravados > 0 || f.paresSemGeracao > 0)) {
+      console.log(
+        `[intraday] fechamento antes da poda: ${f.logsGravados} MonitoringLog gravado(s) · ` +
+          `${f.paresSemGeracao} par(es) usina/dia sem geração medida (datalogger mudo)`,
+      );
+    }
   }
 }
 

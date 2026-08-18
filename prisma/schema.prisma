@@ -1240,6 +1240,9 @@ model BrasilSolarProprietario {
   // Celulares que autorizaram notificação push no portal (1 linha por aparelho).
   pushSubscriptions PushSubscription[]
 
+  // Campanhas de mensagens que chegaram a este cliente (caixa de avisos).
+  campanhaEnvios CampanhaEnvio[]
+
   @@index([nome])
   @@index([cpfCnpj])
   @@index([codigoUc])
@@ -1425,7 +1428,9 @@ model MonitoringLog {
 
   @@unique([clientId, data])
   @@index([data])
-  @@index([clientId, data])
+  // Sem @@index([clientId, data]): o @@unique acima JA cria um btree nas mesmas
+  // colunas, na mesma ordem, e serve toda query que o indice serviria. O
+  // duplicado custava 41 MB com idx_scan = 0 e foi dropado em 18/08/26.
   @@map("monitoring_logs")
 }
 
@@ -2474,4 +2479,110 @@ model CrmUcImportada {
   @@index([propostaIdCrm])
   @@index([codigoUc])
   @@map("crm_uc_importada")
+}
+
+/// Campanha de MENSAGENS: um aviso escrito uma vez e entregue a um público de
+/// clientes da Rede Brasil Solar (push no celular + caixa de avisos do portal).
+///
+/// É ferramenta comercial, não notificação de sistema: existe para oferecer
+/// limpeza, seguro, manutenção, reconexão de wi-fi. Alerta automático de usina
+/// parada continua sendo `MonitoringAlert` — são coisas diferentes e não devem
+/// se misturar.
+///
+/// ⚠️ O texto do disparo fica CONGELADO aqui. Editar uma campanha já enviada
+/// mudaria o histórico do que o cliente recebeu, então o código só deixa editar
+/// enquanto está em RASCUNHO.
+///
+/// O público NÃO é congelado como lista de IDs no rascunho — só o filtro. A
+/// lista real é resolvida no instante do disparo (e aí sim vira uma linha de
+/// `CampanhaEnvio` por cliente, que é o histórico de verdade). Um filtro
+/// resolvido na semana passada devolveria clientes que já saíram.
+model Campanha {
+  id String @id @default(cuid())
+
+  /// Nome interno, só o operador vê na lista ("Limpeza semestral — agosto").
+  nome String
+
+  /// Título e corpo exatamente como o celular exibe.
+  titulo   String
+  mensagem String
+
+  /// Tela aberta ao tocar. Default `/portal-cliente`. O disparo acrescenta
+  /// `?aviso=<envioId>` para a caixa de avisos abrir já naquele item.
+  urlDestino String? @map("url_destino")
+
+  /// Rótulo do botão de interesse na caixa de avisos ("Quero um orçamento").
+  /// Null = aviso sem CTA, só informativo.
+  ctaLabel String? @map("cta_label")
+
+  /// PUSH_E_PORTAL = toca o celular de quem autorizou e aparece no portal.
+  /// SO_PORTAL     = só a caixa de avisos, sem tocar celular nenhum.
+  canal String @default("PUSH_E_PORTAL")
+
+  /// Filtro de público serializado. O shape vive em `mensagens-publico.ts` —
+  /// Json aqui de propósito: filtro novo não pode exigir migração de banco.
+  publicoFiltro Json?   @map("publico_filtro")
+  /// Frase legível do filtro, congelada no disparo ("Com app · RS · ≥ 10 kWp").
+  publicoResumo String? @map("publico_resumo")
+
+  /// RASCUNHO | ENVIANDO | ENVIADA | FALHOU
+  status String @default("RASCUNHO")
+
+  /// Contadores congelados no disparo — a contagem "ao vivo" mudaria com o
+  /// tempo e o relatório da campanha deixaria de bater com o que aconteceu.
+  totalPublico   Int @default(0) @map("total_publico")
+  totalComApp    Int @default(0) @map("total_com_app")
+  totalAparelhos Int @default(0) @map("total_aparelhos")
+
+  criadoPorId   String?   @map("criado_por_id")
+  criadoPorNome String?   @map("criado_por_nome")
+  enviadaEm     DateTime? @map("enviada_em")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  envios CampanhaEnvio[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("campanhas")
+}
+
+/// A campanha CHEGANDO em um cliente: uma linha por proprietário atingido.
+///
+/// Faz dois papéis de propósito, porque são o mesmo fato:
+///   1. histórico do disparo (quantos aparelhos, deu erro?);
+///   2. a CAIXA DE AVISOS do portal — o cliente sem celular inscrito também
+///      tem sua linha e vê a mensagem quando entrar.
+///
+/// Push não confirma leitura (ver `push-notificacoes.ts`). Quem prova
+/// engajamento é `lidoEm` (abriu no portal) e sobretudo `interesseEm`, que é o
+/// lead: cliente tocou "quero" e o pós-venda tem de ligar.
+model CampanhaEnvio {
+  id             String @id @default(cuid())
+  campanhaId     String @map("campanha_id")
+  proprietarioId String @map("proprietario_id")
+
+  /// Aparelhos inscritos no instante do disparo.
+  aparelhos Int @default(0)
+
+  /// ENVIADO | SEM_APARELHO | FALHA | SO_PORTAL
+  pushStatus String  @default("SEM_APARELHO") @map("push_status")
+  erro       String?
+
+  lidoEm       DateTime? @map("lido_em")
+  interesseEm  DateTime? @map("interesse_em")
+  /// Cliente tocou "não tenho interesse" — some da caixa e vira sinal de que
+  /// aquela oferta não colou. Não silencia campanhas futuras.
+  dispensadoEm DateTime? @map("dispensado_em")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  campanha     Campanha                @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
+  proprietario BrasilSolarProprietario @relation(fields: [proprietarioId], references: [id], onDelete: Cascade)
+
+  @@unique([campanhaId, proprietarioId])
+  @@index([proprietarioId, dispensadoEm])
+  @@index([campanhaId, interesseEm])
+  @@map("campanha_envios")
 }
