@@ -25,6 +25,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCpfCnpj } from "@/lib/documento";
 import { toast } from "sonner";
 
+/**
+ * Os portais de monitoramento que o botão "Importar Plantas" percorre, na ordem.
+ * Cada um tem a sua rota; o botão só as encadeia.
+ */
+const PORTAIS = [
+  { endpoint: "sync", nome: "Fronius" },
+  { endpoint: "sync-huawei", nome: "Huawei" },
+  { endpoint: "sync-sungrow", nome: "Sungrow" },
+  { endpoint: "sync-solaredge", nome: "SolarEdge" },
+  { endpoint: "sync-weg", nome: "WEG" },
+] as const;
+
 interface BrasilSolarClient {
   id: string;
   nome: string;
@@ -165,6 +177,63 @@ export default function BrasilSolarPage() {
   }
 
   const [syncing, setSyncing] = useState<string | null>(null);
+  /** Portal sendo importado agora — alimenta o rótulo "Importando Huawei...". */
+  const [portalAtual, setPortalAtual] = useState<string | null>(null);
+
+  /**
+   * Importa as plantas dos 5 portais em SEQUÊNCIA, um request por portal.
+   *
+   * 🔑 Por que não é uma rota só no servidor: o proxy da Railway derruba request
+   * longo com 502 — medido em 2 a 4 min na `sungrow-sync`, com o contêiner ainda
+   * rodando do outro lado. Empilhar os 5 portais dentro de um único request
+   * andaria exatamente nessa direção. Em sequência, cada request é curto, dá pra
+   * mostrar em qual portal a importação está, e **um portal que falha não impede
+   * os outros de rodar** — o erro entra no resumo em vez de abortar tudo.
+   *
+   * Portal novo entra AQUI, em `PORTAIS`, e em nenhum outro lugar.
+   */
+  async function handleImportarPlantas() {
+    setSyncing("todos-portais");
+
+    const ok: string[] = [];
+    const falhas: string[] = [];
+
+    for (const portal of PORTAIS) {
+      setPortalAtual(portal.nome);
+      try {
+        const res = await fetch(`/api/brasil-solar/${portal.endpoint}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        const data = await res.json();
+        if (res.ok) {
+          const novas = data.created ?? 0;
+          ok.push(`${portal.nome} ${data.total ?? 0}${novas > 0 ? ` (+${novas})` : ""}`);
+        } else {
+          falhas.push(`${portal.nome}: ${data.error ?? `HTTP ${res.status}`}`);
+        }
+      } catch {
+        falhas.push(`${portal.nome}: falha de conexao`);
+      }
+    }
+
+    setPortalAtual(null);
+    setSyncing(null);
+
+    if (falhas.length === 0) {
+      toast.success("Plantas importadas dos 5 portais", { description: ok.join(" · ") });
+    } else {
+      // Sucesso parcial nao pode virar "deu certo": os portais que falharam
+      // aparecem nomeados, senao a planta que faltou some sem ninguem notar.
+      toast.warning(`${ok.length} de ${PORTAIS.length} portais importados`, {
+        description: [...ok, ...falhas.map((f) => `FALHOU — ${f}`)].join(" · "),
+      });
+    }
+
+    fetchStats();
+    fetchClients(1);
+  }
 
   async function handleSync(endpoint: string, label: string) {
     setSyncing(endpoint);
@@ -203,6 +272,19 @@ export default function BrasilSolarPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleImportarPlantas}
+            disabled={syncing !== null}
+            title="Importa as plantas dos 5 portais: Fronius, Huawei, Sungrow, SolarEdge e WEG"
+            className="flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
+          >
+            {syncing === "todos-portais" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <CloudDownload className="h-4 w-4" />
+            )}
+            {portalAtual ? `Importando ${portalAtual}...` : "Importar Plantas"}
+          </button>
           <Link
             href="/admin/brasil-solar/importar"
             className="flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg hover:bg-muted transition-colors"
@@ -222,54 +304,10 @@ export default function BrasilSolarPage() {
 
       {/* Sync Controls */}
       <Card>
-        <CardContent className="p-3 space-y-3">
-          {/* Importar plantas (por marca) */}
+        <CardContent className="p-3">
+          {/* Acoes globais. A fileira de 5 botoes por marca virou o botao
+              "Importar Plantas" do cabecalho, que percorre os mesmos 5 portais. */}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide mr-2 min-w-[120px]">Importar Plantas</span>
-            <button
-              onClick={() => handleSync("sync", "Importar plantas Fronius")}
-              disabled={syncing !== null}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
-            >
-              {syncing === "sync" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CloudDownload className="h-3.5 w-3.5" />}
-              Fronius
-            </button>
-            <button
-              onClick={() => handleSync("sync-huawei", "Importar plantas Huawei")}
-              disabled={syncing !== null}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
-            >
-              {syncing === "sync-huawei" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CloudDownload className="h-3.5 w-3.5" />}
-              Huawei
-            </button>
-            <button
-              onClick={() => handleSync("sync-sungrow", "Importar plantas Sungrow")}
-              disabled={syncing !== null}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
-            >
-              {syncing === "sync-sungrow" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CloudDownload className="h-3.5 w-3.5" />}
-              Sungrow
-            </button>
-            <button
-              onClick={() => handleSync("sync-solaredge", "Importar plantas SolarEdge")}
-              disabled={syncing !== null}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
-            >
-              {syncing === "sync-solaredge" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CloudDownload className="h-3.5 w-3.5" />}
-              SolarEdge
-            </button>
-            <button
-              onClick={() => handleSync("sync-weg", "Importar plantas WEG")}
-              disabled={syncing !== null}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
-            >
-              {syncing === "sync-weg" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CloudDownload className="h-3.5 w-3.5" />}
-              WEG
-            </button>
-          </div>
-
-          {/* Acoes globais */}
-          <div className="flex flex-wrap items-center gap-2 border-t pt-3">
             <button
               onClick={() => handleSync("sync-all/refresh", "Atualizar geração e status (todas as marcas)")}
               disabled={syncing !== null}
