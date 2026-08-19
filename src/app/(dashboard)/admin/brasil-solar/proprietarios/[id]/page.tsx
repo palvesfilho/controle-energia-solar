@@ -219,7 +219,18 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
         toast.error("Erro ao salvar UC", { description: j.error });
         return;
       }
-      toast.success("Código UC salvo");
+      // A API replica os códigos na Unidade Consumidora e devolve o que fez —
+      // inclusive o que NÃO deu pra replicar (código divergente entre os dois
+      // cadastros). Engolir isso deixaria o operador achando que gravou nos dois.
+      const { avisos } = (await res.json().catch(() => ({}))) as { avisos?: string[] };
+      if (avisos?.length) {
+        toast.success("Código UC salvo", {
+          description: avisos.join(" "),
+          duration: 10000,
+        });
+      } else {
+        toast.success("Código UC salvo");
+      }
       setEditingUc(false);
       // Reset lookup pra refazer com o novo código
       setConsumerUnit(null);

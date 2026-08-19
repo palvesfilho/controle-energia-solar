@@ -4,6 +4,10 @@ import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 import { normalizeCodigoUc } from "@/lib/uc-codigo";
+import {
+  avisosDaPropagacao,
+  propagarCodigosDaConsumerUnit,
+} from "@/lib/codigo-uc-propagacao";
 import { avaliarExclusaoUc } from "@/lib/consumer-unit-exclusao";
 
 export async function GET(
@@ -114,7 +118,20 @@ export async function PUT(
     },
   });
 
-  return NextResponse.json({ success: true });
+  // Sentido inverso da propagação: corrigir o código aqui também acerta a ficha
+  // do proprietário Brasil Solar. Sem os dois sentidos a correção falha calada
+  // de um dos lados — [[feedback_correcao_pela_metade_falha_calada]].
+  let avisos: string[] = [];
+  try {
+    avisos = avisosDaPropagacao(await propagarCodigosDaConsumerUnit(id));
+  } catch (e) {
+    console.error("[PUT /consumer-units] propagação de código falhou:", e);
+    avisos = [
+      "A UC foi salva, mas o código não pôde ser replicado no cadastro Brasil Solar. Confira lá.",
+    ];
+  }
+
+  return NextResponse.json({ success: true, avisos });
 }
 
 // Exclusão permanente da UC. Recusa (409) enquanto existir histórico

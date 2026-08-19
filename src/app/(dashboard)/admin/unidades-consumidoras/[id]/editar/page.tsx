@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Trash2, AlertTriangle, Power, PowerOff } from "lucide-react";
+import { toast } from "sonner";
 import { UCForm, UCFormData, EMPTY_UC_FORM, percentDbToInput } from "@/components/consumer-units/uc-form";
 import { UcCredentialsForm } from "@/components/consumer-units/uc-credentials-form";
 import { UcBills } from "@/components/consumer-units/uc-bills";
@@ -121,6 +122,16 @@ export default function EditarUCPage() {
         body: JSON.stringify(data),
       });
       if (res.ok) {
+        // A API replica o código no cadastro Brasil Solar do mesmo cliente.
+        // A tela sai daqui na sequência, então o que ela replicou (ou o que
+        // ficou divergente) tem que ser dito agora — senão some sem rastro.
+        const { avisos } = (await res.json().catch(() => ({}))) as { avisos?: string[] };
+        if (avisos?.length) {
+          toast.success("UC atualizada", {
+            description: avisos.join(" "),
+            duration: 10000,
+          });
+        }
         router.push("/admin/unidades-consumidoras");
       } else {
         const d = await res.json();

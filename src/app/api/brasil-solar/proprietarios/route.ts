@@ -10,6 +10,10 @@ import { normalizeCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
 import { buscarIds } from "@/lib/busca-sql";
 import { normalizeConcessionaria } from "@/lib/concessionarias";
 import {
+  avisosDaPropagacao,
+  propagarCodigosDoProprietario,
+} from "@/lib/codigo-uc-propagacao";
+import {
   propagarCredencialParaBeneficiarias,
   resumoPropagacao,
 } from "@/lib/credencial-beneficiarias";
@@ -324,8 +328,17 @@ export async function POST(req: NextRequest) {
       // Casa também pelo código antigo — ver `whereCodigoUc`. Com `findUnique`
       // no código exato, cadastrar um proprietário com o código pré-migração
       // criava uma UC duplicada da que já existia com o código novo.
+      //
+      // Procura pelos DOIS códigos digitados, não só pelo novo: a UC pode estar
+      // cadastrada apenas com o antigo, e casar por um lado só recriava a mesma
+      // UC em duplicata.
       const existing = await prisma.consumerUnit.findFirst({
-        where: whereCodigoUc(codigoUcInput),
+        where: {
+          OR: [
+            whereCodigoUc(codigoUcInput),
+            ...(codigoUcAntigoInput ? [whereCodigoUc(codigoUcAntigoInput)] : []),
+          ],
+        },
       });
       if (existing) {
         consumerUnitId = existing.id;
@@ -343,6 +356,9 @@ export async function POST(req: NextRequest) {
         });
         consumerUnitId = created.id;
       }
+      // A UC recém-criada já nasce com os dois códigos; a que JÁ existia, não —
+      // e era mais um caminho para o "antigo" ficar só na ficha do proprietário.
+      avisos.push(...avisosDaPropagacao(await propagarCodigosDoProprietario(proprietario.id)));
     } catch (e) {
       motivoUcFalhou = e instanceof Error ? e.message : String(e);
       console.error("[POST /brasil-solar/proprietarios] auto-UC falhou:", e);

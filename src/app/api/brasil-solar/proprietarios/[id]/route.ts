@@ -4,6 +4,10 @@ import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { normalizeCodigoUc } from "@/lib/uc-codigo";
+import {
+  avisosDaPropagacao,
+  propagarCodigosDoProprietario,
+} from "@/lib/codigo-uc-propagacao";
 
 const EXECUTADO_POR_VALORES = new Set(["BRASIL_SOLAR", "TERCEIRO"]);
 
@@ -144,7 +148,22 @@ export async function PUT(
     },
   });
 
-  return NextResponse.json(proprietario);
+  // O código da UC vive em DOIS cadastros e só o da `ConsumerUnit` é lido na
+  // hora de casar a fatura. Antes, editar aqui gravava só nesta ficha: a tela
+  // mostrava "(antigo: 3092443284)" e o upload não enxergava, jogando 12
+  // faturas da Suzana Righi em `_pending`. Ver [[project_bs_proprietario_uc_dois_cadastros]].
+  // Falha aqui não derruba o salvamento — o cadastro já foi gravado.
+  let avisos: string[] = [];
+  try {
+    avisos = avisosDaPropagacao(await propagarCodigosDoProprietario(id));
+  } catch (e) {
+    console.error("[PUT /brasil-solar/proprietarios] propagação de código falhou:", e);
+    avisos = [
+      "O cadastro foi salvo, mas o código não pôde ser replicado na Unidade Consumidora. Confira lá.",
+    ];
+  }
+
+  return NextResponse.json({ ...proprietario, avisos });
 }
 
 function toFloat(v: unknown): number | null {
