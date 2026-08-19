@@ -258,6 +258,14 @@ export default function BrasilSolarPage() {
               {syncing === "sync-solaredge" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CloudDownload className="h-3.5 w-3.5" />}
               SolarEdge
             </button>
+            <button
+              onClick={() => handleSync("sync-weg", "Importar plantas WEG")}
+              disabled={syncing !== null}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
+            >
+              {syncing === "sync-weg" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CloudDownload className="h-3.5 w-3.5" />}
+              WEG
+            </button>
           </div>
 
           {/* Acoes globais */}
