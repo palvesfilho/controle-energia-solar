@@ -12,6 +12,7 @@ import {
   isConcessionariaValida,
   normalizeConcessionaria,
 } from "@/lib/concessionarias";
+import { exigeCodigoUcAntigo, normalizeCodigoUc } from "@/lib/uc-codigo";
 
 export interface UCFormData {
   nome: string;
@@ -140,6 +141,12 @@ interface Props {
    * usa o formulário muda de aparência.
    */
   painelLateral?: React.ReactNode;
+  /**
+   * Quando a UC foi cadastrada. Só é usada para saber se o código antigo é
+   * obrigatório (ver `exigeCodigoUcAntigo`). Ausente = cadastro novo, e aí a
+   * data é agora.
+   */
+  createdAt?: string | Date | null;
 }
 
 export function UCForm({
@@ -150,6 +157,7 @@ export function UCForm({
   cancelHref,
   submitLabel = "Salvar",
   painelLateral,
+  createdAt,
 }: Props) {
   const [form, setForm] = useState<UCFormData>(() => {
     const base = { ...EMPTY_UC_FORM, ...initialData };
@@ -179,6 +187,21 @@ export function UCForm({
 
   const update = <K extends keyof UCFormData>(key: K, value: UCFormData[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  // Avisa só quando o campo é OBRIGATÓRIO e está vazio. A regra dispensa o
+  // código antigo de quem entrou a partir de 01/08/2026 no modelo de desconto:
+  // essa UC não tem histórico anterior a importar, e cobrar o campo dela seria
+  // alarme falso. Ver `exigeCodigoUcAntigo`.
+  //
+  // O form guarda o percentual como o operador digita (15), o banco guarda a
+  // fração (0,85) — a conversão é a mesma do submit.
+  const avisoCodigoAntigo =
+    !form.codigoUcAntigo.trim() &&
+    exigeCodigoUcAntigo({
+      codigoUc: normalizeCodigoUc(form.codigoUc) ?? form.codigoUc,
+      createdAt: createdAt ?? new Date(),
+      percentCompensado: Number(percentInputToDb(form.percentCompensado)) || null,
+    });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -239,9 +262,16 @@ export function UCForm({
               value={form.codigoUcAntigo}
               onChange={(e) => update("codigoUcAntigo", e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">
-              Código anterior à migração da RGE. Faturas antigas casam por ele.
-            </p>
+            {avisoCodigoAntigo ? (
+              <p className="text-xs text-amber-700 dark:text-amber-500">
+                Sem ele, as faturas anteriores a jun/2026 não encontram esta UC e
+                entram como pendentes, sem erro na tela.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Código anterior à migração da RGE. Faturas antigas casam por ele.
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="cpfCnpj">CPF/CNPJ</Label>

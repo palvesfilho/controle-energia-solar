@@ -84,6 +84,65 @@ export function formatCodigoUc<T extends string | null | undefined>(v: T): T {
 }
 
 /**
+ * Data em que a Solve passou a fechar contrato de desconto já na era do código
+ * novo da RGE. UC cadastrada a partir daqui, no modelo de desconto, começou a
+ * relação com a gente depois da migração — ver `exigeCodigoUcAntigo`.
+ */
+export const CORTE_DISPENSA_CODIGO_UC_ANTIGO = new Date("2026-08-01T00:00:00.000Z");
+
+/**
+ * Código no formato NOVO da RGE (11 ou 12 dígitos). Com 10 ou menos, a UC ainda
+ * está no código pré-migração e não existe "antigo" a registrar.
+ */
+export function isCodigoUcNovo(codigo: string | null | undefined): boolean {
+  return /^\d{11,12}$/.test((codigo ?? "").trim());
+}
+
+/**
+ * A UC precisa ter o `codigoUcAntigo` preenchido?
+ *
+ * 🔑 **Por que a pergunta existe.** Fatura impressa antes de jun/2026 traz o
+ * código pré-migração, e `importarFaturaPdf` casa a UC por
+ * `codigoUc OR codigoUcAntigo`. Campo vazio = a fatura antiga não acha dono e
+ * cai órfã em `_pending`, sem erro vermelho — foi o que aconteceu com 12
+ * faturas da Suzana Righi ([[project_bs_proprietario_uc_dois_cadastros]]).
+ *
+ * ⚠️ **Mas nem toda UC precisa.** Regra do Paulo (19/08/2026): UC cadastrada a
+ * partir de **01/08/2026** que seja cliente do modelo de **desconto na fatura**
+ * não tem obrigação nenhuma de código antigo. A relação comercial dela começou
+ * depois da migração — as contas anteriores não entram em resultado nem em
+ * economia, então não há histórico a importar e cobrar o campo só geraria
+ * alarme falso.
+ *
+ * Conferido contra o banco em 19/08/2026, e a regra separa dois mundos reais:
+ * as 14 UCs com código novo e campo vazio eram TODAS de 15/08 com
+ * `percentCompensado = 0,85` (desconto de 15%); as que de fato precisam do
+ * antigo são as Brasil Solar (usina própria, `percentCompensado` nulo), e 13
+ * de 15 já estavam preenchidas.
+ *
+ * "Tem desconto na fatura" é lido como `percentCompensado` preenchido e maior
+ * que zero — é o campo que o contrato de desconto grava (o CRM manda 15, a UC
+ * guarda 0,85) e o mesmo que o `billing-calculator` usa pra cobrar.
+ */
+export function exigeCodigoUcAntigo(uc: {
+  codigoUc: string | null | undefined;
+  createdAt: Date | string | null | undefined;
+  percentCompensado: number | null | undefined;
+}): boolean {
+  // O código ainda é o antigo: não há "anterior" a guardar.
+  if (!isCodigoUcNovo(uc.codigoUc)) return false;
+
+  const criadaEm = uc.createdAt ? new Date(uc.createdAt) : null;
+  const nova =
+    !!criadaEm &&
+    !Number.isNaN(criadaEm.getTime()) &&
+    criadaEm >= CORTE_DISPENSA_CODIGO_UC_ANTIGO;
+  const temDesconto = (uc.percentCompensado ?? 0) > 0;
+
+  return !(nova && temDesconto);
+}
+
+/**
  * Termo de busca casa tanto com o código em dígitos quanto com o pontuado que
  * aparece na tela — o operador copia da tela e cola no filtro.
  *

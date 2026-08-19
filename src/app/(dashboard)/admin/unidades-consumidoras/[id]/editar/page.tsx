@@ -57,6 +57,10 @@ export default function EditarUCPage() {
   // pela fila do CRM. Fica fora de `initialData` de propósito: o formulário não
   // edita nem envia esses campos, só os exibe.
   const [documentos, setDocumentos] = useState<DocumentosDoCadastro | null>(null);
+  // Data de cadastro da UC. Vai para o formulário só para decidir se o código
+  // antigo é obrigatório — ver `exigeCodigoUcAntigo`. Sem ela, uma UC velha
+  // pareceria recém-cadastrada e cairia na dispensa por engano.
+  const [createdAt, setCreatedAt] = useState<string | null>(null);
 
   const carregarUc = useCallback(() => {
     return fetch(`/api/consumer-units/${id}`)
@@ -68,6 +72,7 @@ export default function EditarUCPage() {
         setAtiva(!!uc.active);
         setStatusChanges(uc.statusChanges ?? []);
         setDocumentos(uc as DocumentosDoCadastro);
+        setCreatedAt(uc.createdAt ?? null);
         setInitialData({
           nome: uc.nome ?? "",
           // Exibe no padrão da concessionária; a API normaliza pra dígitos ao salvar.
@@ -247,6 +252,7 @@ export default function EditarUCPage() {
         error={error}
         cancelHref="/admin/unidades-consumidoras"
         submitLabel="Salvar Alterações"
+        createdAt={createdAt}
         painelLateral={
           // Mesmo lugar da tela de cadastro — ao lado da Identificação: são
           // esses os campos que se conferem olhando o papel (o CNPJ digitado
