@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 import { normalizeCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
+import { SELECT_BILL_FASE, calcularFases } from "@/lib/uc-implantacao";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -65,7 +66,20 @@ export async function GET(req: NextRequest) {
     orderBy: { nome: "asc" },
   });
 
-  return NextResponse.json(units);
+  // Fase de cada UC (em implantação × faturando), derivada das faturas — a tela
+  // separa as duas listas com isto. Uma consulta só pras faturas de todas as
+  // UCs da resposta; por UC seriam ~110 idas ao banco pra montar uma tela.
+  const bills = units.length
+    ? await prisma.consumerBill.findMany({
+        where: { consumerUnitId: { in: units.map((u) => u.id) } },
+        select: SELECT_BILL_FASE,
+      })
+    : [];
+  const fases = calcularFases(units, bills);
+
+  return NextResponse.json(
+    units.map((u) => ({ ...u, implantacao: fases.get(u.id) ?? null })),
+  );
 }
 
 export async function POST(req: NextRequest) {

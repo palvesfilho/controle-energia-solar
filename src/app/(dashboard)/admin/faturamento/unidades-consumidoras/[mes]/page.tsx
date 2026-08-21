@@ -16,6 +16,7 @@ import {
 } from "@/lib/billing-installments";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { matchBusca } from "@/lib/busca";
+import { AvisoPrimeirasCompensacoes } from "@/components/consumer-units/aviso-primeiras-compensacoes";
 
 interface Row {
   consumerUnit: {
@@ -435,6 +436,12 @@ export default function FaturamentoUCMesPage() {
           </p>
         </div>
       </div>
+
+      {/* UCs que estrearam o desconto na fatura e ainda não foram liberadas pra
+          cobrança. Aparece aqui, e não só na tela de UCs, porque é aqui que a
+          cobrança acontece — quem está cobrando não deveria precisar lembrar de
+          ir conferir a outra tela. Some sozinho quando não há pendência. */}
+      <AvisoPrimeirasCompensacoes />
 
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <Card>

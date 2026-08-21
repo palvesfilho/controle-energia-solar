@@ -66,6 +66,10 @@ model Investor {
   docTermoAdesaoNome    String? @map("doc_termo_adesao_nome")
   docProcuracao         String? @map("doc_procuracao")
   docProcuracaoNome     String? @map("doc_procuracao_nome")
+  // Assinada no mesmo envelope do termo e da procuração desde 21/08/2026. Vazia
+  // nas adesões anteriores: lá a autorização era pedida à parte, depois.
+  docAutorizacaoAcesso     String? @map("doc_autorizacao_acesso")
+  docAutorizacaoAcessoNome String? @map("doc_autorizacao_acesso_nome")
   docIdentidade         String? @map("doc_identidade")
   docIdentidadeNome     String? @map("doc_identidade_nome")
   docCartaoCnpj         String? @map("doc_cartao_cnpj")
@@ -518,6 +522,14 @@ model ConsumerUnit {
   // fallback.
   dataInicioContrato  DateTime? @map("data_inicio_contrato")
 
+  // "Ok, pode cobrar" — o operador confirmando que viu a primeira compensação
+  // desta UC e liberou o faturamento. NÃO é o status da UC: se ela compensa ou
+  // não é derivado das faturas (ver lib/uc-implantacao.ts). Este campo guarda
+  // só a decisão humana, pra o aviso da primeira compensação aparecer uma vez e
+  // sumir depois de tratado — sem ele o sino repetiria as mesmas UCs pra sempre.
+  cobrancaLiberadaEm  DateTime? @map("cobranca_liberada_em")
+  cobrancaLiberadaPor String?   @map("cobranca_liberada_por")
+
   // Acesso à distribuidora
   loginDistribuidora String? @map("login_distribuidora")
   senhaDistribuidora String? @map("senha_distribuidora")
@@ -563,6 +575,10 @@ model ConsumerUnit {
   docTermoAdesaoNome    String? @map("doc_termo_adesao_nome")
   docProcuracao         String? @map("doc_procuracao")
   docProcuracaoNome     String? @map("doc_procuracao_nome")
+  // Assinada no mesmo envelope do termo e da procuração desde 21/08/2026. Vazia
+  // nas adesões anteriores: lá a autorização era pedida à parte, depois.
+  docAutorizacaoAcesso     String? @map("doc_autorizacao_acesso")
+  docAutorizacaoAcessoNome String? @map("doc_autorizacao_acesso_nome")
   docIdentidade         String? @map("doc_identidade")
   docIdentidadeNome     String? @map("doc_identidade_nome")
   docCartaoCnpj         String? @map("doc_cartao_cnpj")

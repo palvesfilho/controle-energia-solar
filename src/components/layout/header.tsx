@@ -19,6 +19,7 @@ import { MobileNav } from "./mobile-nav";
 import { UserRole } from "@/types/next-auth";
 import { canAccessSection } from "@/lib/roles";
 import { SinoLeads } from "@/components/mensagens/sino-leads";
+import { SinoCompensacoes } from "@/components/consumer-units/sino-compensacoes";
 
 const ROLE_LABELS: Record<UserRole, string> = {
   ADMIN: "Administrador",
@@ -114,6 +115,10 @@ export function Header({ role }: { role: UserRole }) {
           as campanhas: investidor e consumidor não têm o que fazer com um lead,
           e a consulta de minuto em minuto não deve rodar para eles. */}
       <div className="flex items-center gap-2">
+      {/* Primeira compensação da UC: só pra quem fatura. Quem não cobra não tem
+          o que fazer com o aviso, e a consulta não deve rodar pra esse perfil. */}
+      {canAccessSection(role, "faturamento") && <SinoCompensacoes />}
+
       {canAccessSection(role, "mensagens") && <SinoLeads />}
 
       <DropdownMenu>
