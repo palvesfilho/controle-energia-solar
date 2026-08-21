@@ -92,6 +92,8 @@ interface UcAssinada {
   assinaturaStatus: string | null;
   assinadoEm: string | null;
   envelopeIdCrm: string | null;
+  /** Envelope assinado a partir de 21/08/2026 leva também a autorização de acesso. */
+  temAutorizacaoAssinada?: boolean;
   situacao: string;
   vendaGanha: boolean;
   statusNegocio: string | null;
@@ -612,9 +614,11 @@ export function UcsAssinadasCrm({ search = "" }: { search?: string }) {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 border-t pt-3">
-                  {/* O envelope guarda DOIS PDFs assinados, termo e procuração.
-                      O card só mostrava o termo — a procuração existia na rota
-                      e na cópia, mas não tinha por onde ser aberta aqui. */}
+                  {/* O envelope guarda os PDFs assinados: termo e procuração
+                      desde sempre, e a autorização de acesso a partir de
+                      21/08/2026. O card só mostrava o termo — a procuração
+                      existia na rota e na cópia, mas não tinha por onde ser
+                      aberta aqui. */}
                   {u.envelopeIdCrm && (
                     <>
                       <a
@@ -635,6 +639,17 @@ export function UcsAssinadasCrm({ search = "" }: { search?: string }) {
                         <FileSignature className="h-3 w-3" />
                         Procuração
                       </a>
+                      {u.temAutorizacaoAssinada && (
+                        <a
+                          href={`/api/crm/termo/${u.envelopeIdCrm}?tipo=autorizacao`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-accent"
+                        >
+                          <FileSignature className="h-3 w-3" />
+                          Autorização de acesso
+                        </a>
+                      )}
                     </>
                   )}
                   {u.documentos.map((d) => (

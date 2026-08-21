@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
-import { buscarPdfAssinado } from "@/lib/crm-supabase";
+import { buscarPdfAssinado, type TipoPdfAssinadoCrm } from "@/lib/crm-supabase";
 import { classificarPdfAssinado } from "@/lib/crm-envelope-pdfs";
 
 /**
- * Serve o PDF assinado — termo de adesão, ou procuração com `?tipo=procuracao`.
+ * Serve o PDF assinado do envelope: termo de adesão (padrão), procuração com
+ * `?tipo=procuracao` ou autorização de acesso com `?tipo=autorizacao`.
  *
  * O PDF vive em base64 na coluna `envelopes_assinatura.pdf_termo_assinado` do
  * CRM (~330 KB cada). É buscado só quando alguém clica — trazer os 24 a cada
@@ -32,21 +33,24 @@ export async function GET(
     return NextResponse.json({ error: "envelopeId inválido" }, { status: 400 });
   }
 
-  // O mesmo envelope guarda os dois documentos assinados.
-  const procuracao = req.nextUrl.searchParams.get("tipo") === "procuracao";
-  const pedido = procuracao ? "procuracao" : "termo";
+  // O mesmo envelope guarda os documentos assinados — dois até 21/08/2026,
+  // três a partir daí (a autorização de acesso entrou no envelope).
+  const tipo = req.nextUrl.searchParams.get("tipo");
+  const pedido: TipoPdfAssinadoCrm =
+    tipo === "procuracao" ? "procuracao" : tipo === "autorizacao" ? "autorizacao" : "termo";
+  const procuracao = pedido === "procuracao";
+
+  const SEM_DOCUMENTO: Record<TipoPdfAssinadoCrm, string> = {
+    termo: "Envelope sem termo assinado no CRM.",
+    procuracao: "Envelope sem procuração assinada no CRM.",
+    autorizacao:
+      "Envelope sem autorização de acesso assinada no CRM — adesão assinada antes de 21/08/2026 não leva esse documento.",
+  };
 
   try {
     const base64 = await buscarPdfAssinado(envelopeId, pedido);
     if (!base64) {
-      return NextResponse.json(
-        {
-          error: procuracao
-            ? "Envelope sem procuração assinada no CRM."
-            : "Envelope sem termo assinado no CRM.",
-        },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: SEM_DOCUMENTO[pedido] }, { status: 404 });
     }
 
     let pdf = Buffer.from(base64, "base64");
@@ -55,7 +59,10 @@ export async function GET(
     // crm-envelope-pdfs.ts): o botão "Procuração" abria o termo e vice-versa.
     // Confere pelo conteúdo e, se veio o documento errado, busca o outro.
     // No caso certo é uma consulta só — a segunda só acontece quando trocado.
-    const tipoRecebido = await classificarPdfAssinado(pdf);
+    // A troca de colunas conhecida é só entre termo e procuração; a autorização
+    // mora em coluna própria, escrita depois que a origem passou a casar
+    // documento por nome de arquivo. Buscar "o outro" ali não faria sentido.
+    const tipoRecebido = pedido === "autorizacao" ? null : await classificarPdfAssinado(pdf);
     if (tipoRecebido && tipoRecebido !== pedido) {
       const outro = await buscarPdfAssinado(envelopeId, pedido === "termo" ? "procuracao" : "termo");
       if (outro) {
@@ -73,7 +80,7 @@ export async function GET(
         );
       }
     }
-    const nome = procuracao ? "procuracao" : "termo-adesao";
+    const nome = { termo: "termo-adesao", procuracao: "procuracao", autorizacao: "autorizacao-acesso" }[pedido];
     return new NextResponse(new Uint8Array(pdf), {
       headers: {
         "Content-Type": "application/pdf",

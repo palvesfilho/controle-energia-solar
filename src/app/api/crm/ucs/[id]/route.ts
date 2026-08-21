@@ -3,7 +3,11 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { canAccessSection } from "@/lib/roles";
-import { corrigirMojibake, listarDocumentosDaAdesao } from "@/lib/crm-supabase";
+import {
+  corrigirMojibake,
+  envelopeTemAutorizacaoAssinada,
+  listarDocumentosDaAdesao,
+} from "@/lib/crm-supabase";
 
 /**
  * Marca uma UC assinada como cadastrada nesta ponta, ou como ignorada.
@@ -50,6 +54,17 @@ export async function GET(
     console.error("[GET /api/crm/ucs/[id]] documentos:", err);
   }
 
+  // A autorização de acesso só existe em envelope assinado a partir de 21/08/2026.
+  // Sem esta conferência a ficha viraria um link que dá 404 — pior que ficha vazia.
+  let temAutorizacaoAssinada = false;
+  if (linha.envelopeIdCrm) {
+    try {
+      temAutorizacaoAssinada = await envelopeTemAutorizacaoAssinada(linha.envelopeIdCrm);
+    } catch (err) {
+      console.error("[GET /api/crm/ucs/[id]] autorização de acesso:", err);
+    }
+  }
+
   // Consumidor já existente com o mesmo CPF/CNPJ: evita criar duplicata.
   const digitos = (linha.clienteDocumento ?? "").replace(/\D/g, "");
   const consumidor = digitos
@@ -59,7 +74,13 @@ export async function GET(
       })
     : null;
 
-  return NextResponse.json({ ...linha, documentos, avisoDocumentos, consumidor });
+  return NextResponse.json({
+    ...linha,
+    documentos,
+    avisoDocumentos,
+    consumidor,
+    temAutorizacaoAssinada,
+  });
 }
 
 export async function PATCH(

@@ -3,7 +3,11 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { canAccessSection } from "@/lib/roles";
-import { corrigirMojibake, listarDocumentosAdesao } from "@/lib/crm-supabase";
+import {
+  corrigirMojibake,
+  listarDocumentosAdesao,
+  listarEnvelopesComAutorizacaoAssinada,
+} from "@/lib/crm-supabase";
 
 /**
  * UCs assinadas no CRM que ainda precisam de cadastro aqui.
@@ -93,12 +97,25 @@ export async function GET(req: NextRequest) {
       console.error("[GET /api/crm/ucs] documentos:", err);
     }
 
+    // Quais envelopes trazem a autorização de acesso assinada. Só os criados a
+    // partir de 21/08/2026 a têm — nos antigos o chip não aparece, em vez de
+    // aparecer e dar 404.
+    let envelopesComAutorizacao = new Set<string>();
+    try {
+      envelopesComAutorizacao = await listarEnvelopesComAutorizacaoAssinada();
+    } catch (err) {
+      console.error("[GET /api/crm/ucs] autorizações de acesso:", err);
+    }
+
     return NextResponse.json({
       avisoDocumentos,
       ucs: ucs.map((u) => ({
         ...u,
         documentos: docsPorAdesao.get(u.adesaoIdCrm) ?? [],
         jaCadastrada: cadastradaPorCodigo.get(u.codigoUc) ?? null,
+        temAutorizacaoAssinada: u.envelopeIdCrm
+          ? envelopesComAutorizacao.has(u.envelopeIdCrm)
+          : false,
       })),
     });
   } catch (err) {

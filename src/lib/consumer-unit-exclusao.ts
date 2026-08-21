@@ -23,6 +23,7 @@ export async function avaliarExclusaoUc(
       cpflCredential: { select: { id: true } },
       docTermoAdesao: true,
       docProcuracao: true,
+      docAutorizacaoAcesso: true,
       _count: {
         select: {
           // bloqueios — histórico que não pode sumir
@@ -58,8 +59,8 @@ export async function avaliarExclusaoUc(
 
   const avisos: string[] = [];
   if (uc.cpflCredential) avisos.push("credencial da distribuidora será apagada");
-  if (uc.docTermoAdesao || uc.docProcuracao)
-    avisos.push("documentos da adesão (termo/procuração) deixarão de ser acessíveis por esta UC");
+  if (uc.docTermoAdesao || uc.docProcuracao || uc.docAutorizacaoAcesso)
+    avisos.push("documentos da adesão (termo/procuração/autorização de acesso) deixarão de ser acessíveis por esta UC");
   if (c.brasilSolarBeneficiarias > 0)
     avisos.push(
       `${plural(c.brasilSolarBeneficiarias, "beneficiária Brasil Solar ficará", "beneficiárias Brasil Solar ficarão")} sem UC vinculada`,

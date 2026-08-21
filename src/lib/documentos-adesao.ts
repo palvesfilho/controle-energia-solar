@@ -8,7 +8,7 @@
  * arquivo do storage do Gestor, que é o que sobrevive a uma faxina no CRM.
  * Ver [[crm-copia-documentos]].
  *
- * Os seis tipos e a ordem são os mesmos das duas telas de propósito: o operador
+ * Os sete tipos e a ordem são os mesmos das duas telas de propósito: o operador
  * confere a mesma lista antes e depois de cadastrar.
  */
 
@@ -31,6 +31,8 @@ export interface DocumentosDoCadastro {
   docTermoAdesaoNome?: string | null;
   docProcuracao?: string | null;
   docProcuracaoNome?: string | null;
+  docAutorizacaoAcesso?: string | null;
+  docAutorizacaoAcessoNome?: string | null;
   docIdentidade?: string | null;
   docIdentidadeNome?: string | null;
   docCartaoCnpj?: string | null;
@@ -61,13 +63,20 @@ const TIPOS: {
 }[] = [
   { chave: "termo", rotulo: "Termo de Adesão", path: "docTermoAdesao", nome: "docTermoAdesaoNome" },
   { chave: "procuracao", rotulo: "Procuração", path: "docProcuracao", nome: "docProcuracaoNome" },
+  { chave: "autorizacao", rotulo: "Autorização de acesso", path: "docAutorizacaoAcesso", nome: "docAutorizacaoAcessoNome" },
   { chave: "identidade", rotulo: "Identidade", path: "docIdentidade", nome: "docIdentidadeNome" },
   { chave: "cartao_cnpj", rotulo: "Cartão CNPJ", path: "docCartaoCnpj", nome: "docCartaoCnpjNome" },
   { chave: "contrato_social", rotulo: "Contrato social", path: "docContratoSocial", nome: "docContratoSocialNome" },
   { chave: "outros", rotulo: "Outro documento", path: "docOutros", nome: "docOutrosNome" },
 ];
 
-/** As seis fichas, sempre as seis — a vazia mostra o que falta. */
+/**
+ * As sete fichas, sempre as sete — a vazia mostra o que falta.
+ *
+ * A autorização de acesso só existe em adesão assinada a partir de 21/08/2026;
+ * nas anteriores a ficha fica tracejada de propósito, porque essa autorização
+ * realmente precisa ser providenciada à parte.
+ */
 export function fichasDosDocumentosSalvos(reg: DocumentosDoCadastro | null): FichaDocumento[] {
   return TIPOS.map(({ chave, rotulo, path, nome }) => {
     const caminho = reg?.[path];
@@ -81,7 +90,7 @@ export function fichasDosDocumentosSalvos(reg: DocumentosDoCadastro | null): Fic
   });
 }
 
-/** Se algum dos seis veio. Usado para decidir o texto do rodapé, não para esconder o painel. */
+/** Se algum dos sete veio. Usado para decidir o texto do rodapé, não para esconder o painel. */
 export function temDocumentoSalvo(reg: DocumentosDoCadastro | null): boolean {
   return TIPOS.some(({ path }) => typeof reg?.[path] === "string" && reg[path]);
 }

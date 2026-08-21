@@ -37,11 +37,13 @@ interface UcDoCrm {
   concessionaria: string | null;
   assinadoEm: string | null;
   envelopeIdCrm: string | null;
+  /** Envelope assinado a partir de 21/08/2026 leva também a autorização de acesso. */
+  temAutorizacaoAssinada?: boolean;
   documentos: { id: number; categoria: string | null; nomeArquivo: string; tamanho: number | null }[];
   consumidor: { id: string; name: string } | null;
 }
 
-/** As seis fichas, sempre as seis — a vazia mostra o que falta. */
+/** As sete fichas, sempre as sete — a vazia mostra o que falta. */
 function montarFichas(uc: UcDoCrm): FichaDocumento[] {
   const porCategoria = new Map(uc.documentos.map((d) => [d.categoria ?? "", d]));
   const anexo = (cat: string, rotulo: string): FichaDocumento => {
@@ -69,6 +71,16 @@ function montarFichas(uc: UcDoCrm): FichaDocumento[] {
       rotulo: "Procuração",
       detalhe: assinadoEm ? `assinada ${assinadoEm}` : null,
       href: uc.envelopeIdCrm ? `/api/crm/termo/${uc.envelopeIdCrm}?tipo=procuracao` : null,
+    },
+    {
+      chave: "autorizacao",
+      rotulo: "Autorização de acesso",
+      detalhe: uc.temAutorizacaoAssinada && assinadoEm ? `assinada ${assinadoEm}` : null,
+      // Ficha vazia nas adesões anteriores a 21/08/2026: essa autorização ainda
+      // precisa ser providenciada à parte, e é isso que o tracejado diz.
+      href: uc.envelopeIdCrm && uc.temAutorizacaoAssinada
+        ? `/api/crm/termo/${uc.envelopeIdCrm}?tipo=autorizacao`
+        : null,
     },
     anexo("identidade", "Identidade"),
     anexo("cartao_cnpj", "Cartão CNPJ"),

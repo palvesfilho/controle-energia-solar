@@ -359,23 +359,96 @@ export function listarEnvelopesAssinatura(): Promise<EnvelopeAssinaturaCrm[]> {
 }
 
 /**
- * Base64 de UM dos dois PDFs assinados do envelope, para servir sob demanda.
+ * Coluna que o CRM pode ainda não ter.
  *
- * Cuidado com o nome das colunas: `pdf_termo_assinado` é masculino e
- * `pdf_procuracao_assinada` é FEMININO. Pedir a grafia errada devolve erro do
- * PostgREST, não null — o que passaria por "envelope sem documento".
+ * A autorização de acesso entrou no envelope do CRM em 21/08/2026 (migration 097
+ * de lá). Enquanto aquele SQL não roda, pedir a coluna faz o PostgREST responder
+ * HTTP 400 — e, como a leitura do envelope acontece dentro de um `catch` que
+ * devolve null, o efeito seria o Gestor deixar de copiar TAMBÉM o termo e a
+ * procuração, calado. Por isso toda leitura da coluna nova tem plano B.
+ */
+function ehColunaInexistente(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /HTTP 400/.test(msg) && /pdf_autorizacao_assinada|documento_autorizacao_id/.test(msg);
+}
+
+/** Os documentos que o envelope de assinatura do CRM pode guardar. */
+export type TipoPdfAssinadoCrm = "termo" | "procuracao" | "autorizacao";
+
+/**
+ * Nome da coluna de cada PDF assinado em `envelopes_assinatura`.
+ *
+ * Cuidado com o gênero: `pdf_termo_assinado` é masculino, `pdf_procuracao_assinada`
+ * e `pdf_autorizacao_assinada` são FEMININOS. Pedir a grafia errada devolve erro
+ * do PostgREST, não null — o que passaria por "envelope sem documento".
+ */
+export const COLUNA_PDF_ASSINADO: Record<TipoPdfAssinadoCrm, string> = {
+  termo: "pdf_termo_assinado",
+  procuracao: "pdf_procuracao_assinada",
+  autorizacao: "pdf_autorizacao_assinada",
+};
+
+/**
+ * Base64 de UM dos PDFs assinados do envelope, para servir sob demanda.
+ *
+ * A autorização de acesso entrou no envelope do CRM em 21/08/2026: envelope
+ * anterior a isso não tem a coluna preenchida, e nesse caso o retorno é null —
+ * não é erro, é adesão que assinou quando só havia dois documentos.
  */
 export async function buscarPdfAssinado(
   envelopeId: string,
-  tipo: "termo" | "procuracao",
+  tipo: TipoPdfAssinadoCrm,
 ): Promise<string | null> {
-  const coluna = tipo === "termo" ? "pdf_termo_assinado" : "pdf_procuracao_assinada";
-  const linhas = await crmSelect<Record<string, string | null>>(
-    "envelopes_assinatura",
-    coluna,
-    { id: `eq.${envelopeId}` },
-  );
-  return linhas[0]?.[coluna] ?? null;
+  const coluna = COLUNA_PDF_ASSINADO[tipo];
+  try {
+    const linhas = await crmSelect<Record<string, string | null>>(
+      "envelopes_assinatura",
+      coluna,
+      { id: `eq.${envelopeId}` },
+    );
+    return linhas[0]?.[coluna] ?? null;
+  } catch (err) {
+    if (ehColunaInexistente(err)) return null; // CRM ainda sem a migration 097
+    throw err;
+  }
+}
+
+/**
+ * Este envelope já tem a AUTORIZAÇÃO DE ACESSO assinada guardada?
+ *
+ * Serve para a ficha do painel de documentos não prometer um arquivo que não
+ * existe: adesão assinada antes de 21/08/2026 tem envelope de dois documentos e
+ * nunca vai ter o terceiro. Pergunta só pelo `id` — o base64 do PDF não vem.
+ */
+export async function envelopeTemAutorizacaoAssinada(envelopeId: string): Promise<boolean> {
+  try {
+    const linhas = await crmSelect<{ id: string }>("envelopes_assinatura", "id", {
+      id: `eq.${envelopeId}`,
+      pdf_autorizacao_assinada: "not.is.null",
+    });
+    return linhas.length > 0;
+  } catch (err) {
+    if (ehColunaInexistente(err)) return false; // CRM ainda sem a migration 097
+    throw err;
+  }
+}
+
+/**
+ * Ids dos envelopes que JÁ têm a autorização de acesso assinada guardada.
+ *
+ * Uma consulta só para a fila inteira, trazendo apenas o `id` — perguntar
+ * envelope por envelope seriam dezenas de idas ao CRM para desenhar um chip.
+ */
+export async function listarEnvelopesComAutorizacaoAssinada(): Promise<Set<string>> {
+  try {
+    const linhas = await crmSelect<{ id: string }>("envelopes_assinatura", "id", {
+      pdf_autorizacao_assinada: "not.is.null",
+    });
+    return new Set(linhas.map((l) => l.id));
+  } catch (err) {
+    if (ehColunaInexistente(err)) return new Set(); // CRM ainda sem a migration 097
+    throw err;
+  }
 }
 
 /**
@@ -421,25 +494,35 @@ export async function buscarEnvelopeDaAdesao(adesaoId: number): Promise<
   | (EnvelopeAssinaturaCrm & {
       pdf_termo_assinado: string | null;
       pdf_procuracao_assinada: string | null;
+      pdf_autorizacao_assinada: string | null;
       signatario_nome: string | null;
       signatario_cpf: string | null;
     })
   | null
 > {
-  const linhas = await crmSelect<
-    EnvelopeAssinaturaCrm & {
-      pdf_termo_assinado: string | null;
-      pdf_procuracao_assinada: string | null;
-      signatario_nome: string | null;
-      signatario_cpf: string | null;
-    }
-  >(
-    "envelopes_assinatura",
+  type Linha = EnvelopeAssinaturaCrm & {
+    pdf_termo_assinado: string | null;
+    pdf_procuracao_assinada: string | null;
+    pdf_autorizacao_assinada: string | null;
+    signatario_nome: string | null;
+    signatario_cpf: string | null;
+  };
+  const base =
     "id,adesao_id,status,criado_em,assinado_em,signatario_nome,signatario_cpf," +
-      "pdf_termo_assinado,pdf_procuracao_assinada",
-    { adesao_id: `eq.${adesaoId}` },
-  );
-  return linhas[0] ?? null;
+    "pdf_termo_assinado,pdf_procuracao_assinada";
+  const ler = (select: string) =>
+    crmSelect<Linha>("envelopes_assinatura", select, { adesao_id: `eq.${adesaoId}` });
+
+  try {
+    const linhas = await ler(`${base},pdf_autorizacao_assinada`);
+    return linhas[0] ?? null;
+  } catch (err) {
+    if (!ehColunaInexistente(err)) throw err;
+    // CRM sem a migration 097: segue com os dois documentos de sempre.
+    const linhas = await ler(base);
+    const primeira = linhas[0];
+    return primeira ? { ...primeira, pdf_autorizacao_assinada: null } : null;
+  }
 }
 
 /** Um documento específico, para a rota que serve o arquivo. */

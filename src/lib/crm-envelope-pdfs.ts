@@ -52,7 +52,7 @@ async function textoDaPrimeiraPagina(buffer: Buffer): Promise<string> {
     .trim();
 }
 
-export type TipoDocumentoAssinado = "termo" | "procuracao";
+export type TipoDocumentoAssinado = "termo" | "procuracao" | "autorizacao";
 
 /**
  * Classifica pelo cabeçalho da primeira página. Devolve null quando não dá para
@@ -80,10 +80,20 @@ export async function classificarPdfAssinado(
 
   const ehProcuracao = /PROCURA[ÇC][ÃA]O|OUTORGANTE|OUTORGAD[OA]/.test(cabecalho);
   const ehTermo = /TERMO DE ADES[ÃA]O|CONTRATO DE ADES[ÃA]O/.test(cabecalho);
+  // A autorização de acesso entrou no envelope em 21/08/2026. Ela fala em
+  // AUTORIZANTE/AUTORIZADA, vocabulário que nenhum dos outros dois usa — e que
+  // não colide com OUTORGANTE/OUTORGADO da procuração.
+  const ehAutorizacao = /AUTORIZA[ÇC][ÃA]O DE REPRESENTA[ÇC][ÃA]O|AUTORIZANTE|AUTORIZADA:/.test(cabecalho);
 
-  if (ehProcuracao && !ehTermo) return "procuracao";
-  if (ehTermo && !ehProcuracao) return "termo";
-  return null;
+  const achados = [
+    ehTermo ? "termo" : null,
+    ehProcuracao ? "procuracao" : null,
+    ehAutorizacao ? "autorizacao" : null,
+  ].filter(Boolean) as TipoDocumentoAssinado[];
+
+  // Dois padrões batendo no mesmo cabeçalho não identifica nada: chute seria
+  // pior que o defeito conhecido.
+  return achados.length === 1 ? achados[0] : null;
 }
 
 /**
@@ -96,6 +106,18 @@ export async function classificarPdfAssinado(
  *     documento de cada.
  *  3. Se não identifica nenhum, mantém o nome da coluna.
  */
+/**
+ * A separação abaixo cuida só das DUAS colunas antigas. Se o conteúdo disser
+ * "autorização" — arquivo que caiu na coluna errada lá na origem —, ele não vira
+ * termo nem procuração por eliminação: melhor uma ficha vazia do que o documento
+ * errado com o nome certo.
+ */
+function soTermoOuProcuracao(
+  tipo: TipoDocumentoAssinado | null,
+): "termo" | "procuracao" | null {
+  return tipo === "termo" || tipo === "procuracao" ? tipo : null;
+}
+
 export async function separarTermoEProcuracao(entrada: {
   colunaTermo: Buffer | null;
   colunaProcuracao: Buffer | null;
@@ -113,7 +135,8 @@ export async function separarTermoEProcuracao(entrada: {
     const unico = colunaTermo ?? colunaProcuracao;
     if (!unico) return { termo: null, procuracao: null, invertido: false };
     const veioDaColunaTermo = Boolean(colunaTermo);
-    const tipo = (await classificarPdfAssinado(unico)) ?? (veioDaColunaTermo ? "termo" : "procuracao");
+    const tipo = soTermoOuProcuracao(await classificarPdfAssinado(unico))
+      ?? (veioDaColunaTermo ? "termo" : "procuracao");
     return {
       termo: tipo === "termo" ? unico : null,
       procuracao: tipo === "procuracao" ? unico : null,
@@ -121,10 +144,12 @@ export async function separarTermoEProcuracao(entrada: {
     };
   }
 
-  const [tipoA, tipoB] = await Promise.all([
+  const [brutoA, brutoB] = await Promise.all([
     classificarPdfAssinado(colunaTermo),
     classificarPdfAssinado(colunaProcuracao),
   ]);
+  const tipoA = soTermoOuProcuracao(brutoA);
+  const tipoB = soTermoOuProcuracao(brutoB);
 
   // Caso 1 — os dois identificados e distintos.
   if (tipoA && tipoB && tipoA !== tipoB) {

@@ -11,11 +11,16 @@
  * as 11 linhas de `ConsumerUnit` guardam o mesmo caminho. Trocar o documento é
  * uma escrita, não onze.
  *
- * São seis documentos, no máximo um de cada por adesão (conferido: nenhuma
+ * São sete documentos, no máximo um de cada por adesão (conferido: nenhuma
  * adesão do CRM tem dois arquivos da mesma categoria):
- *   termo de adesão e procuração  — PDFs assinados, base64 em `envelopes_assinatura`
+ *   termo de adesão, procuração e
+ *   autorização de acesso         — PDFs assinados, base64 em `envelopes_assinatura`
  *   identidade, cartão CNPJ,
  *   contrato social, outros       — anexos no bucket R2 do CRM
+ *
+ * A autorização de acesso passou a ser assinada junto com os outros dois em
+ * 21/08/2026 (migration 097 do CRM). Adesão assinada antes disso não tem esse
+ * PDF e nunca vai ter — a ficha dela fica vazia, dizendo o que falta.
  *
  * A fatura de energia fica de fora de propósito: o Gestor precisa do NÚMERO da
  * UC, que já vem no termo; o PDF serve à conferência de comissão do vendedor e
@@ -37,6 +42,8 @@ export interface DocumentosCopiados {
   docTermoAdesaoNome?: string;
   docProcuracao?: string;
   docProcuracaoNome?: string;
+  docAutorizacaoAcesso?: string;
+  docAutorizacaoAcessoNome?: string;
   docIdentidade?: string;
   docIdentidadeNome?: string;
   docCartaoCnpj?: string;
@@ -134,7 +141,7 @@ export async function copiarDocumentosDaAdesao(adesaoId: number): Promise<Result
     }
   };
 
-  // 1 e 2 — termo e procuração, do envelope de assinatura.
+  // 1 a 3 — termo, procuração e autorização de acesso, do envelope de assinatura.
   //
   // Qual é qual sai do CONTEÚDO, não do nome da coluna: em 14 das 22 adesões do
   // CRM as duas colunas estão trocadas na origem. Ver crm-envelope-pdfs.ts.
@@ -163,6 +170,15 @@ export async function copiarDocumentosDaAdesao(adesaoId: number): Promise<Result
       await guardar("procuração", "docProcuracao", "docProcuracaoNome",
         `procuracao-${adesaoId}.pdf`, async () => procuracao);
     }
+  }
+
+  // A autorização de acesso não passa pelo desembaralhamento: ela é coluna nova,
+  // escrita depois que o CRM passou a casar documento por NOME de arquivo, e não
+  // por posição na lista — que era o que trocava termo e procuração na origem.
+  if (envelope?.pdf_autorizacao_assinada) {
+    const autorizacao = Buffer.from(envelope.pdf_autorizacao_assinada, "base64");
+    await guardar("autorização de acesso", "docAutorizacaoAcesso", "docAutorizacaoAcessoNome",
+      `autorizacao-acesso-${adesaoId}.pdf`, async () => autorizacao);
   }
 
   // 3 a 6 — anexos do bucket do CRM.
