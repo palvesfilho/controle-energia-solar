@@ -166,6 +166,44 @@ export function extrairDevolPagamentoIndevido(lines: string[]): number | null {
   return total;
 }
 
+/**
+ * Total da fatura pela LINHA DE TOTAIS que a RGE imprime no rodapé do quadro de
+ * tributos: `[TOTAL] [base ICMS] [ICMS] [PIS] [COFINS]` — cinco valores, sem
+ * rótulo nenhum (ex.: `0,00 525,90 89,40 1,79 8,39`).
+ *
+ * Por que existe: quando há débito em aberto, a RGE MASCARA o total no cabeçalho
+ * (`R$ **********`) e o valor real só sairia na página 2 — que em vários PDFs
+ * vem sem camada de texto. Nessas faturas o total ficava `null`, a tela de
+ * Fechamento marcava "Sem valor total" e a UC aparecia com erro mesmo com a
+ * cobrança certa. É o caso das contas zeradas por devolução
+ * (`Conta quitada, em razão de crédito de valor faturado à maior`).
+ *
+ * 🔑 A linha se auto-valida: só aceitamos aquela cuja 3ª coluna bate com o ICMS
+ * que o parser leu por outro caminho (`ICMS 525,90 17,00 89,40`). Sem essa
+ * âncora seria só "uma linha com cinco números".
+ *
+ * ⛔ NÃO tente derivar o total somando as seções (`Total Distribuidora` + CIP +
+ * devoluções): parece certo em algumas faturas e erra em 388 de 1.752 da base.
+ * Esta leitura bate em 1.718 e não diverge em nenhuma.
+ */
+export function extrairTotalPelaLinhaDeTributos(
+  lines: string[],
+  icms: number | null,
+): number | null {
+  if (icms == null) return null;
+  const REGEX_BRL_GLOBAL = /-?\d{1,3}(?:\.\d{3})*,\d{2}-?/g;
+  for (const line of lines) {
+    // Só linhas puramente numéricas — qualquer letra sobrando é outra coisa.
+    if (/[a-zA-Z]/.test(line.replace(/[.,\d\s-]/g, ""))) continue;
+    const nums = (line.match(REGEX_BRL_GLOBAL) ?? [])
+      .map(parseNumBR)
+      .filter((v): v is number => v != null);
+    if (nums.length !== 5) continue;
+    if (Math.abs(nums[2] - icms) < 0.005) return nums[0];
+  }
+  return null;
+}
+
 export interface ParsedFaturaPdf {
   /** Informação suficiente pra achar a UC correspondente. */
   codigoInstalacao: string | null;
@@ -879,6 +917,13 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
       const venc = line.match(/(\d{2}\/\d{2}\/\d{4})/);
       if (venc) vencimento = parseDateBR(venc[1]);
     }
+  }
+
+  // Último recurso: cabeçalho mascarado e sem "Total a Pagar" legível. A linha
+  // de totais do quadro de tributos ainda traz o valor — inclusive R$ 0,00, que
+  // é informação (conta quitada), não ausência dela.
+  if (valorTotal == null) {
+    valorTotal = extrairTotalPelaLinhaDeTributos(lines, icms);
   }
 
   // Energia TOTAL injetada/compensada = geração própria do painel do cliente
