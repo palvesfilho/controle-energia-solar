@@ -28,6 +28,8 @@ export interface UnidadeDisponivel {
   codigoUc: string | null;
   cidade: string | null;
   distribuidora: string | null;
+  /** kWh/mês do cadastro. Peso da UC na sugestão de percentuais. */
+  consumoMedio?: number | null;
   isGeradora?: boolean;
   /** Já vinculada a esta usina no cadastro. */
   daUsina?: boolean;
@@ -138,7 +140,20 @@ export function AdicionarUc({
                 <span className="text-xs text-muted-foreground">
                   {formatCodigoUc(u.codigoUc) ?? "sem código"}
                   {u.cidade ? ` · ${u.cidade}` : ""}
+                  {u.consumoMedio
+                    ? ` · ${u.consumoMedio.toLocaleString("pt-BR", {
+                        maximumFractionDigits: 0,
+                      })} kWh/mês`
+                    : ""}
                 </span>
+
+                {/* Sem consumo médio a UC entra no rateio, mas fica de fora da
+                    sugestão de percentuais — o aviso é aqui, antes de escolher. */}
+                {!u.isGeradora && !u.consumoMedio && (
+                  <span className="text-xs text-amber-600">
+                    Sem consumo médio no cadastro — não entra na sugestão de %
+                  </span>
+                )}
 
                 {/* O aviso que justifica mostrar tudo em vez de filtrar. */}
                 {u.comprometida && (

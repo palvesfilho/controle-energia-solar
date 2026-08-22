@@ -3,8 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AdicionarUc, type UnidadeDisponivel } from "@/components/rateios/adicionar-uc";
 import {
+  SugestaoPercentuais,
+  type ModoSugestao,
+} from "@/components/rateios/sugestao-percentuais";
+import { sugerirPercentuais, sugestaoComoTexto } from "@/lib/rateio-sugestao";
+import {
   Check,
   Clock,
+  Copy,
   History,
   Loader2,
   Mail,
@@ -40,6 +46,16 @@ interface PlantOption {
   id: string;
   name: string;
   location: string | null;
+  /**
+   * Código da UC da própria usina (cadastro da Plant). É o número que o
+   * operador digita no portal da concessionária pra montar o rateio — por isso
+   * anda junto do nome da usina na tela.
+   *
+   * NÃO é o `numeroUsina` (10 dígitos, outro identificador da RGE) e quase
+   * nunca existe como ConsumerUnit: em 22/08/2026, das 29 usinas, 25 têm este
+   * campo e só 2 casam com uma UC cadastrada. A fonte é o cadastro da usina.
+   */
+  unidadeConsumidora: string | null;
 }
 
 interface ConsumerUnitLite {
@@ -48,6 +64,7 @@ interface ConsumerUnitLite {
   codigoUc: string | null;
   cidade: string | null;
   distribuidora: string | null;
+  consumoMedio?: number | null;
   isGeradora?: boolean;
 }
 
@@ -73,7 +90,13 @@ interface Rateio {
 }
 
 interface RateioResponse {
-  plant: { id: string; name: string; regraInstalacao: string | null };
+  plant: {
+    id: string;
+    name: string;
+    regraInstalacao: string | null;
+    /** Geração de contrato — denominador da leitura de ocupação na sugestão. */
+    geracaoMediaMensal: number | null;
+  };
   periodo: { ano: number; mes: number } | null;
   vigente: Rateio | null;
   pendente: Rateio | null;
@@ -82,6 +105,66 @@ interface RateioResponse {
   consumerUnits: ConsumerUnitLite[];
   /** Todas as UCs ativas, para o seletor "+ Adicionar UC". */
   unidadesDisponiveis: UnidadeDisponivel[];
+}
+
+/**
+ * Código da UC da usina no cabeçalho do diálogo, com botão de copiar: é o
+ * número que vai ser digitado no portal da concessionária na hora de cadastrar
+ * o rateio, então precisa estar à mão — não numa outra tela.
+ */
+function UcDaUsina({ codigo }: { codigo: string | null }) {
+  const [copiado, setCopiado] = useState(false);
+  const limpo = codigo?.trim() || null;
+
+  if (!limpo) {
+    return (
+      <p className="text-xs font-medium text-amber-600 dark:text-amber-500">
+        UC da usina não cadastrada — preencha no cadastro da usina.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <span>
+        UC da usina: <b className="text-foreground">{formatCodigoUc(limpo)}</b>
+      </span>
+      <button
+        type="button"
+        // Copia o código CRU (sem pontuação): é o formato que o portal aceita.
+        onClick={() => {
+          navigator.clipboard?.writeText(limpo).then(
+            () => {
+              setCopiado(true);
+              setTimeout(() => setCopiado(false), 1500);
+            },
+            () => {},
+          );
+        }}
+        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted"
+        title="Copiar código sem pontuação"
+      >
+        {copiado ? (
+          <>
+            <Check className="h-3 w-3 text-green-600" />
+            Copiado
+          </>
+        ) : (
+          <>
+            <Copy className="h-3 w-3" />
+            Copiar
+          </>
+        )}
+      </button>
+    </div>
+  );
+}
+
+/** "USINA X — Cidade" + o código da UC da usina, quando cadastrado. */
+function labelUsina(p: PlantOption) {
+  const base = `${p.name}${p.location ? ` — ${p.location}` : ""}`;
+  const uc = formatCodigoUc(p.unidadeConsumidora?.trim() || null);
+  return uc ? `${base} · UC ${uc}` : base;
 }
 
 const MES_LABELS = [
@@ -125,11 +208,25 @@ export default function RateiosPage() {
     setLoadingPlants(true);
     fetch("/api/plants")
       .then((r) => r.json())
-      .then((rows: Array<{ id: string; name: string; location: string | null }>) => {
-        setPlants(
-          rows.map((p) => ({ id: p.id, name: p.name, location: p.location })),
-        );
-      })
+      .then(
+        (
+          rows: Array<{
+            id: string;
+            name: string;
+            location: string | null;
+            unidadeConsumidora: string | null;
+          }>,
+        ) => {
+          setPlants(
+            rows.map((p) => ({
+              id: p.id,
+              name: p.name,
+              location: p.location,
+              unidadeConsumidora: p.unidadeConsumidora ?? null,
+            })),
+          );
+        },
+      )
       .catch(() => {})
       .finally(() => setLoadingPlants(false));
   }, []);
@@ -289,14 +386,14 @@ export default function RateiosPage() {
                       {(value: string) => {
                         const p = plants.find((pl) => pl.id === value);
                         if (!p) return "Escolha uma usina...";
-                        return `${p.name}${p.location ? ` — ${p.location}` : ""}`;
+                        return labelUsina(p);
                       }}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {plants.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
-                        {`${p.name}${p.location ? ` — ${p.location}` : ""}`}
+                        {labelUsina(p)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -533,9 +630,11 @@ export default function RateiosPage() {
           onOpenChange={setCreateOpen}
           plantId={selectedPlantId}
           plantName={selectedPlant?.name ?? ""}
+          plantUc={selectedPlant?.unidadeConsumidora ?? null}
           consumerUnits={data.consumerUnits}
           unidadesDisponiveis={data.unidadesDisponiveis}
           regraInstalacao={data.plant.regraInstalacao}
+          geracaoMediaMensal={data.plant.geracaoMediaMensal}
           onCreated={() => {
             setCreateOpen(false);
             if (selectedPlantId) loadData(selectedPlantId, ano, mes);
@@ -549,9 +648,11 @@ export default function RateiosPage() {
           onOpenChange={(v) => !v && setEditing(null)}
           plantId={selectedPlantId}
           plantName={selectedPlant?.name ?? ""}
+          plantUc={selectedPlant?.unidadeConsumidora ?? null}
           consumerUnits={data.consumerUnits}
           unidadesDisponiveis={data.unidadesDisponiveis}
           rateio={editing}
+          geracaoMediaMensal={data.plant.geracaoMediaMensal}
           onSaved={() => {
             setEditing(null);
             if (selectedPlantId) loadData(selectedPlantId, ano, mes);
@@ -855,18 +956,22 @@ function CreateRateioDialog({
   onOpenChange,
   plantId,
   plantName,
+  plantUc,
   consumerUnits,
   unidadesDisponiveis,
   regraInstalacao,
+  geracaoMediaMensal,
   onCreated,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   plantId: string;
   plantName: string;
+  plantUc: string | null;
   consumerUnits: ConsumerUnitLite[];
   unidadesDisponiveis: UnidadeDisponivel[];
   regraInstalacao: string | null;
+  geracaoMediaMensal: number | null;
   onCreated: () => void;
 }) {
   // UC geradora sempre entra no rateio com 0% fixo, independente da regra:
@@ -878,6 +983,9 @@ function CreateRateioDialog({
   // pelo "+ Adicionar UC" — antes de 22/08/2026 era fixa nas da usina.
   const [linhas, setLinhas] = useState<UnidadeDisponivel[]>([]);
   const [percents, setPercents] = useState<Record<string, string>>({});
+  // "auto" = os percentuais acompanham a sugestão a cada UC que entra ou sai.
+  // Vai para "manual" no primeiro número digitado ou no botão "Editar".
+  const [modoSugestao, setModoSugestao] = useState<ModoSugestao>("auto");
   const [observacao, setObservacao] = useState("");
   const [vigenteAPartirDe, setVigenteAPartirDe] = useState<string>("");
   const [saving, setSaving] = useState(false);
@@ -905,6 +1013,8 @@ function CreateRateioDialog({
         }
       });
       setPercents(initial);
+      // Toda abertura recomeça sugerindo; o efeito abaixo preenche os campos.
+      setModoSugestao("auto");
       setObservacao("");
       // Default = hoje no formato YYYY-MM-DD (input[type=date])
       const hoje = new Date();
@@ -917,6 +1027,25 @@ function CreateRateioDialog({
       setError(null);
     }
   }, [open, unidadesDisponiveis, geradoraFixa0]);
+
+  // Sugestão pelo consumo médio das UCs na tela (valores de contrato).
+  const sugestao = useMemo(
+    () => sugerirPercentuais(linhas, geracaoMediaMensal),
+    [linhas, geracaoMediaMensal],
+  );
+
+  // Em "auto" os percentuais na tela SÃO a sugestão: entrou ou saiu UC, os
+  // números se refazem sozinhos. Nunca sobrescreve depois que o usuário
+  // assumiu o controle — isso é o que separa "auto" de "manual".
+  useEffect(() => {
+    if (!open || modoSugestao !== "auto" || sugestao.indisponivel) return;
+    setPercents(sugestaoComoTexto(sugestao));
+  }, [open, modoSugestao, sugestao]);
+
+  const sugPorId = useMemo(
+    () => new Map(sugestao.linhas.map((l) => [l.id, l])),
+    [sugestao],
+  );
 
   // Soma só o que está NA TELA: percentual de linha removida não pode
   // continuar entrando na conta.
@@ -932,6 +1061,9 @@ function CreateRateioDialog({
   function distribuirIgual() {
     const n = linhas.length;
     if (n === 0) return;
+    // Divisão por cabeça é uma escolha do usuário: sai do modo sugestão, senão
+    // a próxima UC adicionada desfaria o clique sem aviso.
+    setModoSugestao("manual");
     const base = Math.floor((100 / n) * 100) / 100;
     const resto = Math.round((100 - base * n) * 100) / 100;
     const next: Record<string, string> = {};
@@ -1037,6 +1169,7 @@ function CreateRateioDialog({
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Novo rateio — {plantName}</DialogTitle>
+          <UcDaUsina codigo={plantUc} />
         </DialogHeader>
 
         <div className="space-y-4">
@@ -1061,6 +1194,17 @@ function CreateRateioDialog({
               />
             </div>
           </div>
+
+          <SugestaoPercentuais
+            sugestao={sugestao}
+            modo={modoSugestao}
+            totalUcs={linhas.length}
+            onAceitar={() => {
+              setPercents(sugestaoComoTexto(sugestao));
+              setModoSugestao("manual");
+            }}
+            onEditar={() => setModoSugestao("manual")}
+          />
 
           <div className="overflow-x-auto border rounded-lg max-h-[45vh]">
             <table className="w-full text-sm">
@@ -1089,6 +1233,7 @@ function CreateRateioDialog({
                 )}
                 {linhas.map((u) => {
                   const isGeradoraFixa = u.isGeradora && geradoraFixa0;
+                  const sug = sugPorId.get(u.id);
                   return (
                     <tr key={u.id} className="border-b last:border-0">
                       <td className="py-2 px-3">
@@ -1105,9 +1250,21 @@ function CreateRateioDialog({
                             </Badge>
                           )}
                         </div>
-                        {u.isGeradora && (
+                        {u.isGeradora ? (
                           <p className="text-[11px] text-muted-foreground mt-0.5">
                             0% fixo (concessionária compensa no medidor da geradora)
+                          </p>
+                        ) : u.consumoMedio ? (
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            Consumo médio{" "}
+                            {u.consumoMedio.toLocaleString("pt-BR", {
+                              maximumFractionDigits: 0,
+                            })}{" "}
+                            kWh/mês
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-amber-600 mt-0.5">
+                            Sem consumo médio no cadastro — fora da sugestão
                           </p>
                         )}
                         {/* O conflito não impede salvar — mas não passa calado. */}
@@ -1127,12 +1284,29 @@ function CreateRateioDialog({
                           inputMode="decimal"
                           placeholder="0,00"
                           value={percents[u.id] ?? ""}
-                          onChange={(e) =>
-                            setPercents((p) => ({ ...p, [u.id]: e.target.value }))
-                          }
+                          onChange={(e) => {
+                            // Digitou = assumiu o controle. Sem isto, a próxima
+                            // UC adicionada apagaria o número calado.
+                            setModoSugestao("manual");
+                            setPercents((p) => ({ ...p, [u.id]: e.target.value }));
+                          }}
                           disabled={isGeradoraFixa}
                           className="text-right"
                         />
+                        {/* Só aparece depois que o usuário assumiu: em "auto" o
+                            campo já É a sugestão, repetir seria ruído. */}
+                        {!isGeradoraFixa &&
+                          modoSugestao === "manual" &&
+                          sug?.contabilizada && (
+                            <p className="mt-0.5 text-right text-[11px] text-muted-foreground">
+                              sugerido {sug.percentual.toFixed(2).replace(".", ",")}%
+                              {sug.kwhDestinado !== null
+                                ? ` · ${sug.kwhDestinado.toLocaleString("pt-BR", {
+                                    maximumFractionDigits: 0,
+                                  })} kWh`
+                                : ""}
+                            </p>
+                          )}
                       </td>
                       <td className="py-2 pr-3">
                         <Button
@@ -1227,6 +1401,9 @@ function CreateRateioDialog({
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Protocolo da concessionária</DialogTitle>
+          {/* O operador está com o portal da concessionária aberto neste
+              momento — o código da UC segue à mão aqui também. */}
+          <UcDaUsina codigo={plantUc} />
         </DialogHeader>
 
         <div className="space-y-3">
@@ -1291,22 +1468,30 @@ function EditRateioDialog({
   onOpenChange,
   plantId,
   plantName,
+  plantUc,
   consumerUnits,
   unidadesDisponiveis,
   rateio,
+  geracaoMediaMensal,
   onSaved,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   plantId: string;
   plantName: string;
+  plantUc: string | null;
   consumerUnits: ConsumerUnitLite[];
   unidadesDisponiveis: UnidadeDisponivel[];
   rateio: Rateio;
+  geracaoMediaMensal: number | null;
   onSaved: () => void;
 }) {
   const [linhas, setLinhas] = useState<UnidadeDisponivel[]>([]);
   const [percents, setPercents] = useState<Record<string, string>>({});
+  // ⚠️ Aqui começa em "manual", ao contrário do rateio novo: a versão já tem
+  // percentuais gravados e reescrevê-los na abertura trocaria o que está
+  // valendo sem ninguém pedir. A sugestão fica à mão, no botão.
+  const [modoSugestao, setModoSugestao] = useState<ModoSugestao>("manual");
   const [observacao, setObservacao] = useState("");
   const [protocolo, setProtocolo] = useState("");
   const [vigenteAPartirDe, setVigenteAPartirDe] = useState<string>("");
@@ -1341,9 +1526,24 @@ function EditRateioDialog({
       const m = String(d.getMonth() + 1).padStart(2, "0");
       const dd = String(d.getDate()).padStart(2, "0");
       setVigenteAPartirDe(`${y}-${m}-${dd}`);
+      setModoSugestao("manual");
       setError(null);
     }
   }, [open, unidadesDisponiveis, rateio]);
+
+  const sugestao = useMemo(
+    () => sugerirPercentuais(linhas, geracaoMediaMensal),
+    [linhas, geracaoMediaMensal],
+  );
+  const sugPorId = useMemo(
+    () => new Map(sugestao.linhas.map((l) => [l.id, l])),
+    [sugestao],
+  );
+
+  useEffect(() => {
+    if (!open || modoSugestao !== "auto" || sugestao.indisponivel) return;
+    setPercents(sugestaoComoTexto(sugestao));
+  }, [open, modoSugestao, sugestao]);
 
   const soma = useMemo(() => {
     return linhas.reduce((s, u) => {
@@ -1431,6 +1631,7 @@ function EditRateioDialog({
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Editar rateio — {plantName}</DialogTitle>
+          <UcDaUsina codigo={plantUc} />
         </DialogHeader>
 
         <div className="space-y-4">
@@ -1450,6 +1651,17 @@ function EditRateioDialog({
               onAdicionar={adicionar}
             />
           </div>
+
+          <SugestaoPercentuais
+            sugestao={sugestao}
+            modo={modoSugestao}
+            totalUcs={linhas.length}
+            onAceitar={() => {
+              setPercents(sugestaoComoTexto(sugestao));
+              setModoSugestao("auto");
+            }}
+            onEditar={() => setModoSugestao("manual")}
+          />
 
           <div className="overflow-x-auto border rounded-lg max-h-[45vh]">
             <table className="w-full text-sm">
@@ -1476,7 +1688,9 @@ function EditRateioDialog({
                     </td>
                   </tr>
                 )}
-                {linhas.map((u) => (
+                {linhas.map((u) => {
+                  const sug = sugPorId.get(u.id);
+                  return (
                   <tr key={u.id} className="border-b last:border-0">
                     <td className="py-2 px-3">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -1492,6 +1706,20 @@ function EditRateioDialog({
                           </Badge>
                         )}
                       </div>
+                      {!u.isGeradora &&
+                        (u.consumoMedio ? (
+                          <p className="mt-0.5 text-[11px] text-muted-foreground">
+                            Consumo médio{" "}
+                            {u.consumoMedio.toLocaleString("pt-BR", {
+                              maximumFractionDigits: 0,
+                            })}{" "}
+                            kWh/mês
+                          </p>
+                        ) : (
+                          <p className="mt-0.5 text-[11px] text-amber-600">
+                            Sem consumo médio no cadastro — fora da sugestão
+                          </p>
+                        ))}
                       {u.comprometida && (
                         <p className="mt-0.5 text-[11px] font-medium text-red-600">
                           Já recebe {u.comprometida.percentual.toFixed(2).replace(".", ",")}% do
@@ -1507,11 +1735,22 @@ function EditRateioDialog({
                         inputMode="decimal"
                         placeholder="0,00"
                         value={percents[u.id] ?? ""}
-                        onChange={(e) =>
-                          setPercents((p) => ({ ...p, [u.id]: e.target.value }))
-                        }
+                        onChange={(e) => {
+                          setModoSugestao("manual");
+                          setPercents((p) => ({ ...p, [u.id]: e.target.value }));
+                        }}
                         className="text-right"
                       />
+                      {modoSugestao === "manual" && sug?.contabilizada && (
+                        <p className="mt-0.5 text-right text-[11px] text-muted-foreground">
+                          sugerido {sug.percentual.toFixed(2).replace(".", ",")}%
+                          {sug.kwhDestinado !== null
+                            ? ` · ${sug.kwhDestinado.toLocaleString("pt-BR", {
+                                maximumFractionDigits: 0,
+                              })} kWh`
+                            : ""}
+                        </p>
+                      )}
                     </td>
                     <td className="py-2 pr-3">
                       <Button
@@ -1525,7 +1764,8 @@ function EditRateioDialog({
                       </Button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

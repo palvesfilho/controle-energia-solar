@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "cross-env NODE_OPTIONS=--use-system-ca next dev --webpack",
-    "build": "npx tsx scripts/verifica-origem-uc.ts && next build",
+    "build": "npx tsx scripts/verifica-origem-uc.ts && npx tsx scripts/verifica-rateio-sugestao.ts && next build",
     "start": "next start",
     "lint": "eslint",
     "db:migrate": "prisma migrate dev",

@@ -88,6 +88,8 @@ export async function GET(
       unidadeConsumidora: true,
       codigoCliente: true,
       regraInstalacao: true,
+      // Denominador da sugestão de percentuais: geração de CONTRATO.
+      geracaoMediaMensal: true,
     },
   });
   if (!plant) {
@@ -125,6 +127,7 @@ export async function GET(
         codigoUc: true,
         cidade: true,
         distribuidora: true,
+        consumoMedio: true,
       },
       orderBy: { nome: "asc" },
     }),
@@ -190,6 +193,8 @@ export async function GET(
         codigoUc: true,
         cidade: true,
         distribuidora: true,
+        // kWh/mês do cadastro — peso de cada UC na sugestão de percentuais.
+        consumoMedio: true,
         plantId: true,
         plant: { select: { id: true, name: true } },
       },
@@ -231,6 +236,7 @@ export async function GET(
     codigoUc: u.codigoUc,
     cidade: u.cidade,
     distribuidora: u.distribuidora,
+    consumoMedio: u.consumoMedio,
     isGeradora: !!u.codigoUc && codigosGeradora.has(u.codigoUc),
     /** Já está vinculada a ESTA usina no cadastro. */
     daUsina: u.plantId === plantId,
@@ -245,6 +251,7 @@ export async function GET(
       id: plant.id,
       name: plant.name,
       regraInstalacao: plant.regraInstalacao,
+      geracaoMediaMensal: plant.geracaoMediaMensal,
     },
     periodo: temPeriodo ? { ano, mes } : null,
     vigente: vigente ? serialize(vigente, compensadoByUc) : null,
