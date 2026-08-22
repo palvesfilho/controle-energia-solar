@@ -10,6 +10,7 @@ import {
   Download,
   FileCheck2,
   FileDown,
+  ImagePlus,
   Loader2,
   Lock,
   LockOpen,
@@ -173,6 +174,10 @@ export default function ListaMateriaisClient({ obraId }: { obraId: string }) {
     assinaturaRetirouData: null,
     observacoesSeparacao: "",
   });
+  // Dois inputs de propósito: "capture" abre a câmera direto, mas o navegador
+  // devolve UMA foto só e ignora o "multiple" — quem já fotografou tudo antes
+  // precisa do caminho da galeria.
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const form = useForm<FormValues>({
@@ -469,7 +474,9 @@ export default function ListaMateriaisClient({ obraId }: { obraId: string }) {
       toast.error("Erro ao anexar foto", { description: (e as Error).message });
     } finally {
       setUploading(false);
+      // Zerar o value permite re-enviar o mesmo arquivo logo em seguida
       if (fileInputRef.current) fileInputRef.current.value = "";
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
     }
   }
 
@@ -965,30 +972,48 @@ export default function ListaMateriaisClient({ obraId }: { obraId: string }) {
                   {fotos.length > 0 ? `(${fotos.length})` : ""}
                 </span>
                 {separavel && (
-                  <>
+                  <div className="flex gap-2">
+                    <input
+                      ref={cameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => enviarFotos(e.target.files)}
+                      className="hidden"
+                    />
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      capture="environment"
+                      accept="image/*"
                       multiple
                       onChange={(e) => enviarFotos(e.target.files)}
                       className="hidden"
                     />
                     <button
                       type="button"
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={() => cameraInputRef.current?.click()}
                       disabled={uploading}
                       className="inline-flex h-8 items-center gap-1 rounded-md border px-2 text-xs hover:bg-muted disabled:opacity-50"
+                      title="Abre a câmera do celular e envia a foto direto"
                     >
                       {uploading ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <Camera className="h-3.5 w-3.5" />
                       )}
-                      Adicionar fotos
+                      Tirar foto
                     </button>
-                  </>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="inline-flex h-8 items-center gap-1 rounded-md border px-2 text-xs hover:bg-muted disabled:opacity-50"
+                      title="Escolhe uma ou várias fotos já tiradas"
+                    >
+                      <ImagePlus className="h-3.5 w-3.5" />
+                      Da galeria
+                    </button>
+                  </div>
                 )}
               </div>
               {fotos.length === 0 ? (

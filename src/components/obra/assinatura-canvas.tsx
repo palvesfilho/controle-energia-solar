@@ -9,6 +9,17 @@ import { Eraser } from "lucide-react";
  *
  * Emite PNG data URL em `onChange` só quando o traço termina, não a cada
  * movimento: assinar não pode disparar um PUT por pixel.
+ *
+ * ⚠️ O traço saía DESLOCADO PARA A DIREITA, e o desvio crescia conforme se
+ * escrevia. Causa: o bitmap do canvas era dimensionado uma vez no mount e só
+ * re-sincronizava no `resize` da janela. Qualquer outra mudança de largura da
+ * caixa (layout assentando, barra de rolagem, reflow do grid) deixava o bitmap
+ * menor que o box CSS — e o navegador ESTICA o bitmap para preencher, então o
+ * erro é proporcional a x. Daí a sensação de a assinatura "fugir" para a
+ * direita. Duas defesas agora:
+ *   1. ResizeObserver no próprio canvas, não na janela;
+ *   2. `pos()` converte a coordenada dividindo o descompasso, então o traço
+ *      cai sob o cursor mesmo num instante em que os dois estejam fora de sync.
  */
 export function AssinaturaCanvas({
   titulo,
@@ -29,14 +40,13 @@ export function AssinaturaCanvas({
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const desenhando = useRef(false);
-  // O que o canvas já está mostrando. Sem isso, o `valor` que volta do nosso
-  // próprio onChange redesenharia por cima — e o redesenho é assíncrono
-  // (img.onload), o que pisca e pode comer o traço seguinte.
-  const noCanvas = useRef<string | null>(valor);
+  // O que o canvas deve estar mostrando. Lido pelo ResizeObserver, que não tem
+  // como enxergar o state mais recente por closure.
+  const imagemRef = useRef<string | null>(valor);
 
   const [imagem, setImagem] = useState<string | null>(valor);
   const [assinado, setAssinado] = useState(!!valor);
-  // Rastreadores para ajustar estado quando a prop muda, durante o render
+  // Rastreadores para ajustar estado quando a prop muda durante o render
   // (padrão do React) em vez de num efeito, que cascatearia re-render.
   const [valorAnterior, setValorAnterior] = useState<string | null>(valor);
   const [emitido, setEmitido] = useState<string | null>(null);
@@ -51,46 +61,66 @@ export function AssinaturaCanvas({
     }
   }
 
-  // Redimensiona para a densidade da tela e desenha a assinatura recebida.
-  const preparar = useCallback((src: string | null) => {
+  // Casa o bitmap com o tamanho exibido e repõe a assinatura guardada.
+  const desenhar = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    if (rect.width === 0) return;
+    const largura = canvas.clientWidth;
+    const altura = canvas.clientHeight;
+    if (!largura || !altura) return;
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.round(rect.width * dpr);
-    canvas.height = Math.round(rect.height * dpr);
+    canvas.width = Math.round(largura * dpr);
+    canvas.height = Math.round(altura * dpr);
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, rect.width, rect.height);
+    ctx.clearRect(0, 0, largura, altura);
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.strokeStyle = "#111827";
+    const src = imagemRef.current;
     if (src) {
       const img = new Image();
-      img.onload = () => ctx.drawImage(img, 0, 0, rect.width, rect.height);
+      img.onload = () => ctx.drawImage(img, 0, 0, largura, altura);
       img.src = src;
     }
   }, []);
 
+  // Observa o canvas, não a janela: a caixa muda de largura por reflow, por
+  // barra de rolagem e por troca de breakpoint, e nenhum desses dispara
+  // `window.resize`. A primeira notificação chega logo no observe(), então
+  // este efeito também cobre o desenho inicial.
   useEffect(() => {
-    if (noCanvas.current === imagem && canvasRef.current?.width) return;
-    noCanvas.current = imagem;
-    preparar(imagem);
-  }, [imagem, preparar]);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ro = new ResizeObserver(() => {
+      // Redesenhar no meio de um traço apagaria o que ainda não virou PNG.
+      if (desenhando.current) return;
+      desenhar();
+    });
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, [desenhar]);
 
   useEffect(() => {
-    const redesenhar = () => preparar(imagem);
-    window.addEventListener("resize", redesenhar);
-    return () => window.removeEventListener("resize", redesenhar);
-  }, [imagem, preparar]);
+    if (imagemRef.current === imagem) return;
+    imagemRef.current = imagem;
+    desenhar();
+  }, [imagem, desenhar]);
 
   function pos(e: React.PointerEvent<HTMLCanvasElement>) {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const dpr = window.devicePixelRatio || 1;
+    // Se o bitmap estiver fora de sync com o box exibido, o navegador o estica.
+    // Dividir esse fator aqui mantém a tinta sob o cursor de qualquer jeito.
+    const escalaX = rect.width ? canvas.width / (dpr * rect.width) : 1;
+    const escalaY = rect.height ? canvas.height / (dpr * rect.height) : 1;
+    return {
+      x: (e.clientX - rect.left) * escalaX,
+      y: (e.clientY - rect.top) * escalaY,
+    };
   }
 
   function onDown(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -124,7 +154,7 @@ export function AssinaturaCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dataUrl = canvas.toDataURL("image/png");
-    noCanvas.current = dataUrl;
+    imagemRef.current = dataUrl;
     setImagem(dataUrl);
     setEmitido(dataUrl);
     onChange(dataUrl);
@@ -134,9 +164,8 @@ export function AssinaturaCanvas({
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    ctx.clearRect(0, 0, rect.width, rect.height);
-    noCanvas.current = null;
+    ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+    imagemRef.current = null;
     setImagem(null);
     setEmitido(null);
     setAssinado(false);
@@ -171,7 +200,14 @@ export function AssinaturaCanvas({
         className="mb-2 w-full rounded-md border bg-background px-2 py-1.5 text-sm disabled:opacity-60"
       />
 
-      <div className="relative">
+      {/* A borda fica no wrapper, não no canvas: borda no próprio canvas entra
+          no getBoundingClientRect mas não na área de desenho, e vira um
+          deslocamento fixo do traço. */}
+      <div
+        className={`relative overflow-hidden rounded-md border border-dashed bg-white ${
+          disabled ? "opacity-70" : ""
+        }`}
+      >
         <canvas
           ref={canvasRef}
           onPointerDown={onDown}
@@ -179,8 +215,8 @@ export function AssinaturaCanvas({
           onPointerUp={onUp}
           onPointerLeave={onUp}
           onPointerCancel={onUp}
-          className={`h-32 w-full rounded-md border border-dashed bg-white ${
-            disabled ? "cursor-not-allowed opacity-70" : "cursor-crosshair"
+          className={`block h-32 w-full ${
+            disabled ? "cursor-not-allowed" : "cursor-crosshair"
           }`}
           style={{ touchAction: "none" }}
         />
