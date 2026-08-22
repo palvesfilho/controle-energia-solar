@@ -1928,6 +1928,10 @@ model RateioVersion {
   plantId          String    @map("plant_id")
   status           String    @default("PENDENTE_ACEITE") // VIGENTE | PENDENTE_ACEITE | REJEITADO | SUBSTITUIDO
   observacao       String?
+  // Nº de protocolo devolvido pela concessionária quando o rateio é registrado
+  // no portal dela. Obrigatório na criação pela tela (22/08/2026); nullable no
+  // banco porque os rateios anteriores a essa data nasceram sem ele.
+  protocolo        String?
   // Primeiro mês de referência em que este rateio passa a valer (compara com ConsumerBill.mesReferencia/anoReferencia).
   // Permite criar rateios retroativos e agendar entrada em vigor no futuro.
   vigenteAPartirDe DateTime  @default(now()) @map("vigente_a_partir_de")

@@ -62,6 +62,8 @@ interface Rateio {
   id: string;
   status: string;
   observacao: string | null;
+  /** Nº de protocolo da concessionária. Null nos rateios criados antes de 22/08/2026. */
+  protocolo: string | null;
   vigenteAPartirDe: string;
   criadoEm: string;
   enviadoEm: string | null;
@@ -660,6 +662,19 @@ function RateioTable({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
         {badge}
+        {rateio.protocolo ? (
+          <span>
+            Protocolo{" "}
+            <b className="text-foreground">{rateio.protocolo}</b>
+          </span>
+        ) : (
+          // Ausência de protocolo não passa calada: é rateio antigo (antes de
+          // 22/08/2026) ou criado fora da tela. Aparece pra alguém preencher
+          // pela edição.
+          <span className="font-medium text-amber-600 dark:text-amber-500">
+            Sem protocolo
+          </span>
+        )}
         <span>
           Vigente desde{" "}
           <b className="text-foreground">
@@ -867,6 +882,10 @@ function CreateRateioDialog({
   const [vigenteAPartirDe, setVigenteAPartirDe] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Segunda janela (pequena): o nº de protocolo que a concessionária devolve
+  // ao registrar o rateio no portal dela. Só depois dela o POST sai.
+  const [protocoloOpen, setProtocoloOpen] = useState(false);
+  const [protocolo, setProtocolo] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -893,6 +912,8 @@ function CreateRateioDialog({
       const m = String(hoje.getMonth() + 1).padStart(2, "0");
       const d = String(hoje.getDate()).padStart(2, "0");
       setVigenteAPartirDe(`${y}-${m}-${d}`);
+      setProtocolo("");
+      setProtocoloOpen(false);
       setError(null);
     }
   }, [open, unidadesDisponiveis, geradoraFixa0]);
@@ -935,13 +956,11 @@ function CreateRateioDialog({
     });
   }
 
-  async function handleSubmit() {
-    setError(null);
-
+  function montarItems() {
     const geradoraIds = new Set(
       linhas.filter((u) => u.isGeradora).map((u) => u.id),
     );
-    const items = linhas
+    return linhas
       .map((u) => {
         const percentual = parseFloat((percents[u.id] ?? "").replace(",", "."));
         return { consumerUnitId: u.id, percentual };
@@ -952,8 +971,17 @@ function CreateRateioDialog({
           Number.isFinite(it.percentual) &&
           (it.percentual > 0 || geradoraIds.has(it.consumerUnitId)),
       );
+  }
 
-    if (items.length === 0) {
+  /**
+   * "Criar rateio" NÃO salva direto: confere o que dá pra conferir aqui e só
+   * então abre a janela do protocolo. Assim o usuário não descobre um erro de
+   * percentual depois de já ter digitado o número da concessionária.
+   */
+  function abrirProtocolo() {
+    setError(null);
+
+    if (montarItems().length === 0) {
       setError("Informe o percentual de pelo menos uma UC.");
       return;
     }
@@ -963,6 +991,18 @@ function CreateRateioDialog({
     }
     if (!vigenteAPartirDe) {
       setError("Informe a data de início de vigência.");
+      return;
+    }
+    setProtocoloOpen(true);
+  }
+
+  async function handleSubmit() {
+    setError(null);
+
+    const items = montarItems();
+    const protocoloLimpo = protocolo.trim();
+    if (!protocoloLimpo) {
+      setError("Informe o número de protocolo gerado pela concessionária.");
       return;
     }
 
@@ -975,13 +1015,16 @@ function CreateRateioDialog({
           items,
           observacao: observacao.trim() || undefined,
           vigenteAPartirDe,
+          protocolo: protocoloLimpo,
         }),
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
+        // Erro volta pra janela do protocolo, que é onde o usuário está.
         setError(err.error || "Falha ao criar rateio.");
         return;
       }
+      setProtocoloOpen(false);
       onCreated();
     } finally {
       setSaving(false);
@@ -989,6 +1032,7 @@ function CreateRateioDialog({
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
@@ -1146,7 +1190,10 @@ function CreateRateioDialog({
             />
           </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {/* Enquanto a janela do protocolo está aberta, o erro aparece lá. */}
+          {error && !protocoloOpen && (
+            <p className="text-sm text-destructive">{error}</p>
+          )}
         </div>
 
         <DialogFooter>
@@ -1158,19 +1205,84 @@ function CreateRateioDialog({
           >
             Cancelar
           </Button>
-          <Button type="button" onClick={handleSubmit} disabled={saving || !somaOk}>
+          <Button type="button" onClick={abrirProtocolo} disabled={saving || !somaOk}>
+            Criar rateio
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* Janela pequena: nº de protocolo da concessionária. É o último passo —
+        o rateio só é criado depois dele. */}
+    <Dialog
+      open={protocoloOpen}
+      onOpenChange={(v) => {
+        // Não deixa fechar no meio do POST — senão o usuário não vê o
+        // resultado e não sabe se o rateio entrou.
+        if (saving) return;
+        setProtocoloOpen(v);
+        if (!v) setError(null);
+      }}
+    >
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Protocolo da concessionária</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Informe o número de protocolo gerado pela companhia de energia ao
+            registrar este rateio. Ele fica gravado junto do rateio.
+          </p>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="protocolo-novo">Número do protocolo</Label>
+            <Input
+              id="protocolo-novo"
+              autoFocus
+              value={protocolo}
+              onChange={(e) => setProtocolo(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && protocolo.trim() && !saving) {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
+              placeholder="Ex.: 2026081234567"
+              maxLength={60}
+            />
+          </div>
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setProtocoloOpen(false)}
+            disabled={saving}
+          >
+            Voltar
+          </Button>
+          <Button
+            type="button"
+            onClick={handleSubmit}
+            disabled={saving || !protocolo.trim()}
+          >
             {saving ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Salvando...
               </>
             ) : (
-              "Criar rateio"
+              "Confirmar e criar"
             )}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
 
@@ -1196,6 +1308,7 @@ function EditRateioDialog({
   const [linhas, setLinhas] = useState<UnidadeDisponivel[]>([]);
   const [percents, setPercents] = useState<Record<string, string>>({});
   const [observacao, setObservacao] = useState("");
+  const [protocolo, setProtocolo] = useState("");
   const [vigenteAPartirDe, setVigenteAPartirDe] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1222,6 +1335,7 @@ function EditRateioDialog({
       });
       setPercents(initial);
       setObservacao(rateio.observacao ?? "");
+      setProtocolo(rateio.protocolo ?? "");
       const d = new Date(rateio.vigenteAPartirDe);
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -1282,6 +1396,12 @@ function EditRateioDialog({
       setError("Informe a data de vigência.");
       return;
     }
+    // Rateio que já tinha protocolo não pode perdê-lo. O que nasceu sem
+    // (antes de 22/08/2026) segue editável sem protocolo.
+    if (rateio.protocolo && !protocolo.trim()) {
+      setError("Informe o número de protocolo gerado pela concessionária.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -1291,6 +1411,7 @@ function EditRateioDialog({
         body: JSON.stringify({
           items,
           observacao: observacao.trim() || null,
+          protocolo: protocolo.trim() || null,
           vigenteAPartirDe,
         }),
       });
@@ -1429,6 +1550,23 @@ function EditRateioDialog({
               onChange={(e) => setVigenteAPartirDe(e.target.value)}
               className="max-w-[200px]"
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="protocolo-edit">Protocolo da concessionária</Label>
+            <Input
+              id="protocolo-edit"
+              value={protocolo}
+              onChange={(e) => setProtocolo(e.target.value)}
+              placeholder="Ex.: 2026081234567"
+              maxLength={60}
+              className="max-w-[260px]"
+            />
+            {!rateio.protocolo && (
+              <p className="text-xs text-amber-600 dark:text-amber-500">
+                Este rateio foi criado sem protocolo. Preencha se tiver o número.
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">

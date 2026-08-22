@@ -16,8 +16,11 @@ import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
  * Se a edição precisar refletir nos payables, rode `apply-cap-payables.ts --apply`
  * e (futuramente) um script de recálculo de valorBruto.
  *
- * Body: { items: [{consumerUnitId, percentual}], observacao?, vigenteAPartirDe? }
- * Validações idênticas ao POST.
+ * Body: { items: [{consumerUnitId, percentual}], observacao?, vigenteAPartirDe?, protocolo? }
+ * Validações idênticas ao POST, com uma diferença no protocolo: aqui ele só é
+ * exigido se o rateio JÁ tem um (não dá pra apagar o rastro da concessionária).
+ * Rateio criado antes de 22/08/2026 nasceu sem protocolo e continua editável
+ * sem ele — senão corrigir um percentual antigo ficaria travado.
  */
 export async function PATCH(
   req: NextRequest,
@@ -32,7 +35,7 @@ export async function PATCH(
 
   const version = await prisma.rateioVersion.findUnique({
     where: { id: versionId },
-    select: { id: true, plantId: true, status: true },
+    select: { id: true, plantId: true, status: true, protocolo: true },
   });
   if (!version || version.plantId !== plantId) {
     return NextResponse.json(
@@ -45,6 +48,7 @@ export async function PATCH(
     items?: Array<{ consumerUnitId?: string; percentual?: number }>;
     observacao?: string | null;
     vigenteAPartirDe?: string;
+    protocolo?: string | null;
   } | null;
 
   if (!body || !Array.isArray(body.items) || body.items.length === 0) {
@@ -52,6 +56,23 @@ export async function PATCH(
       { error: "Envie pelo menos um item com consumerUnitId e percentual" },
       { status: 400 },
     );
+  }
+
+  let protocolo: string | undefined;
+  if (body.protocolo !== undefined) {
+    protocolo = typeof body.protocolo === "string" ? body.protocolo.trim() : "";
+    if (!protocolo && version.protocolo) {
+      return NextResponse.json(
+        { error: "Informe o número de protocolo gerado pela concessionária" },
+        { status: 400 },
+      );
+    }
+    if (protocolo.length > 60) {
+      return NextResponse.json(
+        { error: "Número de protocolo muito longo (máximo 60 caracteres)" },
+        { status: 400 },
+      );
+    }
   }
 
   const items = body.items
@@ -154,6 +175,7 @@ export async function PATCH(
           observacao: body.observacao?.trim() || null,
         }),
         ...(vigenteAPartirDe !== undefined && { vigenteAPartirDe }),
+        ...(protocolo !== undefined && { protocolo: protocolo || null }),
       },
     }),
   ]);

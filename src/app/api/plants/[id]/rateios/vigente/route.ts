@@ -44,6 +44,7 @@ function serialize(
     id: r.id,
     status: r.status,
     observacao: r.observacao,
+    protocolo: r.protocolo,
     vigenteAPartirDe: r.vigenteAPartirDe,
     criadoEm: r.criadoEm,
     enviadoEm: r.enviadoEm,

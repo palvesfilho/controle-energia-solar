@@ -16,6 +16,7 @@ import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
  *   items: [{ consumerUnitId: string, percentual: number }],
  *   observacao?: string,
  *   vigenteAPartirDe?: string, // ISO date. Default = hoje.
+ *   protocolo: string,        // nº de protocolo da concessionária — OBRIGATÓRIO
  * }
  *
  * Validações:
@@ -23,6 +24,8 @@ import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
  *  - Nenhuma UC duplicada
  *  - Toda UC existe e está ativa (NÃO precisa ter plantId desta usina)
  *  - Soma dos percentuais = 100 (tolerância 0,01)
+ *  - protocolo preenchido (o rateio só existe na concessionária com protocolo;
+ *    sem ele ninguém consegue cobrar o registro depois)
  */
 export async function POST(
   req: NextRequest,
@@ -39,11 +42,28 @@ export async function POST(
     items?: Array<{ consumerUnitId?: string; percentual?: number }>;
     observacao?: string;
     vigenteAPartirDe?: string;
+    protocolo?: string;
   } | null;
 
   if (!body || !Array.isArray(body.items) || body.items.length === 0) {
     return NextResponse.json(
       { error: "Envie pelo menos um item com consumerUnitId e percentual" },
+      { status: 400 },
+    );
+  }
+
+  // Protocolo da concessionária é obrigatório: é o que prova que o rateio foi
+  // registrado no portal dela. A tela pede numa janela antes de salvar.
+  const protocolo = typeof body.protocolo === "string" ? body.protocolo.trim() : "";
+  if (!protocolo) {
+    return NextResponse.json(
+      { error: "Informe o número de protocolo gerado pela concessionária" },
+      { status: 400 },
+    );
+  }
+  if (protocolo.length > 60) {
+    return NextResponse.json(
+      { error: "Número de protocolo muito longo (máximo 60 caracteres)" },
       { status: 400 },
     );
   }
@@ -160,6 +180,7 @@ export async function POST(
       plantId,
       status: "PENDENTE_ACEITE",
       observacao: body.observacao?.trim() || null,
+      protocolo,
       vigenteAPartirDe,
       criadoPorUserId: session.user.id,
       items: {
@@ -191,6 +212,7 @@ export async function POST(
       id: created.id,
       status: created.status,
       observacao: created.observacao,
+      protocolo: created.protocolo,
       vigenteAPartirDe: created.vigenteAPartirDe,
       criadoEm: created.criadoEm,
       items: created.items.map((it) => ({
