@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { isAdminRole } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
+import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
 
 /**
  * GET /api/plants/[id]/rateios/vigente — retorna a versão VIGENTE do rateio
@@ -116,7 +117,7 @@ export async function GET(
       take: 20,
     }),
     prisma.consumerUnit.findMany({
-      where: { plantId, active: true },
+      where: { plantId, active: true, ...SEM_UC_BRASIL_SOLAR },
       select: {
         id: true,
         nome: true,
@@ -177,7 +178,11 @@ export async function GET(
   // duas vezes sem ninguém ver ([[feedback_anomalias_sinalizar]]).
   const [todasUnidades, itensDeOutrasUsinas] = await Promise.all([
     prisma.consumerUnit.findMany({
-      where: { active: true },
+      // ⛔ SEM as UCs do módulo Brasil Solar. Elas têm gestão própria e NUNCA
+      // entram em rateio da Associação. Em 22/08/2026 este seletor subiu sem o
+      // filtro e despejou as 39 UCs BS no meio das 147 — a 4ª vez que UC da
+      // rede Brasil Solar aparece numa lista de cliente de desconto.
+      where: { active: true, ...SEM_UC_BRASIL_SOLAR },
       select: {
         id: true,
         nome: true,

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 import { normalizeCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
 import { SELECT_BILL_FASE, calcularFases } from "@/lib/uc-implantacao";
+import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -51,12 +52,14 @@ export async function GET(req: NextRequest) {
           { plant: { usinaDeInvestidor: true } },
         ],
       },
-      {
-        origem: { notIn: ["BRASIL_SOLAR_TITULAR", "BRASIL_SOLAR_BENEFICIARIA"] },
-      },
+      // A regra mora em `@/lib/uc-origem`. Antes era uma cópia literal do
+      // array aqui — cópia é o que faz a regra divergir sem ninguém ver.
+      SEM_UC_BRASIL_SOLAR,
     ];
   }
 
+  // origem-ok: o filtro está no `where.AND` montado logo acima — só cai com
+  // ?showAll=1 ou busca por codigoUc exato, que são pedidos explícitos.
   const units = await prisma.consumerUnit.findMany({
     where,
     include: {

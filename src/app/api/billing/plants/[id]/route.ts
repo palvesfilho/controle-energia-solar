@@ -305,6 +305,7 @@ export async function GET(_req: NextRequest, ctx: RouteCtx) {
     .map((u) => u.consumerUnitId)
     .filter((id): id is string => id != null);
   const todasUcsPlant = ucsIdsValidos.length
+    // origem-ok: ids vem de investorPayable da usina — universo ja fechado no mundo do investidor
     ? await prisma.consumerUnit.findMany({
         where: { id: { in: ucsIdsValidos } },
         select: { id: true, codigoUc: true, nome: true },

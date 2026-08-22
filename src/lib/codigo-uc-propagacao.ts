@@ -130,6 +130,7 @@ export async function propagarCodigosDoProprietario(
   // 🔑 Procura pelos DOIS códigos, nos DOIS campos. Cruzar só por `codigoUc`
   // deixa passar exatamente a ficha que está invertida ou incompleta — foi o
   // que escondeu o caso da Suzana numa auditoria anterior.
+  // origem-ok: troca de codigo da RGE atinge os DOIS mundos; filtrar deixaria UC BS com codigo velho
   const ucs = await prisma.consumerUnit.findMany({
     where: {
       OR: [{ codigoUc: { in: codigos } }, { codigoUcAntigo: { in: codigos } }],

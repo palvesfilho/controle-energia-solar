@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
     // não inventar variações.
     const codigos = [...new Set(ucs.map((u) => u.codigoUc))];
     const jaCadastradas = codigos.length
+      // origem-ok: so responde "este codigo ja esta cadastrado?"; codigo cadastrado como BS tambem ja esta
       ? await prisma.consumerUnit.findMany({
           where: { codigoUc: { in: codigos } },
           // `percentCompensado` vem junto para a tela confrontar o cadastro com

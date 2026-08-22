@@ -164,6 +164,7 @@ async function getProprietarioUcs(
     (c): c is string => !!c,
   );
   if (codigos.length > 0) {
+    // origem-ok: portal do cliente Brasil Solar — as UCs BS sao justamente o assunto aqui
     const titulares = await prisma.consumerUnit.findMany({
       where: {
         OR: [{ codigoUc: { in: codigos } }, { codigoUcAntigo: { in: codigos } }],

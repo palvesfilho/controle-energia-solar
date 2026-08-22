@@ -5,6 +5,8 @@ import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 
+// origem-ok-arquivo: relatorio do modulo Brasil Solar — as UCs BS sao o assunto.
+
 export type RelatorioCellStatus = "ok" | "error" | "missing";
 
 export interface RelatorioCell {

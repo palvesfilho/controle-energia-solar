@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { isAdminRole } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
+import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
 
 /**
  * POST /api/plants/[id]/rateios — cria uma nova versão de rateio para a usina
@@ -124,14 +125,17 @@ export async function POST(
     // O que continua barrado é UC inexistente ou INATIVA — aí é erro, não
     // escolha. Conflito com o rateio de outra usina não é barrado aqui: é
     // mostrado em vermelho na tela e a decisão é de quem monta.
-    where: { active: true, id: { in: ids } },
+    // ⛔ UC do módulo Brasil Solar não entra em rateio da Associação, nem que
+    // o cliente mande o id na mão. A tela é a primeira trava; esta é a que
+    // vale ([[uc-origem]]).
+    where: { active: true, ...SEM_UC_BRASIL_SOLAR, id: { in: ids } },
     select: { id: true },
   });
   if (unitsNaPlant.length !== ids.length) {
     return NextResponse.json(
       {
         error:
-          "Uma ou mais unidades consumidoras não existem ou estão inativas",
+          "Uma ou mais unidades consumidoras não existem, estão inativas ou pertencem ao módulo Brasil Solar",
       },
       { status: 400 },
     );
