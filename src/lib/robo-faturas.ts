@@ -93,6 +93,66 @@ async function pedir(caminho: string, init?: RequestInit): Promise<Response> {
 }
 
 /**
+ * Formato pontuado da UC como o portal da CPFL/RGE a imprime: `1.548.033.001-42`.
+ * O robô extrai a UC ATIVA da página com o padrão `\d{1,3}(?:\.\d{3}){2,3}-\d{2}`
+ * — ou seja, 1 a 3 dígitos, 2 ou 3 grupos de 3, e 2 dígitos de verificação.
+ *
+ * 🔴 POR QUE ISTO EXISTE. O robô compara a UC com a lista `ucs` que mandamos por
+ * IGUALDADE EXATA de string, e usa identidades DIFERENTES conforme a origem:
+ *
+ *   - UC vinda da tela de seleção → casa pela `chave` do rádio (dígitos corridos);
+ *   - UC ATIVA (aquela em que o login já entra) → casa pelo número PONTUADO.
+ *
+ * A UC ativa não aparece na tela de seleção — ela passou a ser lida à parte na
+ * correção de 14/08/2026 do serviço dos robôs. Só que nenhum dos nossos códigos
+ * é pontuado (conferido: 0 de 121 credenciais CPFL), então, sem esta conversão,
+ * pedir justamente a UC ativa de uma conta faz o robô encontrá-la, não casar com
+ * a nossa lista e registrar `>>> Pulando UC ... (fora dos alvos)`. O job termina
+ * "concluído" com ZERO faturas e sem erro nenhum — o pior tipo de falha, a calada.
+ *
+ * Mandar as duas grafias é barato e inofensivo: a comparação é contra um conjunto,
+ * então variante que não casa com nada simplesmente não é usada — e funciona
+ * igual em versões do robô anteriores à correção.
+ */
+export function pontuarCodigoUc(codigo: string): string | null {
+  const digitos = codigo.replace(/\D/g, "");
+  // O padrão do robô cobre de 9 a 14 dígitos (1–3 na frente + 2 ou 3 grupos de 3
+  // + 2 de verificação). Fora dessa faixa não existe grafia pontuada válida.
+  if (digitos.length < 9 || digitos.length > 14) return null;
+
+  const verificador = digitos.slice(-2);
+  const corpo = digitos.slice(0, -2);
+
+  // Agrupa de trás para frente em blocos de 3; o que sobrar na frente vira o
+  // primeiro bloco (1 a 3 dígitos), exatamente como o portal imprime.
+  const blocos: string[] = [];
+  let fim = corpo.length;
+  while (fim > 3) {
+    blocos.unshift(corpo.slice(fim - 3, fim));
+    fim -= 3;
+  }
+  blocos.unshift(corpo.slice(0, fim));
+
+  // 1 bloco de cabeça + 2 ou 3 blocos de 3 é o que o padrão do robô aceita.
+  const grupos = blocos.length - 1;
+  if (grupos < 2 || grupos > 3) return null;
+
+  return `${blocos.join(".")}-${verificador}`;
+}
+
+/**
+ * Todas as grafias conhecidas de um código, para o robô casar de qualquer lado:
+ * a original, a só-dígitos e a pontuada. Sem duplicatas e sem vazios.
+ */
+export function grafiasDoCodigoUc(codigo: string): string[] {
+  const bruto = codigo.trim();
+  if (!bruto) return [];
+  const digitos = bruto.replace(/\D/g, "");
+  const pontuado = pontuarCodigoUc(bruto);
+  return [...new Set([bruto, digitos, pontuado].filter((v): v is string => !!v))];
+}
+
+/**
  * Dispara o download das faturas de UMA unidade consumidora.
  *
  * `codigosUc`: todos os identificadores conhecidos da UC (número novo, código
@@ -107,7 +167,11 @@ export async function baixarFaturasDaUc(params: {
   codigosUc: string[];
   limiteFaturas: number;
 }): Promise<{ jobId: string }> {
-  const codigos = [...new Set(params.codigosUc.filter(Boolean))];
+  // Cada código vai nas suas grafias (corrida e pontuada): o robô casa a UC ativa
+  // pelo número pontuado e as da lista pela chave, sempre por igualdade exata.
+  const codigos = [
+    ...new Set(params.codigosUc.filter(Boolean).flatMap(grafiasDoCodigoUc)),
+  ];
   const resposta = await pedir("/jobs/faturas", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
