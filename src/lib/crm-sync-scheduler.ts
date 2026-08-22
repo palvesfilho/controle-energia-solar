@@ -146,6 +146,17 @@ export async function tickCrmSync(agora: number = Date.now()): Promise<Resultado
 
     const resultado = await sincronizarCrm();
 
+    // O vigia da 1ª adesão com Autorização de Acesso: calcula o veredito no
+    // horário do sync, e não no page-load de quem abrir a fila (ele baixa três
+    // PDFs e lê a primeira página de dois). Loga sozinho quando ela chega.
+    // Nunca derruba o sync — o aviso é acessório, a fila é o trabalho.
+    try {
+      const { estadoPrimeiraAutorizacao } = await import("@/lib/crm-primeira-autorizacao");
+      await estadoPrimeiraAutorizacao();
+    } catch (err) {
+      console.error("[crm-sync-scheduler] vigia da autorizacao falhou:", err);
+    }
+
     // Marca só o que deu certo: se o CRM estava fora, o horário continua
     // devido e a próxima tentativa acontece depois da janela de retentativa.
     if (resultado.rodou && resultado.erros.length === 0) await marcar(KEY_SLOT, slot);

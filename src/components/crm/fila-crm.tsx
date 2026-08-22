@@ -44,6 +44,7 @@ import { matchBusca } from "@/lib/busca";
 import { formatCpfCnpjComRotulo } from "@/lib/documento";
 import type { ModuloCrm } from "@/lib/crm-modulo";
 import { UcsAssinadasCrm } from "@/components/crm/ucs-assinadas-crm";
+import { AvisoPrimeiraAutorizacao } from "@/components/crm/aviso-primeira-autorizacao";
 
 interface ItemFila {
   id: string;
@@ -303,6 +304,10 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
           <AvisoAgenda agenda={agenda} />
         </div>
       </div>
+
+      {/* A autorização de acesso é documento da ADESÃO, que só existe no mundo
+          Associação. Na Brasil Solar o card não faria sentido. */}
+      {modulo === "assoc" && <AvisoPrimeiraAutorizacao />}
 
       {/* Venda que gera obra NÃO passa por esta fila: o sync já cria a obra e
           ela cai em Aprovação de Obras. Sem este aviso, a tela vazia da Brasil
