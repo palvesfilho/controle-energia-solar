@@ -93,14 +93,24 @@ export async function PATCH(
   }
 
   const unitsNaPlant = await prisma.consumerUnit.findMany({
-    where: { plantId, active: true, id: { in: ids } },
+    // A UC não precisa mais estar vinculada a ESTA usina no cadastro.
+    //
+    // Até 22/08/2026 o filtro era `{ plantId, active: true }`, e essa trava
+    // deixava 46 das 147 UCs ativas sem como entrar em rateio nenhum: era
+    // preciso sair da tela, editar o cadastro da UC e voltar. O vínculo virou
+    // consequência do rateio, não pré-requisito dele.
+    //
+    // O que continua barrado é UC inexistente ou INATIVA — aí é erro, não
+    // escolha. Conflito com o rateio de outra usina não é barrado aqui: é
+    // mostrado em vermelho na tela e a decisão é de quem monta.
+    where: { active: true, id: { in: ids } },
     select: { id: true },
   });
   if (unitsNaPlant.length !== ids.length) {
     return NextResponse.json(
       {
         error:
-          "Uma ou mais unidades consumidoras não pertencem a esta usina (ou estão inativas)",
+          "Uma ou mais unidades consumidoras não existem ou estão inativas",
       },
       { status: 400 },
     );

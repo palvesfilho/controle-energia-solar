@@ -163,6 +163,77 @@ export async function GET(
     isGeradora: !!u.codigoUc && codigosGeradora.has(u.codigoUc),
   }));
 
+  // ---------------------------------------------------------------------------
+  // Universo do seletor "+ Adicionar UC": TODAS as UCs ativas, não só as que já
+  // têm `plantId` desta usina.
+  //
+  // Por que todas: até 22/08/2026 o rateio só enxergava UC previamente vinculada
+  // à usina no cadastro — 101 das 147 ativas, deixando 46 sem como entrar em
+  // rateio nenhum, e 11 das 31 usinas abrindo o diálogo vazio. Para colocar uma
+  // UC no rateio era preciso sair da tela, editar o cadastro e voltar.
+  //
+  // 🚩 Nada é escondido: UC já comprometida no rateio de OUTRA usina vem
+  // marcada, e a tela avisa em vermelho. Esconder faria a mesma UC ser rateada
+  // duas vezes sem ninguém ver ([[feedback_anomalias_sinalizar]]).
+  const [todasUnidades, itensDeOutrasUsinas] = await Promise.all([
+    prisma.consumerUnit.findMany({
+      where: { active: true },
+      select: {
+        id: true,
+        nome: true,
+        codigoUc: true,
+        cidade: true,
+        distribuidora: true,
+        plantId: true,
+        plant: { select: { id: true, name: true } },
+      },
+      orderBy: { nome: "asc" },
+    }),
+    prisma.rateioItem.findMany({
+      where: {
+        version: { status: { in: ["VIGENTE", "PENDENTE_ACEITE"] }, plantId: { not: plantId } },
+      },
+      select: {
+        consumerUnitId: true,
+        percentual: true,
+        version: {
+          select: { status: true, plant: { select: { id: true, name: true } } },
+        },
+      },
+    }),
+  ]);
+
+  // Uma UC pode, em tese, aparecer em mais de um rateio de outra usina; guarda o
+  // primeiro e conta o resto, porque o aviso é sobre EXISTIR conflito.
+  const compromissos = new Map<
+    string,
+    { plantId: string; plantName: string; percentual: number; status: string }
+  >();
+  for (const it of itensDeOutrasUsinas) {
+    if (compromissos.has(it.consumerUnitId)) continue;
+    compromissos.set(it.consumerUnitId, {
+      plantId: it.version.plant.id,
+      plantName: it.version.plant.name,
+      percentual: it.percentual,
+      status: it.version.status,
+    });
+  }
+
+  const unidadesDisponiveis = todasUnidades.map((u) => ({
+    id: u.id,
+    nome: u.nome,
+    codigoUc: u.codigoUc,
+    cidade: u.cidade,
+    distribuidora: u.distribuidora,
+    isGeradora: !!u.codigoUc && codigosGeradora.has(u.codigoUc),
+    /** Já está vinculada a ESTA usina no cadastro. */
+    daUsina: u.plantId === plantId,
+    /** A usina do cadastro, quando é outra — só para exibir. */
+    usinaCadastro: u.plantId && u.plantId !== plantId ? u.plant : null,
+    /** Rateio de outra usina que já destina crédito a ela. */
+    comprometida: compromissos.get(u.id) ?? null,
+  }));
+
   return NextResponse.json({
     plant: {
       id: plant.id,
@@ -173,6 +244,9 @@ export async function GET(
     vigente: vigente ? serialize(vigente, compensadoByUc) : null,
     pendente: pendente ? serialize(pendente, null) : null,
     historico: historico.map((h) => serialize(h, null)),
+    /** UCs vinculadas a ESTA usina — quem alimenta "fora do rateio" e os KPIs. */
     consumerUnits: consumerUnitsEnriched,
+    /** Universo do seletor "+ Adicionar UC". */
+    unidadesDisponiveis,
   });
 }

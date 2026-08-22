@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { AdicionarUc, type UnidadeDisponivel } from "@/components/rateios/adicionar-uc";
 import {
   Check,
   Clock,
@@ -75,7 +76,10 @@ interface RateioResponse {
   vigente: Rateio | null;
   pendente: Rateio | null;
   historico: Rateio[];
+  /** UCs vinculadas a ESTA usina — "fora do rateio", KPIs e o estado inicial. */
   consumerUnits: ConsumerUnitLite[];
+  /** Todas as UCs ativas, para o seletor "+ Adicionar UC". */
+  unidadesDisponiveis: UnidadeDisponivel[];
 }
 
 const MES_LABELS = [
@@ -528,6 +532,7 @@ export default function RateiosPage() {
           plantId={selectedPlantId}
           plantName={selectedPlant?.name ?? ""}
           consumerUnits={data.consumerUnits}
+          unidadesDisponiveis={data.unidadesDisponiveis}
           regraInstalacao={data.plant.regraInstalacao}
           onCreated={() => {
             setCreateOpen(false);
@@ -543,6 +548,7 @@ export default function RateiosPage() {
           plantId={selectedPlantId}
           plantName={selectedPlant?.name ?? ""}
           consumerUnits={data.consumerUnits}
+          unidadesDisponiveis={data.unidadesDisponiveis}
           rateio={editing}
           onSaved={() => {
             setEditing(null);
@@ -835,6 +841,7 @@ function CreateRateioDialog({
   plantId,
   plantName,
   consumerUnits,
+  unidadesDisponiveis,
   regraInstalacao,
   onCreated,
 }: {
@@ -843,6 +850,7 @@ function CreateRateioDialog({
   plantId: string;
   plantName: string;
   consumerUnits: ConsumerUnitLite[];
+  unidadesDisponiveis: UnidadeDisponivel[];
   regraInstalacao: string | null;
   onCreated: () => void;
 }) {
@@ -851,6 +859,9 @@ function CreateRateioDialog({
   // vira crédito pro rateio. DESCONTADO só muda a cobrança da UC (fluxo
   // separado), não o % dela no rateio.
   const geradoraFixa0 = true;
+  // As UCs que estão NO rateio sendo montado. Começa pelas da usina e cresce
+  // pelo "+ Adicionar UC" — antes de 22/08/2026 era fixa nas da usina.
+  const [linhas, setLinhas] = useState<UnidadeDisponivel[]>([]);
   const [percents, setPercents] = useState<Record<string, string>>({});
   const [observacao, setObservacao] = useState("");
   const [vigenteAPartirDe, setVigenteAPartirDe] = useState<string>("");
@@ -859,8 +870,13 @@ function CreateRateioDialog({
 
   useEffect(() => {
     if (open) {
+      // Estado inicial = as UCs já vinculadas à usina, como sempre foi. O
+      // seletor só ACRESCENTA; ninguém perde o ponto de partida de antes.
+      const iniciais = unidadesDisponiveis.filter((u) => u.daUsina);
+      setLinhas(iniciais);
+
       const initial: Record<string, string> = {};
-      consumerUnits.forEach((u) => {
+      iniciais.forEach((u) => {
         // UC geradora em regra DEDICADA/PROPRIO já entra com 0%.
         // Em DESCONTADO fica vazio pro usuário preencher.
         if (u.isGeradora && geradoraFixa0) {
@@ -879,40 +895,56 @@ function CreateRateioDialog({
       setVigenteAPartirDe(`${y}-${m}-${d}`);
       setError(null);
     }
-  }, [open, consumerUnits, geradoraFixa0]);
+  }, [open, unidadesDisponiveis, geradoraFixa0]);
 
+  // Soma só o que está NA TELA: percentual de linha removida não pode
+  // continuar entrando na conta.
   const soma = useMemo(() => {
-    return Object.values(percents).reduce((s, v) => {
-      const n = parseFloat(v.replace(",", "."));
+    return linhas.reduce((s, u) => {
+      const n = parseFloat((percents[u.id] ?? "").replace(",", "."));
       return s + (Number.isFinite(n) ? n : 0);
     }, 0);
-  }, [percents]);
+  }, [percents, linhas]);
 
   const somaOk = Math.abs(soma - 100) < 0.01;
 
   function distribuirIgual() {
-    const n = consumerUnits.length;
+    const n = linhas.length;
     if (n === 0) return;
     const base = Math.floor((100 / n) * 100) / 100;
     const resto = Math.round((100 - base * n) * 100) / 100;
     const next: Record<string, string> = {};
-    consumerUnits.forEach((u, i) => {
+    linhas.forEach((u, i) => {
       const v = i === 0 ? base + resto : base;
       next[u.id] = v.toFixed(2);
     });
     setPercents(next);
   }
 
+  function adicionar(u: UnidadeDisponivel) {
+    setLinhas((atual) => (atual.some((l) => l.id === u.id) ? atual : [...atual, u]));
+    setPercents((p) => ({ ...p, [u.id]: u.isGeradora && geradoraFixa0 ? "0" : "" }));
+  }
+
+  function remover(id: string) {
+    setLinhas((atual) => atual.filter((l) => l.id !== id));
+    // Tira o percentual junto: linha fora da tela não pode continuar somando.
+    setPercents((p) => {
+      const { [id]: _, ...resto } = p;
+      return resto;
+    });
+  }
+
   async function handleSubmit() {
     setError(null);
 
     const geradoraIds = new Set(
-      consumerUnits.filter((u) => u.isGeradora).map((u) => u.id),
+      linhas.filter((u) => u.isGeradora).map((u) => u.id),
     );
-    const items = Object.entries(percents)
-      .map(([consumerUnitId, raw]) => {
-        const percentual = parseFloat(raw.replace(",", "."));
-        return { consumerUnitId, percentual };
+    const items = linhas
+      .map((u) => {
+        const percentual = parseFloat((percents[u.id] ?? "").replace(",", "."));
+        return { consumerUnitId: u.id, percentual };
       })
       // Mantém UC geradora mesmo com 0% (regra RGE). Outras UCs com 0 ou vazio são ignoradas.
       .filter(
@@ -964,19 +996,26 @@ function CreateRateioDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <p className="max-w-sm text-xs text-muted-foreground">
               Informe o percentual dos créditos destinado a cada UC. UCs com 0
               ou em branco são ignoradas. Soma total deve ser 100%.
             </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={distribuirIgual}
-            >
-              Distribuir igual
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={distribuirIgual}
+              >
+                Distribuir igual
+              </Button>
+              <AdicionarUc
+                unidades={unidadesDisponiveis}
+                jaSelecionadas={new Set(linhas.map((l) => l.id))}
+                onAdicionar={adicionar}
+              />
+            </div>
           </div>
 
           <div className="overflow-x-auto border rounded-lg max-h-[45vh]">
@@ -992,10 +1031,19 @@ function CreateRateioDialog({
                   <th className="text-right py-2 px-3 font-medium text-xs uppercase tracking-wide w-32">
                     %
                   </th>
+                  <th className="w-10" />
                 </tr>
               </thead>
               <tbody>
-                {consumerUnits.map((u) => {
+                {linhas.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-6 text-center text-sm text-muted-foreground">
+                      Nenhuma UC no rateio. Use <b>&ldquo;Adicionar UC&rdquo;</b> para buscar
+                      por nome ou código.
+                    </td>
+                  </tr>
+                )}
+                {linhas.map((u) => {
                   const isGeradoraFixa = u.isGeradora && geradoraFixa0;
                   return (
                     <tr key={u.id} className="border-b last:border-0">
@@ -1007,10 +1055,24 @@ function CreateRateioDialog({
                               Geradora
                             </Badge>
                           )}
+                          {!u.daUsina && (
+                            <Badge variant="secondary" className="text-[10px]">
+                              De fora da usina
+                            </Badge>
+                          )}
                         </div>
                         {u.isGeradora && (
                           <p className="text-[11px] text-muted-foreground mt-0.5">
                             0% fixo (concessionária compensa no medidor da geradora)
+                          </p>
+                        )}
+                        {/* O conflito não impede salvar — mas não passa calado. */}
+                        {u.comprometida && (
+                          <p className="mt-0.5 text-[11px] font-medium text-red-600">
+                            Já recebe{" "}
+                            {u.comprometida.percentual.toFixed(2).replace(".", ",")}% do rateio{" "}
+                            {u.comprometida.status === "VIGENTE" ? "vigente" : "pendente"} de{" "}
+                            {u.comprometida.plantName}
                           </p>
                         )}
                       </td>
@@ -1027,6 +1089,17 @@ function CreateRateioDialog({
                           disabled={isGeradoraFixa}
                           className="text-right"
                         />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => remover(u.id)}
+                          title="Tirar do rateio"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
                       </td>
                     </tr>
                   );
@@ -1107,6 +1180,7 @@ function EditRateioDialog({
   plantId,
   plantName,
   consumerUnits,
+  unidadesDisponiveis,
   rateio,
   onSaved,
 }: {
@@ -1115,9 +1189,11 @@ function EditRateioDialog({
   plantId: string;
   plantName: string;
   consumerUnits: ConsumerUnitLite[];
+  unidadesDisponiveis: UnidadeDisponivel[];
   rateio: Rateio;
   onSaved: () => void;
 }) {
+  const [linhas, setLinhas] = useState<UnidadeDisponivel[]>([]);
   const [percents, setPercents] = useState<Record<string, string>>({});
   const [observacao, setObservacao] = useState("");
   const [vigenteAPartirDe, setVigenteAPartirDe] = useState<string>("");
@@ -1126,9 +1202,21 @@ function EditRateioDialog({
 
   useEffect(() => {
     if (open) {
+      // Linhas = quem JÁ está no rateio (inclusive UC de fora da usina, que
+      // passou a ser possível em 22/08/2026) + as UCs da usina, que continuam
+      // aparecendo em branco como antes.
+      const porId = new Map(unidadesDisponiveis.map((u) => [u.id, u]));
+      const doRateio: UnidadeDisponivel[] = rateio.items.map(
+        (i) => porId.get(i.consumerUnit.id) ?? { ...i.consumerUnit, daUsina: false },
+      );
+      const daUsinaForaDoRateio = unidadesDisponiveis.filter(
+        (u) => u.daUsina && !rateio.items.some((i) => i.consumerUnit.id === u.id),
+      );
+      setLinhas([...doRateio, ...daUsinaForaDoRateio]);
+
       const initial: Record<string, string> = {};
       // Pré-popular com os valores existentes; UCs não no rateio = vazio.
-      consumerUnits.forEach((u) => {
+      [...doRateio, ...daUsinaForaDoRateio].forEach((u) => {
         const existing = rateio.items.find((i) => i.consumerUnit.id === u.id);
         initial[u.id] = existing ? existing.percentual.toFixed(2) : "";
       });
@@ -1141,27 +1229,40 @@ function EditRateioDialog({
       setVigenteAPartirDe(`${y}-${m}-${dd}`);
       setError(null);
     }
-  }, [open, consumerUnits, rateio]);
+  }, [open, unidadesDisponiveis, rateio]);
 
   const soma = useMemo(() => {
-    return Object.values(percents).reduce((s, v) => {
-      const n = parseFloat(v.replace(",", "."));
+    return linhas.reduce((s, u) => {
+      const n = parseFloat((percents[u.id] ?? "").replace(",", "."));
       return s + (Number.isFinite(n) ? n : 0);
     }, 0);
-  }, [percents]);
+  }, [percents, linhas]);
 
   const somaOk = Math.abs(soma - 100) < 0.01;
   const isVigente = rateio.status === "VIGENTE";
 
+  function adicionar(u: UnidadeDisponivel) {
+    setLinhas((atual) => (atual.some((l) => l.id === u.id) ? atual : [...atual, u]));
+    setPercents((p) => ({ ...p, [u.id]: "" }));
+  }
+
+  function remover(id: string) {
+    setLinhas((atual) => atual.filter((l) => l.id !== id));
+    setPercents((p) => {
+      const { [id]: _, ...resto } = p;
+      return resto;
+    });
+  }
+
   async function handleSubmit() {
     setError(null);
     const geradoraIds = new Set(
-      consumerUnits.filter((u) => u.isGeradora).map((u) => u.id),
+      linhas.filter((u) => u.isGeradora).map((u) => u.id),
     );
-    const items = Object.entries(percents)
-      .map(([consumerUnitId, raw]) => ({
-        consumerUnitId,
-        percentual: parseFloat(raw.replace(",", ".")),
+    const items = linhas
+      .map((u) => ({
+        consumerUnitId: u.id,
+        percentual: parseFloat((percents[u.id] ?? "").replace(",", ".")),
       }))
       .filter(
         (it) =>
@@ -1221,6 +1322,14 @@ function EditRateioDialog({
             </div>
           )}
 
+          <div className="flex justify-end">
+            <AdicionarUc
+              unidades={unidadesDisponiveis}
+              jaSelecionadas={new Set(linhas.map((l) => l.id))}
+              onAdicionar={adicionar}
+            />
+          </div>
+
           <div className="overflow-x-auto border rounded-lg max-h-[45vh]">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-background">
@@ -1234,10 +1343,19 @@ function EditRateioDialog({
                   <th className="text-right py-2 px-3 font-medium text-xs uppercase tracking-wide w-32">
                     %
                   </th>
+                  <th className="w-10" />
                 </tr>
               </thead>
               <tbody>
-                {consumerUnits.map((u) => (
+                {linhas.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-6 text-center text-sm text-muted-foreground">
+                      Nenhuma UC no rateio. Use <b>&ldquo;Adicionar UC&rdquo;</b> para buscar
+                      por nome ou código.
+                    </td>
+                  </tr>
+                )}
+                {linhas.map((u) => (
                   <tr key={u.id} className="border-b last:border-0">
                     <td className="py-2 px-3">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -1247,7 +1365,19 @@ function EditRateioDialog({
                             Geradora
                           </Badge>
                         )}
+                        {u.daUsina === false && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            De fora da usina
+                          </Badge>
+                        )}
                       </div>
+                      {u.comprometida && (
+                        <p className="mt-0.5 text-[11px] font-medium text-red-600">
+                          Já recebe {u.comprometida.percentual.toFixed(2).replace(".", ",")}% do
+                          rateio {u.comprometida.status === "VIGENTE" ? "vigente" : "pendente"} de{" "}
+                          {u.comprometida.plantName}
+                        </p>
+                      )}
                     </td>
                     <td className="py-2 px-3 text-xs">{formatCodigoUc(u.codigoUc) ?? "-"}</td>
                     <td className="py-2 px-3">
@@ -1261,6 +1391,17 @@ function EditRateioDialog({
                         }
                         className="text-right"
                       />
+                    </td>
+                    <td className="py-2 pr-3">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => remover(u.id)}
+                        title="Tirar do rateio"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
                     </td>
                   </tr>
                 ))}
