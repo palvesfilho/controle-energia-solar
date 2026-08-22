@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Clock,
   Download,
+  Filter,
   Loader2,
   RefreshCw,
   Sparkles,
@@ -282,16 +283,24 @@ export default function FechamentoMensalPage() {
     });
   }, [rows, statusFilter, search]);
 
+  // Os KPIs contam sobre `filtered`, NÃO sobre `rows`: o número em cima da tela
+  // tem que descrever a lista que está embaixo dela. Contando o mês inteiro, o
+  // operador filtrava por um cliente e continuava lendo o total geral como se
+  // fosse daquele cliente.
   const totals = useMemo(() => {
     const t = { pronta: 0, paga: 0, erro: 0, pendente: 0 };
-    for (const r of rows) t[r.status]++;
+    for (const r of filtered) t[r.status]++;
     return t;
-  }, [rows]);
+  }, [filtered]);
 
   const buscadas = totals.pronta + totals.paga + totals.erro;
-  const percentBuscadas = rows.length > 0
-    ? Math.round((buscadas / rows.length) * 100)
+  const percentBuscadas = filtered.length > 0
+    ? Math.round((buscadas / filtered.length) * 100)
     : 0;
+
+  // Com filtro ativo os KPIs deixam de ser o retrato do mês. Dizer isso na tela
+  // é o que impede a leitura errada no sentido contrário.
+  const filtroAtivo = statusFilter !== "all" || search.trim() !== "";
 
   const mesLabel = MESES.find((m) => m.v === mes)?.l ?? "";
 
@@ -383,11 +392,30 @@ export default function FechamentoMensalPage() {
         </CardContent>
       </Card>
 
+      {filtroAtivo && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 font-medium text-violet-700 dark:border-violet-900 dark:bg-violet-950 dark:text-violet-300">
+            <Filter className="h-3 w-3" />
+            Indicadores do filtro — {filtered.length} de {rows.length} UCs do mês
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setStatusFilter("all");
+              setSearch("");
+            }}
+            className="underline underline-offset-2 hover:text-foreground transition-colors"
+          >
+            limpar filtros
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <KpiCard
           label="% Buscadas na concessionária"
           value={`${percentBuscadas}%`}
-          sublabel={`${buscadas}/${rows.length} faturas`}
+          sublabel={`${buscadas}/${filtered.length} faturas`}
           dotCls="bg-violet-500"
         />
         <KpiCard label="Pagas" value={totals.paga} dotCls="bg-blue-500" />
