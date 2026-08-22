@@ -806,6 +806,12 @@ export default function AnaliseCreditosPage() {
                 <thead className="bg-muted/40 text-muted-foreground uppercase tracking-wide">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">Usina</th>
+                    <th
+                      className="px-3 py-2 text-right font-medium"
+                      title="Consumo médio cadastrado nas UCs do rateio vigente ÷ geração média mensal da usina. Acima de 100% o rateio pede mais crédito do que a usina gera."
+                    >
+                      Taxa de ocupação
+                    </th>
                     <th className="px-3 py-2 text-right font-medium">UCs</th>
                     <th className="px-3 py-2 text-right font-medium">
                       Faltam mês
@@ -813,12 +819,6 @@ export default function AnaliseCreditosPage() {
                     <th className="px-3 py-2 text-right font-medium">Saldo</th>
                     <th className="px-3 py-2 text-right font-medium">
                       Vencendo
-                    </th>
-                    <th
-                      className="px-3 py-2 text-right font-medium"
-                      title="Consumo médio cadastrado nas UCs do rateio vigente ÷ geração média mensal da usina. Acima de 100% o rateio pede mais crédito do que a usina gera."
-                    >
-                      Taxa de ocupação
                     </th>
                     <th className="px-3 py-2 text-right font-medium">PR 90d</th>
                     <th className="px-3 py-2 text-center font-medium">
@@ -842,6 +842,26 @@ export default function AnaliseCreditosPage() {
                           <span className="font-medium">{s.plantName}</span>
                         </div>
                       </td>
+                      <td
+                        className={`px-3 py-2 text-right tabular-nums ${corOcupacao(s.taxaOcupacaoPct)}`}
+                        title={
+                          s.taxaOcupacaoPct == null
+                            ? "Sem geração média mensal cadastrada na usina — não dá pra calcular."
+                            : `${formatKWh(s.ocupacaoConsumoKwh)} de consumo no rateio ÷ ${formatKWh(s.ocupacaoGeracaoKwh ?? 0)} de geração média${
+                                s.ocupacaoUcsSemConsumo > 0
+                                  ? ` · ${s.ocupacaoUcsSemConsumo} UC(s) do rateio sem consumo médio cadastrado — taxa subestimada`
+                                  : ""
+                              }`
+                        }
+                      >
+                        {formatPct(s.taxaOcupacaoPct)}
+                        {s.ocupacaoUcsSemConsumo > 0 && (
+                          <AlertTriangle
+                            className="ml-1 inline h-3 w-3 text-amber-600"
+                            aria-label={`${s.ocupacaoUcsSemConsumo} UC(s) sem consumo médio cadastrado`}
+                          />
+                        )}
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums">
                         {s.ucsCount}
                       </td>
@@ -863,26 +883,6 @@ export default function AnaliseCreditosPage() {
                         <div className="text-[10px] text-muted-foreground">
                           {formatBRL(s.vencendoReais)}
                         </div>
-                      </td>
-                      <td
-                        className={`px-3 py-2 text-right tabular-nums ${corOcupacao(s.taxaOcupacaoPct)}`}
-                        title={
-                          s.taxaOcupacaoPct == null
-                            ? "Sem geração média mensal cadastrada na usina — não dá pra calcular."
-                            : `${formatKWh(s.ocupacaoConsumoKwh)} de consumo no rateio ÷ ${formatKWh(s.ocupacaoGeracaoKwh ?? 0)} de geração média${
-                                s.ocupacaoUcsSemConsumo > 0
-                                  ? ` · ${s.ocupacaoUcsSemConsumo} UC(s) do rateio sem consumo médio cadastrado — taxa subestimada`
-                                  : ""
-                              }`
-                        }
-                      >
-                        {formatPct(s.taxaOcupacaoPct)}
-                        {s.ocupacaoUcsSemConsumo > 0 && (
-                          <AlertTriangle
-                            className="ml-1 inline h-3 w-3 text-amber-600"
-                            aria-label={`${s.ocupacaoUcsSemConsumo} UC(s) sem consumo médio cadastrado`}
-                          />
-                        )}
                       </td>
                       <td
                         className={`px-3 py-2 text-right tabular-nums ${
