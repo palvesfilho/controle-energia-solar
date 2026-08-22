@@ -124,6 +124,16 @@ export interface PlantHealthRow {
   temRateioVigente: boolean;
   acoesAbertas: number;
   status: "ok" | "atencao" | "critico";
+  // Taxa de ocupação: fração do crédito gerado que tem consumo cadastrado pra
+  // absorver. 0.9 = o rateio soma 90% da geração média. Pode passar de 1
+  // (rateio pedindo mais do que a usina gera) — NÃO truncar em 100%, senão a
+  // sobrecarga some da tela. null = usina sem geração média cadastrada.
+  taxaOcupacaoPct: number | null;
+  ocupacaoConsumoKwh: number; // Σ consumoMedio das UCs do rateio vigente
+  ocupacaoGeracaoKwh: number | null; // Plant.geracaoMediaMensal
+  // UCs do rateio sem consumoMedio preenchido: entram no denominador de UCs
+  // mas não somam no numerador, então puxam a taxa pra BAIXO caladas.
+  ocupacaoUcsSemConsumo: number;
 }
 
 export interface AnaliseCreditosResult {
@@ -162,6 +172,12 @@ const THRESHOLDS = {
   captacaoMinMesesEmRisco: 2, // dos últimos 3 (inclui o atual)
   captacaoJanelaMeses: 3,
   consumoMedioUcKwh: 250, // usado pra sugerir nº de UCs no lead
+  // Taxa de ocupação (consumo cadastrado no rateio ÷ geração média da usina).
+  // Acima de 100% o rateio pede mais crédito do que a usina gera — as UCs não
+  // são compensadas por inteiro; abaixo de `ocupacaoOciosa` sobra crédito que
+  // vira saldo e, no limite, vence.
+  ocupacaoBoa: 0.85,
+  ocupacaoOciosa: 0.6,
 } as const;
 
 // Helpers de data:
@@ -248,6 +264,7 @@ export async function computeAnaliseCreditos(
       name: true,
       usinaDeInvestidor: true,
       location: true,
+      geracaoMediaMensal: true,
     },
   });
   const plantIds = plants.map((p) => p.id);
@@ -527,7 +544,18 @@ export async function computeAnaliseCreditos(
   // 7) UCs sem rateio
   const rateios = await prisma.rateioVersion.findMany({
     where: { plantId: { in: plantIds }, status: "VIGENTE" },
-    select: { plantId: true, items: { select: { consumerUnitId: true } } },
+    // consumoMedio das UCs vem junto: é o numerador da taxa de ocupação (item
+    // 9.b). Sem filtro de origem aqui de propósito — o rateio define a usina
+    // inteira, e é a MESMA base do ucsCount da tabela de saúde.
+    select: {
+      plantId: true,
+      items: {
+        select: {
+          consumerUnitId: true,
+          consumerUnit: { select: { consumoMedio: true } },
+        },
+      },
+    },
   });
   const plantsComRateio = new Set(rateios.map((r) => r.plantId));
   // Este KPI é justamente o da DIVERGÊNCIA: conta UCs que o cadastro amarrou
@@ -822,6 +850,35 @@ export async function computeAnaliseCreditos(
     );
   }
 
+  // 9.b) Taxa de ocupação por usina = consumo cadastrado no rateio VIGENTE
+  // dividido pela geração média mensal da usina. Responde "quanto do crédito
+  // que a usina gera tem cliente pra usar".
+  //
+  // Denominador = Plant.geracaoMediaMensal (CADASTRO), não a geração medida.
+  // Medição existe hoje pra 2 das 29 usinas (MonitoringLog depende de
+  // BrasilSolarClient.plantId) e diverge ~35% do cadastro nessas duas — usar
+  // "medida quando houver, cadastro quando não" deixaria a coluna incomparável
+  // entre linhas da MESMA tabela. Base única, mesmo critério pra todo mundo.
+  //
+  // Numerador = Σ ConsumerUnit.consumoMedio das UCs do rateio vigente, mesma
+  // base do ucsCount (rateio vigente manda; plantId é só cadastro).
+  const ocupacaoPorPlant = new Map<
+    string,
+    { consumoKwh: number; ucsSemConsumo: number }
+  >();
+  for (const r of rateios) {
+    const cur = ocupacaoPorPlant.get(r.plantId) ?? {
+      consumoKwh: 0,
+      ucsSemConsumo: 0,
+    };
+    for (const it of r.items) {
+      const consumo = it.consumerUnit?.consumoMedio ?? 0;
+      if (consumo > 0) cur.consumoKwh += consumo;
+      else cur.ucsSemConsumo++;
+    }
+    ocupacaoPorPlant.set(r.plantId, cur);
+  }
+
   const saudePorUsina: PlantHealthRow[] = plants.map((p) => {
     const saldo = saldoPorPlant.get(p.id);
     const venc = vencendoPorPlant.get(p.id);
@@ -840,6 +897,18 @@ export async function computeAnaliseCreditos(
     } else if (acoesQtd > 0) {
       status = "atencao";
     }
+    // Usina sem rateio vigente tem ocupação 0 (ninguém pra absorver o crédito),
+    // e não null — 0 é o achado, não ausência de dado. Sem geração cadastrada
+    // aí sim é null: não dá pra dividir, e chutar denominador seria inventar.
+    const ocup = ocupacaoPorPlant.get(p.id);
+    const geracaoMedia =
+      p.geracaoMediaMensal && p.geracaoMediaMensal > 0
+        ? p.geracaoMediaMensal
+        : null;
+    const consumoRateioKwh = ocup?.consumoKwh ?? 0;
+    const taxaOcupacaoPct =
+      geracaoMedia != null ? consumoRateioKwh / geracaoMedia : null;
+
     return {
       plantId: p.id,
       plantName: p.name,
@@ -853,6 +922,10 @@ export async function computeAnaliseCreditos(
       temRateioVigente: !semRateio,
       acoesAbertas: acoesQtd,
       status,
+      taxaOcupacaoPct,
+      ocupacaoConsumoKwh: consumoRateioKwh,
+      ocupacaoGeracaoKwh: geracaoMedia,
+      ocupacaoUcsSemConsumo: ocup?.ucsSemConsumo ?? 0,
     };
   });
   // Ordena: críticos primeiro, depois atenção, depois ok; dentro de cada

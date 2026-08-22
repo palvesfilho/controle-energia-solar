@@ -132,6 +132,17 @@ function formatPct(p: number | null, digits = 0): string {
   if (p == null) return "—";
   return `${(p * 100).toFixed(digits)}%`;
 }
+// Cor da taxa de ocupação. Ociosa (crédito sobrando, que vira saldo e vence) e
+// sobrecarga (rateio pedindo mais do que a usina gera) são problemas
+// DIFERENTES — os dois em vermelho, o meio-termo em âmbar, a faixa boa em
+// verde. Não truncamos em 100%: a sobrecarga precisa aparecer.
+function corOcupacao(pct: number | null): string {
+  if (pct == null) return "text-muted-foreground";
+  if (pct > 1.05) return "text-red-600 font-medium";
+  if (pct >= 0.85) return "text-emerald-700";
+  if (pct >= 0.6) return "text-amber-700";
+  return "text-red-600 font-medium";
+}
 function formatDeltaPct(p: number | null): string {
   if (p == null) return "—";
   const sign = p > 0 ? "+" : "";
@@ -803,6 +814,12 @@ export default function AnaliseCreditosPage() {
                     <th className="px-3 py-2 text-right font-medium">
                       Vencendo
                     </th>
+                    <th
+                      className="px-3 py-2 text-right font-medium"
+                      title="Consumo médio cadastrado nas UCs do rateio vigente ÷ geração média mensal da usina. Acima de 100% o rateio pede mais crédito do que a usina gera."
+                    >
+                      Taxa de ocupação
+                    </th>
                     <th className="px-3 py-2 text-right font-medium">PR 90d</th>
                     <th className="px-3 py-2 text-center font-medium">
                       Rateio
@@ -846,6 +863,26 @@ export default function AnaliseCreditosPage() {
                         <div className="text-[10px] text-muted-foreground">
                           {formatBRL(s.vencendoReais)}
                         </div>
+                      </td>
+                      <td
+                        className={`px-3 py-2 text-right tabular-nums ${corOcupacao(s.taxaOcupacaoPct)}`}
+                        title={
+                          s.taxaOcupacaoPct == null
+                            ? "Sem geração média mensal cadastrada na usina — não dá pra calcular."
+                            : `${formatKWh(s.ocupacaoConsumoKwh)} de consumo no rateio ÷ ${formatKWh(s.ocupacaoGeracaoKwh ?? 0)} de geração média${
+                                s.ocupacaoUcsSemConsumo > 0
+                                  ? ` · ${s.ocupacaoUcsSemConsumo} UC(s) do rateio sem consumo médio cadastrado — taxa subestimada`
+                                  : ""
+                              }`
+                        }
+                      >
+                        {formatPct(s.taxaOcupacaoPct)}
+                        {s.ocupacaoUcsSemConsumo > 0 && (
+                          <AlertTriangle
+                            className="ml-1 inline h-3 w-3 text-amber-600"
+                            aria-label={`${s.ocupacaoUcsSemConsumo} UC(s) sem consumo médio cadastrado`}
+                          />
+                        )}
                       </td>
                       <td
                         className={`px-3 py-2 text-right tabular-nums ${
