@@ -123,6 +123,19 @@ export default function InvestidoresPage() {
     return rows;
   }, [investors, search, statusFilter, sort]);
 
+  // Os cards descrevem a lista que está embaixo deles — contam sobre `filtered`.
+  // `stats` (global) continua servindo ao "N de M" acima da tabela, que fala da
+  // base inteira de propósito.
+  const statsFiltrados = useMemo(
+    () => ({
+      total: filtered.length,
+      ativos: filtered.filter((i) => i.user.active).length,
+      inativos: filtered.filter((i) => !i.user.active).length,
+      comUsinas: filtered.filter((i) => i.plants.length > 0).length,
+    }),
+    [filtered],
+  );
+
   function toggleSort(key: SortKey) {
     setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
   }
@@ -144,10 +157,10 @@ export default function InvestidoresPage() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard icon={<Users className="h-4 w-4" />} label="Total" value={stats.total} accent="blue" />
-        <StatCard icon={<UserCheck className="h-4 w-4" />} label="Ativos" value={stats.ativos} accent="emerald" />
-        <StatCard icon={<UserX className="h-4 w-4" />} label="Inativos" value={stats.inativos} accent="zinc" />
-        <StatCard icon={<Sun className="h-4 w-4" />} label="Com usinas" value={stats.comUsinas} accent="amber" />
+        <StatCard icon={<Users className="h-4 w-4" />} label="Total" value={statsFiltrados.total} accent="blue" />
+        <StatCard icon={<UserCheck className="h-4 w-4" />} label="Ativos" value={statsFiltrados.ativos} accent="emerald" />
+        <StatCard icon={<UserX className="h-4 w-4" />} label="Inativos" value={statsFiltrados.inativos} accent="zinc" />
+        <StatCard icon={<Sun className="h-4 w-4" />} label="Com usinas" value={statsFiltrados.comUsinas} accent="amber" />
       </div>
 
       <Card>

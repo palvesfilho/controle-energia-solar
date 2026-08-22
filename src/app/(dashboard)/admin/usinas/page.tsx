@@ -119,6 +119,18 @@ export default function UsinasPage() {
     return rows;
   }, [plants, search, statusFilter, sort]);
 
+  // Os cards descrevem a lista que está embaixo deles — contam sobre `filtered`.
+  // `stats` (global) continua servindo ao "N de M" acima da tabela.
+  const statsFiltrados = useMemo(
+    () => ({
+      total: filtered.length,
+      ativas: filtered.filter((p) => p.active).length,
+      totalPotencia: filtered.reduce((acc, p) => acc + (p.potenciaInstalada ?? 0), 0),
+      totalUcs: filtered.reduce((acc, p) => acc + p.ucsRateioCount, 0),
+    }),
+    [filtered],
+  );
+
   function toggleSort(key: SortKey) {
     setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
   }
@@ -140,15 +152,15 @@ export default function UsinasPage() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard icon={<Sun className="h-4 w-4" />} label="Total" value={stats.total} accent="amber" />
-        <StatCard icon={<Factory className="h-4 w-4" />} label="Ativas" value={stats.ativas} accent="emerald" />
+        <StatCard icon={<Sun className="h-4 w-4" />} label="Total" value={statsFiltrados.total} accent="amber" />
+        <StatCard icon={<Factory className="h-4 w-4" />} label="Ativas" value={statsFiltrados.ativas} accent="emerald" />
         <StatCard
           icon={<Zap className="h-4 w-4" />}
           label="Potência instalada"
-          value={`${stats.totalPotencia.toLocaleString("pt-BR")} kWp`}
+          value={`${statsFiltrados.totalPotencia.toLocaleString("pt-BR")} kWp`}
           accent="blue"
         />
-        <StatCard icon={<Users className="h-4 w-4" />} label="UCs no rateio" value={stats.totalUcs} accent="zinc" />
+        <StatCard icon={<Users className="h-4 w-4" />} label="UCs no rateio" value={statsFiltrados.totalUcs} accent="zinc" />
       </div>
 
       <Card>

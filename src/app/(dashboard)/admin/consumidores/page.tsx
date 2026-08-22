@@ -82,6 +82,19 @@ export default function ConsumidoresPage() {
     return rows;
   }, [consumers, search, statusFilter, sort]);
 
+  // Os cards descrevem a lista que está embaixo deles — contam sobre `filtered`.
+  // `stats` (global) continua servindo ao "N de M" acima da tabela, que fala da
+  // base inteira de propósito.
+  const statsFiltrados = useMemo(
+    () => ({
+      total: filtered.length,
+      ativos: filtered.filter((c) => c.active).length,
+      inativos: filtered.filter((c) => !c.active).length,
+      totalUcs: filtered.reduce((acc, c) => acc + c.consumerUnits.length, 0),
+    }),
+    [filtered],
+  );
+
   function toggleSort(key: SortKey) {
     setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
   }
@@ -105,10 +118,10 @@ export default function ConsumidoresPage() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard icon={<Users className="h-4 w-4" />} label="Total" value={stats.total} accent="blue" />
-        <StatCard icon={<UserCheck className="h-4 w-4" />} label="Ativos" value={stats.ativos} accent="emerald" />
-        <StatCard icon={<UserX className="h-4 w-4" />} label="Inativos" value={stats.inativos} accent="zinc" />
-        <StatCard icon={<Zap className="h-4 w-4" />} label="UCs vinculadas" value={stats.totalUcs} accent="amber" />
+        <StatCard icon={<Users className="h-4 w-4" />} label="Total" value={statsFiltrados.total} accent="blue" />
+        <StatCard icon={<UserCheck className="h-4 w-4" />} label="Ativos" value={statsFiltrados.ativos} accent="emerald" />
+        <StatCard icon={<UserX className="h-4 w-4" />} label="Inativos" value={statsFiltrados.inativos} accent="zinc" />
+        <StatCard icon={<Zap className="h-4 w-4" />} label="UCs vinculadas" value={statsFiltrados.totalUcs} accent="amber" />
       </div>
 
       <Card>

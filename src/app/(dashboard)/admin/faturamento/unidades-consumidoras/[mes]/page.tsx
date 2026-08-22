@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileText, FileBarChart2, Search, Send, Receipt, X, XCircle, CheckCircle2, Plug } from "lucide-react";
+import { FileText, FileBarChart2, Filter, Search, Send, Receipt, X, XCircle, CheckCircle2, Plug } from "lucide-react";
 import { toast } from "sonner";
 import { formatMonthYear, formatBRL } from "@/lib/formatters";
 import {
@@ -395,9 +395,17 @@ export default function FaturamentoUCMesPage() {
     ]);
   });
 
+  // Com filtro ativo os KPIs deixam de ser o retrato do mês. Dizer isso na tela
+  // é o que impede a leitura errada no sentido contrário.
+  const filtroAtivo = statusFilter !== "all" || search.trim() !== "";
+
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
-  const kpis = rows.reduce(
+  // Os KPIs somam sobre `filtered`, NÃO sobre `rows`: o número em cima da tela
+  // tem que descrever a lista que está embaixo dela. Somando o mês inteiro, o
+  // operador filtrava por um cliente e continuava lendo o faturamento geral
+  // como se fosse daquele cliente.
+  const kpis = filtered.reduce(
     (acc, r) => {
       const valor = r.billing?.valorCobranca ?? 0;
       if (r.billing && r.status !== "CANCELADO") acc.faturamento += valor;
@@ -443,11 +451,30 @@ export default function FaturamentoUCMesPage() {
           ir conferir a outra tela. Some sozinho quando não há pendência. */}
       <AvisoPrimeirasCompensacoes />
 
+      {filtroAtivo && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-medium text-blue-700 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
+            <Filter className="h-3 w-3" />
+            Indicadores do filtro — {filtered.length} de {rows.length} UCs do mês
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setStatusFilter("all");
+              setSearch("");
+            }}
+            className="underline underline-offset-2 hover:text-foreground transition-colors"
+          >
+            limpar filtros
+          </button>
+        </div>
+      )}
+
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardContent className="p-4">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              Faturamento do mês
+              {filtroAtivo ? "Faturamento do filtro" : "Faturamento do mês"}
             </p>
             <p className="text-xl font-bold mt-1">{formatBRL(kpis.faturamento)}</p>
             <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">

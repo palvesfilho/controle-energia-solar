@@ -198,6 +198,20 @@ function UnidadesConsumidorasConteudo() {
     return rows;
   }, [ucs, search, sort, aba, soNovas]);
 
+  // Os cards descrevem a lista que está embaixo deles — contam sobre `filtered`,
+  // e não sobre a base inteira. `stats` (global) segue servindo às três coisas
+  // que falam da base de propósito: o aviso de UCs atrasadas, o atalho "só as
+  // novas" e o "N de M" acima da tabela.
+  const statsFiltrados = useMemo(
+    () => ({
+      total: filtered.length,
+      consumoTotal: filtered.reduce((acc, u) => acc + (u.consumoMedio ?? 0), 0),
+      implantacao: filtered.filter((u) => u.implantacao?.fase === "IMPLANTACAO").length,
+      faturando: filtered.filter((u) => u.implantacao?.fase === "FATURANDO").length,
+    }),
+    [filtered],
+  );
+
   function toggleSort(key: SortKey) {
     setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
   }
@@ -229,23 +243,23 @@ function UnidadesConsumidorasConteudo() {
       />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard icon={<Factory className="h-4 w-4" />} label="Total" value={stats.total} accent="blue" />
+        <StatCard icon={<Factory className="h-4 w-4" />} label="Total" value={statsFiltrados.total} accent="blue" />
         <StatCard
           icon={<CheckCircle2 className="h-4 w-4" />}
           label="Faturando"
-          value={stats.faturando}
+          value={statsFiltrados.faturando}
           accent="emerald"
         />
         <StatCard
           icon={<HardHat className="h-4 w-4" />}
           label="Em implantação"
-          value={stats.implantacao}
+          value={statsFiltrados.implantacao}
           accent="amber"
         />
         <StatCard
           icon={<Zap className="h-4 w-4" />}
           label="Consumo médio total"
-          value={`${stats.consumoTotal.toLocaleString("pt-BR")} kWh`}
+          value={`${statsFiltrados.consumoTotal.toLocaleString("pt-BR")} kWh`}
           accent="zinc"
         />
       </div>

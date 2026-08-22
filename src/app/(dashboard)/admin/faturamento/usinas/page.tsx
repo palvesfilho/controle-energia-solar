@@ -506,6 +506,24 @@ export default function FaturamentoUsinasPage() {
     });
   }, [matriz, search, soPendentes]);
 
+  // Os indicadores descrevem a lista que está embaixo deles — contam sobre
+  // `usinasFiltradas`. O `resumo` global segue alimentando o botão "Iniciar
+  // fila": ele é uma AÇÃO sobre toda a fila do mês, não um indicador da tela,
+  // e estreitá-lo pelo filtro mudaria calado o que o lote processa.
+  const resumoFiltrado = useMemo(() => {
+    let emAberto = 0;
+    let devido = 0;
+    let nuncaFaturados = 0;
+    for (const u of usinasFiltradas) {
+      for (const c of u.celulas) {
+        if (temTrabalho(c)) emAberto++;
+        if (c.pendente) devido += c.totalDevido;
+        if (c.status === "NAO_FATURADO") nuncaFaturados++;
+      }
+    }
+    return { emAberto, devido, nuncaFaturados };
+  }, [usinasFiltradas]);
+
   /** Mês corrente — alvo do link de validação em lote de faturas. */
   const mesAtual = { ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 };
 
@@ -774,7 +792,7 @@ export default function FaturamentoUsinasPage() {
       <Card>
         <CardContent className="p-3 flex flex-wrap items-center gap-5">
           <div>
-            <div className="text-lg font-bold tabular-nums">{resumo.emAberto}</div>
+            <div className="text-lg font-bold tabular-nums">{resumoFiltrado.emAberto}</div>
             <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
               meses em aberto
             </div>
@@ -782,7 +800,7 @@ export default function FaturamentoUsinasPage() {
           <div className="h-8 w-px bg-border" />
           <div>
             <div className="text-lg font-bold tabular-nums">
-              {formatBRL(resumo.devido)}
+              {formatBRL(resumoFiltrado.devido)}
             </div>
             <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
               a pagar aos investidores
@@ -791,7 +809,7 @@ export default function FaturamentoUsinasPage() {
           <div className="h-8 w-px bg-border" />
           <div>
             <div className="text-lg font-bold tabular-nums text-destructive">
-              {resumo.nuncaFaturados}
+              {resumoFiltrado.nuncaFaturados}
             </div>
             <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
               meses nunca faturados

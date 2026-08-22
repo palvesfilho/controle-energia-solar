@@ -162,15 +162,17 @@ export default function ObrasFinalizadasPage() {
       });
   }, [rows, statusFilter, search]);
 
+  // Os KPIs contam sobre o conjunto FILTRADO: o número em cima da tela tem que
+  // descrever a lista que está embaixo dela.
   const totals = useMemo(() => {
     let concluida = 0;
     let cancelada = 0;
-    for (const r of rows) {
+    for (const r of filtered) {
       if (r.status === "CONCLUIDA") concluida++;
       else if (r.status === "CANCELADA") cancelada++;
     }
     return { concluida, cancelada };
-  }, [rows]);
+  }, [filtered]);
 
   return (
     <div className="space-y-4 p-6">

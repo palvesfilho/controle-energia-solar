@@ -72,8 +72,10 @@ export default function BalancoMensalPage() {
     return list;
   }, [rows, search, sort]);
 
+  // Rodapé de totais soma `filtered`, NÃO `rows`: uma linha de "Totais" embaixo
+  // de uma tabela filtrada tem que somar o que está acima dela.
   const totals = useMemo(() => {
-    return rows.reduce(
+    return filtered.reduce(
       (acc, r) => {
         acc.consumo += r.consumoKwh ?? 0;
         acc.compensada += r.energiaCompensada ?? 0;
@@ -84,7 +86,7 @@ export default function BalancoMensalPage() {
       },
       { consumo: 0, compensada: 0, faturamento: 0, economia: 0, saldo: 0 }
     );
-  }, [rows]);
+  }, [filtered]);
 
   const toggleSort = (key: SortKey) =>
     setSort((s) =>
@@ -236,11 +238,13 @@ export default function BalancoMensalPage() {
                     </tr>
                   ))}
                 </tbody>
-                {rows.length > 0 && (
+                {filtered.length > 0 && (
                   <tfoot>
                     <tr className="border-t bg-muted/20 font-medium">
                       <td className="py-2.5 px-3" colSpan={2}>
-                        Totais
+                        {search.trim()
+                          ? `Totais do filtro (${filtered.length} de ${rows.length})`
+                          : "Totais"}
                       </td>
                       <td className="py-2.5 px-3 text-right">
                         {formatKWh(totals.consumo)}

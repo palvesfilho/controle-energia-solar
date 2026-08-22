@@ -182,6 +182,8 @@ export default function GestaoObraPage() {
     });
   }, [rows, statusFilter, search]);
 
+  // Os KPIs contam sobre o conjunto FILTRADO: o número em cima da tela tem que
+  // descrever a lista que está embaixo dela.
   const totals = useMemo(() => {
     const t: Record<ObraStatus, number> = {
       PLANEJAMENTO: 0,
@@ -190,9 +192,9 @@ export default function GestaoObraPage() {
       CONCLUIDA: 0,
       CANCELADA: 0,
     };
-    for (const r of rows) t[r.status]++;
+    for (const r of filtered) t[r.status]++;
     return t;
-  }, [rows]);
+  }, [filtered]);
 
   return (
     <div className="space-y-4 p-6">
