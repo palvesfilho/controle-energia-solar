@@ -22,6 +22,10 @@ const rateioWithItems = {
           id: true,
           nome: true,
           codigoUc: true,
+          // O portal da concessionária pede os dois códigos e o documento do
+          // titular; a tela do rateio mostra os três lado a lado.
+          codigoUcAntigo: true,
+          cpfCnpj: true,
           cidade: true,
           distribuidora: true,
         },
@@ -158,6 +162,10 @@ export async function GET(
       name: true,
       numeroUsina: true,
       unidadeConsumidora: true,
+      // A RGE trocou os códigos em jul/2026 e volta e meia ainda pede o antigo.
+      unidadeConsumidoraAntiga: true,
+      // CPF/CNPJ do titular da conta de energia — vai no portal da concessionária.
+      cpfCnpj: true,
       codigoCliente: true,
       regraInstalacao: true,
       // Denominador da sugestão de percentuais: geração de CONTRATO.
@@ -197,6 +205,8 @@ export async function GET(
         id: true,
         nome: true,
         codigoUc: true,
+        codigoUcAntigo: true,
+        cpfCnpj: true,
         cidade: true,
         distribuidora: true,
         consumoMedio: true,
@@ -258,6 +268,10 @@ export async function GET(
         id: true,
         nome: true,
         codigoUc: true,
+        // Código anterior à migração da RGE e documento do titular: os dois
+        // são pedidos no portal da concessionária na hora de cadastrar o rateio.
+        codigoUcAntigo: true,
+        cpfCnpj: true,
         cidade: true,
         distribuidora: true,
         // kWh/mês do cadastro — peso de cada UC na sugestão de percentuais.
@@ -318,6 +332,8 @@ export async function GET(
     id: u.id,
     nome: u.nome,
     codigoUc: u.codigoUc,
+    codigoUcAntigo: u.codigoUcAntigo,
+    cpfCnpj: u.cpfCnpj,
     cidade: u.cidade,
     distribuidora: u.distribuidora,
     consumoMedio: u.consumoMedio,
@@ -338,6 +354,9 @@ export async function GET(
     plant: {
       id: plant.id,
       name: plant.name,
+      unidadeConsumidora: plant.unidadeConsumidora,
+      unidadeConsumidoraAntiga: plant.unidadeConsumidoraAntiga,
+      cpfCnpj: plant.cpfCnpj,
       regraInstalacao: plant.regraInstalacao,
       geracaoMediaMensal: plant.geracaoMediaMensal,
     },

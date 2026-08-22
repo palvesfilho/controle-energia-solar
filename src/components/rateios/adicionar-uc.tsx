@@ -26,6 +26,10 @@ export interface UnidadeDisponivel {
   id: string;
   nome: string;
   codigoUc: string | null;
+  /** Código anterior à migração da RGE (jul/2026); o portal ainda pede às vezes. */
+  codigoUcAntigo?: string | null;
+  /** CPF/CNPJ do titular da conta de energia. */
+  cpfCnpj?: string | null;
   cidade: string | null;
   distribuidora: string | null;
   /** kWh/mês do cadastro (contrato). */
@@ -95,7 +99,13 @@ export function AdicionarUc({
       if (u.nome.toLowerCase().includes(termo)) return true;
       if (u.cidade?.toLowerCase().includes(termo)) return true;
       // Código casa por dígito: "0123.456" acha "0123456".
-      return Boolean(numero) && digitos(u.codigoUc ?? "").includes(numero);
+      // Vale para o código ATUAL e para o ANTERIOR à migração da RGE: quem
+      // tem o número velho na mão não fica sem achar a UC.
+      if (!numero) return false;
+      return (
+        digitos(u.codigoUc ?? "").includes(numero) ||
+        digitos(u.codigoUcAntigo ?? "").includes(numero)
+      );
     });
   }, [candidatas, busca]);
 
@@ -160,6 +170,9 @@ export function AdicionarUc({
 
                 <span className="text-xs text-muted-foreground">
                   {formatCodigoUc(u.codigoUc) ?? "sem código"}
+                  {u.codigoUcAntigo?.trim()
+                    ? ` · antiga ${formatCodigoUc(u.codigoUcAntigo)}`
+                    : ""}
                   {u.cidade ? ` · ${u.cidade}` : ""}
                   {(() => {
                     const c = consumoDaUc(u);

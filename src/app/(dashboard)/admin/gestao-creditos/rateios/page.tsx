@@ -45,6 +45,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import {
+  formatCpfCnpj,
+  isDocumentoValido,
+  repoeZerosAEsquerda,
+} from "@/lib/documento";
 
 interface PlantOption {
   id: string;
@@ -66,6 +71,8 @@ interface ConsumerUnitLite {
   id: string;
   nome: string;
   codigoUc: string | null;
+  codigoUcAntigo?: string | null;
+  cpfCnpj?: string | null;
   cidade: string | null;
   distribuidora: string | null;
   consumoMedio?: number | null;
@@ -99,6 +106,11 @@ interface RateioResponse {
   plant: {
     id: string;
     name: string;
+    /** Código da UC da usina — e o anterior à migração da RGE (jul/2026). */
+    unidadeConsumidora: string | null;
+    unidadeConsumidoraAntiga: string | null;
+    /** CPF/CNPJ do titular da conta de energia da usina. */
+    cpfCnpj: string | null;
     regraInstalacao: string | null;
     /** Geração de contrato — denominador da leitura de ocupação na sugestão. */
     geracaoMediaMensal: number | null;
@@ -179,54 +191,174 @@ function ConsumosDaUc({
 }
 
 /**
- * Código da UC da usina no cabeçalho do diálogo, com botão de copiar: é o
- * número que vai ser digitado no portal da concessionária na hora de cadastrar
- * o rateio, então precisa estar à mão — não numa outra tela.
+ * Valor que se copia com um clique. Copia sempre a versão CRUA (só dígitos):
+ * é o formato que o portal da concessionária aceita, e é o que evita o
+ * vai-e-volta de apagar pontuação na mão.
  */
-function UcDaUsina({ codigo }: { codigo: string | null }) {
+function Copiavel({
+  bruto,
+  children,
+  title,
+}: {
+  bruto: string;
+  children: React.ReactNode;
+  title: string;
+}) {
   const [copiado, setCopiado] = useState(false);
-  const limpo = codigo?.trim() || null;
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={() => {
+        navigator.clipboard?.writeText(bruto).then(
+          () => {
+            setCopiado(true);
+            setTimeout(() => setCopiado(false), 1500);
+          },
+          () => {},
+        );
+      }}
+      className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-left hover:bg-muted"
+    >
+      {children}
+      {copiado ? (
+        <Check className="h-3 w-3 shrink-0 text-green-600" />
+      ) : (
+        <Copy className="h-3 w-3 shrink-0 opacity-40" />
+      )}
+    </button>
+  );
+}
 
-  if (!limpo) {
-    return (
-      <p className="text-xs font-medium text-amber-600 dark:text-amber-500">
-        UC da usina não cadastrada — preencha no cadastro da usina.
-      </p>
-    );
-  }
+/**
+ * A identificação da UC como o portal da concessionária pede: código atual,
+ * código ANTERIOR à migração da RGE e o CPF/CNPJ do titular. Cada um copiável
+ * com um clique, já sem pontuação.
+ *
+ * Por que os três juntos na mesma célula: quem cadastra o rateio no portal
+ * digita os três seguidos, e ter que abrir o cadastro da UC no meio do caminho
+ * é o que essa tela existe para evitar.
+ */
+function IdentificacaoUc({
+  codigoUc,
+  codigoUcAntigo,
+  cpfCnpj,
+}: {
+  codigoUc: string | null;
+  codigoUcAntigo?: string | null;
+  cpfCnpj?: string | null;
+}) {
+  const antigo = codigoUcAntigo?.trim() || null;
+  const doc = cpfCnpj?.trim() || null;
+  const docDigitos = repoeZerosAEsquerda(doc);
+  const docOk = isDocumentoValido(doc);
+  const rotuloDoc =
+    docDigitos.length === 11 ? "CPF" : docDigitos.length === 14 ? "CNPJ" : "Doc";
 
   return (
-    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-      <span>
-        UC da usina: <b className="text-foreground">{formatCodigoUc(limpo)}</b>
-      </span>
-      <button
-        type="button"
-        // Copia o código CRU (sem pontuação): é o formato que o portal aceita.
-        onClick={() => {
-          navigator.clipboard?.writeText(limpo).then(
-            () => {
-              setCopiado(true);
-              setTimeout(() => setCopiado(false), 1500);
-            },
-            () => {},
-          );
-        }}
-        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted"
-        title="Copiar código sem pontuação"
-      >
-        {copiado ? (
-          <>
-            <Check className="h-3 w-3 text-green-600" />
-            Copiado
-          </>
-        ) : (
-          <>
-            <Copy className="h-3 w-3" />
-            Copiar
-          </>
-        )}
-      </button>
+    <div className="space-y-0.5 text-xs">
+      {codigoUc ? (
+        <Copiavel bruto={codigoUc} title="Copiar código da UC (sem pontuação)">
+          {formatCodigoUc(codigoUc)}
+        </Copiavel>
+      ) : (
+        <span className="text-muted-foreground">-</span>
+      )}
+
+      {antigo ? (
+        <div>
+          <Copiavel bruto={antigo} title="Copiar código antigo (sem pontuação)">
+            <span className="text-muted-foreground">antiga {formatCodigoUc(antigo)}</span>
+          </Copiavel>
+        </div>
+      ) : (
+        <div className="px-1 text-[11px] text-muted-foreground">sem código antigo</div>
+      )}
+
+      {doc ? (
+        <div>
+          <Copiavel bruto={docDigitos || doc} title={`Copiar ${rotuloDoc} (só dígitos)`}>
+            <span className="text-muted-foreground">
+              {rotuloDoc} {formatCpfCnpj(doc)}
+            </span>
+            {!docOk && (
+              <span className="font-medium text-amber-600 dark:text-amber-500"> (?)</span>
+            )}
+          </Copiavel>
+        </div>
+      ) : (
+        <div className="px-1 text-[11px] font-medium text-amber-600 dark:text-amber-500">
+          sem CPF/CNPJ
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Os três dados da usina que o portal da concessionária pede na hora de
+ * cadastrar o rateio: código da UC, o código ANTERIOR à migração da RGE
+ * (jul/2026 — o portal ainda pede o velho de vez em quando) e o CPF/CNPJ do
+ * titular da conta. Ficam no cabeçalho do diálogo, cada um copiável.
+ *
+ * O que falta aparece como falta, em âmbar: em 22/08/2026 são 3 usinas sem
+ * código de UC, 3 sem o antigo e **20 das 29 sem documento** — mostrar em
+ * branco esconderia o buraco de cadastro.
+ */
+function DadosDaUsina({
+  uc,
+  ucAntiga,
+  documento,
+}: {
+  uc: string | null;
+  ucAntiga: string | null;
+  documento: string | null;
+}) {
+  const ucLimpo = uc?.trim() || null;
+  const antigaLimpa = ucAntiga?.trim() || null;
+  const docLimpo = documento?.trim() || null;
+  const docDigitos = repoeZerosAEsquerda(docLimpo);
+  const docOk = isDocumentoValido(docLimpo);
+  const rotuloDoc =
+    docDigitos.length === 11 ? "CPF" : docDigitos.length === 14 ? "CNPJ" : "Documento";
+
+  const faltando = (texto: string) => (
+    <span className="font-medium text-amber-600 dark:text-amber-500">{texto}</span>
+  );
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+      {ucLimpo ? (
+        <Copiavel bruto={ucLimpo} title="Copiar código da UC (sem pontuação)">
+          UC da usina: <b className="text-foreground">{formatCodigoUc(ucLimpo)}</b>
+        </Copiavel>
+      ) : (
+        faltando("UC da usina não cadastrada")
+      )}
+
+      {antigaLimpa ? (
+        <Copiavel bruto={antigaLimpa} title="Copiar código antigo (sem pontuação)">
+          UC antiga: <b className="text-foreground">{formatCodigoUc(antigaLimpa)}</b>
+        </Copiavel>
+      ) : (
+        faltando("sem código antigo")
+      )}
+
+      {docLimpo ? (
+        <Copiavel bruto={docDigitos || docLimpo} title={`Copiar ${rotuloDoc} (só dígitos)`}>
+          {rotuloDoc}: <b className="text-foreground">{formatCpfCnpj(docLimpo)}</b>
+          {/* Documento que não tem 11 nem 14 dígitos não é erro de exibição:
+              está errado no cadastro e seria colado errado no portal. */}
+          {!docOk && (
+            <span className="font-medium text-amber-600 dark:text-amber-500">
+              {" "}
+              (formato inesperado)
+            </span>
+          )}
+        </Copiavel>
+      ) : (
+        faltando("titular sem CPF/CNPJ no cadastro")
+      )}
     </div>
   );
 }
@@ -701,7 +833,9 @@ export default function RateiosPage() {
           onOpenChange={setCreateOpen}
           plantId={selectedPlantId}
           plantName={selectedPlant?.name ?? ""}
-          plantUc={selectedPlant?.unidadeConsumidora ?? null}
+          plantUc={data.plant.unidadeConsumidora ?? selectedPlant?.unidadeConsumidora ?? null}
+          plantUcAntiga={data.plant.unidadeConsumidoraAntiga}
+          plantDoc={data.plant.cpfCnpj}
           consumerUnits={data.consumerUnits}
           unidadesDisponiveis={data.unidadesDisponiveis}
           regraInstalacao={data.plant.regraInstalacao}
@@ -719,7 +853,9 @@ export default function RateiosPage() {
           onOpenChange={(v) => !v && setEditing(null)}
           plantId={selectedPlantId}
           plantName={selectedPlant?.name ?? ""}
-          plantUc={selectedPlant?.unidadeConsumidora ?? null}
+          plantUc={data.plant.unidadeConsumidora ?? selectedPlant?.unidadeConsumidora ?? null}
+          plantUcAntiga={data.plant.unidadeConsumidoraAntiga}
+          plantDoc={data.plant.cpfCnpj}
           consumerUnits={data.consumerUnits}
           unidadesDisponiveis={data.unidadesDisponiveis}
           rateio={editing}
@@ -937,7 +1073,7 @@ function RateioTable({
                 Unidade Consumidora
               </th>
               <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">
-                UC
+                UC / titular
               </th>
               <th className="text-right py-2 px-3 font-medium text-xs uppercase tracking-wide">
                 Percentual
@@ -956,7 +1092,11 @@ function RateioTable({
                   {item.consumerUnit.nome}
                 </td>
                 <td className="py-2.5 px-3 text-xs">
-                  {formatCodigoUc(item.consumerUnit.codigoUc) ?? "-"}
+                  <IdentificacaoUc
+                    codigoUc={item.consumerUnit.codigoUc}
+                    codigoUcAntigo={item.consumerUnit.codigoUcAntigo}
+                    cpfCnpj={item.consumerUnit.cpfCnpj}
+                  />
                 </td>
                 <td className="py-2.5 px-3 text-right font-medium">
                   {item.percentual.toFixed(2)}%
@@ -1028,6 +1168,8 @@ function CreateRateioDialog({
   plantId,
   plantName,
   plantUc,
+  plantUcAntiga,
+  plantDoc,
   consumerUnits,
   unidadesDisponiveis,
   regraInstalacao,
@@ -1039,6 +1181,8 @@ function CreateRateioDialog({
   plantId: string;
   plantName: string;
   plantUc: string | null;
+  plantUcAntiga: string | null;
+  plantDoc: string | null;
   consumerUnits: ConsumerUnitLite[];
   unidadesDisponiveis: UnidadeDisponivel[];
   regraInstalacao: string | null;
@@ -1240,7 +1384,7 @@ function CreateRateioDialog({
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Novo rateio — {plantName}</DialogTitle>
-          <UcDaUsina codigo={plantUc} />
+          <DadosDaUsina uc={plantUc} ucAntiga={plantUcAntiga} documento={plantDoc} />
         </DialogHeader>
 
         <div className="space-y-4">
@@ -1285,7 +1429,7 @@ function CreateRateioDialog({
                     Unidade
                   </th>
                   <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">
-                    UC
+                    UC / titular
                   </th>
                   <th className="text-right py-2 px-3 font-medium text-xs uppercase tracking-wide w-32">
                     %
@@ -1343,7 +1487,13 @@ function CreateRateioDialog({
                           </p>
                         )}
                       </td>
-                      <td className="py-2 px-3 text-xs">{formatCodigoUc(u.codigoUc) ?? "-"}</td>
+                      <td className="py-2 px-3 align-top">
+                        <IdentificacaoUc
+                          codigoUc={u.codigoUc}
+                          codigoUcAntigo={u.codigoUcAntigo}
+                          cpfCnpj={u.cpfCnpj}
+                        />
+                      </td>
                       <td className="py-2 px-3">
                         <Input
                           type="text"
@@ -1469,7 +1619,7 @@ function CreateRateioDialog({
           <DialogTitle>Protocolo da concessionária</DialogTitle>
           {/* O operador está com o portal da concessionária aberto neste
               momento — o código da UC segue à mão aqui também. */}
-          <UcDaUsina codigo={plantUc} />
+          <DadosDaUsina uc={plantUc} ucAntiga={plantUcAntiga} documento={plantDoc} />
         </DialogHeader>
 
         <div className="space-y-3">
@@ -1535,6 +1685,8 @@ function EditRateioDialog({
   plantId,
   plantName,
   plantUc,
+  plantUcAntiga,
+  plantDoc,
   consumerUnits,
   unidadesDisponiveis,
   rateio,
@@ -1546,6 +1698,8 @@ function EditRateioDialog({
   plantId: string;
   plantName: string;
   plantUc: string | null;
+  plantUcAntiga: string | null;
+  plantDoc: string | null;
   consumerUnits: ConsumerUnitLite[];
   unidadesDisponiveis: UnidadeDisponivel[];
   rateio: Rateio;
@@ -1697,7 +1851,7 @@ function EditRateioDialog({
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Editar rateio — {plantName}</DialogTitle>
-          <UcDaUsina codigo={plantUc} />
+          <DadosDaUsina uc={plantUc} ucAntiga={plantUcAntiga} documento={plantDoc} />
         </DialogHeader>
 
         <div className="space-y-4">
@@ -1737,7 +1891,7 @@ function EditRateioDialog({
                     Unidade
                   </th>
                   <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">
-                    UC
+                    UC / titular
                   </th>
                   <th className="text-right py-2 px-3 font-medium text-xs uppercase tracking-wide w-32">
                     %
@@ -1788,7 +1942,13 @@ function EditRateioDialog({
                         </p>
                       )}
                     </td>
-                    <td className="py-2 px-3 text-xs">{formatCodigoUc(u.codigoUc) ?? "-"}</td>
+                    <td className="py-2 px-3 align-top">
+                        <IdentificacaoUc
+                          codigoUc={u.codigoUc}
+                          codigoUcAntigo={u.codigoUcAntigo}
+                          cpfCnpj={u.cpfCnpj}
+                        />
+                      </td>
                     <td className="py-2 px-3">
                       <Input
                         type="text"
