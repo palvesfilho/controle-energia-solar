@@ -17,7 +17,6 @@ import {
   Plus,
   Save,
   Trash2,
-  X,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -164,6 +163,8 @@ export default function ListaMateriaisClient({ obraId }: { obraId: string }) {
     separar: false,
     reabrir: false,
   });
+  const [confirmandoFoto, setConfirmandoFoto] = useState<string | null>(null);
+  const [apagandoFoto, setApagandoFoto] = useState<string | null>(null);
   const [sepItens, setSepItens] = useState<Record<string, SepItem>>({});
   const [sep, setSep] = useState<SeparacaoState>({
     equipeRetiradaId: "",
@@ -481,6 +482,7 @@ export default function ListaMateriaisClient({ obraId }: { obraId: string }) {
   }
 
   async function removerFoto(fotoId: string) {
+    setApagandoFoto(fotoId);
     try {
       const res = await fetch(
         `/api/admin/obra/${obraId}/lista-materiais/fotos/${fotoId}`,
@@ -491,8 +493,12 @@ export default function ListaMateriaisClient({ obraId }: { obraId: string }) {
         throw new Error(err?.error ?? `HTTP ${res.status}`);
       }
       setFotos((prev) => prev.filter((f) => f.id !== fotoId));
+      setConfirmandoFoto(null);
+      toast.success("Foto apagada");
     } catch (e) {
-      toast.error("Erro ao remover foto", { description: (e as Error).message });
+      toast.error("Erro ao apagar foto", { description: (e as Error).message });
+    } finally {
+      setApagandoFoto(null);
     }
   }
 
@@ -894,37 +900,6 @@ export default function ListaMateriaisClient({ obraId }: { obraId: string }) {
                 assinaturas.
               </p>
             </div>
-            {separavel && (
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => salvarSeparacao()}
-                  disabled={savingSep || closing}
-                  className="inline-flex h-9 items-center gap-1 rounded-md border px-3 text-sm font-medium hover:bg-muted disabled:opacity-50"
-                >
-                  {savingSep ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="h-4 w-4" />
-                  )}
-                  Salvar separação
-                </button>
-                <button
-                  type="button"
-                  onClick={fecharRetirada}
-                  disabled={closing || savingSep}
-                  className="inline-flex h-9 items-center gap-1 rounded-md bg-emerald-600 px-3 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-                  title="Grava a retirada e emite o comprovante assinado"
-                >
-                  {closing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <FileCheck2 className="h-4 w-4" />
-                  )}
-                  Fechar retirada
-                </button>
-              </div>
-            )}
           </div>
 
           <div className="space-y-4 p-4">
@@ -1025,7 +1000,7 @@ export default function ListaMateriaisClient({ obraId }: { obraId: string }) {
                   {fotos.map((f) => (
                     <div
                       key={f.id}
-                      className="group relative aspect-video overflow-hidden rounded-md border"
+                      className="relative aspect-video overflow-hidden rounded-md border"
                     >
                       <a
                         href={pdfHref(f.relativePath)}
@@ -1039,16 +1014,51 @@ export default function ListaMateriaisClient({ obraId }: { obraId: string }) {
                           className="h-full w-full object-cover"
                         />
                       </a>
-                      {separavel && (
-                        <button
-                          type="button"
-                          onClick={() => removerFoto(f.id)}
-                          className="absolute right-1 top-1 hidden h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white group-hover:flex"
-                          title="Remover foto"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                      {separavel &&
+                        (confirmandoFoto === f.id ? (
+                          // Confirmação sobre a própria foto: apagar é definitivo
+                          // e no celular um toque errado é fácil demais.
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/70 p-2 text-center">
+                            <span className="text-[11px] font-medium text-white">
+                              Apagar esta foto?
+                            </span>
+                            <div className="flex gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => removerFoto(f.id)}
+                                disabled={apagandoFoto === f.id}
+                                className="inline-flex h-7 items-center gap-1 rounded bg-red-600 px-2 text-[11px] font-medium text-white hover:bg-red-700 disabled:opacity-60"
+                              >
+                                {apagandoFoto === f.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3 w-3" />
+                                )}
+                                Apagar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmandoFoto(null)}
+                                disabled={apagandoFoto === f.id}
+                                className="inline-flex h-7 items-center rounded bg-white/90 px-2 text-[11px] font-medium text-foreground hover:bg-white disabled:opacity-60"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          // Sempre visível: escondido atrás de :hover ele some no
+                          // celular, que é justamente onde a foto é tirada.
+                          <button
+                            type="button"
+                            onClick={() => setConfirmandoFoto(f.id)}
+                            className="absolute right-1 top-1 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white shadow-sm hover:bg-red-600"
+                            title="Apagar esta foto"
+                            aria-label={`Apagar a foto ${f.fileName}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        ))}
                     </div>
                   ))}
                 </div>
@@ -1111,6 +1121,45 @@ export default function ListaMateriaisClient({ obraId }: { obraId: string }) {
         Total de itens: <strong>{itensWatched.length}</strong>
         {pdfGeradoEm ? ` • última lista gerada em ${fmt(pdfGeradoEm)}` : ""}
       </p>
+
+      {/* Ações da separação no fim da tela: são o último passo do fluxo, depois
+          de conferir itens, fotos e assinaturas. */}
+      {separavel && (
+        <div className="flex flex-col items-center gap-2 border-t pt-5 pb-2">
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => salvarSeparacao()}
+              disabled={savingSep || closing}
+              className="inline-flex h-10 items-center justify-center gap-1.5 rounded-md border px-5 text-sm font-medium hover:bg-muted disabled:opacity-50"
+            >
+              {savingSep ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              Salvar separação
+            </button>
+            <button
+              type="button"
+              onClick={fecharRetirada}
+              disabled={closing || savingSep}
+              className="inline-flex h-10 items-center justify-center gap-1.5 rounded-md bg-emerald-600 px-5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+              title="Grava a retirada e emite o comprovante assinado"
+            >
+              {closing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileCheck2 className="h-4 w-4" />
+              )}
+              Fechar retirada
+            </button>
+          </div>
+          <p className="text-center text-xs text-muted-foreground">
+            Fechar a retirada emite o comprovante assinado e trava a lista.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
