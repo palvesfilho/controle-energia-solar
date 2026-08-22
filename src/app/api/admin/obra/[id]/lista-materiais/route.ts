@@ -2,16 +2,29 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth-compat";
 import { z } from "zod";
 import { authOptions } from "@/lib/auth-options";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { canAccessSection } from "@/lib/roles";
 import { LISTA_MATERIAIS_TEMPLATE } from "@/lib/obra-lista-materiais-template";
+import {
+  podeEditarLista,
+  podeLiberarLista,
+  podeReabrirLista,
+  podeSepararLista,
+} from "@/lib/obra-lista-materiais-permissoes";
 
 export const runtime = "nodejs";
 
-async function getOrCreateLista(obraId: string) {
+const LISTA_INCLUDE = {
+  itens: { orderBy: { ordem: "asc" } },
+  fotos: { orderBy: { createdAt: "asc" } },
+  equipeRetirada: { select: { id: true, nome: true } },
+} as const;
+
+export async function getOrCreateLista(obraId: string) {
   const existing = await prisma.obraListaMaterial.findUnique({
     where: { obraId },
-    include: { itens: { orderBy: { ordem: "asc" } } },
+    include: LISTA_INCLUDE,
   });
   if (existing) return existing;
 
@@ -32,7 +45,7 @@ async function getOrCreateLista(obraId: string) {
         })),
       },
     },
-    include: { itens: { orderBy: { ordem: "asc" } } },
+    include: LISTA_INCLUDE,
   });
 }
 
@@ -53,7 +66,33 @@ export async function GET(
     where: { id },
     select: { id: true, nome: true, cliente: true, local: true, responsavel: true },
   });
-  return NextResponse.json({ lista, obra });
+
+  // Seletor da empresa/equipe que veio buscar o material — só as ativas, mais
+  // a que já ficou registrada nesta lista (mesmo que tenha sido desativada
+  // depois, senão o campo aparece vazio numa retirada já assinada).
+  const equipes = await prisma.equipeExecucao.findMany({
+    where: {
+      OR: [
+        { active: true },
+        ...(lista.equipeRetiradaId ? [{ id: lista.equipeRetiradaId }] : []),
+      ],
+    },
+    orderBy: [{ active: "desc" }, { nome: "asc" }],
+    select: { id: true, nome: true, active: true },
+  });
+
+  const role = session.user.role;
+  return NextResponse.json({
+    lista,
+    obra,
+    equipes,
+    permissoes: {
+      editarLista: podeEditarLista(role, lista.status),
+      liberar: podeLiberarLista(role, lista.status),
+      separar: podeSepararLista(role, lista.status),
+      reabrir: podeReabrirLista(role, lista.status),
+    },
+  });
 }
 
 const itemSchema = z.object({
@@ -96,9 +135,26 @@ export async function PUT(
     return NextResponse.json({ error: "Obra não encontrada" }, { status: 404 });
   }
 
+  if (!podeEditarLista(session.user.role, lista.status)) {
+    return NextResponse.json(
+      {
+        error:
+          lista.status === "RETIRADA"
+            ? "Retirada já fechada — reabra a lista para editar."
+            : "Seu perfil não edita a lista de materiais, apenas a separação.",
+      },
+      { status: 403 }
+    );
+  }
+
   const { itens, responsavel, numeroSerieInversor, observacoes } = parsed.data;
 
-  await prisma.$transaction([
+  // Sincroniza por id em vez de apagar-e-recriar: apagar zeraria, calado, o que
+  // o gestor de obras já marcou como separado numa lista liberada.
+  const existentes = new Map(lista.itens.map((it) => [it.id, it]));
+  const mantidos = new Set<string>();
+
+  const ops: Prisma.PrismaPromise<unknown>[] = [
     prisma.obraListaMaterial.update({
       where: { id: lista.id },
       data: {
@@ -107,22 +163,57 @@ export async function PUT(
         observacoes: observacoes ?? null,
       },
     }),
-    prisma.obraListaMaterialItem.deleteMany({ where: { listaId: lista.id } }),
-    prisma.obraListaMaterialItem.createMany({
-      data: itens.map((it, i) => ({
-        listaId: lista.id,
-        categoria: it.categoria,
-        descricao: it.descricao,
-        especificacao: it.especificacao ?? null,
-        quantidade: it.quantidade,
-        ordem: it.ordem ?? i,
-      })),
-    }),
-  ]);
+  ];
+
+  itens.forEach((it, i) => {
+    const ordem = it.ordem ?? i;
+    const atual = it.id ? existentes.get(it.id) : undefined;
+    if (atual) {
+      mantidos.add(atual.id);
+      ops.push(
+        prisma.obraListaMaterialItem.update({
+          where: { id: atual.id },
+          data: {
+            categoria: it.categoria,
+            descricao: it.descricao,
+            especificacao: it.especificacao ?? null,
+            quantidade: it.quantidade,
+            ordem,
+          },
+        })
+      );
+    } else {
+      ops.push(
+        prisma.obraListaMaterialItem.create({
+          data: {
+            listaId: lista.id,
+            categoria: it.categoria,
+            descricao: it.descricao,
+            especificacao: it.especificacao ?? null,
+            quantidade: it.quantidade,
+            ordem,
+          },
+        })
+      );
+    }
+  });
+
+  const removidos = lista.itens
+    .filter((it) => !mantidos.has(it.id))
+    .map((it) => it.id);
+  if (removidos.length) {
+    ops.push(
+      prisma.obraListaMaterialItem.deleteMany({
+        where: { id: { in: removidos } },
+      })
+    );
+  }
+
+  await prisma.$transaction(ops);
 
   const updated = await prisma.obraListaMaterial.findUnique({
     where: { id: lista.id },
-    include: { itens: { orderBy: { ordem: "asc" } } },
+    include: LISTA_INCLUDE,
   });
   return NextResponse.json({ lista: updated });
 }

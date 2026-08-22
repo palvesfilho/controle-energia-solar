@@ -11,6 +11,7 @@ import {
   HardHat,
   Loader2,
   Package,
+  PackageCheck,
   Plus,
   RefreshCw,
   Search,
@@ -421,13 +422,19 @@ export default function GestaoObraPage() {
                         <td className="px-3 py-2.5 text-center">
                           <ActionButton
                             title={
-                              r.listaMateriaisPdfGerado
-                                ? "Lista de Materiais — PDF já gerado, clique para editar"
-                                : "Editar Lista de Materiais"
+                              r.listaMateriaisStatus === "RETIRADA"
+                                ? "Lista de Materiais — retirada fechada e assinada"
+                                : r.listaMateriaisStatus === "LIBERADA"
+                                  ? "Lista de Materiais — liberada, aguardando separação do gestor de obras"
+                                  : "Editar Lista de Materiais (ainda não liberada)"
                             }
-                            icon={Package}
+                            icon={
+                              r.listaMateriaisStatus === "RETIRADA"
+                                ? PackageCheck
+                                : Package
+                            }
                             href={`/admin/obra/${r.id}/lista-materiais`}
-                            done={r.listaMateriaisPdfGerado}
+                            done={r.listaMateriaisStatus !== "RASCUNHO"}
                             sameTab
                           />
                         </td>

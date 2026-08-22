@@ -1686,17 +1686,51 @@ model ObraListaMaterial {
   numeroSerieInversor String? @map("numero_serie_inversor")
   observacoes         String?
 
+  // Ciclo de vida da lista:
+  // RASCUNHO  → em montagem; o gestor de obras só lê, não separa.
+  // LIBERADA  → "Gerar Lista" foi clicado; o bloco de separação/retirada abre.
+  // RETIRADA  → retirada fechada e assinada; comprovante emitido, tudo travado.
+  status String @default("RASCUNHO")
+
+  liberadaEm       DateTime? @map("liberada_em")
+  liberadaPorId    String?   @map("liberada_por_id")
+  liberadaPorNome  String?   @map("liberada_por_nome")
+
   // Último PDF gerado a partir desta lista
   pdfRelativePath String?   @map("pdf_relative_path")
   pdfUploadId     String?   @map("pdf_upload_id")
   pdfGeradoEm     DateTime? @map("pdf_gerado_em")
 
+  // ----- Retirada do material pela equipe de instalação --------------------
+  // Empresa/equipe que veio buscar o material (cadastro Personalizações > Equipes)
+  equipeRetiradaId String? @map("equipe_retirada_id")
+  // Nome digitado de quem fisicamente retirou (pode não ser o responsável da equipe)
+  retiradoPor      String? @map("retirado_por")
+
+  // Assinaturas a mão livre (PNG data URL desenhado no canvas da tela)
+  assinaturaEntregouNome String? @map("assinatura_entregou_nome")
+  assinaturaEntregouData String? @map("assinatura_entregou_data")
+  assinaturaRetirouNome  String? @map("assinatura_retirou_nome")
+  assinaturaRetirouData  String? @map("assinatura_retirou_data")
+
+  observacoesSeparacao String?   @map("observacoes_separacao")
+  retiradaEm           DateTime? @map("retirada_em")
+
+  // Comprovante de retirada assinado (2º PDF, emitido ao fechar a retirada)
+  comprovanteRelativePath String?   @map("comprovante_relative_path")
+  comprovanteUploadId     String?   @map("comprovante_upload_id")
+  comprovanteGeradoEm     DateTime? @map("comprovante_gerado_em")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  obra  Obra                    @relation(fields: [obraId], references: [id], onDelete: Cascade)
-  itens ObraListaMaterialItem[]
+  obra          Obra                    @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  itens         ObraListaMaterialItem[]
+  fotos         ObraListaMaterialFoto[]
+  equipeRetirada EquipeExecucao?        @relation(fields: [equipeRetiradaId], references: [id], onDelete: SetNull)
 
+  @@index([status])
+  @@index([equipeRetiradaId])
   @@map("obra_lista_materiais")
 }
 
@@ -1711,6 +1745,11 @@ model ObraListaMaterialItem {
   quantidade    String
   ordem         Int     @default(0)
 
+  // Preenchidos pelo gestor de obras na separação (só depois de LIBERADA).
+  // quantidadeSeparada fica null enquanto ninguém editar — aí vale `quantidade`.
+  separado           Boolean @default(false)
+  quantidadeSeparada String? @map("quantidade_separada")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -1718,6 +1757,26 @@ model ObraListaMaterialItem {
 
   @@index([listaId, ordem])
   @@map("obra_lista_material_itens")
+}
+
+// Fotos dos materiais separados, anexadas pelo gestor de obras na retirada.
+model ObraListaMaterialFoto {
+  id      String @id @default(cuid())
+  listaId String @map("lista_id")
+
+  relativePath String  @map("relative_path")
+  fileName     String  @map("file_name")
+  mimeType     String? @map("mime_type")
+  fileSize     Int?    @map("file_size")
+  uploadId     String? @map("upload_id")
+  legenda      String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  lista ObraListaMaterial @relation(fields: [listaId], references: [id], onDelete: Cascade)
+
+  @@index([listaId])
+  @@map("obra_lista_material_fotos")
 }
 
 model ObraTarefa {
@@ -1801,7 +1860,8 @@ model EquipeExecucao {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  obras Obra[]
+  obras           Obra[]
+  listasRetirada  ObraListaMaterial[]
 
   @@index([active])
   @@map("equipes_execucao")

@@ -4,6 +4,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { canAccessSection } from "@/lib/roles";
+import { podeLiberarLista } from "@/lib/obra-lista-materiais-permissoes";
 import { saveBufferToStorage, deleteUploadedFile } from "@/lib/file-storage";
 import {
   MateriaisObraPDF,
@@ -12,6 +13,10 @@ import {
 
 export const runtime = "nodejs";
 
+/**
+ * "Gerar Lista": emite o PDF da ordem de separação E libera a lista para o
+ * gestor de obras — é o clique que abre o bloco de separação/retirada.
+ */
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -32,8 +37,27 @@ export async function POST(
   });
   if (!lista || !lista.obra) {
     return NextResponse.json(
-      { error: "Lista ou obra não encontrada — salve a lista antes de gerar o PDF" },
+      { error: "Lista ou obra não encontrada — salve a lista antes de gerar" },
       { status: 404 }
+    );
+  }
+
+  if (!podeLiberarLista(session.user.role, lista.status)) {
+    return NextResponse.json(
+      {
+        error:
+          lista.status === "RETIRADA"
+            ? "Retirada já fechada — reabra a lista para gerar novamente."
+            : "Seu perfil não libera a lista de materiais.",
+      },
+      { status: 403 }
+    );
+  }
+
+  if (lista.itens.length === 0) {
+    return NextResponse.json(
+      { error: "Lista sem itens — adicione ao menos um material antes de liberar." },
+      { status: 400 }
     );
   }
 
@@ -92,12 +116,18 @@ export async function POST(
       .catch(() => undefined);
   }
 
+  // Liberar é idempotente: gerar de novo atualiza o PDF sem reescrever quem
+  // liberou primeiro — a data original da liberação é o que vale na auditoria.
   await prisma.obraListaMaterial.update({
     where: { id: lista.id },
     data: {
       pdfRelativePath: relativePath,
       pdfUploadId: upload.id,
       pdfGeradoEm: emitidoEm,
+      status: "LIBERADA",
+      liberadaEm: lista.liberadaEm ?? emitidoEm,
+      liberadaPorId: lista.liberadaPorId ?? session.user.id,
+      liberadaPorNome: lista.liberadaPorNome ?? session.user.name ?? null,
     },
   });
 
@@ -108,5 +138,6 @@ export async function POST(
     relativePath,
     absolutePath,
     emitidoEm: emitidoEm.toISOString(),
+    status: "LIBERADA",
   });
 }

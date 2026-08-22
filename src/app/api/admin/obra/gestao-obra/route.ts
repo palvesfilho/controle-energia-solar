@@ -31,8 +31,12 @@ export interface GestaoObraRow {
   // Indicam se cada PDF já foi gerado ao menos uma vez (para colorir os ícones)
   documentoPdfGerado: boolean;
   listaMateriaisPdfGerado: boolean;
+  // RASCUNHO | LIBERADA | RETIRADA — em que ponto da separação a lista está
+  listaMateriaisStatus: ListaMateriaisStatus;
   conferenciaPdfGerado: boolean;
 }
+
+export type ListaMateriaisStatus = "RASCUNHO" | "LIBERADA" | "RETIRADA";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -57,7 +61,7 @@ export async function GET(req: NextRequest) {
         ...statusFilter,
       },
       orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-      include: { listaMaterial: { select: { pdfGeradoEm: true } } },
+      include: { listaMaterial: { select: { pdfGeradoEm: true, status: true } } },
     });
 
     const proprietarioIds = new Set<string>();
@@ -104,6 +108,8 @@ export async function GET(req: NextRequest) {
         documentoPdfGerado: obra.documentoPdfGeradoEm != null,
         conferenciaPdfGerado: obra.conferenciaPdfGeradoEm != null,
         listaMateriaisPdfGerado: obra.listaMaterial?.pdfGeradoEm != null,
+        listaMateriaisStatus: (obra.listaMaterial?.status ??
+          "RASCUNHO") as ListaMateriaisStatus,
       };
     });
 
