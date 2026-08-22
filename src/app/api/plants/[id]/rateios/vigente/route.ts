@@ -26,6 +26,9 @@ const rateioWithItems = {
           // titular; a tela do rateio mostra os três lado a lado.
           codigoUcAntigo: true,
           cpfCnpj: true,
+          // Consumo de contrato: com o real (calculado à parte) define qual UC
+          // é a ÂNCORA do rateio — a de maior consumo.
+          consumoMedio: true,
           cidade: true,
           distribuidora: true,
         },
@@ -43,6 +46,9 @@ type RateioFull = Awaited<
 function serialize(
   r: NonNullable<RateioFull>,
   compensadoByUc: Map<string, number> | null,
+  consumoRealPorUc: Map<string, { media: number; meses: number }> | null,
+  /** Códigos da UC da própria usina — a geradora não disputa "âncora". */
+  codigosGeradora: Set<string>,
 ) {
   return {
     id: r.id,
@@ -57,7 +63,13 @@ function serialize(
     items: r.items.map((it) => ({
       id: it.id,
       percentual: it.percentual,
-      consumerUnit: it.consumerUnit,
+      consumerUnit: {
+        ...it.consumerUnit,
+        consumoReal: consumoRealPorUc?.get(it.consumerUnitId)?.media ?? null,
+        consumoRealMeses: consumoRealPorUc?.get(it.consumerUnitId)?.meses ?? 0,
+        isGeradora:
+          !!it.consumerUnit.codigoUc && codigosGeradora.has(it.consumerUnit.codigoUc),
+      },
       creditosCompensadosKwh: compensadoByUc
         ? (compensadoByUc.get(it.consumerUnitId) ?? null)
         : null,
@@ -361,9 +373,15 @@ export async function GET(
       geracaoMediaMensal: plant.geracaoMediaMensal,
     },
     periodo: temPeriodo ? { ano, mes } : null,
-    vigente: vigente ? serialize(vigente, compensadoByUc) : null,
-    pendente: pendente ? serialize(pendente, null) : null,
-    historico: historico.map((h) => serialize(h, null)),
+    vigente: vigente
+      ? serialize(vigente, compensadoByUc, consumoRealPorUc, codigosGeradora)
+      : null,
+    pendente: pendente
+      ? serialize(pendente, null, consumoRealPorUc, codigosGeradora)
+      : null,
+    historico: historico.map((h) =>
+      serialize(h, null, consumoRealPorUc, codigosGeradora),
+    ),
     /** UCs vinculadas a ESTA usina — quem alimenta "fora do rateio" e os KPIs. */
     consumerUnits: consumerUnitsEnriched,
     /** Universo do seletor "+ Adicionar UC". */

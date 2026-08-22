@@ -7,6 +7,7 @@ import {
   type ModoSugestao,
 } from "@/components/rateios/sugestao-percentuais";
 import {
+  consumoDaUc,
   sugerirPercentuais,
   sugestaoComoTexto,
   type OrigemConsumo,
@@ -229,6 +230,51 @@ function Copiavel({
     </button>
   );
 }
+
+/**
+ * A UC **âncora** do rateio: a de maior consumo entre as que entram na conta.
+ *
+ * Usa a mesma régua da sugestão (`consumoDaUc` — o maior entre contrato e real),
+ * porque âncora medida por outro critério seria uma UC que não é a que mais
+ * pesa no percentual.
+ *
+ * A geradora fica fora: ela é 0% fixo, não disputa consumo. Empate exato marca
+ * TODAS as empatadas — escolher uma no par ou ímpar seria decidir por conta
+ * própria algo que a tela não sabe.
+ */
+function idsAncora(
+  ucs: Array<{
+    id: string;
+    consumoMedio?: number | null;
+    consumoReal?: number | null;
+    isGeradora?: boolean;
+  }>,
+): Set<string> {
+  const comConsumo = ucs
+    .filter((u) => !u.isGeradora)
+    .map((u) => ({ id: u.id, valor: consumoDaUc(u)?.valor ?? 0 }))
+    .filter((x) => x.valor > 0);
+  if (comConsumo.length === 0) return new Set();
+
+  const maior = Math.max(...comConsumo.map((x) => x.valor));
+  return new Set(comConsumo.filter((x) => x.valor === maior).map((x) => x.id));
+}
+
+/** Marca a UC de maior consumo do rateio. */
+function TagAncora() {
+  return (
+    <Badge
+      variant="outline"
+      className="border-green-600/40 bg-green-100 text-[10px] text-green-800 dark:bg-green-950/60 dark:text-green-300"
+      title="Maior consumo do rateio (maior entre contrato e real)"
+    >
+      ÂNCORA
+    </Badge>
+  );
+}
+
+/** Fundo da linha da UC âncora — verde claro, nos dois temas. */
+const LINHA_ANCORA = "bg-green-50 dark:bg-green-950/25";
 
 /**
  * Coluna "UC": o código atual e, abaixo, o ANTERIOR à migração da RGE
@@ -469,10 +515,21 @@ export default function RateiosPage() {
     [plants, selectedPlantId],
   );
 
+  // ⚠️ Trava pelo que dá para ESCOLHER, não pelo que já está vinculado.
+  //
+  // Até 22/08/2026 exigia `consumerUnits.length > 0` — UC com `plantId` desta
+  // usina no cadastro. Isso travava 10 das 30 usinas ativas (ANDREIA FATIMA
+  // ESCOBAR, GABRIEL LINK, os 4 DOMMO...) num círculo fechado: o botão que abre
+  // a tela onde se BUSCA a UC só liberava se a UC já estivesse vinculada.
+  //
+  // O `4edd54b` derrubou a mesma exigência na lista do diálogo e no POST, para
+  // que qualquer UC ativa pudesse entrar pelo "+ Adicionar UC" — esta ficou
+  // para trás. O diálogo valida o resto sozinho: soma 100% e pelo menos uma UC
+  // com percentual.
   const canCreate =
     !!data &&
     !data.pendente &&
-    data.consumerUnits.length > 0;
+    data.unidadesDisponiveis.length > 0;
 
   async function callVersionAction(
     action: "enviar" | "aceitar" | "rejeitar",
@@ -552,8 +609,8 @@ export default function RateiosPage() {
     ? ""
     : data.pendente
       ? "Já existe um rateio pendente de aceite — aceite ou rejeite antes de criar outro."
-      : data.consumerUnits.length === 0
-        ? "Nenhuma unidade consumidora vinculada a esta usina."
+      : data.unidadesDisponiveis.length === 0
+        ? "Nenhuma unidade consumidora ativa cadastrada para escolher."
         : "";
 
   return (
@@ -791,7 +848,10 @@ export default function RateiosPage() {
                   deleting={deletingId === data.vigente.id}
                 />
               ) : (
-                <EmptyVigente unitCount={data.consumerUnits.length} />
+                <EmptyVigente
+                  unitCount={data.consumerUnits.length}
+                  disponiveis={data.unidadesDisponiveis.length}
+                />
               )}
             </CardContent>
           </Card>
@@ -950,6 +1010,15 @@ function RateioTable({
   deleting?: boolean;
 }) {
   const somaPct = rateio.items.reduce((s, i) => s + i.percentual, 0);
+  // UC de maior consumo do rateio: linha em verde e tag ÂNCORA.
+  const ancoras = idsAncora(
+    rateio.items.map((i) => ({
+      id: i.consumerUnit.id,
+      consumoMedio: i.consumerUnit.consumoMedio,
+      consumoReal: i.consumerUnit.consumoReal,
+      isGeradora: i.consumerUnit.isGeradora,
+    })),
+  );
   const somaCompensados = rateio.items.reduce(
     (s, i) => s + (i.creditosCompensadosKwh ?? 0),
     0,
@@ -1095,9 +1164,17 @@ function RateioTable({
           </thead>
           <tbody>
             {rateio.items.map((item) => (
-              <tr key={item.id} className="border-b last:border-0">
+              <tr
+                key={item.id}
+                className={`border-b last:border-0 ${
+                  ancoras.has(item.consumerUnit.id) ? LINHA_ANCORA : ""
+                }`}
+              >
                 <td className="py-2.5 px-3 font-medium">
-                  {item.consumerUnit.nome}
+                  <span className="flex flex-wrap items-center gap-2">
+                    {item.consumerUnit.nome}
+                    {ancoras.has(item.consumerUnit.id) && <TagAncora />}
+                  </span>
                 </td>
                 <td className="py-2.5 px-3 align-top">
                   <CodigosUc
@@ -1155,18 +1232,29 @@ function RateioTable({
   );
 }
 
-function EmptyVigente({ unitCount }: { unitCount: number }) {
+function EmptyVigente({
+  unitCount,
+  disponiveis,
+}: {
+  unitCount: number;
+  /** UCs ativas que o "+ Adicionar UC" oferece — 0 vinculadas não impede nada. */
+  disponiveis: number;
+}) {
   return (
     <div className="py-8 text-center space-y-2">
       <p className="text-sm text-muted-foreground">
         Nenhum rateio vigente para esta usina.
       </p>
       <p className="text-xs text-muted-foreground">
-        {unitCount === 0
-          ? "Também não há unidades consumidoras vinculadas a ela."
-          : `${unitCount} unidade${unitCount > 1 ? "s" : ""} vinculada${
+        {unitCount > 0
+          ? `${unitCount} unidade${unitCount > 1 ? "s" : ""} vinculada${
               unitCount > 1 ? "s" : ""
-            } à usina aguardando configuração de rateio.`}
+            } à usina aguardando configuração de rateio.`
+          : disponiveis > 0
+            ? // Nada vinculado no cadastro não é impedimento desde o "+ Adicionar
+              // UC": o rateio busca entre todas as UCs ativas.
+              `Nenhuma UC vinculada a ela no cadastro — use "Criar novo rateio" e busque entre as ${disponiveis} unidades ativas.`
+            : "Não há unidades consumidoras ativas cadastradas."}
       </p>
     </div>
   );
@@ -1271,6 +1359,10 @@ function CreateRateioDialog({
     () => new Map(sugestao.linhas.map((l) => [l.id, l])),
     [sugestao],
   );
+
+  // UC de maior consumo entre as que estão NA TELA: refaz a cada UC que entra
+  // ou sai, como os percentuais.
+  const ancoras = useMemo(() => idsAncora(linhas), [linhas]);
 
   // Soma só o que está NA TELA: percentual de linha removida não pode
   // continuar entrando na conta.
@@ -1463,10 +1555,16 @@ function CreateRateioDialog({
                   const isGeradoraFixa = u.isGeradora && geradoraFixa0;
                   const sug = sugPorId.get(u.id);
                   return (
-                    <tr key={u.id} className="border-b last:border-0">
+                    <tr
+                      key={u.id}
+                      className={`border-b last:border-0 ${
+                        ancoras.has(u.id) ? LINHA_ANCORA : ""
+                      }`}
+                    >
                       <td className="py-2 px-3">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium">{u.nome}</span>
+                          {ancoras.has(u.id) && <TagAncora />}
                           {u.isGeradora && (
                             <Badge variant="outline" className="text-[10px]">
                               Geradora
@@ -1775,6 +1873,10 @@ function EditRateioDialog({
     [sugestao],
   );
 
+  // UC de maior consumo entre as que estão NA TELA: refaz a cada UC que entra
+  // ou sai, como os percentuais.
+  const ancoras = useMemo(() => idsAncora(linhas), [linhas]);
+
   useEffect(() => {
     if (!open || modoSugestao !== "auto" || sugestao.indisponivel) return;
     setPercents(sugestaoComoTexto(sugestao));
@@ -1929,10 +2031,16 @@ function EditRateioDialog({
                 {linhas.map((u) => {
                   const sug = sugPorId.get(u.id);
                   return (
-                  <tr key={u.id} className="border-b last:border-0">
+                  <tr
+                    key={u.id}
+                    className={`border-b last:border-0 ${
+                      ancoras.has(u.id) ? LINHA_ANCORA : ""
+                    }`}
+                  >
                     <td className="py-2 px-3">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium">{u.nome}</span>
+                        {ancoras.has(u.id) && <TagAncora />}
                         {u.isGeradora && (
                           <Badge variant="outline" className="text-[10px]">
                             Geradora

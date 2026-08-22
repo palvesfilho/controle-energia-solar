@@ -74,8 +74,12 @@ function positivo(v: number | null | undefined): number | null {
 /**
  * O consumo que entra na conta: o MAIOR entre contrato e real.
  * Empate fica como CONTRATO — é o número que o cliente assinou.
+ *
+ * Exportada porque a tela usa a MESMA régua para eleger a UC **âncora** (a de
+ * maior consumo do rateio). Duas réguas diferentes marcariam como âncora uma UC
+ * que não é a que mais pesa no percentual.
  */
-function consumoDaUc(
+export function consumoDaUc(
   u: UcParaSugestao,
 ): { valor: number; origem: OrigemConsumo } | null {
   const contrato = positivo(u.consumoMedio);
