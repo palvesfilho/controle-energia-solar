@@ -46,16 +46,18 @@ export function SugestaoPercentuais({
 
   const contabilizadas = sugestao.linhas.filter((l) => l.contabilizada).length;
 
-  // Sem nenhuma UC com consumo médio não há o que sugerir. Nada de estimar um
-  // consumo "típico": o número é realidade do cliente, não nossa.
+  // Sem nenhuma UC com consumo — nem de contrato, nem medido nas faturas — não
+  // há o que sugerir. Nada de estimar um consumo "típico": o número é realidade
+  // do cliente, não nossa.
   if (sugestao.indisponivel) {
     return (
       <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
         <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
         <span>
-          Nenhuma UC deste rateio tem <b>consumo médio</b> no cadastro — sem ele
-          não dá para sugerir percentuais. Preencha o consumo médio na UC ou
-          informe os percentuais na mão.
+          Nenhuma UC deste rateio tem <b>consumo de contrato</b> no cadastro
+          nem <b>consumo real</b> nas faturas dos últimos 12 meses — sem um dos
+          dois não dá para sugerir percentuais. Preencha o consumo no cadastro
+          da UC ou informe os percentuais na mão.
         </span>
       </div>
     );
@@ -85,9 +87,10 @@ export function SugestaoPercentuais({
             )}
           </p>
           <p className="text-xs text-muted-foreground">
-            Divide os 100% na proporção do <b>consumo médio</b> das{" "}
-            {contabilizadas} UC{contabilizadas === 1 ? "" : "s"} — valores de
-            contrato, do cadastro.
+            Divide os 100% na proporção do consumo das {contabilizadas} UC
+            {contabilizadas === 1 ? "" : "s"} — de cada uma vale o{" "}
+            <b>maior</b> entre o consumo de <b>contrato</b> (cadastro) e o{" "}
+            <b>real</b> (média das faturas dos últimos 12 meses).
           </p>
         </div>
 
@@ -140,8 +143,8 @@ export function SugestaoPercentuais({
           <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
           {sugestao.semConsumo.length} UC
           {sugestao.semConsumo.length === 1 ? " ficou" : "s ficaram"} em 0% por
-          não ter consumo médio no cadastro — informe o percentual na mão ou
-          tire do rateio.
+          não ter consumo de contrato nem faturas — informe o percentual na mão
+          ou tire do rateio.
         </p>
       )}
     </div>

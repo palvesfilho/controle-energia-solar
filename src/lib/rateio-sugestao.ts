@@ -1,6 +1,14 @@
 /**
- * Sugestão de percentuais para o rateio, a partir do CADASTRO (valor de
- * contrato): `Plant.geracaoMediaMensal` e `ConsumerUnit.consumoMedio`.
+ * Sugestão de percentuais para o rateio.
+ *
+ * Cada UC entra com o MAIOR entre os dois consumos que conhecemos (pedido de
+ * 22/08/2026):
+ *  - **contrato** — `ConsumerUnit.consumoMedio`, o que o cliente declarou;
+ *  - **real** — média do `consumoKwh` das faturas dos últimos 12 meses.
+ *
+ * O maior, e não a média dos dois nem o mais recente: dimensionar o rateio pelo
+ * menor deixaria a UC sem crédito justamente nos meses em que ela consome mais.
+ * Quando só um dos dois existe, é ele que vale — nada é estimado.
  *
  * A regra, pedida em 22/08/2026: o rateio distribui SEMPRE 100% dos créditos,
  * então o percentual de cada UC é a fatia dela no consumo somado das UCs do
@@ -21,17 +29,25 @@
 
 export interface UcParaSugestao {
   id: string;
-  /** kWh/mês do cadastro. Null/0 = sem dado: a UC não recebe sugestão. */
+  /** kWh/mês do cadastro (contrato). Null/0 = sem dado. */
   consumoMedio?: number | null;
+  /** kWh/mês medido: média das faturas dos últimos meses. Null/0 = sem dado. */
+  consumoReal?: number | null;
   /** UC da própria usina: fica sempre 0% e fora da conta. */
   isGeradora?: boolean;
 }
+
+/** Qual dos dois consumos venceu o `Math.max` e entrou na conta. */
+export type OrigemConsumo = "CONTRATO" | "REAL";
 
 export interface SugestaoLinha {
   id: string;
   /** 0..100, duas casas. Soma exata de 100 quando há alguma UC com consumo. */
   percentual: number;
-  consumoMedio: number | null;
+  /** O consumo que pesou: o MAIOR entre contrato e real. */
+  consumoUsado: number | null;
+  /** De onde veio o `consumoUsado`. Null quando a UC não tem nenhum dos dois. */
+  origemConsumo: OrigemConsumo | null;
   /** kWh/mês que essa fatia representa na geração de contrato. */
   kwhDestinado: number | null;
   /** Entrou no cálculo (tem consumo e não é geradora). */
@@ -40,20 +56,39 @@ export interface SugestaoLinha {
 
 export interface SugestaoRateio {
   linhas: SugestaoLinha[];
-  /** Σ consumoMedio das UCs contabilizadas. */
+  /** Σ dos consumos usados (o maior de cada UC) nas contabilizadas. */
   consumoTotal: number;
   geracaoMediaMensal: number | null;
   /** consumoTotal / geração. >1 sobrecarga, <1 ociosidade. Null sem geração. */
   ocupacao: number | null;
-  /** Ids das UCs sem consumo médio — ficaram com 0% e precisam de mão. */
+  /** Ids das UCs sem consumo NENHUM (nem contrato nem real) — 0% e precisam de mão. */
   semConsumo: string[];
   /** Nenhuma UC com consumo: não há o que sugerir. */
   indisponivel: boolean;
 }
 
-function consumoValido(u: UcParaSugestao): number | null {
-  const v = u.consumoMedio;
+function positivo(v: number | null | undefined): number | null {
   return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null;
+}
+
+/**
+ * O consumo que entra na conta: o MAIOR entre contrato e real.
+ * Empate fica como CONTRATO — é o número que o cliente assinou.
+ */
+function consumoDaUc(
+  u: UcParaSugestao,
+): { valor: number; origem: OrigemConsumo } | null {
+  const contrato = positivo(u.consumoMedio);
+  const real = positivo(u.consumoReal);
+  if (contrato === null && real === null) return null;
+  if (real !== null && (contrato === null || real > contrato)) {
+    return { valor: real, origem: "REAL" };
+  }
+  return { valor: contrato!, origem: "CONTRATO" };
+}
+
+function consumoValido(u: UcParaSugestao): number | null {
+  return consumoDaUc(u)?.valor ?? null;
 }
 
 /**
@@ -113,10 +148,12 @@ export function sugerirPercentuais(
 
   const linhas: SugestaoLinha[] = ucs.map((u) => {
     const pct = percentuais.get(u.id) ?? 0;
+    const consumo = consumoDaUc(u);
     return {
       id: u.id,
       percentual: pct,
-      consumoMedio: consumoValido(u),
+      consumoUsado: consumo?.valor ?? null,
+      origemConsumo: consumo?.origem ?? null,
       kwhDestinado: geracao !== null ? (geracao * pct) / 100 : null,
       contabilizada: percentuais.has(u.id),
     };

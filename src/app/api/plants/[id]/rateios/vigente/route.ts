@@ -61,6 +61,78 @@ function serialize(
   };
 }
 
+/** Quantos meses de fatura entram na média do consumo REAL. */
+const MESES_CONSUMO_REAL = 12;
+
+/**
+ * Consumo REAL por UC: média do `consumoKwh` das faturas dos últimos
+ * `MESES_CONSUMO_REAL` meses, terminando no período que a tela está olhando.
+ *
+ * Duas decisões que mudam o número:
+ *  - **Dedupe por (UC, mês)**: a mesma competência pode ter mais de uma fatura
+ *    (re-sync, upload manual). Vale a de `syncedAt` mais recente — somar as
+ *    duas inflaria a média.
+ *  - **Fatura sem `consumoKwh` não entra**; `consumoKwh = 0` ENTRA, porque mês
+ *    sem consumo é informação, não ausência dela.
+ *
+ * Devolve também quantas faturas sustentam cada média: 1 fatura e 12 faturas
+ * não merecem a mesma confiança, e a tela mostra o número.
+ */
+async function calcularConsumoReal(
+  ucIds: string[],
+  anoFim: number,
+  mesFim: number,
+): Promise<Map<string, { media: number; meses: number }>> {
+  const out = new Map<string, { media: number; meses: number }>();
+  if (ucIds.length === 0) return out;
+
+  const janela: Array<{ anoReferencia: number; mesReferencia: number }> = [];
+  let a = anoFim;
+  let m = mesFim;
+  for (let i = 0; i < MESES_CONSUMO_REAL; i++) {
+    janela.push({ anoReferencia: a, mesReferencia: m });
+    m--;
+    if (m === 0) {
+      m = 12;
+      a--;
+    }
+  }
+
+  const bills = await prisma.consumerBill.findMany({
+    where: { consumerUnitId: { in: ucIds }, OR: janela },
+    select: {
+      consumerUnitId: true,
+      anoReferencia: true,
+      mesReferencia: true,
+      consumoKwh: true,
+      syncedAt: true,
+    },
+    // Mais recente primeiro: o primeiro de cada (UC, mês) é o que vale.
+    orderBy: { syncedAt: "desc" },
+  });
+
+  const porUc = new Map<string, Map<string, number>>();
+  for (const b of bills) {
+    if (!b.consumerUnitId || b.consumoKwh == null) continue;
+    const chave = `${b.anoReferencia}-${b.mesReferencia}`;
+    let meses = porUc.get(b.consumerUnitId);
+    if (!meses) {
+      meses = new Map();
+      porUc.set(b.consumerUnitId, meses);
+    }
+    if (meses.has(chave)) continue;
+    meses.set(chave, b.consumoKwh);
+  }
+
+  for (const [ucId, meses] of porUc) {
+    const valores = [...meses.values()];
+    if (valores.length === 0) continue;
+    const soma = valores.reduce((s, v) => s + v, 0);
+    out.set(ucId, { media: soma / valores.length, meses: valores.length });
+  }
+  return out;
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -163,11 +235,6 @@ export async function GET(
     }
   }
 
-  const consumerUnitsEnriched = consumerUnits.map((u) => ({
-    ...u,
-    isGeradora: !!u.codigoUc && codigosGeradora.has(u.codigoUc),
-  }));
-
   // ---------------------------------------------------------------------------
   // Universo do seletor "+ Adicionar UC": TODAS as UCs ativas, não só as que já
   // têm `plantId` desta usina.
@@ -230,6 +297,23 @@ export async function GET(
     });
   }
 
+  // Consumo real de TODAS as UCs que a tela pode mostrar (as da usina e as do
+  // seletor "+ Adicionar UC") numa consulta só.
+  // A janela termina no período escolhido na tela; sem período, no mês de hoje.
+  const agora = new Date();
+  const consumoRealPorUc = await calcularConsumoReal(
+    [...new Set([...consumerUnits.map((u) => u.id), ...todasUnidades.map((u) => u.id)])],
+    temPeriodo ? ano! : agora.getFullYear(),
+    temPeriodo ? mes! : agora.getMonth() + 1,
+  );
+
+  const consumerUnitsEnriched = consumerUnits.map((u) => ({
+    ...u,
+    isGeradora: !!u.codigoUc && codigosGeradora.has(u.codigoUc),
+    consumoReal: consumoRealPorUc.get(u.id)?.media ?? null,
+    consumoRealMeses: consumoRealPorUc.get(u.id)?.meses ?? 0,
+  }));
+
   const unidadesDisponiveis = todasUnidades.map((u) => ({
     id: u.id,
     nome: u.nome,
@@ -237,6 +321,10 @@ export async function GET(
     cidade: u.cidade,
     distribuidora: u.distribuidora,
     consumoMedio: u.consumoMedio,
+    /** Média das faturas dos últimos 12 meses. Null = nenhuma fatura na janela. */
+    consumoReal: consumoRealPorUc.get(u.id)?.media ?? null,
+    /** Quantas faturas sustentam a média — 1 e 12 não valem o mesmo. */
+    consumoRealMeses: consumoRealPorUc.get(u.id)?.meses ?? 0,
     isGeradora: !!u.codigoUc && codigosGeradora.has(u.codigoUc),
     /** Já está vinculada a ESTA usina no cadastro. */
     daUsina: u.plantId === plantId,

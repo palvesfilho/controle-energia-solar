@@ -28,8 +28,15 @@ export interface UnidadeDisponivel {
   codigoUc: string | null;
   cidade: string | null;
   distribuidora: string | null;
-  /** kWh/mês do cadastro. Peso da UC na sugestão de percentuais. */
+  /** kWh/mês do cadastro (contrato). */
   consumoMedio?: number | null;
+  /**
+   * kWh/mês medido: média das faturas dos últimos 12 meses.
+   * A sugestão de percentuais usa o MAIOR entre este e o de contrato.
+   */
+  consumoReal?: number | null;
+  /** Quantas faturas entraram na média do consumo real. */
+  consumoRealMeses?: number;
   isGeradora?: boolean;
   /** Já vinculada a esta usina no cadastro. */
   daUsina?: boolean;
@@ -42,6 +49,20 @@ export interface UnidadeDisponivel {
     percentual: number;
     status: string;
   } | null;
+}
+
+/**
+ * O consumo que a sugestão vai usar: o MAIOR entre contrato e real
+ * (mesma regra de `@/lib/rateio-sugestao`, aqui só para o texto da lista).
+ */
+function consumoDaUc(u: UnidadeDisponivel): { valor: number; origem: string } | null {
+  const contrato = u.consumoMedio && u.consumoMedio > 0 ? u.consumoMedio : null;
+  const real = u.consumoReal && u.consumoReal > 0 ? u.consumoReal : null;
+  if (contrato === null && real === null) return null;
+  if (real !== null && (contrato === null || real > contrato)) {
+    return { valor: real, origem: "real" };
+  }
+  return { valor: contrato!, origem: "contrato" };
 }
 
 /** Só dígitos, para o código casar mesmo digitado com pontuação. */
@@ -140,18 +161,22 @@ export function AdicionarUc({
                 <span className="text-xs text-muted-foreground">
                   {formatCodigoUc(u.codigoUc) ?? "sem código"}
                   {u.cidade ? ` · ${u.cidade}` : ""}
-                  {u.consumoMedio
-                    ? ` · ${u.consumoMedio.toLocaleString("pt-BR", {
-                        maximumFractionDigits: 0,
-                      })} kWh/mês`
-                    : ""}
+                  {(() => {
+                    const c = consumoDaUc(u);
+                    return c
+                      ? ` · ${c.valor.toLocaleString("pt-BR", {
+                          maximumFractionDigits: 0,
+                        })} kWh/mês (${c.origem})`
+                      : "";
+                  })()}
                 </span>
 
-                {/* Sem consumo médio a UC entra no rateio, mas fica de fora da
-                    sugestão de percentuais — o aviso é aqui, antes de escolher. */}
-                {!u.isGeradora && !u.consumoMedio && (
+                {/* Sem NENHUM dos dois consumos (contrato e faturas) a UC entra
+                    no rateio, mas fica de fora da sugestão de percentuais — o
+                    aviso é aqui, antes de escolher. */}
+                {!u.isGeradora && consumoDaUc(u) === null && (
                   <span className="text-xs text-amber-600">
-                    Sem consumo médio no cadastro — não entra na sugestão de %
+                    Sem consumo de contrato nem faturas — não entra na sugestão de %
                   </span>
                 )}
 

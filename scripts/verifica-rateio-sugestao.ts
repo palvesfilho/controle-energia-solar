@@ -102,6 +102,56 @@ console.log("\nSobrecarga (consumo > geração) NÃO é truncada");
   ok(s.linhas[0].percentual === 100, "percentual segue 100% mesmo assim");
 }
 
+console.log("\nMAIOR entre contrato e real (pedido de 22/08/2026)");
+{
+  const s = sugerirPercentuais(
+    [
+      // real maior que o contrato: vale o real
+      { id: "a", consumoMedio: 100, consumoReal: 300 },
+      // contrato maior que o real: vale o contrato
+      { id: "b", consumoMedio: 100, consumoReal: 40 },
+    ],
+    1000,
+  );
+  ok(s.linhas[0].consumoUsado === 300, "a usa o real (300)", String(s.linhas[0].consumoUsado));
+  ok(s.linhas[0].origemConsumo === "REAL", "a marcada como REAL");
+  ok(s.linhas[1].consumoUsado === 100, "b usa o contrato (100)", String(s.linhas[1].consumoUsado));
+  ok(s.linhas[1].origemConsumo === "CONTRATO", "b marcada como CONTRATO");
+  ok(s.consumoTotal === 400, "consumo somado = 300 + 100", String(s.consumoTotal));
+  ok(s.linhas[0].percentual === 75 && s.linhas[1].percentual === 25, "75/25 pelo maior de cada");
+}
+
+console.log("\nSo um dos dois consumos existe: e ele que vale, sem estimar o outro");
+{
+  const s = sugerirPercentuais(
+    [
+      { id: "a", consumoMedio: null, consumoReal: 500 },
+      { id: "b", consumoMedio: 500, consumoReal: null },
+      { id: "c", consumoMedio: null, consumoReal: null },
+    ],
+    2000,
+  );
+  ok(s.linhas[0].origemConsumo === "REAL", "so real -> REAL");
+  ok(s.linhas[1].origemConsumo === "CONTRATO", "so contrato -> CONTRATO");
+  ok(s.linhas[2].origemConsumo === null && s.semConsumo.join(",") === "c", "sem nenhum -> semConsumo");
+  ok(s.linhas[0].percentual === 50 && s.linhas[1].percentual === 50, "50/50 entre as duas com dado");
+}
+
+console.log("\nEmpate entre contrato e real fica como CONTRATO");
+{
+  const s = sugerirPercentuais([{ id: "a", consumoMedio: 250, consumoReal: 250 }], 1000);
+  ok(s.linhas[0].origemConsumo === "CONTRATO", "empate -> CONTRATO", String(s.linhas[0].origemConsumo));
+  ok(s.linhas[0].consumoUsado === 250, "valor segue 250");
+}
+
+console.log("\nConsumo real ZERO nao apaga o contrato");
+{
+  // UC parada nos ultimos 12 meses: media real = 0. O contrato continua valendo.
+  const s = sugerirPercentuais([{ id: "a", consumoMedio: 400, consumoReal: 0 }], 1000);
+  ok(s.linhas[0].consumoUsado === 400, "usa o contrato", String(s.linhas[0].consumoUsado));
+  ok(s.linhas[0].percentual === 100, "e recebe os 100%");
+}
+
 console.log("\nArredondamento: casos que não dividem redondo");
 {
   const casos: Array<{ nome: string; consumos: number[] }> = [

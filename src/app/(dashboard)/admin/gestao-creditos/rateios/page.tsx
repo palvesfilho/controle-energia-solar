@@ -6,7 +6,11 @@ import {
   SugestaoPercentuais,
   type ModoSugestao,
 } from "@/components/rateios/sugestao-percentuais";
-import { sugerirPercentuais, sugestaoComoTexto } from "@/lib/rateio-sugestao";
+import {
+  sugerirPercentuais,
+  sugestaoComoTexto,
+  type OrigemConsumo,
+} from "@/lib/rateio-sugestao";
 import {
   Check,
   Clock,
@@ -65,6 +69,8 @@ interface ConsumerUnitLite {
   cidade: string | null;
   distribuidora: string | null;
   consumoMedio?: number | null;
+  consumoReal?: number | null;
+  consumoRealMeses?: number;
   isGeradora?: boolean;
 }
 
@@ -105,6 +111,71 @@ interface RateioResponse {
   consumerUnits: ConsumerUnitLite[];
   /** Todas as UCs ativas, para o seletor "+ Adicionar UC". */
   unidadesDisponiveis: UnidadeDisponivel[];
+}
+
+/**
+ * As duas leituras de consumo da UC, uma abaixo da outra:
+ *  - **Consumo de contrato** — `ConsumerUnit.consumoMedio`, o que o cliente declarou;
+ *  - **Consumo real** — média das faturas dos últimos 12 meses.
+ *
+ * A sugestão de percentuais usa o MAIOR dos dois (pedido de 22/08/2026), e o
+ * que venceu aparece marcado: sem isso o operador vê dois números e não sabe
+ * qual pesou no percentual.
+ */
+function ConsumosDaUc({
+  contrato,
+  real,
+  meses,
+  origem,
+}: {
+  contrato: number | null | undefined;
+  real: number | null | undefined;
+  meses: number | undefined;
+  /** Qual dos dois a sugestão usou; null quando a UC ficou fora dela. */
+  origem: OrigemConsumo | null;
+}) {
+  const kwh = (v: number) =>
+    `${v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} kWh/mês`;
+  const temContrato = typeof contrato === "number" && contrato > 0;
+  const temReal = typeof real === "number" && real > 0;
+
+  if (!temContrato && !temReal) {
+    return (
+      <p className="mt-0.5 text-[11px] text-amber-600">
+        Sem consumo de contrato nem faturas — fora da sugestão
+      </p>
+    );
+  }
+
+  const marca = (usado: boolean) =>
+    usado ? "text-foreground font-medium" : "text-muted-foreground";
+
+  return (
+    <div className="mt-0.5 space-y-0.5">
+      <p className={`text-[11px] ${marca(origem === "CONTRATO")}`}>
+        Consumo de contrato{" "}
+        {temContrato ? kwh(contrato!) : <span className="text-muted-foreground">não cadastrado</span>}
+        {origem === "CONTRATO" ? " · usado na sugestão" : ""}
+      </p>
+      <p className={`text-[11px] ${marca(origem === "REAL")}`}>
+        Consumo real{" "}
+        {temReal ? (
+          <>
+            {kwh(real!)}
+            {meses ? (
+              <span className="text-muted-foreground">
+                {" "}
+                (média de {meses} fatura{meses > 1 ? "s" : ""})
+              </span>
+            ) : null}
+          </>
+        ) : (
+          <span className="text-muted-foreground">sem faturas nos últimos 12 meses</span>
+        )}
+        {origem === "REAL" ? " · usado na sugestão" : ""}
+      </p>
+    </div>
+  );
 }
 
 /**
@@ -1254,18 +1325,13 @@ function CreateRateioDialog({
                           <p className="text-[11px] text-muted-foreground mt-0.5">
                             0% fixo (concessionária compensa no medidor da geradora)
                           </p>
-                        ) : u.consumoMedio ? (
-                          <p className="text-[11px] text-muted-foreground mt-0.5">
-                            Consumo médio{" "}
-                            {u.consumoMedio.toLocaleString("pt-BR", {
-                              maximumFractionDigits: 0,
-                            })}{" "}
-                            kWh/mês
-                          </p>
                         ) : (
-                          <p className="text-[11px] text-amber-600 mt-0.5">
-                            Sem consumo médio no cadastro — fora da sugestão
-                          </p>
+                          <ConsumosDaUc
+                            contrato={u.consumoMedio}
+                            real={u.consumoReal}
+                            meses={u.consumoRealMeses}
+                            origem={sug?.origemConsumo ?? null}
+                          />
                         )}
                         {/* O conflito não impede salvar — mas não passa calado. */}
                         {u.comprometida && (
@@ -1706,20 +1772,14 @@ function EditRateioDialog({
                           </Badge>
                         )}
                       </div>
-                      {!u.isGeradora &&
-                        (u.consumoMedio ? (
-                          <p className="mt-0.5 text-[11px] text-muted-foreground">
-                            Consumo médio{" "}
-                            {u.consumoMedio.toLocaleString("pt-BR", {
-                              maximumFractionDigits: 0,
-                            })}{" "}
-                            kWh/mês
-                          </p>
-                        ) : (
-                          <p className="mt-0.5 text-[11px] text-amber-600">
-                            Sem consumo médio no cadastro — fora da sugestão
-                          </p>
-                        ))}
+                      {!u.isGeradora && (
+                        <ConsumosDaUc
+                          contrato={u.consumoMedio}
+                          real={u.consumoReal}
+                          meses={u.consumoRealMeses}
+                          origem={sug?.origemConsumo ?? null}
+                        />
+                      )}
                       {u.comprometida && (
                         <p className="mt-0.5 text-[11px] font-medium text-red-600">
                           Já recebe {u.comprometida.percentual.toFixed(2).replace(".", ",")}% do
