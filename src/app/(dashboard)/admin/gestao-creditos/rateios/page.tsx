@@ -231,30 +231,18 @@ function Copiavel({
 }
 
 /**
- * A identificação da UC como o portal da concessionária pede: código atual,
- * código ANTERIOR à migração da RGE e o CPF/CNPJ do titular. Cada um copiável
+ * Coluna "UC": o código atual e, abaixo, o ANTERIOR à migração da RGE
+ * (jul/2026 — o portal ainda pede o velho de vez em quando). Cada um copiável
  * com um clique, já sem pontuação.
- *
- * Por que os três juntos na mesma célula: quem cadastra o rateio no portal
- * digita os três seguidos, e ter que abrir o cadastro da UC no meio do caminho
- * é o que essa tela existe para evitar.
  */
-function IdentificacaoUc({
+function CodigosUc({
   codigoUc,
   codigoUcAntigo,
-  cpfCnpj,
 }: {
   codigoUc: string | null;
   codigoUcAntigo?: string | null;
-  cpfCnpj?: string | null;
 }) {
   const antigo = codigoUcAntigo?.trim() || null;
-  const doc = cpfCnpj?.trim() || null;
-  const docDigitos = repoeZerosAEsquerda(doc);
-  const docOk = isDocumentoValido(doc);
-  const rotuloDoc =
-    docDigitos.length === 11 ? "CPF" : docDigitos.length === 14 ? "CNPJ" : "Doc";
-
   return (
     <div className="space-y-0.5 text-xs">
       {codigoUc ? (
@@ -274,23 +262,40 @@ function IdentificacaoUc({
       ) : (
         <div className="px-1 text-[11px] text-muted-foreground">sem código antigo</div>
       )}
+    </div>
+  );
+}
 
-      {doc ? (
-        <div>
-          <Copiavel bruto={docDigitos || doc} title={`Copiar ${rotuloDoc} (só dígitos)`}>
-            <span className="text-muted-foreground">
-              {rotuloDoc} {formatCpfCnpj(doc)}
-            </span>
-            {!docOk && (
-              <span className="font-medium text-amber-600 dark:text-amber-500"> (?)</span>
-            )}
-          </Copiavel>
-        </div>
-      ) : (
-        <div className="px-1 text-[11px] font-medium text-amber-600 dark:text-amber-500">
-          sem CPF/CNPJ
-        </div>
-      )}
+/**
+ * Coluna "CPF/CNPJ": documento do titular da conta de energia, copiável só com
+ * dígitos. O rótulo sai do próprio número — 11 dígitos é CPF, 14 é CNPJ — e não
+ * de um campo "tipo de pessoa", que não existe no cadastro.
+ */
+function DocumentoUc({ cpfCnpj }: { cpfCnpj?: string | null }) {
+  const doc = cpfCnpj?.trim() || null;
+  if (!doc) {
+    return (
+      <span className="text-[11px] font-medium text-amber-600 dark:text-amber-500">
+        sem CPF/CNPJ
+      </span>
+    );
+  }
+
+  const digitos = repoeZerosAEsquerda(doc);
+  const rotulo = digitos.length === 11 ? "CPF" : digitos.length === 14 ? "CNPJ" : "Doc";
+  const ok = isDocumentoValido(doc);
+
+  return (
+    <div className="text-xs">
+      <Copiavel bruto={digitos || doc} title={`Copiar ${rotulo} (só dígitos)`}>
+        <span className="text-muted-foreground">{rotulo}</span>{" "}
+        <span className="text-foreground">{formatCpfCnpj(doc)}</span>
+        {/* Documento que não tem 11 nem 14 dígitos não é erro de exibição:
+            está errado no cadastro e seria colado errado no portal. */}
+        {!ok && (
+          <span className="font-medium text-amber-600 dark:text-amber-500"> (?)</span>
+        )}
+      </Copiavel>
     </div>
   );
 }
@@ -1073,7 +1078,10 @@ function RateioTable({
                 Unidade Consumidora
               </th>
               <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">
-                UC / titular
+                UC
+              </th>
+              <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">
+                CPF/CNPJ
               </th>
               <th className="text-right py-2 px-3 font-medium text-xs uppercase tracking-wide">
                 Percentual
@@ -1091,12 +1099,14 @@ function RateioTable({
                 <td className="py-2.5 px-3 font-medium">
                   {item.consumerUnit.nome}
                 </td>
-                <td className="py-2.5 px-3 text-xs">
-                  <IdentificacaoUc
+                <td className="py-2.5 px-3 align-top">
+                  <CodigosUc
                     codigoUc={item.consumerUnit.codigoUc}
                     codigoUcAntigo={item.consumerUnit.codigoUcAntigo}
-                    cpfCnpj={item.consumerUnit.cpfCnpj}
                   />
+                </td>
+                <td className="py-2.5 px-3 align-top">
+                  <DocumentoUc cpfCnpj={item.consumerUnit.cpfCnpj} />
                 </td>
                 <td className="py-2.5 px-3 text-right font-medium">
                   {item.percentual.toFixed(2)}%
@@ -1120,7 +1130,7 @@ function RateioTable({
           {mostrarCompensados && algumComDado && (
             <tfoot>
               <tr className="border-t bg-muted/40 font-semibold">
-                <td className="py-2.5 px-3" colSpan={2}>
+                <td className="py-2.5 px-3" colSpan={3}>
                   Total compensado
                 </td>
                 <td className="py-2.5 px-3 text-right">{somaPct.toFixed(2)}%</td>
@@ -1429,7 +1439,10 @@ function CreateRateioDialog({
                     Unidade
                   </th>
                   <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">
-                    UC / titular
+                    UC
+                  </th>
+                  <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">
+                    CPF/CNPJ
                   </th>
                   <th className="text-right py-2 px-3 font-medium text-xs uppercase tracking-wide w-32">
                     %
@@ -1440,7 +1453,7 @@ function CreateRateioDialog({
               <tbody>
                 {linhas.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-6 text-center text-sm text-muted-foreground">
+                    <td colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
                       Nenhuma UC no rateio. Use <b>&ldquo;Adicionar UC&rdquo;</b> para buscar
                       por nome ou código.
                     </td>
@@ -1488,11 +1501,13 @@ function CreateRateioDialog({
                         )}
                       </td>
                       <td className="py-2 px-3 align-top">
-                        <IdentificacaoUc
+                        <CodigosUc
                           codigoUc={u.codigoUc}
                           codigoUcAntigo={u.codigoUcAntigo}
-                          cpfCnpj={u.cpfCnpj}
                         />
+                      </td>
+                      <td className="py-2 px-3 align-top">
+                        <DocumentoUc cpfCnpj={u.cpfCnpj} />
                       </td>
                       <td className="py-2 px-3">
                         <Input
@@ -1891,7 +1906,10 @@ function EditRateioDialog({
                     Unidade
                   </th>
                   <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">
-                    UC / titular
+                    UC
+                  </th>
+                  <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">
+                    CPF/CNPJ
                   </th>
                   <th className="text-right py-2 px-3 font-medium text-xs uppercase tracking-wide w-32">
                     %
@@ -1902,7 +1920,7 @@ function EditRateioDialog({
               <tbody>
                 {linhas.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-6 text-center text-sm text-muted-foreground">
+                    <td colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
                       Nenhuma UC no rateio. Use <b>&ldquo;Adicionar UC&rdquo;</b> para buscar
                       por nome ou código.
                     </td>
@@ -1943,11 +1961,13 @@ function EditRateioDialog({
                       )}
                     </td>
                     <td className="py-2 px-3 align-top">
-                        <IdentificacaoUc
+                        <CodigosUc
                           codigoUc={u.codigoUc}
                           codigoUcAntigo={u.codigoUcAntigo}
-                          cpfCnpj={u.cpfCnpj}
                         />
+                      </td>
+                      <td className="py-2 px-3 align-top">
+                        <DocumentoUc cpfCnpj={u.cpfCnpj} />
                       </td>
                     <td className="py-2 px-3">
                       <Input
