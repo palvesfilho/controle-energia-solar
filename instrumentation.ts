@@ -1,6 +1,9 @@
 /**
  * Instrumentação Next.js — registra schedulers de background no boot do server.
  *
+ * Dois hoje: o de alertas (de hora em hora) e o do sync do CRM (13h e 19h BRT,
+ * em `@/lib/crm-sync-scheduler`).
+ *
  * Roda uma vez por processo (HMR no dev pode reimportar; usamos guard no globalThis
  * pra não duplicar). Em deploy serverless (Vercel), setInterval não persiste —
  * trocar por Vercel Cron / similar lá.
@@ -14,6 +17,12 @@ type GlobalWithFlag = typeof globalThis & {
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
+  // Sync do CRM às 13h e 19h (BRT). Tem guardas próprias e não pode ser
+  // interrompido pelo `return` do alert-scheduler logo abaixo.
+  const { registrarCrmSyncScheduler } = await import("@/lib/crm-sync-scheduler");
+  registrarCrmSyncScheduler();
+
   if (process.env.DISABLE_ALERT_SCHEDULER === "1") return;
 
   const g = globalThis as GlobalWithFlag;

@@ -150,6 +150,7 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
   const [search, setSearch] = useState("");
   const [acting, setActing] = useState<string | null>(null);
   const [versaoUcs, setVersaoUcs] = useState(0);
+  const [agenda, setAgenda] = useState<AgendaSync | null>(null);
 
   const textos = TEXTOS[modulo];
 
@@ -182,6 +183,19 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
     carregar();
   }, [carregar]);
 
+  // Estado do agendador. Falha aqui é irrelevante para a tela: o aviso some,
+  // a fila continua.
+  const carregarAgenda = useCallback(() => {
+    fetch("/api/crm/sync")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setAgenda(d))
+      .catch(() => setAgenda(null));
+  }, []);
+
+  useEffect(() => {
+    carregarAgenda();
+  }, [carregarAgenda]);
+
   async function sincronizar() {
     setSincronizando(true);
     try {
@@ -204,6 +218,7 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
         );
       }
       carregar();
+      carregarAgenda();
       // A lista de UCs tem carregamento próprio; remonta para refletir o sync.
       setVersaoUcs((v) => v + 1);
     } catch (err) {
@@ -280,10 +295,13 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
             <p className="text-sm text-muted-foreground">{textos.subtitulo}</p>
           </div>
         </div>
-        <Button onClick={sincronizar} disabled={sincronizando} variant="outline">
-          <RefreshCw className={`mr-2 h-4 w-4 ${sincronizando ? "animate-spin" : ""}`} />
-          {sincronizando ? "Sincronizando…" : "Sincronizar agora"}
-        </Button>
+        <div className="flex flex-col items-end gap-1">
+          <Button onClick={sincronizar} disabled={sincronizando} variant="outline">
+            <RefreshCw className={`mr-2 h-4 w-4 ${sincronizando ? "animate-spin" : ""}`} />
+            {sincronizando ? "Sincronizando…" : "Sincronizar agora"}
+          </Button>
+          <AvisoAgenda agenda={agenda} />
+        </div>
       </div>
 
       {/* Venda que gera obra NÃO passa por esta fila: o sync já cria a obra e
@@ -490,5 +508,44 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
         </Card>
       )}
     </div>
+  );
+}
+
+/** Resposta de `GET /api/crm/sync` — o estado do agendador. */
+interface AgendaSync {
+  horarios: number[];
+  ultimoSlot: string | null;
+  ultimoSlotEm: string | null;
+  slotDevido: string;
+  configurado: boolean;
+}
+
+/**
+ * Linha abaixo do botão: diz que o sync roda sozinho e quando rodou por último.
+ * Existe para o operador não clicar "por via das dúvidas" — e para a falha do
+ * agendador aparecer, em vez de virar silêncio (o horário devido fica atrasado
+ * e a linha avisa).
+ */
+function AvisoAgenda({ agenda }: { agenda: AgendaSync | null }) {
+  if (!agenda) return null;
+
+  const horarios = agenda.horarios.map((h) => `${h}h`).join(" e ");
+  const atrasado = agenda.ultimoSlot !== agenda.slotDevido;
+
+  const quando = agenda.ultimoSlotEm
+    ? new Date(agenda.ultimoSlotEm).toLocaleString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
+
+  return (
+    <span className={`text-xs ${atrasado ? "text-amber-600" : "text-muted-foreground"}`}>
+      Automático às {horarios}
+      {quando ? ` · última: ${quando}` : " · ainda não rodou sozinho"}
+    </span>
   );
 }

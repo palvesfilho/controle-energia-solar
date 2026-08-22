@@ -5,7 +5,7 @@
   },
   "deploy": {
     "startCommand": "npx prisma generate && npx tsx scripts/run-crm-sync.ts",
-    "cronSchedule": "15 * * * *",
+    "cronSchedule": "0 16,22 * * *",
     "restartPolicyType": "NEVER"
   }
 }

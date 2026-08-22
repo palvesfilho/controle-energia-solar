@@ -4,8 +4,11 @@
  * Puxa as vendas ganhas e as adesões do Supabase do CRM e enfileira o que
  * precisa virar obra, UC ou usina aqui. Nada é escrito no CRM.
  *
- * Quando rodar (via cron): de hora em hora. A latência não importa — o que
- * importa é nunca perder uma venda ganha.
+ * Quem chama isto de hora em hora: NINGUÉM. O agendamento automático mora
+ * dentro do app (`src/lib/crm-sync-scheduler.ts`), às 13h e 19h de Brasília —
+ * o `railway.cron-crm-sync.json` existe mas o serviço nunca foi criado no
+ * Railway. Este script continua valendo como disparo one-shot na mão e para o
+ * `--dry-run`.
  *
  * Uso:
  *   npx tsx scripts/run-crm-sync.ts            # sincroniza
