@@ -135,6 +135,37 @@ function extractMesOrigem(s: string): string | null {
   return `${mes}/${ano}`;
 }
 
+/**
+ * "Devol Pagamento Indevido" — linha da seção CRÉDITOS / DEVOLUÇÕES da RGE/CPFL.
+ *
+ * A concessionária devolve na conta do mês um valor pago a maior numa conta
+ * ANTERIOR, e já o abateu do total impresso (LABIMED jul/26: Total Distribuidora
+ * 311,13 + CIP 18,78 − Devol 329,91 = R$ 0,00, "conta quitada"). Devolvemos o
+ * valor como vem impresso — NEGATIVO. Quem soma de volta é o billing-calculator,
+ * e só em fatura única, onde quem pagou a conta antiga foi a nossa empresa.
+ *
+ * Casamos ancorado no rótulo em vez de pegar o 1º número da linha porque o pdfjs
+ * clusteriza o histograma de consumo na mesma altura ("…329,91- lllll JUL 25 628
+ * 31") e o mês de origem às vezes vem entre a descrição e o valor
+ * ("Devol Pagamento Indevido SET/25 246,96-").
+ *
+ * Exportada porque o backfill das faturas já gravadas precisa da MESMA regra —
+ * duas cópias divergem no primeiro layout novo.
+ */
+export function extrairDevolPagamentoIndevido(lines: string[]): number | null {
+  const REGEX_DEVOL =
+    /devol\w*\s+pagamento\s+indevid\w*\s+(?:[a-z]{3}\/\d{2,4}\s+)?(-?\d{1,3}(?:\.\d{3})*,\d{2}-?)/;
+  let total: number | null = null;
+  for (const line of lines) {
+    const m = normDesc(line).match(REGEX_DEVOL);
+    if (!m) continue;
+    const v = parseNumBR(m[1]);
+    // Fatura atrasada pode trazer mais de uma devolução; somamos, como nos encargos.
+    if (v != null) total = (total ?? 0) + v;
+  }
+  return total;
+}
+
 export interface ParsedFaturaPdf {
   /** Informação suficiente pra achar a UC correspondente. */
   codigoInstalacao: string | null;
@@ -224,6 +255,7 @@ export interface ParsedFaturaPdf {
     atualizacaoMonetaria: number | null;
     iluminacaoPublicaCip: number | null;
     ajusteSaldoCredito: number | null;
+    devolPagamentoIndevido: number | null;
 
     pdfUrl: string | null;
     fonteConsulta: "UPLOAD_MANUAL";
@@ -686,6 +718,12 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
   let jurosMora: number | null = null, multaAtraso: number | null = null;
   let atualizacaoMonetaria: number | null = null, iluminacaoPublicaCip: number | null = null;
   let ajusteSaldoCredito: number | null = null;
+  // Seção "CRÉDITOS / DEVOLUÇÕES": a RGE devolve na conta do mês um valor pago
+  // a maior em conta anterior. Vem negativo ("329,91-") e já está descontado do
+  // valor impresso da fatura. Quem pagou aquela conta antiga, em fatura única,
+  // foi a nossa empresa — por isso ele volta a somar no repasse cobrado do
+  // cliente (billing-calculator). Aqui só extraímos, como vem impresso.
+  const devolPagamentoIndevido = extrairDevolPagamentoIndevido(lines);
   // Pega o PRIMEIRO valor monetário BRL (com vírgula decimal) da linha.
   // A linha tem códigos de barras no final (ex: "573 31") que são inteiros sem
   // vírgula — então restringir a regex pra "X,YY" evita capturar esses lixos.
@@ -1021,7 +1059,7 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
       icms, pis, cofins,
 
       jurosMora, multaAtraso, atualizacaoMonetaria,
-      iluminacaoPublicaCip, ajusteSaldoCredito,
+      iluminacaoPublicaCip, ajusteSaldoCredito, devolPagamentoIndevido,
 
       pdfUrl: null,
       fonteConsulta: "UPLOAD_MANUAL",

@@ -79,6 +79,7 @@ export async function populateBillingFromBill(
       bandeiraVermelhaCreditoValor: true,
       bandeiraVermelha2CreditoValor: true,
       ajusteSaldoCredito: true,
+      devolPagamentoIndevido: true,
       consumoInstantaneoKwh: true,
       geracaoInversorKwh: true,
       geracaoInversorOrigem: true,
@@ -190,6 +191,7 @@ export async function populateBillingFromBill(
       bandeiraVermelha2CreditoValor: bill.bandeiraVermelha2CreditoValor,
       ajusteSaldoCredito: bill.ajusteSaldoCredito,
       valorTotal: bill.valorTotal,
+      devolPagamentoIndevido: bill.devolPagamentoIndevido,
       consumoInstantaneoKwh,
       tarifaTE: bill.tarifaTE,
       tarifaTUSD: bill.tarifaTUSD,
@@ -245,10 +247,16 @@ export async function populateBillingFromBill(
   // - Em FAT_UNICA: cobrança inclui valorTotal RGE, então economia =
   //   compensado − (cobrança − valorTotal RGE) = compensado + valorTotal − cobrança.
   //   Equivalente: economia = compensado − nossa parte (excluindo passthrough).
+  //
+  // A devolução de pagamento indevido sai da conta junto com o repasse: ela é
+  // ressarcimento de caixa da empresa, não energia que o cliente deixou de
+  // pagar. Sem descontá-la aqui, a economia do mês encolheria pelo valor da
+  // devolução e o demonstrativo mostraria um desconto menor do que o real.
   const valorTotalRGE = calc.detalhamento.valorTotalRGE;
+  const devolucao = calc.detalhamento.devolPagamentoIndevidoValor;
   const valorEconomia =
     valorCompensado != null && valorCobranca != null
-      ? valorCompensado - (valorCobranca - (valorTotalRGE ?? 0))
+      ? valorCompensado - (valorCobranca - (valorTotalRGE ?? 0) - (devolucao ?? 0))
       : null;
 
   const dataVencimento = computarVencimento(

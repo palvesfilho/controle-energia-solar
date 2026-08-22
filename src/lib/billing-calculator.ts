@@ -8,6 +8,7 @@
  *                + bandeiraCredito × percentBandeira
  *                + parcelaInstantâneo                  (se UC geradora descontado)
  *                + valorTotal RGE                      (pass-through — fatura única)
+ *                + |devolPagamentoIndevido|            (ver abaixo)
  *
  *   - FAT_UNICA_COMPENSADA_BANDEIRAS_DIMARZARI:
  *       cobrança idêntica à FAT_UNICA — trafega como `valorCobradoDimarzari` /
@@ -18,6 +19,10 @@
  *   - PERCENTUAL_SOBRE_COMPENSADO:
  *       igual ao FAT_UNICA, **sem** somar o valorTotal da RGE.
  *       (cliente paga a RGE direto; a gente cobra só o percentual)
+ *
+ * 💸 `devolPagamentoIndevido` entra ao FINAL da cobrança em TODAS as regras
+ *    implementadas, inteiro e sem percentual: é dinheiro que a empresa já pagou
+ *    à distribuidora e que ela está devolvendo na conta do cliente.
  *
  * Regras legadas (DESC_COMPENSADA, DESC_FATURA_COMPENSADA_DOMMO, etc.) retornam
  * null com mensagem "ainda não implementada".
@@ -55,6 +60,11 @@ export interface BillInput extends PrecoKwhInput {
   // Valor total cobrado pela RGE — usado SÓ em FAT_UNICA (passa direto pra
   // cobrança), porque a gente cobra a conta inteira e repassa pra concessionária.
   valorTotal?: number | null;
+  // "Devol Pagamento Indevido" (seção CRÉDITOS / DEVOLUÇÕES). Vem negativo e a
+  // RGE JÁ o abateu do `valorTotal` impresso. Em FAT_UNICA quem pagou a conta
+  // antiga que está sendo devolvida foi a NOSSA empresa, não o cliente — então
+  // ele volta a somar no repasse. Ver comentário no passo 6.
+  devolPagamentoIndevido?: number | null;
   // Campos usados só em UC geradora com regra USINA_CONSUMO_DESCONTADO:
   consumoInstantaneoKwh?: number | null;
   // Tarifa BASE (sem impostos) — fallback quando tarifa com tributos não veio
@@ -99,7 +109,13 @@ export interface CalcResultado {
     consumoInstantaneoKwh: number | null;
     consumoInstantaneoValor: number | null;
     parcelaInstantaneo: number | null;
-    valorTotalRGE: number | null;           // só preenchido em FAT_UNICA
+    valorTotalRGE: number | null;           // só preenchido em FAT_UNICA (valor impresso)
+    /**
+     * |Devol Pagamento Indevido| somado ao FINAL da cobrança, em qualquer regra.
+     * Não passa por percentual — volta inteiro pra empresa que pagou a conta
+     * antiga. null quando a fatura não traz a linha.
+     */
+    devolPagamentoIndevidoValor: number | null;
   };
   problemas: string[];
 }
@@ -204,11 +220,28 @@ function calcularPercentualSobreCompensadoBase(
     }
   }
 
-  // 6) Valor RGE pass-through (só FAT_UNICA).
+  // 6) Valor RGE pass-through (só FAT_UNICA). Continua sendo o valor IMPRESSO
+  //    da fatura — a devolução é termo separado no passo 7.
   const valorTotalRGE = somarValorTotal ? bill.valorTotal ?? null : null;
   if (somarValorTotal && bill.valorTotal == null) {
     problemas.push("Fatura sem valorTotal — FAT_UNICA não conseguiu somar a conta da RGE");
   }
+
+  // 6.5) Devolução de pagamento indevido — SOMA NO FINAL DA COBRANÇA.
+  //
+  // A RGE devolve, na conta do mês, um valor pago a maior numa conta ANTERIOR,
+  // e já o abateu do total impresso (LABIMED jul/26: Total Distribuidora 311,13
+  // + CIP 18,78 − Devol 329,91 = R$ 0,00, "conta quitada"). Aquele pagamento a
+  // maior saiu do caixa da nossa empresa — a devolução é dela, não do cliente.
+  // Por isso volta inteira, sem percentual nenhum em cima.
+  //
+  // 🔑 Vale em TODAS as regras implementadas (decisão do Paulo em 22/08/2026),
+  // inclusive PERCENTUAL_SOBRE_COMPENSADO, onde não há repasse da conta da RGE.
+  // Fica registrada aqui a ressalva levantada na ocasião: nessa regra o cliente
+  // paga a distribuidora direto, então quem pagou a conta antiga pode ter sido
+  // ele. Se algum caso desses aparecer, é aqui que se separa.
+  const devolPagamentoIndevidoValor =
+    bill.devolPagamentoIndevido != null ? Math.abs(bill.devolPagamentoIndevido) : null;
 
   // 7) Soma final.
   let valorCobrado: number | null = null;
@@ -217,7 +250,8 @@ function calcularPercentualSobreCompensadoBase(
       parcelaEnergia +
       (parcelaBandeira ?? 0) +
       (parcelaInstantaneo ?? 0) +
-      (somarValorTotal ? bill.valorTotal ?? 0 : 0);
+      (somarValorTotal ? bill.valorTotal ?? 0 : 0) +
+      (devolPagamentoIndevidoValor ?? 0);
   }
 
   return {
@@ -239,6 +273,7 @@ function calcularPercentualSobreCompensadoBase(
       consumoInstantaneoValor,
       parcelaInstantaneo,
       valorTotalRGE,
+      devolPagamentoIndevidoValor,
     },
     problemas,
   };
@@ -264,6 +299,7 @@ function notImplementedResult(regra: string | null, msg: string): CalcResultado 
       consumoInstantaneoValor: null,
       parcelaInstantaneo: null,
       valorTotalRGE: null,
+      devolPagamentoIndevidoValor: null,
     },
     problemas: [msg],
   };

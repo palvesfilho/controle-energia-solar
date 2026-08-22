@@ -86,6 +86,7 @@ export async function GET(req: NextRequest) {
         bandeiraVermelhaCreditoValor: true,
         bandeiraVermelha2CreditoValor: true,
         ajusteSaldoCredito: true,
+        devolPagamentoIndevido: true,
         consumerUnit: { select: { codigoUc: true } },
       },
     }),
@@ -150,6 +151,9 @@ export async function GET(req: NextRequest) {
             bandeiraVermelha2CreditoValor: bill.bandeiraVermelha2CreditoValor,
             ajusteSaldoCredito: bill.ajusteSaldoCredito,
             valorTotal: bill.valorTotal,
+            // Sem isto a tela mostraria um valorCobrado menor que o cobrado de
+            // fato pelo billing-populate — a devolução volta pro repasse.
+            devolPagamentoIndevido: bill.devolPagamentoIndevido,
           },
           unitForCalc,
         )

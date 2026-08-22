@@ -1,0 +1,11 @@
+-- "Devol Pagamento Indevido" — linha da seção CRÉDITOS / DEVOLUÇÕES da RGE/CPFL.
+--
+-- A concessionária devolve, na conta do mês, um valor que já tinha sido pago
+-- antes. Em fatura única quem pagou foi a nossa empresa, então esse valor
+-- precisa voltar: ele SOMA no repasse cobrado do cliente
+-- (ver src/lib/billing-calculator.ts, regra FAT_UNICA_COMPENSADA_BANDEIRAS).
+--
+-- Gravado NEGATIVO, exatamente como vem impresso ("329,91-"). `valor_total`
+-- continua sendo o valor impresso da fatura (já líquido da devolução) — é ele
+-- que confere com a fatura em papel numa auditoria.
+ALTER TABLE "consumer_bills" ADD COLUMN "devol_pagamento_indevido" DOUBLE PRECISION;

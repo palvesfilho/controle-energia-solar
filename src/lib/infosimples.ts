@@ -386,6 +386,7 @@ export function parseBillData(data: InfosimplesBillData) {
     atualizacaoMonetaria: encargos.atualizacaoMonetaria,
     iluminacaoPublicaCip: encargos.iluminacaoPublicaCip,
     ajusteSaldoCredito: encargos.ajusteSaldoCredito,
+    devolPagamentoIndevido: encargos.devolPagamentoIndevido,
 
     pdfUrl: data.pdf_url || data.site_receipt || data.site_receipts?.[0] || null,
     fonteConsulta: "INFOSIMPLES" as const,
@@ -706,6 +707,8 @@ interface Encargos {
   atualizacaoMonetaria: number | null;
   iluminacaoPublicaCip: number | null;
   ajusteSaldoCredito: number | null;
+  /** "Devol Pagamento Indevido" — crédito da seção CRÉDITOS / DEVOLUÇÕES (negativo). */
+  devolPagamentoIndevido: number | null;
 }
 
 /**
@@ -722,6 +725,7 @@ function parseEncargos(
     atualizacaoMonetaria: null,
     iluminacaoPublicaCip: null,
     ajusteSaldoCredito: null,
+    devolPagamentoIndevido: null,
   };
 
   const scan = (desc: unknown, valor: unknown) => {
@@ -734,6 +738,9 @@ function parseEncargos(
     else if ((d.includes("ilumin") && d.includes("public")) || d.includes("cip") || d.includes("custeio ip"))
       out.iluminacaoPublicaCip ??= v;
     else if (d.includes("ajuste") && d.includes("saldo")) out.ajusteSaldoCredito ??= v;
+    // Devolução de valor pago a maior em conta anterior. Vem negativa e já está
+    // abatida do valor impresso — volta a somar no repasse (billing-calculator).
+    else if (d.includes("devol") && d.includes("indevid")) out.devolPagamentoIndevido ??= v;
   };
 
   for (const it of outros) scan(it.descricao, it.valor_total);

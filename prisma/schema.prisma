@@ -927,6 +927,13 @@ model ConsumerBill {
   atualizacaoMonetaria Float? @map("atualizacao_monetaria")
   iluminacaoPublicaCip Float? @map("iluminacao_publica_cip")
   ajusteSaldoCredito   Float? @map("ajuste_saldo_credito")
+  // Linha "Devol Pagamento Indevido" da seção CRÉDITOS / DEVOLUÇÕES da RGE/CPFL.
+  // Gravada NEGATIVA, como vem impressa: a concessionária está devolvendo na
+  // conta do mês um valor que JÁ FOI PAGO antes — e quem pagou, em fatura única,
+  // foi a nossa empresa. Por isso ela volta a SOMAR no repasse cobrado do
+  // cliente (ver lib/billing-calculator.ts). `valorTotal` continua sendo o
+  // valor impresso (já líquido da devolução), pra auditoria contra a fatura.
+  devolPagamentoIndevido Float? @map("devol_pagamento_indevido")
 
   // Metadados da sincronizacao
   fonteConsulta String?  @map("fonte_consulta") // "INFOSIMPLES" | "MANUAL" | "CPFL_PORTAL"

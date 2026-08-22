@@ -592,6 +592,8 @@ export function parseNovaPalma(lines: string[]): ParsedFaturaPdf {
       atualizacaoMonetaria: null,
       iluminacaoPublicaCip,
       ajusteSaldoCredito: null,
+      // "CRÉDITOS / DEVOLUÇÕES" é seção do layout RGE/CPFL; a Nova Palma não a imprime.
+      devolPagamentoIndevido: null,
 
       pdfUrl: null,
       fonteConsulta: "UPLOAD_MANUAL",
