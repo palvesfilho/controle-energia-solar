@@ -10,6 +10,8 @@
  * uma ação explícita do admin, nunca automaticamente.
  */
 import { clerkClient } from "@clerk/nextjs/server";
+import { getHomeRoute } from "@/lib/roles";
+import type { UserRole } from "@/types/next-auth";
 
 function baseUrl(): string {
   return (
@@ -44,6 +46,37 @@ export async function enviarConviteCadastroCliente(
       proprietarioId: input.proprietarioId,
     },
     redirectUrl: `${baseUrl()}/portal-cliente`,
+    ignoreExisting: true,
+  });
+  return { invitationId: invitation.id, email: input.email };
+}
+
+export interface EnviarConviteUsuarioInput {
+  email: string;
+  role: UserRole;
+}
+
+/**
+ * Convite de acesso para usuário do sistema (funcionário, investidor,
+ * consumidor) emitido em /admin/usuarios.
+ *
+ * Existe porque o cadastro pela tela grava só a linha local: quem autentica é o
+ * Clerk, e sem uma identidade lá a pessoa não entra. Até 31/08/2026 o buraco era
+ * tapado pelo auto-cadastro no Account Portal — a pessoa se registrava sozinha e
+ * `ensureLocalUser` adotava a linha pelo e-mail. Fechada essa porta, o convite
+ * passa a ser o único caminho, e o `role` no publicMetadata é o que prova pra
+ * `verificarPreAutorizacao()` que o acesso foi EMITIDO.
+ *
+ * ⚠️ Enviar convite = ENVIAR E-MAIL. Só a partir de ação explícita do operador.
+ */
+export async function enviarConviteAcessoUsuario(
+  input: EnviarConviteUsuarioInput,
+): Promise<EnviarConviteResult> {
+  const client = await clerkClient();
+  const invitation = await client.invitations.createInvitation({
+    emailAddress: input.email,
+    publicMetadata: { role: input.role },
+    redirectUrl: `${baseUrl()}${getHomeRoute(input.role)}`,
     ignoreExisting: true,
   });
   return { invitationId: invitation.id, email: input.email };

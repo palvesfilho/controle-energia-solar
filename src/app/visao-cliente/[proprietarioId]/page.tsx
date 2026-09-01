@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Sun, Eye, ArrowLeft } from "lucide-react";
-import { getServerSession } from "@/lib/auth-compat";
-import { authOptions } from "@/lib/auth-options";
+import { getEstadoAcesso } from "@/lib/auth-compat";
 import { canAccessSection, getHomeRoute } from "@/lib/roles";
+import { SemAcesso } from "@/components/auth/sem-acesso";
 import { prisma } from "@/lib/prisma";
 import { brandGradient } from "@/lib/brand-colors";
 import {
@@ -35,8 +35,13 @@ export default async function VisaoClientePage({
   params: Promise<{ proprietarioId: string }>;
   searchParams: Promise<{ plano?: string }>;
 }) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) redirect("/login-clerk");
+  const acesso = await getEstadoAcesso();
+  if (acesso.estado === "ANONIMO") redirect("/login-clerk");
+  // Logado sem autorizacao: estado terminal, sem redirect (ver auth-compat.ts).
+  if (acesso.estado === "SEM_ACESSO") {
+    return <SemAcesso email={acesso.email} nome={acesso.nome} />;
+  }
+  const session = acesso.session;
   if (!canAccessSection(session.user.role, "brasilSolar")) {
     redirect(getHomeRoute(session.user.role));
   }

@@ -16,6 +16,7 @@
 import { currentUser } from "@clerk/nextjs/server";
 import { prisma } from "./prisma";
 import type { UserRole } from "@/types/next-auth";
+import { verificarPreAutorizacao } from "@/lib/acesso-emissao";
 
 type ClerkUser = NonNullable<Awaited<ReturnType<typeof currentUser>>>;
 
@@ -171,6 +172,20 @@ export async function ensureLocalUser(clerkUser: ClerkUser): Promise<LocalUser |
     }
   }
 
+  // Segunda porta de entrada, além do webhook: aqui a linha nasce sob demanda
+  // no primeiro request autenticado. Se o webhook foi endurecido e esta não,
+  // a trava não existe — basta logar uma vez pra ganhar o acesso que o webhook
+  // recusou. As duas leem a MESMA regra.
+  if (!existing) {
+    const pre = await verificarPreAutorizacao(email, clerkUser.publicMetadata);
+    if (!pre.autorizado) {
+      console.warn(
+        `[auth-compat] ${email} (${clerkUser.id}) sem pré-autorização (${pre.motivo}); acesso recusado`,
+      );
+      return null;
+    }
+  }
+
   const proprietarioId = await resolveProprietarioId(clerkUser, email);
 
   // Role final: se há proprietário BS vinculável e a conta não é privilegiada,
@@ -214,9 +229,26 @@ export async function ensureLocalUser(clerkUser: ClerkUser): Promise<LocalUser |
   return dbUser;
 }
 
-export async function getServerSession(_optionsIgnoradas?: unknown): Promise<CompatSession | null> {
+/**
+ * Os três estados de acesso, separados.
+ *
+ * `getServerSession` devolve `null` para "não logado" E para "logado sem
+ * autorização", e essa fusão é o que trava o app num laço: quem guarda a rota
+ * lê `null`, manda pro `/login`, o Clerk vê uma sessão **válida** e devolve pra
+ * dentro — de volta ao guarda. Redirecionar não resolve, porque a origem do
+ * `null` (autenticado, porém barrado) não muda com navegação.
+ *
+ * Quem guarda rota deve usar `getEstadoAcesso` e tratar `SEM_ACESSO` como
+ * estado TERMINAL: renderizar a tela de "sem acesso", nunca redirecionar.
+ */
+export type EstadoAcesso =
+  | { estado: "ANONIMO" }
+  | { estado: "SEM_ACESSO"; email: string; nome: string }
+  | { estado: "OK"; session: CompatSession };
+
+export async function getEstadoAcesso(): Promise<EstadoAcesso> {
   const clerkUser = await currentUser();
-  if (!clerkUser) return null;
+  if (!clerkUser) return { estado: "ANONIMO" };
 
   let dbUser: LocalUser | null = await prisma.user.findUnique({
     where: { clerkId: clerkUser.id },
@@ -229,15 +261,30 @@ export async function getServerSession(_optionsIgnoradas?: unknown): Promise<Com
     dbUser = await ensureLocalUser(clerkUser);
   }
 
-  if (!dbUser || !dbUser.active) return null;
+  if (!dbUser || !dbUser.active) {
+    const nomeClerk = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ");
+    return {
+      estado: "SEM_ACESSO",
+      email: dbUser?.email ?? primaryEmail(clerkUser) ?? "",
+      nome: dbUser?.name || nomeClerk || "",
+    };
+  }
 
   return {
-    user: {
-      id: dbUser.id,
-      role: dbUser.role as UserRole,
-      email: dbUser.email,
-      name: dbUser.name,
-      image: clerkUser.imageUrl ?? null,
+    estado: "OK",
+    session: {
+      user: {
+        id: dbUser.id,
+        role: dbUser.role as UserRole,
+        email: dbUser.email,
+        name: dbUser.name,
+        image: clerkUser.imageUrl ?? null,
+      },
     },
   };
+}
+
+export async function getServerSession(_optionsIgnoradas?: unknown): Promise<CompatSession | null> {
+  const acesso = await getEstadoAcesso();
+  return acesso.estado === "OK" ? acesso.session : null;
 }

@@ -1,6 +1,8 @@
 import { currentUser } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
 import { redirect } from "next/navigation";
+import { getEstadoAcesso } from "@/lib/auth-compat";
+import { SemAcesso } from "@/components/auth/sem-acesso";
 import Link from "next/link";
 import { Leaf, Zap, Users, FileText, ShieldCheck, ArrowRight } from "lucide-react";
 import { brand, brandGradient } from "@/lib/brand-colors";
@@ -18,6 +20,16 @@ const ACESSO_POR_ROLE: Record<string, ModulosVisiveis> = {
 const GERADOR_URL = "https://gerador-proposta-rbs-production.up.railway.app/login";
 
 export default async function PortalPage() {
+  // O laço de redirect nascia aqui: sem checar autorização, a conta barrada
+  // recebia o role padrão "INVESTOR" e era quicada pro /painel, que é do
+  // dashboard e a devolvia pro login — e o Clerk a trazia de volta pra cá.
+  // Parar antes do quique fecha o laço na origem.
+  const estadoAcesso = await getEstadoAcesso();
+  if (estadoAcesso.estado === "ANONIMO") redirect("/login-clerk");
+  if (estadoAcesso.estado === "SEM_ACESSO") {
+    return <SemAcesso email={estadoAcesso.email} nome={estadoAcesso.nome} />;
+  }
+
   const user = await currentUser();
   if (!user) redirect("/login-clerk");
 

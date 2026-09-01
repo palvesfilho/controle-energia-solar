@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Save, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Save, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isValidPhone } from "@/lib/phone";
+import { rolesAtribuiveisPor } from "@/lib/roles";
 
 const ROLE_OPTIONS = [
   { value: "ADMIN", label: "Administrador", description: "Acesso total ao sistema, incluindo gestão de usuários" },
@@ -21,17 +23,26 @@ const ROLE_OPTIONS = [
 
 export default function NovoUsuarioPage() {
   const router = useRouter();
+  const { user } = useUser();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({
     name: "",
     email: "",
-    password: "",
     role: "INVESTOR",
     phone: "",
     document: "",
   });
+
+  // Espelha a alçada do servidor pra não oferecer um perfil que a API vai
+  // recusar. Se o role não veio no publicMetadata (conta antiga, sem o claim
+  // configurado), mostra tudo e deixa o servidor decidir — esconder opções de
+  // um ADMIN legítimo seria pior que mostrar uma que ele não pode usar.
+  const roleAtual = ((user?.publicMetadata as Record<string, unknown> | undefined)?.role as string) ?? "";
+  const permitidos = roleAtual ? rolesAtribuiveisPor(roleAtual) : null;
+  const roleOptions = permitidos
+    ? ROLE_OPTIONS.filter((o) => (permitidos as string[]).includes(o.value))
+    : ROLE_OPTIONS;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,33 +120,27 @@ export default function NovoUsuarioPage() {
               </FormField>
             </div>
 
-            <FormField label="Senha *">
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  placeholder="Mínimo 6 caracteres"
-                  minLength={6}
-                  required
-                  className="w-full text-sm border rounded-lg px-3 py-1.5 pr-9 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+            {/* O campo "Senha" saiu em 31/08/2026. O login por senha local morreu
+                em 08/08 — quem autentica é o Clerk. O que existia aqui era um
+                hash que ninguém lia, e ele dava a impressão falsa de que salvar
+                já entregava o acesso. */}
+            <div className="flex gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+              <Mail className="h-4 w-4 shrink-0 text-blue-600 mt-0.5" />
+              <div className="text-xs text-blue-900 leading-relaxed">
+                <span className="font-semibold">Salvar não libera o acesso.</span>{" "}
+                Este cadastro só registra a pessoa. Para ela conseguir entrar,
+                use o botão <span className="font-semibold">Emitir acesso</span>{" "}
+                na lista de usuários — ele envia um convite por e-mail, e a
+                própria pessoa define a senha ao aceitar.
               </div>
-            </FormField>
+            </div>
 
             <div className="space-y-2">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Perfil de acesso *
               </label>
               <div className="grid gap-2">
-                {ROLE_OPTIONS.map((option) => {
+                {roleOptions.map((option) => {
                   const selected = form.role === option.value;
                   return (
                     <label

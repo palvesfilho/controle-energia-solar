@@ -17,6 +17,8 @@ import {
   Headphones,
   HardHat,
   AlertTriangle,
+  Mail,
+  MailCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -35,6 +37,8 @@ interface UserData {
   role: string;
   active: boolean;
   createdAt: string;
+  /** Já tem identidade no Clerk, ou seja: o convite foi aceito. */
+  acessoEmitido: boolean;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -93,6 +97,28 @@ export default function UsuariosPage() {
   // Comparação exata (case-sensitive); só o trim das bordas é tolerado.
   const palavraBate = desativarText.trim() === PALAVRA_DESATIVAR;
   const desativando = desativarTarget !== null && toggling === desativarTarget.id;
+
+  const [convidando, setConvidando] = useState<string | null>(null);
+
+  // Emitir acesso DISPARA E-MAIL. Fica atrás de confirmação explícita: nenhum
+  // envio pode sair de um clique acidental na lista.
+  const [conviteTarget, setConviteTarget] = useState<UserData | null>(null);
+
+  const enviarConvite = async (user: UserData) => {
+    setConvidando(user.id);
+    try {
+      const res = await fetch(`/api/users/${user.id}/convite`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Falha ao emitir acesso");
+      toast.success(`Convite enviado para ${user.email}`);
+      setConviteTarget(null);
+      fetchUsers();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao emitir acesso");
+    } finally {
+      setConvidando(null);
+    }
+  };
 
   const fetchUsers = () => {
     setLoading(true);
@@ -236,6 +262,7 @@ export default function UsuariosPage() {
                     <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Email</th>
                     <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Perfil</th>
                     <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Status</th>
+                    <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Acesso</th>
                     <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Criado em</th>
                     <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Ações</th>
                   </tr>
@@ -261,6 +288,19 @@ export default function UsuariosPage() {
                             {user.active ? "Ativo" : "Inativo"}
                           </Badge>
                         </td>
+                        <td className="py-2.5 px-3 text-center">
+                          {user.acessoEmitido ? (
+                            <Badge variant="secondary" className="gap-1">
+                              <MailCheck className="h-3 w-3" />
+                              Emitido
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300">
+                              <AlertTriangle className="h-3 w-3" />
+                              Sem acesso
+                            </Badge>
+                          )}
+                        </td>
                         <td className="py-2.5 px-3 text-center text-xs text-muted-foreground">
                           {new Date(user.createdAt).toLocaleDateString("pt-BR")}
                         </td>
@@ -273,6 +313,17 @@ export default function UsuariosPage() {
                             >
                               <Pencil className="h-4 w-4" />
                             </Link>
+                            {!user.acessoEmitido && user.active && (
+                              <button
+                                type="button"
+                                title="Emitir acesso (envia e-mail de convite)"
+                                onClick={() => setConviteTarget(user)}
+                                disabled={convidando === user.id}
+                                className="p-1.5 rounded hover:bg-muted transition-colors disabled:opacity-50"
+                              >
+                                <Mail className="h-4 w-4 text-blue-500" />
+                              </button>
+                            )}
                             <button
                               type="button"
                               title={user.active ? "Desativar" : "Ativar"}
@@ -297,6 +348,56 @@ export default function UsuariosPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Emitir acesso — confirmação porque ENVIA E-MAIL para a pessoa */}
+      <Dialog
+        open={conviteTarget !== null}
+        onOpenChange={(open) => !open && setConviteTarget(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
+              <Mail className="h-6 w-6 text-blue-600" />
+            </div>
+            <DialogTitle className="text-center text-lg">
+              Emitir acesso?
+            </DialogTitle>
+            <DialogDescription className="text-center">
+              Um e-mail de convite será enviado agora para{" "}
+              <span className="font-semibold text-foreground">
+                {conviteTarget?.email}
+              </span>
+              , com o perfil{" "}
+              <span className="font-semibold text-foreground">
+                {conviteTarget ? ROLE_LABELS[conviteTarget.role] ?? conviteTarget.role : ""}
+              </span>
+              .
+              <br />
+              A pessoa cria a própria senha ao aceitar. Só depois disso ela
+              consegue entrar.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="mt-4 gap-2 sm:gap-2">
+            <button
+              type="button"
+              onClick={() => setConviteTarget(null)}
+              disabled={convidando !== null}
+              className="px-4 py-2 text-sm font-medium border rounded-lg hover:bg-muted transition-colors disabled:opacity-40"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => conviteTarget && enviarConvite(conviteTarget)}
+              disabled={convidando !== null}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-40"
+            >
+              {convidando ? "Enviando..." : "Enviar convite"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Trava do "Desativar" — exige digitar a palavra exata */}
       <Dialog

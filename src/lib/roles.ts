@@ -57,7 +57,11 @@ export const SECTION_ROLES: Record<AdminSection, UserRole[]> = {
   // — é quem conhece a base e quem vai atender o interessado que responder.
   // Gestor de obras fica de fora: a campanha é comercial, não operacional.
   mensagens: [...FULL_ADMIN_TRIO, "POS_VENDA"],
-  usuarios: ["ADMIN"],
+  // Emissão de acesso (31/08/2026): FINANCEIRO e POS_VENDA entram porque são
+  // eles que atendem quem precisa de login. A escalada de privilégio é barrada
+  // um nível abaixo, em `rolesAtribuiveisPor()` — eles não atribuem ADMIN,
+  // GESTOR nem FINANCEIRO, e não editam quem já tem um desses papéis.
+  usuarios: ["ADMIN", "FINANCEIRO", "POS_VENDA"],
   // Hub das personalizações: qualquer role com acesso a ao menos um card
   personalizacoesHub: [...FULL_ADMIN_TRIO, "POS_VENDA", "GESTOR_OBRA"],
   persObras: [...FULL_ADMIN_TRIO, "POS_VENDA", "GESTOR_OBRA"],
@@ -111,8 +115,52 @@ export const ASSIGNABLE_ROLES: UserRole[] = [
   "CONSUMER",
 ];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// EMISSÃO DE ACESSO
+//
+// Estas funções são PURAS de propósito: `/admin/usuarios/novo` é um componente
+// cliente e precisa delas pra montar a lista de perfis. Se morassem em
+// `acesso-emissao.ts` — que importa Prisma — o import arrastaria o cliente
+// Prisma pro bundle do browser. A regra que toca o banco
+// (`verificarPreAutorizacao`) fica lá, e só o servidor a usa.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Quem pode emitir acesso pela tela. */
+export const EMISSAO_ROLES: UserRole[] = ["ADMIN", "FINANCEIRO", "POS_VENDA"];
+
+/**
+ * Roles que dão acesso ao painel administrativo. Só ADMIN atribui — senão
+ * FINANCEIRO/POS_VENDA poderiam se promover criando um ADMIN novo, o que
+ * transformaria a abertura do cadastro numa escalada de privilégio.
+ */
+const ROLES_PRIVILEGIADOS: UserRole[] = ["ADMIN", "GESTOR", "FINANCEIRO"];
+
+export function podeEmitirAcesso(role: string): boolean {
+  return EMISSAO_ROLES.includes(role as UserRole);
+}
+
+/** Subconjunto de ASSIGNABLE_ROLES que este operador pode atribuir. */
+export function rolesAtribuiveisPor(role: string): UserRole[] {
+  if (!podeEmitirAcesso(role)) return [];
+  if (role === "ADMIN") return [...ASSIGNABLE_ROLES];
+  return ASSIGNABLE_ROLES.filter((r) => !ROLES_PRIVILEGIADOS.includes(r));
+}
+
+/**
+ * Um operador pode mexer num usuário já existente?
+ *
+ * ADMIN mexe em todos. FINANCEIRO/POS_VENDA não tocam em conta privilegiada —
+ * sem esta guarda, abrir a tela de usuários pra eles daria, de brinde, o poder
+ * de desativar um ADMIN ou rebaixá-lo.
+ */
+export function podeGerenciarUsuario(operadorRole: string, alvoRole: string): boolean {
+  if (!podeEmitirAcesso(operadorRole)) return false;
+  if (operadorRole === "ADMIN") return true;
+  return !ROLES_PRIVILEGIADOS.includes(alvoRole as UserRole);
+}
+
 // Roles que podem gerenciar usuários
-export const USER_MANAGEMENT_ROLES: UserRole[] = ["ADMIN"];
+export const USER_MANAGEMENT_ROLES: UserRole[] = ["ADMIN", "FINANCEIRO", "POS_VENDA"];
 
 // Roles que podem confirmar pagamentos (subir comprovante)
 export const FINANCE_ROLES: UserRole[] = ["ADMIN", "FINANCEIRO"];

@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
-import { ASSIGNABLE_ROLES } from "@/lib/roles";
+import {
+  podeEmitirAcesso,
+  podeGerenciarUsuario,
+  rolesAtribuiveisPor,
+} from "@/lib/roles";
 import { hashSync } from "bcryptjs";
 
 export async function GET(
@@ -10,7 +14,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") {
+  if (!session || !podeEmitirAcesso(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -48,7 +52,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") {
+  if (!session || !podeEmitirAcesso(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -80,8 +84,22 @@ export async function PUT(
     }
   }
 
-  if (role && !ASSIGNABLE_ROLES.includes(role)) {
-    return NextResponse.json({ error: "Perfil inválido" }, { status: 400 });
+  // Alçada sobre o ALVO: quem não é ADMIN não edita conta privilegiada.
+  if (!podeGerenciarUsuario(session.user.role, existingUser.role)) {
+    return NextResponse.json(
+      { error: "Este usuário está acima da sua alçada" },
+      { status: 403 }
+    );
+  }
+
+  // Alçada sobre o NOVO perfil: as duas checagens são necessárias. Só a do alvo
+  // deixaria um POS_VENDA promover um INVESTOR a ADMIN; só a do perfil novo
+  // deixaria ele rebaixar um ADMIN para INVESTOR.
+  if (role && !rolesAtribuiveisPor(session.user.role).includes(role)) {
+    return NextResponse.json(
+      { error: "Perfil inválido ou acima da sua alçada" },
+      { status: 400 }
+    );
   }
 
   const updateData: Record<string, unknown> = {};

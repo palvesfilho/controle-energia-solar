@@ -4,7 +4,8 @@ import { UserButton } from "@clerk/nextjs";
 import { redirect } from "next/navigation";
 import { Sun, ShieldOff } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { ensureLocalUser } from "@/lib/auth-compat";
+import { ensureLocalUser, getEstadoAcesso } from "@/lib/auth-compat";
+import { SemAcesso } from "@/components/auth/sem-acesso";
 import { brandGradient } from "@/lib/brand-colors";
 import {
   getPortalClienteData,
@@ -21,6 +22,15 @@ import { AvisosClienteCard } from "@/components/mensagens/avisos-cliente-card";
 export const dynamic = "force-dynamic";
 
 export default async function PortalClientePage() {
+  // Conta barrada para aqui, sem redirect — é pra onde o /portal manda o
+  // CLIENTE_BS, então sem esta trava ela seria mais uma perna do laço.
+  // `getEstadoAcesso` já faz o lazy-provision do User local por dentro.
+  const acesso = await getEstadoAcesso();
+  if (acesso.estado === "ANONIMO") redirect("/login-clerk");
+  if (acesso.estado === "SEM_ACESSO") {
+    return <SemAcesso email={acesso.email} nome={acesso.nome} />;
+  }
+
   const user = await currentUser();
   if (!user) redirect("/login-clerk");
 

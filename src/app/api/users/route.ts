@@ -2,12 +2,12 @@
 import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
-import { ASSIGNABLE_ROLES } from "@/lib/roles";
+import { podeEmitirAcesso, rolesAtribuiveisPor } from "@/lib/roles";
 import { hashSync } from "bcryptjs";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") {
+  if (!session || !podeEmitirAcesso(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -31,32 +31,44 @@ export async function GET(req: NextRequest) {
       active: true,
       createdAt: true,
       updatedAt: true,
+      clerkId: true,
     },
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json(users);
+  // O `clerkId` em si não vai pra tela — a tela só precisa saber se o acesso já
+  // foi emitido, e expor o id da identidade não serve a nada aqui.
+  return NextResponse.json(
+    users.map(({ clerkId, ...u }) => ({ ...u, acessoEmitido: clerkId !== null })),
+  );
 }
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") {
+  if (!session || !podeEmitirAcesso(session.user.role)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const body = await req.json();
   const { name, email, password, role } = body;
 
-  if (!name || !email || !password || !role) {
+  // `password` deixou de ser obrigatório em 31/08/2026: o login por senha local
+  // morreu em 08/08 (a rota devolve 410) e quem autentica é o Clerk. Exigir
+  // senha aqui só produzia um hash que ninguém lê — e escondia o fato de que
+  // criar a linha NÃO dá acesso: falta o convite.
+  if (!name || !email || !role) {
     return NextResponse.json(
-      { error: "Campos obrigatórios: nome, email, senha e perfil" },
+      { error: "Campos obrigatórios: nome, email e perfil" },
       { status: 400 }
     );
   }
 
-  if (!ASSIGNABLE_ROLES.includes(role)) {
+  // Cada operador só atribui o que pode: ADMIN atribui tudo; FINANCEIRO e
+  // POS_VENDA não criam conta privilegiada — senão emitir acesso viraria um
+  // caminho para se promover.
+  if (!rolesAtribuiveisPor(session.user.role).includes(role)) {
     return NextResponse.json(
-      { error: "Perfil inválido" },
+      { error: "Perfil inválido ou acima da sua alçada" },
       { status: 400 }
     );
   }
@@ -73,7 +85,7 @@ export async function POST(req: NextRequest) {
     data: {
       email,
       name,
-      passwordHash: hashSync(password, 10),
+      passwordHash: password ? hashSync(password, 10) : "",
       role,
       ...(role === "INVESTOR"
         ? {
