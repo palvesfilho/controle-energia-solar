@@ -401,9 +401,20 @@ export function calcularValorCobrado(
         `Regra "${unit.regraRemuneracao}" ainda não implementada`,
       );
     default:
+      // Duas situações MUITO diferentes caíam na mesma mensagem, e a mensagem
+      // falava da situação errada: UC com regra gravada numa grafia que o
+      // sistema não conhece — `DESC_COMPENSADA_BANDEIRAS` (nome antigo da
+      // FAT_UNICA) e `FATURA_UNICA_DOMMO` (órfã, sem par no código) — era
+      // relatada como "sem regra selecionada". Quem lesse ia procurar campo
+      // vazio e encontrar campo preenchido, e desistir. Foram 5 UCs ativas,
+      // 66 competências e 21 meses sem cobrança calculada até isso aparecer,
+      // em 02/09/2026.
       return notImplementedResult(
         unit.regraRemuneracao ?? null,
-        "UC sem regra de remuneração selecionada",
+        unit.regraRemuneracao
+          ? `Regra "${unit.regraRemuneracao}" não é reconhecida pelo sistema — ` +
+            "grafia antiga ou digitada fora da lista. A cobrança NÃO é calculada."
+          : "UC sem regra de remuneração selecionada",
       );
   }
 }

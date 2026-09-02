@@ -113,15 +113,26 @@ export const PAGADORES_FATURA: { value: string; label: string; ajuda: string }[]
   },
 ];
 
-export const REGRAS_REMUNERACAO: { value: string; label: string }[] = [
-  { value: "FAT_UNICA_COMPENSADA_BANDEIRAS", label: "Fatura Única Compensada Bandeiras" },
+/**
+ * `calcula: false` = o billing-calculator NÃO implementa a regra: escolher uma
+ * dessas deixa a UC gerando competência atrás de competência com valorCobranca
+ * nulo, calada. Continuam na lista porque há contrato legado apontando para
+ * elas, mas o rótulo avisa antes de alguém escolher por engano.
+ */
+export const REGRAS_REMUNERACAO: { value: string; label: string; calcula: boolean }[] = [
+  { value: "FAT_UNICA_COMPENSADA_BANDEIRAS", label: "Fatura Única Compensada Bandeiras", calcula: true },
   {
     value: "FAT_UNICA_COMPENSADA_BANDEIRAS_DIMARZARI",
     label: "Fatura Única Compensada Bandeiras — DIMARZARI",
+    calcula: true,
   },
-  { value: "PERCENTUAL_SOBRE_COMPENSADO", label: "Percentual Sobre Compensado" },
-  { value: "DESC_COMPENSADA", label: "Desconto sobre Energia Compensada" },
-  { value: "DESC_FATURA_COMPENSADA_DOMMO", label: "Desconto sobre Fatura Compensada DOMMO" },
+  { value: "PERCENTUAL_SOBRE_COMPENSADO", label: "Percentual Sobre Compensado", calcula: true },
+  { value: "DESC_COMPENSADA", label: "Desconto sobre Energia Compensada", calcula: false },
+  {
+    value: "DESC_FATURA_COMPENSADA_DOMMO",
+    label: "Desconto sobre Fatura Compensada DOMMO",
+    calcula: false,
+  },
 ];
 
 export const REGRAS_VENCIMENTO: { value: string; label: string }[] = [
@@ -565,12 +576,37 @@ export function UCForm({
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-9"
             >
               <option value="">— Selecione —</option>
+              {/* Valor gravado que não está na lista renderizava o select em
+                  BRANCO: a UC parecia estar sem regra quando na verdade tinha
+                  uma grafia antiga. Mostrar o valor cru é feio de propósito —
+                  é para alguém corrigir, não para conviver. */}
+              {form.regraRemuneracao !== "" &&
+                !REGRAS_REMUNERACAO.some((r) => r.value === form.regraRemuneracao) && (
+                  <option value={form.regraRemuneracao}>
+                    ⚠ Regra desconhecida: {form.regraRemuneracao}
+                  </option>
+                )}
               {REGRAS_REMUNERACAO.map((r) => (
                 <option key={r.value} value={r.value}>
                   {r.label}
+                  {r.calcula ? "" : " (não calcula cobrança)"}
                 </option>
               ))}
             </select>
+            {form.regraRemuneracao !== "" &&
+              !REGRAS_REMUNERACAO.some((r) => r.value === form.regraRemuneracao) && (
+                <p className="text-xs text-destructive">
+                  O sistema não reconhece esta regra — nenhuma cobrança é calculada para esta UC.
+                  Escolha uma da lista.
+                </p>
+              )}
+            {REGRAS_REMUNERACAO.some(
+              (r) => r.value === form.regraRemuneracao && !r.calcula,
+            ) && (
+              <p className="text-xs text-destructive">
+                Esta regra ainda não é calculada pelo sistema: a cobrança fica em branco todo mês.
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="pagadorFaturaEnergia">Quem paga a fatura de energia?</Label>
