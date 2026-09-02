@@ -1483,7 +1483,10 @@ function CreateRateioDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      {/* 63rem = 1008px: os 672px do sm:max-w-2xl + 50%, pedido do Paulo em 01/09/2026 */}
+      {/* para a tabela UNIDADE | UC | CPF/CNPJ | PERCENTUAL respirar. O max-w-[calc(100%-2rem)] */}
+      {/* da base continua valendo abaixo de sm, entao a janela segue cabendo em tela estreita. */}
+      <DialogContent className="sm:max-w-[63rem]">
         <DialogHeader>
           <DialogTitle>Novo rateio — {plantName}</DialogTitle>
           <DadosDaUsina uc={plantUc} ucAntiga={plantUcAntiga} documento={plantDoc} />
