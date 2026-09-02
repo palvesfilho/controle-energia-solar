@@ -9,6 +9,17 @@
  *     Bills que já têm ConsumerUnitBilling com asaasChargeId são skipped
  *     dentro do próprio populateBillingFromBill.
  *
+ * ⚠️ ANTES DE RODAR, leia: o reparse reescreve o registro da fatura com o que o
+ * parser lê HOJE. Medido em 02/09/2026 numa fatura real (SANTINO - FÁBRICA
+ * 08/2026), além dos 11 campos que ele corretamente preenche, ele ainda:
+ *   - troca `instalacao` do código RGE ANTIGO para o novo — e o Infosimples só
+ *     consulta pelo antigo;
+ *   - troca `tarifaTUSD` da tarifa COM tributos pela tarifa ANEEL pura;
+ *   - substitui `rawJson` do Infosimples pelo texto do PDF, perdendo a trilha.
+ * Nenhum desses é descartado aqui porque em fatura de upload manual eles são a
+ * leitura certa. Em fatura vinda do Infosimples, não são. Rodar em lote sobre as
+ * duas origens ao mesmo tempo é que é a armadilha.
+ *
  * Uso:
  *   tsx scripts/mass-reparse-populate-fat-unica.ts          # dry-run (não escreve)
  *   tsx scripts/mass-reparse-populate-fat-unica.ts --apply  # aplica
@@ -71,9 +82,18 @@ async function main() {
           reparseFalha++;
         } else {
           const parsed = await parseFaturaPdf(new Uint8Array(file.data));
+          // `parsed.bill` traz pdfUrl:null e fonteConsulta:"UPLOAD_MANUAL" — são
+          // defaults do parser, não leitura da fatura. Espalhá-los aqui APAGAVA o
+          // ponteiro do PDF de toda fatura tocada (o proximo reparse ficaria sem
+          // arquivo para ler) e reescrevia a origem de INFOSIMPLES para upload
+          // manual. A rota /api/admin/faturas-energia/[id]/reparse já descartava
+          // os dois; este script tinha ficado para trás. Encontrado em 02/09/2026
+          // simulando o reparse antes de rodar — nunca chegou a rodar assim.
+          const { pdfUrl: _pdfUrl, fonteConsulta: _fonte, ...billData } = parsed.bill;
+          void _pdfUrl; void _fonte;
           await prisma.consumerBill.update({
             where: { id: bill.id },
-            data: { ...parsed.bill, syncedAt: new Date() },
+            data: { ...billData, syncedAt: new Date() },
           });
           reparseOk++;
         }
