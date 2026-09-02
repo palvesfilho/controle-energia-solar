@@ -1955,13 +1955,56 @@ model RateioVersion {
   rejeitadoEm      DateTime? @map("rejeitado_em")
   substituidoEm    DateTime? @map("substituido_em")
   criadoPorUserId  String?   @map("criado_por_user_id")
+  // Quem aceitou: id do usuário, ou "ROBO_RGE" quando o aceite veio da consulta
+  // automática do protocolo na concessionária. Sem isto, um rateio que passou a
+  // VIGENTE sozinho seria indistinguível de um aceito na mão.
+  aceitoPor        String?   @map("aceito_por")
+
+  // ── Acompanhamento do protocolo na concessionária (robô logado da RGE) ──
+  // situacao = leitura NORMALIZADA (ver src/lib/rge-protocolo.ts):
+  //   VALIDADO | EM_ANDAMENTO | REJEITADO | NAO_ENCONTRADO | DESCONHECIDO |
+  //   ERRO | SEM_CREDENCIAL | PROTOCOLO_INVALIDO
+  // statusRge = o texto LITERAL do cartão da RGE, guardado sempre. Só a situação
+  // é interpretação nossa; o literal é a prova, e é o que aparece na tela quando
+  // a situação vem DESCONHECIDO.
+  protocoloSituacao     String?   @map("protocolo_situacao")
+  protocoloStatusRge    String?   @map("protocolo_status_rge")
+  // Duas datas de propósito, pela lição da CpflCredential: `consultadoEm` é a
+  // última consulta que TROUXE resposta, `tentativaEm` é a última vez que se
+  // tentou. Com um campo só, o erro de hoje aparece com a data do último acerto
+  // e parece que ninguém mais tentou.
+  protocoloConsultadoEm DateTime? @map("protocolo_consultado_em")
+  protocoloTentativaEm  DateTime? @map("protocolo_tentativa_em")
+  protocoloErro         String?   @map("protocolo_erro")
 
   plant            Plant             @relation(fields: [plantId], references: [id], onDelete: Cascade)
   items            RateioItem[]
   investorPayables InvestorPayable[]
+  consultasProtocolo RateioProtocoloConsulta[]
 
   @@index([plantId, status])
   @@map("rateio_versions")
+}
+
+// Histórico de cada ida à concessionária atrás do protocolo. Existe por causa do
+// aceite automático: quando um rateio vira VIGENTE sozinho, tem de haver a linha
+// que mostra o que a tela da RGE dizia naquela hora, com o payload cru.
+model RateioProtocoloConsulta {
+  id           String   @id @default(cuid())
+  versionId    String   @map("version_id")
+  protocolo    String
+  situacao     String
+  statusRge    String?  @map("status_rge")
+  erro         String?
+  // Cartão cru devolvido pelo robô (numero, status, datas, UC). Auditoria.
+  detalhe      Json?
+  aceitouRateio Boolean @default(false) @map("aceitou_rateio")
+  consultadoEm DateTime @default(now()) @map("consultado_em")
+
+  version RateioVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([versionId, consultadoEm])
+  @@map("rateio_protocolo_consultas")
 }
 
 model RateioItem {

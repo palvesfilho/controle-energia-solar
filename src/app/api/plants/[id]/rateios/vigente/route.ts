@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { isAdminRole } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
+import { concessionariaDaUsina } from "@/lib/concessionarias";
 
 /**
  * GET /api/plants/[id]/rateios/vigente — retorna a versão VIGENTE do rateio
@@ -59,7 +60,15 @@ function serialize(
     criadoEm: r.criadoEm,
     enviadoEm: r.enviadoEm,
     aceitoEm: r.aceitoEm,
+    // "ROBO_RGE" quando quem aceitou foi a consulta automática do protocolo.
+    aceitoPor: r.aceitoPor,
     rejeitadoEm: r.rejeitadoEm,
+    // Acompanhamento do protocolo na concessionária (ver src/lib/rge-protocolo.ts).
+    protocoloSituacao: r.protocoloSituacao,
+    protocoloStatusRge: r.protocoloStatusRge,
+    protocoloConsultadoEm: r.protocoloConsultadoEm,
+    protocoloTentativaEm: r.protocoloTentativaEm,
+    protocoloErro: r.protocoloErro,
     items: r.items.map((it) => ({
       id: it.id,
       percentual: it.percentual,
@@ -182,6 +191,11 @@ export async function GET(
       regraInstalacao: true,
       // Denominador da sugestão de percentuais: geração de CONTRATO.
       geracaoMediaMensal: true,
+      // A usina guarda a concessionária em DOIS campos; ler só um faz metade
+      // das usinas aparecer sem nenhuma (ver concessionariaDaUsina).
+      concessionaria: true,
+      distribuidora: true,
+      cpflCredential: { select: { active: true } },
     },
   });
   if (!plant) {
@@ -371,6 +385,10 @@ export async function GET(
       cpfCnpj: plant.cpfCnpj,
       regraInstalacao: plant.regraInstalacao,
       geracaoMediaMensal: plant.geracaoMediaMensal,
+      // Sem login da RGE, o robô não tem como consultar o protocolo desta usina.
+      // A tela precisa dizer isso, senão "nunca consultado" parece robô parado.
+      temCredencialRge: !!plant.cpflCredential?.active,
+      concessionaria: concessionariaDaUsina(plant),
     },
     periodo: temPeriodo ? { ano, mes } : null,
     vigente: vigente

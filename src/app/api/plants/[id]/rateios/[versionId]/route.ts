@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { isAdminRole } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
+import { protocoloDegenerado } from "@/lib/rge-protocolo";
 
 /**
  * PATCH /api/plants/[id]/rateios/[versionId]
@@ -70,6 +71,18 @@ export async function PATCH(
     if (protocolo.length > 60) {
       return NextResponse.json(
         { error: "Número de protocolo muito longo (máximo 60 caracteres)" },
+        { status: 400 },
+      );
+    }
+    // Mesma trava do POST: "0" e afins não são protocolo, e são exatamente os
+    // que a consulta automática na RGE não consegue procurar. Vazio segue
+    // permitido acima, para o rateio anterior a 22/08/2026 continuar editável.
+    if (protocolo && protocoloDegenerado(protocolo)) {
+      return NextResponse.json(
+        {
+          error:
+            "Protocolo inválido. Informe o número que a concessionária devolveu (ex.: 2206638554).",
+        },
         { status: 400 },
       );
     }

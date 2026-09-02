@@ -52,6 +52,12 @@ import {
   isDocumentoValido,
   repoeZerosAEsquerda,
 } from "@/lib/documento";
+import {
+  ACEITE_ROBO_RGE,
+  SITUACAO_LABEL,
+  SITUACAO_TOM,
+  type SituacaoProtocolo,
+} from "@/lib/rge-protocolo";
 
 interface PlantOption {
   id: string;
@@ -100,7 +106,19 @@ interface Rateio {
   criadoEm: string;
   enviadoEm: string | null;
   aceitoEm: string | null;
+  /** "ROBO_RGE" quando o aceite veio da consulta automática do protocolo. */
+  aceitoPor: string | null;
   rejeitadoEm: string | null;
+  /**
+   * Acompanhamento do protocolo na concessionária (src/lib/rge-protocolo.ts).
+   * `null` = nunca consultado — o robô ainda não passou por este rateio.
+   */
+  protocoloSituacao: SituacaoProtocolo | null;
+  /** Texto literal do cartão da RGE. É a prova; a situação é leitura nossa. */
+  protocoloStatusRge: string | null;
+  protocoloConsultadoEm: string | null;
+  protocoloTentativaEm: string | null;
+  protocoloErro: string | null;
   items: RateioItem[];
 }
 
@@ -116,6 +134,9 @@ interface RateioResponse {
     regraInstalacao: string | null;
     /** Geração de contrato — denominador da leitura de ocupação na sugestão. */
     geracaoMediaMensal: number | null;
+    /** Sem login da RGE, o robô não consegue consultar o protocolo desta usina. */
+    temCredencialRge: boolean;
+    concessionaria: string | null;
   };
   periodo: { ano: number; mes: number } | null;
   vigente: Rateio | null;
@@ -791,6 +812,7 @@ export default function RateiosPage() {
                   rateio={data.pendente}
                   allUnits={data.consumerUnits}
                   variant="pendente"
+                  temCredencialRge={data.plant.temCredencialRge}
                   onDelete={handleExcluir}
                   onEdit={(r) => setEditing(r)}
                   deleting={deletingId === data.pendente.id}
@@ -843,6 +865,7 @@ export default function RateiosPage() {
                   rateio={data.vigente}
                   allUnits={data.consumerUnits}
                   variant="vigente"
+                  temCredencialRge={data.plant.temCredencialRge}
                   mostrarCompensados
                   onDelete={handleExcluir}
                   onEdit={(r) => setEditing(r)}
@@ -879,6 +902,7 @@ export default function RateiosPage() {
                     <RateioTable
                       rateio={h}
                       allUnits={data.consumerUnits}
+                      temCredencialRge={data.plant.temCredencialRge}
                       variant={
                         h.status === "REJEITADO" ? "rejeitado" : "substituido"
                       }
@@ -993,11 +1017,77 @@ function formatKwh(v: number | null | undefined): string {
   return `${v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} kWh`;
 }
 
+/**
+ * Selo do que a RGE respondeu sobre o protocolo deste rateio.
+ *
+ * Regras da exibição, todas por causa de falha calada:
+ *  - `null` (nunca consultado) NÃO some da tela — vira "aguardando consulta",
+ *    porque o silêncio é indistinguível de robô parado;
+ *  - usina sem login da RGE diz isso com todas as letras: é o motivo real de
+ *    nunca haver resposta, e a ação é cadastrar a credencial;
+ *  - `DESCONHECIDO` mostra o TEXTO LITERAL que a RGE devolveu. É o caso em que a
+ *    nossa tabela de status ficou para trás, e o literal é o que permite
+ *    consertá-la sem adivinhação.
+ */
+function SeloProtocoloRge({
+  rateio,
+  temCredencialRge,
+}: {
+  rateio: Rateio;
+  temCredencialRge: boolean;
+}) {
+  // Só faz sentido acompanhar enquanto o rateio tem protocolo. Sem protocolo a
+  // tela já mostra "Sem protocolo" em âmbar, ao lado.
+  if (!rateio.protocolo) return null;
+
+  const tons: Record<"verde" | "ambar" | "vermelho" | "cinza", string> = {
+    verde: "text-emerald-600 dark:text-emerald-500",
+    ambar: "text-amber-600 dark:text-amber-500",
+    vermelho: "text-red-600 dark:text-red-500",
+    cinza: "text-muted-foreground",
+  };
+
+  const situacao = rateio.protocoloSituacao;
+
+  if (!situacao) {
+    if (!temCredencialRge) {
+      return (
+        <span className={`font-medium ${tons.ambar}`}>
+          RGE: sem login da usina para consultar
+        </span>
+      );
+    }
+    return <span className={tons.cinza}>RGE: aguardando consulta</span>;
+  }
+
+  const quando = rateio.protocoloConsultadoEm ?? rateio.protocoloTentativaEm;
+  const data = quando
+    ? new Date(quando).toLocaleDateString("pt-BR")
+    : null;
+
+  // Status não reconhecido: o literal da RGE é o que interessa ver.
+  const texto =
+    situacao === "DESCONHECIDO" && rateio.protocoloStatusRge
+      ? `RGE respondeu "${rateio.protocoloStatusRge}"`
+      : `RGE: ${SITUACAO_LABEL[situacao].replace(/^RGE:?\s*/, "")}`;
+
+  return (
+    <span className={`font-medium ${tons[SITUACAO_TOM[situacao]]}`}>
+      {texto}
+      {data ? <span className="font-normal"> ({data})</span> : null}
+      {situacao === "ERRO" && rateio.protocoloErro ? (
+        <span className="font-normal"> — {rateio.protocoloErro}</span>
+      ) : null}
+    </span>
+  );
+}
+
 function RateioTable({
   rateio,
   allUnits,
   variant,
   mostrarCompensados,
+  temCredencialRge,
   onDelete,
   onEdit,
   deleting,
@@ -1006,6 +1096,7 @@ function RateioTable({
   allUnits: ConsumerUnitLite[];
   variant: "vigente" | "pendente" | "substituido" | "rejeitado";
   mostrarCompensados?: boolean;
+  temCredencialRge?: boolean;
   onDelete?: (versionId: string, status: string) => void;
   onEdit?: (rateio: Rateio) => void;
   deleting?: boolean;
@@ -1046,10 +1137,21 @@ function RateioTable({
       <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
         {badge}
         {rateio.protocolo ? (
-          <span>
-            Protocolo{" "}
-            <b className="text-foreground">{rateio.protocolo}</b>
-          </span>
+          <>
+            <span>
+              Protocolo{" "}
+              <b className="text-foreground">{rateio.protocolo}</b>
+            </span>
+            {/* O que a RGE respondeu sobre esse protocolo. Só aparece para
+                rateio que ainda espera resposta ou que já teve uma — no
+                substituído/rejeitado antigo seria ruído. */}
+            {(variant === "pendente" || rateio.protocoloSituacao) && (
+              <SeloProtocoloRge
+                rateio={rateio}
+                temCredencialRge={temCredencialRge ?? false}
+              />
+            )}
+          </>
         ) : (
           // Ausência de protocolo não passa calada: é rateio antigo (antes de
           // 22/08/2026) ou criado fora da tela. Aparece pra alguém preencher
@@ -1076,6 +1178,13 @@ function RateioTable({
             <b className="text-foreground">
               {new Date(rateio.aceitoEm).toLocaleDateString("pt-BR")}
             </b>
+            {/* Aceite automático não pode se passar por decisão de operador. */}
+            {rateio.aceitoPor === ACEITE_ROBO_RGE && (
+              <span className="text-muted-foreground">
+                {" "}
+                pela consulta à RGE
+              </span>
+            )}
           </span>
         )}
         {variant === "rejeitado" && rateio.rejeitadoEm && (

@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { isAdminRole } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
+import { protocoloDegenerado } from "@/lib/rge-protocolo";
 
 /**
  * POST /api/plants/[id]/rateios — cria uma nova versão de rateio para a usina
@@ -64,6 +65,21 @@ export async function POST(
   if (protocolo.length > 60) {
     return NextResponse.json(
       { error: "Número de protocolo muito longo (máximo 60 caracteres)" },
+      { status: 400 },
+    );
+  }
+  // 🔴 Preenchimento de fuga. Em 22/08/2026 dois rateios entraram com
+  // `protocolo = "0"` só para passar da obrigatoriedade acima, e são justamente
+  // os que a consulta automática na RGE não tem como procurar. Barramos o que é
+  // claramente não-protocolo (sem dígito, ou um dígito só repetido) — a faixa
+  // completa de formato quem julga é `protocoloConsultavel`, que apenas SINALIZA
+  // na tela, para não travar um número legítimo fora do padrão conhecido.
+  if (protocoloDegenerado(protocolo)) {
+    return NextResponse.json(
+      {
+        error:
+          "Protocolo inválido. Informe o número que a concessionária devolveu (ex.: 2206638554).",
+      },
       { status: 400 },
     );
   }

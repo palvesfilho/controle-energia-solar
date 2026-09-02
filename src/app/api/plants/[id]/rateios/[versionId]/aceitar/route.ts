@@ -44,7 +44,9 @@ export async function POST(
     }),
     prisma.rateioVersion.update({
       where: { id: versionId },
-      data: { status: "VIGENTE", aceitoEm: now },
+      // Quem aceitou fica registrado: sem isto não dá para distinguir o aceite
+      // de operador do aceite automático do robô da RGE ("ROBO_RGE").
+      data: { status: "VIGENTE", aceitoEm: now, aceitoPor: session.user.id ?? null },
     }),
   ]);
 
