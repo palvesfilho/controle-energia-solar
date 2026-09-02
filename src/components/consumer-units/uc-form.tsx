@@ -35,6 +35,7 @@ export interface UCFormData {
   comissao: string;
   metodoPagamento: string;
   regraRemuneracao: string;
+  pagadorFaturaEnergia: string;
   percentCompensado: string;
   percentBandeira: string;
   regraVencimento: string;
@@ -68,6 +69,9 @@ export const EMPTY_UC_FORM: UCFormData = {
   comissao: "",
   metodoPagamento: "",
   regraRemuneracao: "",
+  // Mesmo default do banco. UC vinda do gerador de propostas abre como CLIENTE
+  // — quem troca é a tela nova/page.tsx, não este valor de partida.
+  pagadorFaturaEnergia: "GESTORA",
   percentCompensado: "",
   percentBandeira: "",
   regraVencimento: "",
@@ -88,6 +92,25 @@ interface Option {
 export const METODOS_PAGAMENTO: { value: string; label: string }[] = [
   { value: "ASAAS", label: "Asaas" },
   { value: "BANCO_DO_BRASIL", label: "Banco do Brasil" },
+];
+
+/**
+ * Quem paga a fatura da distribuidora. É pergunta de CONTRATO, separada da
+ * regra de remuneração — que diz quanto se cobra, não quem pagou a conta.
+ * A agenda usa isto para decidir se gera a tarefa PAGAR_FATURA e se o valor
+ * entra no caixa do dia (`lib/agenda.ts`).
+ */
+export const PAGADORES_FATURA: { value: string; label: string; ajuda: string }[] = [
+  {
+    value: "GESTORA",
+    label: "Nós pagamos a distribuidora",
+    ajuda: "O valor da fatura é repassado na cobrança do cliente (fatura única).",
+  },
+  {
+    value: "CLIENTE",
+    label: "O cliente paga a distribuidora",
+    ajuda: "Cobramos só a nossa parte. A fatura NÃO entra no caixa a pagar da agenda.",
+  },
 ];
 
 export const REGRAS_REMUNERACAO: { value: string; label: string }[] = [
@@ -147,6 +170,13 @@ interface Props {
    * data é agora.
    */
   createdAt?: string | Date | null;
+  /**
+   * Torna a Regra de Remuneração de preenchimento obrigatório. Ligado no
+   * cadastro vindo do gerador de propostas: sem regra, o cálculo da cobrança
+   * não roda e a UC fica parada sem ninguém perceber — foi assim que 24 UCs
+   * ficaram com o campo em branco na base.
+   */
+  regraRemuneracaoObrigatoria?: boolean;
 }
 
 export function UCForm({
@@ -158,6 +188,7 @@ export function UCForm({
   submitLabel = "Salvar",
   painelLateral,
   createdAt,
+  regraRemuneracaoObrigatoria = false,
 }: Props) {
   const [form, setForm] = useState<UCFormData>(() => {
     const base = { ...EMPTY_UC_FORM, ...initialData };
@@ -522,11 +553,15 @@ export function UCForm({
             </select>
           </div>
           <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="regraRemuneracao">Regra de Remuneração</Label>
+            <Label htmlFor="regraRemuneracao">
+              Regra de Remuneração
+              {regraRemuneracaoObrigatoria && <span className="text-destructive"> *</span>}
+            </Label>
             <select
               id="regraRemuneracao"
               value={form.regraRemuneracao}
               onChange={(e) => update("regraRemuneracao", e.target.value)}
+              required={regraRemuneracaoObrigatoria}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-9"
             >
               <option value="">— Selecione —</option>
@@ -536,6 +571,24 @@ export function UCForm({
                 </option>
               ))}
             </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="pagadorFaturaEnergia">Quem paga a fatura de energia?</Label>
+            <select
+              id="pagadorFaturaEnergia"
+              value={form.pagadorFaturaEnergia}
+              onChange={(e) => update("pagadorFaturaEnergia", e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-9"
+            >
+              {PAGADORES_FATURA.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              {PAGADORES_FATURA.find((o) => o.value === form.pagadorFaturaEnergia)?.ajuda ?? ""}
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="percentCompensado">Desconto de Contrato (%)</Label>

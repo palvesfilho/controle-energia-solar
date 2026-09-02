@@ -184,6 +184,22 @@ function NovaUCConteudo() {
         // duas UCs do CRM já cadastradas à mão foram preenchidas.
         percentCompensado: descontoParaInputPercentCobrado(ucCrm.descontoPercent),
         percentBandeira: descontoParaInputPercentCobrado(ucCrm.descontoPercent),
+        // Padrão do contrato novo, confirmado pelo Paulo em 01/09/2026: quem
+        // assina no gerador de propostas e NÃO é proprietário de usina paga a
+        // distribuidora por conta própria — nós cobramos só o percentual sobre
+        // o compensado. (Proprietário de usina nem chega aqui: a fila do CRM
+        // manda ele para /admin/investidores/novo.)
+        //
+        // As duas linhas dizem coisas diferentes e as duas precisam ser ditas:
+        // a regra define QUANTO se cobra (sem somar o valorTotal da RGE), o
+        // pagador define QUEM pagou a conta — é o pagador que a agenda lê para
+        // não mandar o financeiro pagar fatura que não é nossa.
+        //
+        // É sugestão, não trava: os contratos antigos são de fatura única
+        // (GESTORA) e o operador troca os dois campos na própria tela se a
+        // adesão disser outra coisa.
+        regraRemuneracao: "PERCENTUAL_SOBRE_COMPENSADO",
+        pagadorFaturaEnergia: "CLIENTE",
         // Marco zero = data em que o termo foi assinado. É a única data que o
         // CRM tem; se a regra do contrato for outra, o operador corrige aqui.
         dataInicioContrato: ucCrm.assinadoEm ? ucCrm.assinadoEm.slice(0, 10) : "",
@@ -254,6 +270,19 @@ function NovaUCConteudo() {
         </div>
       )}
 
+      {/* O padrão pré-selecionado aparece na tela em vez de ser preenchido em
+          silêncio: é sugestão de contrato, e quem confere o termo tem que
+          poder discordar dela sem precisar saber que ela existe. */}
+      {ucCrm && (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200">
+          <strong>Pré-selecionado para adesão do gerador de propostas:</strong> regra{" "}
+          <strong>Percentual sobre Compensado</strong> e{" "}
+          <strong>o cliente paga a fatura de energia</strong> — cobramos só a nossa parte, e a
+          fatura da distribuidora não entra no caixa a pagar da Agenda. Confira contra o termo:
+          se este contrato for de fatura única, troque os dois campos abaixo.
+        </div>
+      )}
+
       {/* `key` força o formulário a remontar quando os dados do CRM chegam:
           sem isso, o estado inicial ficaria congelado no vazio. */}
       <UCForm
@@ -264,6 +293,9 @@ function NovaUCConteudo() {
         error={error}
         cancelHref={voltarPara}
         submitLabel="Criar UC"
+        // Só no caminho do CRM: no cadastro manual o campo segue opcional,
+        // como sempre foi.
+        regraRemuneracaoObrigatoria={Boolean(crmUcId)}
         painelLateral={
           ucCrm ? (
             <DocumentosAdesao

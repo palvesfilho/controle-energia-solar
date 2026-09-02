@@ -95,6 +95,9 @@ export async function PUT(
       ...(body.comissao !== undefined && { comissao: body.comissao || null }),
       ...(body.metodoPagamento !== undefined && { metodoPagamento: body.metodoPagamento || null }),
       ...(body.regraRemuneracao !== undefined && { regraRemuneracao: body.regraRemuneracao || null }),
+      ...(body.pagadorFaturaEnergia !== undefined && {
+        pagadorFaturaEnergia: body.pagadorFaturaEnergia || "GESTORA",
+      }),
       ...(body.percentCompensado !== undefined && {
         percentCompensado: body.percentCompensado ? Number(body.percentCompensado) : null,
       }),

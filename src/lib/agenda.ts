@@ -121,6 +121,17 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
   // da usina (plantId != null) ou de UC do fluxo investidor (origem=PADRAO)
   // devem virar tarefa. UCs com origem BRASIL_SOLAR_TITULAR/BENEFICIARIA
   // sincronizam fatura pra fins de monitoramento mas não entram na agenda.
+  //
+  // Fatura de UC cujo contrato diz que o CLIENTE paga a distribuidora também
+  // fica de fora: não é conta da gestora, então não é tarefa nem dinheiro no
+  // caixa do dia. A fatura continua visível em Faturas de Energia, que é a
+  // tela de controle. Espelha o que `pagadorFaturaEnergia` já fazia do lado da
+  // usina (INVESTIDORES) — a diferença é que ali a linha aparece com badge e
+  // aqui ela nem nasce, porque agenda cheia de tarefa que não é para fazer é
+  // pior que agenda curta.
+  // ⚠️ O filtro NÃO se repete na busca do CONFERIR_PAGAMENTO_RGE mais abaixo,
+  // que é a query gêmea desta: lá o critério é `pagoEm` preenchido, ou seja,
+  // alguém registrou que a gestora pagou. Se pagou, tem que conferir.
   const billsForPayment = await prisma.consumerBill.findMany({
     where: {
       vencimento: {
@@ -129,7 +140,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       },
       OR: [
         { plantId: { not: null } },
-        { consumerUnit: { origem: "PADRAO" } },
+        { consumerUnit: { origem: "PADRAO", pagadorFaturaEnergia: "GESTORA" } },
       ],
     },
     select: {

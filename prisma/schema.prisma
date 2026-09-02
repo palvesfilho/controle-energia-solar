@@ -510,6 +510,20 @@ model ConsumerUnit {
   metodoPagamento   String? @map("metodo_pagamento")
   regraRemuneracao  String? @map("regra_remuneracao")
   percentCompensado Float?  @map("percent_compensado")
+
+  // Quem paga a fatura da UC para a distribuidora. Espelha o campo de mesmo
+  // nome em Plant, mas é OUTRA pergunta: lá é a fatura da usina, aqui é a do
+  // cliente.
+  //   - GESTORA: a gestora paga a distribuidora e repassa o valor na cobrança
+  //     (é o que a regra FAT_UNICA_* faz somando o valorTotal como passthrough)
+  //   - CLIENTE: o cliente paga a distribuidora direto e a gestora cobra só a
+  //     sua parte (PERCENTUAL_SOBRE_COMPENSADO)
+  // Até 01/09/2026 isso vivia IMPLÍCITO na regraRemuneracao — dava para deduzir,
+  // mas não dava para consultar, e nas UCs sem regra ninguém sabia responder.
+  // Default GESTORA porque é o que as 74 UCs de fatura única já faziam; UC nova
+  // vinda do gerador de propostas entra como CLIENTE (ver nova/page.tsx).
+  // Quem lê isto para decidir caixa é a agenda (task PAGAR_FATURA).
+  pagadorFaturaEnergia String @default("GESTORA") @map("pagador_fatura_energia")
   percentBandeira   Float?  @map("percent_bandeira")
   regraVencimento   String? @map("regra_vencimento")
   valorVencimento   Float?  @map("valor_vencimento")

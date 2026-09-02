@@ -166,6 +166,8 @@ export async function POST(req: NextRequest) {
       comissao: body.comissao || null,
       metodoPagamento: body.metodoPagamento || null,
       regraRemuneracao: body.regraRemuneracao || null,
+      // NOT NULL no banco: sem valor no corpo, cai no default GESTORA.
+      pagadorFaturaEnergia: body.pagadorFaturaEnergia || "GESTORA",
       percentCompensado: body.percentCompensado ? Number(body.percentCompensado) : null,
       percentBandeira: body.percentBandeira ? Number(body.percentBandeira) : null,
       regraVencimento: body.regraVencimento || null,

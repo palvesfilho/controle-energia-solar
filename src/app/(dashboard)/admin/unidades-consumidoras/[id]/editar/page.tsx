@@ -95,6 +95,7 @@ export default function EditarUCPage() {
           comissao: uc.comissao ?? "",
           metodoPagamento: uc.metodoPagamento ?? "",
           regraRemuneracao: uc.regraRemuneracao ?? "",
+          pagadorFaturaEnergia: uc.pagadorFaturaEnergia ?? "GESTORA",
           percentCompensado: percentDbToInput(uc.percentCompensado),
           percentBandeira: percentDbToInput(uc.percentBandeira),
           regraVencimento: uc.regraVencimento ?? "",
