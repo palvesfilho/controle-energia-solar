@@ -19,6 +19,11 @@ import { loadDemonstrativoFaturaData } from "@/lib/demonstrativo-fatura";
 import { DemonstrativoFaturaPdf } from "@/components/billing/demonstrativo-fatura-pdf";
 import { saveBufferToStorage } from "@/lib/file-storage";
 import { sendDemonstrativoEmail } from "@/lib/demonstrativo-email";
+import {
+  MENSAGEM_SEM_COMPENSACAO,
+  SKIP_SEM_COMPENSACAO,
+  ucJaCompensou,
+} from "@/lib/uc-trava-faturamento";
 
 export interface EmitirCobrancaResult {
   ok: boolean;
@@ -52,6 +57,19 @@ export async function emitirCobrancaComDemonstrativo(
       ok: false,
       billingId,
       error: "Demonstrativo ainda não foi validado — clique em 'Validar Demonstrativo' antes de realizar a cobrança.",
+    };
+  }
+
+  // 🔒 TRAVA DE FATURAMENTO — UC que nunca compensou não pode ser cobrada.
+  // `emitBillingToAsaas` também trava (é o ponto único), mas repetir aqui é de
+  // propósito: assim a recusa chega ao operador com a frase inteira ANTES de
+  // qualquer ida ao Asaas, em vez de um `skipped` genérico no meio do pipeline.
+  if (!(await ucJaCompensou(pre.consumerUnitId))) {
+    return {
+      ok: false,
+      billingId,
+      skipped: SKIP_SEM_COMPENSACAO,
+      error: MENSAGEM_SEM_COMPENSACAO,
     };
   }
 

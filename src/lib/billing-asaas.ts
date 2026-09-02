@@ -13,6 +13,11 @@ import {
 } from "@/lib/billing-installments";
 import { fragmentPayablesForInstallments } from "@/lib/investor-payables";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import {
+  MENSAGEM_SEM_COMPENSACAO,
+  SKIP_SEM_COMPENSACAO,
+  ucJaCompensou,
+} from "@/lib/uc-trava-faturamento";
 
 export interface EmitResult {
   billingId: string;
@@ -94,10 +99,25 @@ export async function emitBillingToAsaas(
       asaasChargeId: billing.asaasChargeId ?? undefined,
     };
   }
+  const uc = billing.consumerUnit;
+
+  // 🔒 TRAVA DE FATURAMENTO — UC que nunca compensou não pode ser cobrada.
+  // Vem ANTES da checagem de valor de propósito: sem compensação o motivo real
+  // é a implantação, e um "no_value" mandaria o operador procurar defeito no
+  // cálculo. Este é o ponto único por onde passam a emissão avulsa, o lote e o
+  // pipeline do demonstrativo — ver lib/uc-trava-faturamento.ts.
+  if (!(await ucJaCompensou(uc.id))) {
+    return {
+      billingId,
+      ok: false,
+      skipped: SKIP_SEM_COMPENSACAO,
+      error: MENSAGEM_SEM_COMPENSACAO,
+    };
+  }
+
   if (!billing.valorCobranca || billing.valorCobranca <= 0) {
     return { billingId, ok: false, skipped: "no_value" };
   }
-  const uc = billing.consumerUnit;
   const consumer = uc.consumer;
   if (!consumer) return { billingId, ok: false, skipped: "no_consumer" };
 

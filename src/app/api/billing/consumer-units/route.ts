@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
+import { ucsQueJaCompensaram } from "@/lib/uc-trava-faturamento";
 
 /**
  * GET /api/billing/consumer-units?ano=2026&mes=4  → lista do mês
@@ -70,11 +71,18 @@ export async function GET(req: NextRequest) {
       .filter((id): id is string => !!id),
   );
 
+  // 🔒 TRAVA DE FATURAMENTO — quem nunca compensou não é faturável.
+  // A recusa dura mora no servidor (lib/uc-trava-faturamento.ts); isto aqui é
+  // só para a tela desabilitar o botão em vez de deixar clicar e falhar. Uma
+  // consulta para todas as UCs do mês, não uma por linha.
+  const jaCompensaram = await ucsQueJaCompensaram(units.map((u) => u.id));
+
   const data = units.map((u) => ({
     consumerUnit: u,
     billing: billingByUc.get(u.id) ?? null,
     status: billingByUc.get(u.id)?.status ?? "PENDENTE",
     faturaDistribuidoraDisponivel: ucsComFatura.has(u.id),
+    emImplantacao: !jaCompensaram.has(u.id),
   }));
 
   return NextResponse.json(data);

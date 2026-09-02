@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileText, FileBarChart2, Filter, Search, Send, Receipt, X, XCircle, CheckCircle2, Plug } from "lucide-react";
+import { FileText, FileBarChart2, Filter, Search, Send, Receipt, X, XCircle, CheckCircle2, Plug, Hourglass } from "lucide-react";
 import { toast } from "sonner";
 import { formatMonthYear, formatBRL } from "@/lib/formatters";
 import {
@@ -46,6 +46,12 @@ interface Row {
   } | null;
   status: string;
   faturaDistribuidoraDisponivel: boolean;
+  /**
+   * 🔒 Trava de faturamento: a UC ainda não teve NENHUMA fatura com
+   * compensação. O servidor recusa validar e emitir (lib/uc-trava-faturamento);
+   * aqui a tela desabilita o botão em vez de deixar clicar e falhar.
+   */
+  emImplantacao: boolean;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -68,6 +74,12 @@ const FACETAS: Faceta<Row>[] = [
     label: "Status",
     valor: (r) => STATUS_LABEL[r.status] ?? r.status,
     labelTodos: "Todos os status",
+  },
+  {
+    chave: "situacao",
+    label: "Situação",
+    valor: (r) => (r.emImplantacao ? "Em implantação" : "Faturando"),
+    labelTodos: "Todas as situações",
   },
   {
     chave: "distribuidora",
@@ -683,6 +695,37 @@ export default function FaturamentoUCMesPage() {
                 <tbody>
                   {filtered.map((r) => {
                     const st = STATUS_LABELS[r.status] ?? STATUS_LABELS.PENDENTE;
+                    // 🔒 Trava de faturamento. Cobrança já emitida fica de fora:
+                    // travar retroativamente esconderia o "Cancelar Cobrança" de
+                    // uma cobrança viva no Asaas — a trava impede COMEÇAR a
+                    // cobrar, não mexe no que já saiu.
+                    // Quando a fatura do mes nem chegou, "Aguardando Fatura da
+                    // Distribuidora" continua sendo a mensagem acionavel — nao
+                    // ha o que fazer sobre compensacao antes de ter conta. A
+                    // trava so toma a frente quando ja daria pra tentar cobrar.
+                    const travadoPorImplantacao =
+                      r.emImplantacao &&
+                      !r.billing?.asaasChargeId &&
+                      (r.billing != null || r.faturaDistribuidoraDisponivel);
+                    // Visualizar vale nos dois caminhos: mesmo travada, o
+                    // operador precisa poder abrir o rascunho pra entender.
+                    const botaoVisualizar = r.billing ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPreviewModal({
+                            billingId: r.billing!.id,
+                            codigoUc: r.consumerUnit.codigoUc,
+                            nome: r.consumerUnit.nome,
+                          })
+                        }
+                        title="Pré-visualizar PDF da cobrança que será enviada ao cliente"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors text-xs font-medium"
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                        Visualizar Cobrança
+                      </button>
+                    ) : null;
                     return (
                       <tr key={r.consumerUnit.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                         <td className="px-3 py-2.5 font-mono text-xs">{formatCodigoUc(r.consumerUnit.codigoUc)}</td>
@@ -698,24 +741,24 @@ export default function FaturamentoUCMesPage() {
                         </td>
                         <td className="px-3 py-2.5 text-center">
                           <div className="flex items-center justify-center gap-1">
-                            {r.billing ? (
+                            {travadoPorImplantacao ? (
+                              /* 0. TRAVA — UC nunca compensou, não pode ser faturada.
+                                 Não é "aguardando fatura": a fatura pode até ter
+                                 chegado, o que não chegou foi o abatimento. */
+                              <>
+                                {botaoVisualizar}
+                                <span
+                                  title="A UC entrou no contrato mas nenhuma fatura da distribuidora apresentou compensação ainda. Cobrar aqui seria cobrar por um desconto que o cliente não recebeu. O bloqueio cai sozinho na primeira fatura com compensação."
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200 text-xs font-medium cursor-not-allowed"
+                                >
+                                  <Hourglass className="h-3.5 w-3.5" />
+                                  Em implantação — sem compensação
+                                </span>
+                              </>
+                            ) : r.billing ? (
                               <>
                                 {/* 1. VISUALIZAR COBRANÇA — abre modal com rascunho do PDF */}
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setPreviewModal({
-                                      billingId: r.billing!.id,
-                                      codigoUc: r.consumerUnit.codigoUc,
-                                      nome: r.consumerUnit.nome,
-                                    })
-                                  }
-                                  title="Pré-visualizar PDF da cobrança que será enviada ao cliente"
-                                  className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 transition-colors text-xs font-medium"
-                                >
-                                  <FileText className="h-3.5 w-3.5" />
-                                  Visualizar Cobrança
-                                </button>
+                                {botaoVisualizar}
                                 {/* 2. EDITAR DEMONSTRATIVO — vai pra página de edição */}
                                 <Link
                                   href={`/admin/faturamento/unidades-consumidoras/${mesParam}/${r.billing.id}`}
