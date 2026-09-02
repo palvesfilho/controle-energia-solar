@@ -7,6 +7,7 @@ import { formatBRL, formatKWh, formatMonthYear } from "@/lib/formatters";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
 import { ExportarTabela } from "@/components/ui/exportar-tabela";
+import { FiltroColuna } from "@/components/ui/filtro-coluna";
 
 interface BalancoRow {
   id: string;
@@ -25,8 +26,8 @@ const FACETAS: Faceta<BalancoRow>[] = [
   {
     chave: "consumidor",
     label: "Consumidor",
+    semColuna: true,
     valor: (r) => r.consumerName,
-    labelTodos: "Todos os consumidores",
   },
 ];
 
@@ -135,26 +136,19 @@ export default function BalancoMensalPage() {
                 className="w-full pl-8 pr-3 py-1.5 text-sm border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
               />
             </div>
-            {filtro.facetas.map((f) => {
-              const lista = filtro.opcoes[f.chave] ?? [];
-              if (lista.length < 2 && !filtro.selecionados[f.chave]) return null;
-              return (
-                <select
+            {/* Facetas que a tabela não tem coluna para mostrar: o funil delas
+                fica aqui, com o rótulo à vista. */}
+            {filtro.facetas
+              .filter((f) => f.semColuna)
+              .map((f) => (
+                <span
                   key={f.chave}
-                  value={filtro.selecionados[f.chave] ?? ""}
-                  onChange={(e) => filtro.setFaceta(f.chave, e.target.value)}
-                  aria-label={f.label}
-                  className={selectClass}
+                  className="inline-flex h-9 items-center gap-0.5 rounded-lg border px-2 text-xs text-muted-foreground"
                 >
-                  <option value="">{f.labelTodos}</option>
-                  {lista.map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-              );
-            })}
+                  {f.label}
+                  <FiltroColuna filtro={filtro} chave={f.chave} />
+                </span>
+              ))}
             <select
               value={mes}
               onChange={(e) => setMes(Number(e.target.value))}

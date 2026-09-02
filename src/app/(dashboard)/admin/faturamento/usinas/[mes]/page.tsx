@@ -9,6 +9,7 @@ import { ArrowLeft, CheckCircle2, FileText, Loader2, Minus, ShieldCheck, XCircle
 import { formatMonthYear, formatBRL } from "@/lib/formatters";
 import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
 import { FiltrosTabela } from "@/components/ui/filtros-tabela";
+import { FiltroColuna } from "@/components/ui/filtro-coluna";
 import { concessionariaDaUsina } from "@/lib/concessionarias";
 
 interface Row {
@@ -44,13 +45,11 @@ const FACETAS: Faceta<Row>[] = [
     chave: "concessionaria",
     label: "Concessionária",
     valor: (r) => concessionariaDaUsina(r.plant),
-    labelTodos: "Todas as concessionárias",
   },
   {
     chave: "status",
     label: "Status",
     valor: (r) => STATUS_LABELS[r.status]?.label ?? r.status,
-    labelTodos: "Todos os status",
   },
 ];
 
@@ -217,9 +216,15 @@ export default function FaturamentoMesPage() {
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Usina</th>
-                    <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Distribuidora</th>
+                    <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">
+                      Distribuidora
+                      <FiltroColuna filtro={filtro} chave="concessionaria" />
+                    </th>
                     <th className="text-right py-2 px-3 font-medium text-xs uppercase tracking-wide">Valor</th>
-                    <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Status</th>
+                    <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">
+                      Status
+                      <FiltroColuna filtro={filtro} chave="status" />
+                    </th>
                     <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Validar Fatura</th>
                     <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Ações</th>
                   </tr>

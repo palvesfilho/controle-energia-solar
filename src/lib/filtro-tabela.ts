@@ -31,8 +31,12 @@ export type Faceta<T> = {
   valor: (item: T) => string | string[] | null | undefined;
   /** Ordenação das opções. Padrão: alfabética pt-BR. */
   ordenar?: (a: string, b: string) => number;
-  /** Rótulo da opção "todos". Padrão: "Todas as <label minúsculo>". */
-  labelTodos?: string;
+  /**
+   * A tabela NÃO tem coluna para este critério (o proprietário em Faturas de
+   * Energia, por exemplo). O funil dela aparece na barra de cima em vez de num
+   * cabeçalho — mesmo controle, só outro lugar.
+   */
+  semColuna?: boolean;
 };
 
 export type ConfigFiltro<T> = {
@@ -55,9 +59,15 @@ export type FiltroTabela<T> = {
   filtrados: T[];
   busca: string;
   setBusca: (v: string) => void;
-  /** Valor selecionado por faceta (string vazia = todas). */
-  selecionados: Record<string, string>;
-  setFaceta: (chave: string, valor: string) => void;
+  /**
+   * Valores marcados por faceta. Lista VAZIA (ou chave ausente) = nenhum filtro
+   * naquela coluna, o que mostra tudo — e não o contrário.
+   */
+  selecionados: Record<string, string[]>;
+  /** Marca/desmarca um valor, como a caixinha do Excel. */
+  alternarValor: (chave: string, valor: string) => void;
+  /** Troca de uma vez a seleção inteira da faceta (o "Todos" e o "Limpar"). */
+  definirValores: (chave: string, valores: string[]) => void;
   /** Opções de cada faceta, já cruzadas com as demais facetas selecionadas. */
   opcoes: Record<string, string[]>;
   facetas: Faceta<T>[];
@@ -86,7 +96,7 @@ export function useFiltroTabela<T>(dados: T[], config: ConfigFiltro<T>): FiltroT
   const param = useCallback((chave: string) => `${prefixo}${chave}`, [prefixo]);
 
   const [busca, setBuscaState] = useState("");
-  const [selecionados, setSelecionados] = useState<Record<string, string>>({});
+  const [selecionados, setSelecionados] = useState<Record<string, string[]>>({});
 
   /**
    * A URL é lida uma vez, na montagem, e via `window.location` — não pelo
@@ -109,10 +119,12 @@ export function useFiltroTabela<T>(dados: T[], config: ConfigFiltro<T>): FiltroT
     const atual = new URLSearchParams(window.location.search);
     const q = atual.get(param("q")) ?? "";
     if (q) setBuscaState(q);
-    const daUrl: Record<string, string> = {};
+    const daUrl: Record<string, string[]> = {};
     for (const f of facetas) {
       const v = atual.get(param(f.chave));
-      if (v) daUrl[f.chave] = v;
+      // Vários valores viajam separados por "~": vírgula e ponto-e-vírgula
+      // aparecem dentro de nome de usina e de razão social.
+      if (v) daUrl[f.chave] = v.split("~").filter(Boolean);
     }
     if (Object.keys(daUrl).length > 0) {
       setSelecionados((s) => ({ ...s, ...daUrl }));
@@ -132,7 +144,7 @@ export function useFiltroTabela<T>(dados: T[], config: ConfigFiltro<T>): FiltroT
     else params.delete(param("q"));
     for (const f of facetas) {
       const v = selecionados[f.chave];
-      if (v) params.set(param(f.chave), v);
+      if (v && v.length > 0) params.set(param(f.chave), v.join("~"));
       else params.delete(param(f.chave));
     }
     const qs = params.toString();
@@ -144,8 +156,18 @@ export function useFiltroTabela<T>(dados: T[], config: ConfigFiltro<T>): FiltroT
 
   const setBusca = useCallback((v: string) => setBuscaState(v), []);
 
-  const setFaceta = useCallback((chave: string, valor: string) => {
-    setSelecionados((atual) => ({ ...atual, [chave]: valor }));
+  const alternarValor = useCallback((chave: string, valor: string) => {
+    setSelecionados((atual) => {
+      const marcados = atual[chave] ?? [];
+      const proximos = marcados.includes(valor)
+        ? marcados.filter((v) => v !== valor)
+        : [...marcados, valor];
+      return { ...atual, [chave]: proximos };
+    });
+  }, []);
+
+  const definirValores = useCallback((chave: string, valores: string[]) => {
+    setSelecionados((atual) => ({ ...atual, [chave]: valores }));
   }, []);
 
   const limpar = useCallback(() => {
@@ -157,9 +179,12 @@ export function useFiltroTabela<T>(dados: T[], config: ConfigFiltro<T>): FiltroT
     (item: T, exceto?: string) => {
       for (const f of facetas) {
         if (f.chave === exceto) continue;
-        const escolhido = selecionados[f.chave] ?? "";
-        if (!escolhido) continue;
-        if (!valores(f.valor(item)).includes(escolhido)) return false;
+        const marcados = selecionados[f.chave];
+        if (!marcados || marcados.length === 0) continue;
+        // A linha passa se casar com QUALQUER valor marcado (união dentro da
+        // coluna); entre colunas diferentes o critério é a interseção.
+        const daLinha = valores(f.valor(item));
+        if (!marcados.some((m) => daLinha.includes(m))) return false;
       }
       return true;
     },
@@ -199,22 +224,23 @@ export function useFiltroTabela<T>(dados: T[], config: ConfigFiltro<T>): FiltroT
       }
       // O que já está selecionado nunca some da lista, senão o seletor mostraria
       // vazio no próprio valor escolhido.
-      const atual = selecionados[f.chave] ?? "";
-      if (atual) vistos.add(atual);
+      for (const v of selecionados[f.chave] ?? []) vistos.add(v);
       mapa[f.chave] = Array.from(vistos).sort(f.ordenar ?? colator.compare);
     }
     return mapa;
   }, [dados, facetas, passaNaBusca, passaNasFacetas, selecionados]);
 
   const ativos =
-    (busca ? 1 : 0) + facetas.filter((f) => Boolean(selecionados[f.chave])).length;
+    (busca ? 1 : 0) +
+    facetas.filter((f) => (selecionados[f.chave] ?? []).length > 0).length;
 
   return {
     filtrados,
     busca,
     setBusca,
     selecionados,
-    setFaceta,
+    alternarValor,
+    definirValores,
     opcoes,
     facetas,
     limpar,

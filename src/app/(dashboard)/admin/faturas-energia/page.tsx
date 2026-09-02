@@ -7,6 +7,7 @@ import type { FaturasEnergiaRow, FaturaCell } from "@/app/api/admin/faturas-ener
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
 import { ExportarTabela } from "@/components/ui/exportar-tabela";
+import { FiltroColuna } from "@/components/ui/filtro-coluna";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -91,19 +92,17 @@ const FACETAS: Faceta<FaturasEnergiaRow>[] = [
     chave: "origem",
     label: "Origem",
     valor: (r) => (r.origem === "usina" ? "Usinas" : "Clientes"),
-    labelTodos: "Todas",
   },
   {
     chave: "distribuidora",
     label: "Distribuidora",
     valor: (r) => r.distribuidora,
-    labelTodos: "Todas",
   },
   {
     chave: "proprietario",
     label: "Proprietário",
     valor: (r) => r.proprietario,
-    labelTodos: "Todos",
+    semColuna: true,
   },
 ];
 
@@ -253,25 +252,19 @@ export default function FaturasEnergiaVisaoGeralPage() {
                 ))}
               </select>
             </div>
-            {filtro.facetas.map((f) => (
-              <div key={f.chave} className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  {f.label}
-                </label>
-                <select
-                  value={filtro.selecionados[f.chave] ?? ""}
-                  onChange={(e) => filtro.setFaceta(f.chave, e.target.value)}
-                  className={selectClass}
+            {/* Facetas que a tabela não tem coluna para mostrar: o funil delas
+                fica aqui, com o rótulo à vista. */}
+            {filtro.facetas
+              .filter((f) => f.semColuna)
+              .map((f) => (
+                <span
+                  key={f.chave}
+                  className="inline-flex h-9 items-center gap-0.5 self-end rounded-lg border px-2 text-xs text-muted-foreground"
                 >
-                  <option value="">{f.labelTodos}</option>
-                  {(filtro.opcoes[f.chave] ?? []).map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ))}
+                  {f.label}
+                  <FiltroColuna filtro={filtro} chave={f.chave} />
+                </span>
+              ))}
             <div className="space-y-1.5 flex-1 min-w-[220px]">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Buscar</label>
               <input
@@ -338,8 +331,14 @@ export default function FaturasEnergiaVisaoGeralPage() {
                   <tr className="border-b text-muted-foreground">
                     <th className="sticky left-0 z-10 bg-background px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">UC</th>
                     <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">Nome</th>
-                    <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">Origem</th>
-                    <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">Distribuidora</th>
+                    <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">
+                      Origem
+                      <FiltroColuna filtro={filtro} chave="origem" />
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">
+                      Distribuidora
+                      <FiltroColuna filtro={filtro} chave="distribuidora" />
+                    </th>
                     {MESES_LABEL.map((m) => (
                       <th key={m} className="px-2 py-2 text-center font-medium text-xs uppercase tracking-wide">
                         {m}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,7 @@ import { Plus, Pencil, Eye, Trash2, ArrowUpDown, Users, UserCheck, UserX, Sun, A
 import { toast } from "sonner";
 import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
 import { FiltrosTabela } from "@/components/ui/filtros-tabela";
+import { FiltroColuna } from "@/components/ui/filtro-coluna";
 import {
   Dialog,
   DialogContent,
@@ -37,13 +38,11 @@ const FACETAS: Faceta<InvestorData>[] = [
     label: "Usina",
     // Investidor com mais de uma usina aparece em qualquer uma delas.
     valor: (i) => i.plants.map((p) => p.plant.name),
-    labelTodos: "Todas as usinas",
   },
   {
     chave: "status",
     label: "Status",
     valor: (i) => (i.user.active ? "Ativo" : "Inativo"),
-    labelTodos: "Todos os status",
   },
 ];
 
@@ -192,8 +191,21 @@ export default function InvestidoresPage() {
                     <SortHeader label="Nome" active={sort.key === "name"} dir={sort.dir} onClick={() => toggleSort("name")} />
                     <SortHeader label="Email" active={sort.key === "email"} dir={sort.dir} onClick={() => toggleSort("email")} />
                     <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Telefone</th>
-                    <SortHeader label="Usinas" active={sort.key === "usinas"} dir={sort.dir} onClick={() => toggleSort("usinas")} />
-                    <SortHeader label="Status" align="center" active={sort.key === "status"} dir={sort.dir} onClick={() => toggleSort("status")} />
+                    <SortHeader
+                      label="Usinas"
+                      active={sort.key === "usinas"}
+                      dir={sort.dir}
+                      onClick={() => toggleSort("usinas")}
+                      filtro={<FiltroColuna filtro={filtro} chave="usina" />}
+                    />
+                    <SortHeader
+                      label="Status"
+                      align="center"
+                      active={sort.key === "status"}
+                      dir={sort.dir}
+                      onClick={() => toggleSort("status")}
+                      filtro={<FiltroColuna filtro={filtro} chave="status" />}
+                    />
                     <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Ações</th>
                   </tr>
                 </thead>
@@ -347,12 +359,15 @@ function SortHeader({
   dir,
   onClick,
   align = "left",
+  filtro,
 }: {
   label: string;
   active: boolean;
   dir: SortDir;
   onClick: () => void;
   align?: "left" | "center";
+  /** Funil da coluna. Fica FORA do botao de ordenar: clicar nele nao ordena. */
+  filtro?: ReactNode;
 }) {
   return (
     <th className={`py-2 px-3 font-medium text-xs uppercase tracking-wide ${align === "center" ? "text-center" : "text-left"}`}>
@@ -363,6 +378,7 @@ function SortHeader({
         {label}
         <ArrowUpDown className={`h-3 w-3 ${active ? "opacity-100" : "opacity-40"} ${active && dir === "desc" ? "rotate-180" : ""} transition-transform`} />
       </button>
+      {filtro}
     </th>
   );
 }

@@ -17,6 +17,7 @@ import { PlantBillingDetail } from "@/components/billing/plant-billing-detail";
 import { formatBRL, formatMonthYear, shortMonth } from "@/lib/formatters";
 import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
 import { ExportarTabela } from "@/components/ui/exportar-tabela";
+import { FiltroColuna } from "@/components/ui/filtro-coluna";
 
 /* ------------------------------------------------------------------ */
 /* Tipos — espelham GET /api/billing/plants/matriz                      */
@@ -53,7 +54,6 @@ const FACETAS: Faceta<UsinaRow>[] = [
     label: "Investidor",
     // Usina com mais de um investidor aparece no filtro de qualquer um deles.
     valor: (u) => u.investorNames,
-    labelTodos: "Todos os investidores",
   },
 ];
 
@@ -778,26 +778,6 @@ export default function FaturamentoUsinasPage() {
               className={`${inputClass} pl-8 w-56`}
             />
           </div>
-          {filtro.facetas.map((f) => {
-            const lista = filtro.opcoes[f.chave] ?? [];
-            if (lista.length < 2 && !filtro.selecionados[f.chave]) return null;
-            return (
-              <select
-                key={f.chave}
-                value={filtro.selecionados[f.chave] ?? ""}
-                onChange={(e) => filtro.setFaceta(f.chave, e.target.value)}
-                aria-label={f.label}
-                className={`${inputClass} max-w-[200px]`}
-              >
-                <option value="">{f.labelTodos}</option>
-                {lista.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            );
-          })}
           <button
             type="button"
             aria-pressed={soPendentes}
@@ -925,6 +905,7 @@ export default function FaturamentoUsinasPage() {
                   <tr>
                     <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide text-muted-foreground border-b">
                       Usina / investidor
+                      <FiltroColuna filtro={filtro} chave="investidor" />
                     </th>
                     {matriz?.meses.map((m, i) => (
                       <th

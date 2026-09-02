@@ -21,6 +21,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
 import { ExportarTabela } from "@/components/ui/exportar-tabela";
+import { FiltroColuna } from "@/components/ui/filtro-coluna";
 import type {
   GestaoObraRow,
   ObraStatus,
@@ -66,13 +67,13 @@ const FACETAS: Faceta<GestaoObraRow>[] = [
     chave: "status",
     label: "Status",
     valor: (r) => STATUS_UI[r.status]?.label ?? r.status,
-    labelTodos: "Todos",
   },
+  { chave: "local", label: "Local", valor: (r) => r.local },
   {
     chave: "responsavel",
     label: "Responsável",
+    semColuna: true,
     valor: (r) => r.responsavel,
-    labelTodos: "Todos os responsáveis",
   },
 ];
 
@@ -250,29 +251,19 @@ export default function GestaoObraPage() {
       <Card>
         <CardContent className="p-3">
           <div className="flex flex-wrap items-end gap-3">
-            {filtro.facetas.map((f) => {
-              const lista = filtro.opcoes[f.chave] ?? [];
-              if (lista.length < 2 && !filtro.selecionados[f.chave]) return null;
-              return (
-                <div key={f.chave} className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    {f.label}
-                  </label>
-                  <select
-                    value={filtro.selecionados[f.chave] ?? ""}
-                    onChange={(e) => filtro.setFaceta(f.chave, e.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="">{f.labelTodos}</option>
-                    {lista.map((v) => (
-                      <option key={v} value={v}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              );
-            })}
+            {/* Facetas que a tabela não tem coluna para mostrar: o funil delas
+                fica aqui, com o rótulo à vista. */}
+            {filtro.facetas
+              .filter((f) => f.semColuna)
+              .map((f) => (
+                <span
+                  key={f.chave}
+                  className="inline-flex h-9 items-center gap-0.5 self-end rounded-lg border px-2 text-xs text-muted-foreground"
+                >
+                  {f.label}
+                  <FiltroColuna filtro={filtro} chave={f.chave} />
+                </span>
+              ))}
             <div className="space-y-1.5 flex-1 min-w-[220px]">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Buscar
@@ -360,12 +351,14 @@ export default function GestaoObraPage() {
                     </th>
                     <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">
                       Local
+                      <FiltroColuna filtro={filtro} chave="local" />
                     </th>
                     <th className="px-3 py-2 text-right font-medium text-xs uppercase tracking-wide">
                       Potência
                     </th>
                     <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">
                       Status
+                      <FiltroColuna filtro={filtro} chave="status" />
                     </th>
                     <th className="px-3 py-2 text-center font-medium text-xs uppercase tracking-wide">
                       Documento

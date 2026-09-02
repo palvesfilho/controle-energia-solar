@@ -6,6 +6,7 @@ import { Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { FiltroTabela } from "@/lib/filtro-tabela";
 import { ExportarTabela } from "@/components/ui/exportar-tabela";
+import { FiltroColuna } from "@/components/ui/filtro-coluna";
 
 type Props<T> = {
   filtro: FiltroTabela<T>;
@@ -19,16 +20,13 @@ type Props<T> = {
   className?: string;
 };
 
-const CLASSE_SELECT =
-  "text-sm border rounded-lg px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none max-w-[220px]";
-
 /**
- * Barra de filtro padrão das tabelas: busca livre, um seletor por faceta,
- * contador e o botão Exportar.
+ * Barra da tabela: busca livre, contador, "Limpar" e o botão Exportar.
  *
- * Os controles são `<input>`/`<select>` nativos e não os do shadcn de propósito
- * — é o que as telas do sistema já usam, e o `<select>` nativo aguenta as
- * centenas de usinas sem virar lista virtualizada.
+ * Os filtros por coluna NÃO moram aqui — cada um vive no funil do próprio
+ * cabeçalho (`<FiltroColuna>`). Enquanto eram uma lista à parte nesta barra,
+ * coluna nova nascia sem filtro e ninguém percebia: foi assim que "Consumidor"
+ * e "1ª compensação" ficaram de fora sem dar sinal.
  */
 export function FiltrosTabela<T>({
   filtro,
@@ -38,7 +36,7 @@ export function FiltrosTabela<T>({
   children,
   className,
 }: Props<T>) {
-  const { busca, setBusca, facetas, selecionados, setFaceta, opcoes, limpar, ativos } = filtro;
+  const { busca, setBusca, limpar, ativos } = filtro;
 
   return (
     <div className={cn("flex flex-wrap items-center gap-2", className)}>
@@ -52,29 +50,19 @@ export function FiltrosTabela<T>({
         />
       </div>
 
-      {facetas.map((f) => {
-        const lista = opcoes[f.chave] ?? [];
-        // Faceta de uma opção só não filtra nada — esconder evita poluir a
-        // barra em tela de detalhe (uma usina, uma concessionária).
-        if (lista.length < 2 && !selecionados[f.chave]) return null;
-        return (
-          <select
+      {/* Facetas sem coluna na tabela: o funil delas mora aqui, com o rótulo à
+          vista, porque não há cabeçalho onde encostar. */}
+      {filtro.facetas
+        .filter((f) => f.semColuna)
+        .map((f) => (
+          <span
             key={f.chave}
-            value={selecionados[f.chave] ?? ""}
-            onChange={(e) => setFaceta(f.chave, e.target.value)}
-            aria-label={f.label}
-            title={f.label}
-            className={cn(CLASSE_SELECT, selecionados[f.chave] && "border-primary text-primary")}
+            className="inline-flex items-center gap-0.5 rounded-lg border px-2 py-1 text-xs text-muted-foreground"
           >
-            <option value="">{f.labelTodos ?? `Todas — ${f.label}`}</option>
-            {lista.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </select>
-        );
-      })}
+            {f.label}
+            <FiltroColuna filtro={filtro} chave={f.chave} />
+          </span>
+        ))}
 
       {children}
 
@@ -83,10 +71,10 @@ export function FiltrosTabela<T>({
           type="button"
           onClick={limpar}
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          title="Limpar filtros"
+          title="Limpar a busca e todos os filtros de coluna"
         >
           <X className="h-3.5 w-3.5" />
-          Limpar
+          Limpar filtros
         </button>
       )}
 

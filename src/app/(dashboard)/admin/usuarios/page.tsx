@@ -23,6 +23,7 @@ import {
 import { toast } from "sonner";
 import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
 import { FiltrosTabela } from "@/components/ui/filtros-tabela";
+import { FiltroColuna } from "@/components/ui/filtro-coluna";
 import {
   Dialog,
   DialogContent,
@@ -54,19 +55,16 @@ const FACETAS: Faceta<UserData>[] = [
     chave: "perfil",
     label: "Perfil",
     valor: (u) => ROLE_LABELS[u.role] ?? u.role,
-    labelTodos: "Todos os perfis",
   },
   {
     chave: "status",
     label: "Status",
     valor: (u) => (u.active ? "Ativo" : "Inativo"),
-    labelTodos: "Todos os status",
   },
   {
     chave: "acesso",
     label: "Acesso",
     valor: (u) => (u.acessoEmitido ? "Acesso emitido" : "Sem acesso"),
-    labelTodos: "Com e sem acesso",
   },
 ];
 
@@ -228,15 +226,15 @@ export default function UsuariosPage() {
         {ROLE_OPTIONS.map((role) => {
           const count = users.filter((u) => u.role === role).length;
           const Icon = ROLE_ICONS[role];
-          // O card do perfil É o seletor de perfil da barra de filtros — os
-          // dois mexem na mesma faceta, senão a tela mostraria dois estados.
+          // O card do perfil É o funil da coluna Perfil — os dois mexem na
+          // mesma faceta, senão a tela mostraria dois estados do mesmo filtro.
           const rotulo = ROLE_LABELS[role];
-          const isActive = filtro.selecionados.perfil === rotulo;
+          const isActive = (filtro.selecionados.perfil ?? []).includes(rotulo);
           return (
             <Card
               key={role}
               className={`cursor-pointer hover:shadow-md transition-all ${isActive ? "ring-2 ring-primary/30" : ""}`}
-              onClick={() => filtro.setFaceta("perfil", isActive ? "" : rotulo)}
+              onClick={() => filtro.alternarValor("perfil", rotulo)}
             >
               <CardContent className="p-3 flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${ROLE_COLORS[role]} text-white`}>
@@ -272,9 +270,18 @@ export default function UsuariosPage() {
                   <tr className="border-b text-muted-foreground">
                     <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Nome</th>
                     <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Email</th>
-                    <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Perfil</th>
-                    <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Status</th>
-                    <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Acesso</th>
+                    <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">
+                      Perfil
+                      <FiltroColuna filtro={filtro} chave="perfil" />
+                    </th>
+                    <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">
+                      Status
+                      <FiltroColuna filtro={filtro} chave="status" />
+                    </th>
+                    <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">
+                      Acesso
+                      <FiltroColuna filtro={filtro} chave="acesso" />
+                    </th>
                     <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Criado em</th>
                     <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Ações</th>
                   </tr>

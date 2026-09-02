@@ -12,6 +12,7 @@ import { formatCodigoUc } from "@/lib/uc-codigo";
 import { formatCpfCnpj } from "@/lib/documento";
 import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
 import { ExportarTabela } from "@/components/ui/exportar-tabela";
+import { FiltroColuna } from "@/components/ui/filtro-coluna";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -51,7 +52,6 @@ const FACETAS: Faceta<RelatorioVisaoGeralRow>[] = [
     chave: "distribuidora",
     label: "Distribuidora",
     valor: (r) => r.distribuidora,
-    labelTodos: "Todas as distribuidoras",
   },
 ];
 
@@ -225,29 +225,6 @@ export default function RelatoriosVisaoGeralPage() {
                 <option value="semUc">Sem UC vinculada</option>
               </select>
             </div>
-            {filtro.facetas.map((f) => {
-              const lista = filtro.opcoes[f.chave] ?? [];
-              if (lista.length < 2 && !filtro.selecionados[f.chave]) return null;
-              return (
-                <div key={f.chave} className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    {f.label}
-                  </label>
-                  <select
-                    value={filtro.selecionados[f.chave] ?? ""}
-                    onChange={(e) => filtro.setFaceta(f.chave, e.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="">{f.labelTodos}</option>
-                    {lista.map((v) => (
-                      <option key={v} value={v}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              );
-            })}
             <div className="space-y-1.5 flex-1 min-w-[220px]">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Buscar</label>
               <input
@@ -311,6 +288,7 @@ export default function RelatoriosVisaoGeralPage() {
                     <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">UC nome</th>
                     <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">
                       Distribuidora
+                      <FiltroColuna filtro={filtro} chave="distribuidora" />
                     </th>
                     {MESES_LABEL.map((m) => (
                       <th

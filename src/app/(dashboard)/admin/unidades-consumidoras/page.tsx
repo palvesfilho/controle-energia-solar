@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import {
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
 import { FiltrosTabela } from "@/components/ui/filtros-tabela";
+import { FiltroColuna } from "@/components/ui/filtro-coluna";
 import {
   type FaseImplantacao,
   type FaseUc,
@@ -47,32 +48,57 @@ interface UCData {
 type SortKey = "nome" | "codigoUc" | "consumo" | "status" | "espera";
 type SortDir = "asc" | "desc";
 
-/** Fora do componente para a identidade do array não mudar a cada render. */
+/**
+ * Uma faceta por coluna filtrável da tabela — o funil de cada `<th>` lê daqui.
+ * Fora do componente para a identidade do array não mudar a cada render.
+ *
+ * A regra ao acrescentar coluna na tabela: acrescentar a faceta junto. Enquanto
+ * os filtros viviam numa barra à parte era fácil esquecer, e foi o que
+ * aconteceu com Consumidor e 1ª compensação.
+ */
+const ROTULO_ESPERA: Record<string, string> = {
+  OK: "No prazo",
+  ATENCAO: "Atenção",
+  ATRASADA: "Atrasada",
+};
+
 const FACETAS: Faceta<UCData>[] = [
+  { chave: "consumidor", label: "Consumidor", valor: (u) => u.consumer?.name },
+  { chave: "usina", label: "Usina", valor: (u) => u.plant?.name },
+  { chave: "distribuidora", label: "Distribuidora", valor: (u) => u.distribuidora },
   {
-    chave: "usina",
-    label: "Usina",
-    valor: (u) => u.plant?.name,
-    labelTodos: "Todas as usinas",
+    chave: "primeiraCompensacao",
+    label: "1ª compensação",
+    // A competência entra como texto "MM/AAAA" — é o que a coluna mostra, e é
+    // por ela que o operador procura ("quem começou a compensar em 08/2026").
+    // Quem ainda não compensou vira uma opção com nome, e não o traço da tela:
+    // numa lista de valores, "-" não diz nada.
+    valor: (u) =>
+      u.implantacao?.primeiraCompensacao
+        ? formatCompetencia(u.implantacao.primeiraCompensacao)
+        : "Ainda não compensou",
+    // Mais recente primeiro, e o "ainda não" no fim: é a ordem em que a
+    // pergunta costuma ser feita.
+    ordenar: (a, b) => {
+      if (a === "Ainda não compensou") return 1;
+      if (b === "Ainda não compensou") return -1;
+      const [ma, aa] = a.split("/");
+      const [mb, ab] = b.split("/");
+      return `${ab}${mb}`.localeCompare(`${aa}${ma}`);
+    },
   },
   {
-    chave: "distribuidora",
-    label: "Distribuidora",
-    valor: (u) => u.distribuidora,
-    labelTodos: "Todas as distribuidoras",
+    chave: "espera",
+    label: "Esperando",
+    valor: (u) => ROTULO_ESPERA[u.implantacao?.alerta ?? "OK"],
   },
   {
     chave: "status",
-    label: "Status do contrato",
-    valor: (u) => u.statusContrato,
-    labelTodos: "Todos os status",
+    label: "Status",
+    valor: (u) => u.statusContrato ?? (u.active ? "Ativo" : "Inativo"),
   },
-  {
-    chave: "cidade",
-    label: "Cidade",
-    valor: (u) => u.cidade,
-    labelTodos: "Todas as cidades",
-  },
+  { chave: "cidade", label: "Cidade", valor: (u) => u.cidade },
+  { chave: "grupo", label: "Grupo", valor: (u) => u.grupo },
 ];
 
 /**
@@ -386,8 +412,14 @@ function UnidadesConsumidorasConteudo() {
                   <tr className="border-b text-muted-foreground">
                     <SortHeader label="Nome" active={sort.key === "nome"} dir={sort.dir} onClick={() => toggleSort("nome")} />
                     <SortHeader label="Código UC" active={sort.key === "codigoUc"} dir={sort.dir} onClick={() => toggleSort("codigoUc")} />
-                    <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Consumidor</th>
-                    <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Usina</th>
+                    <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">
+                      Consumidor
+                      <FiltroColuna filtro={filtro} chave="consumidor" />
+                    </th>
+                    <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">
+                      Usina
+                      <FiltroColuna filtro={filtro} chave="usina" />
+                    </th>
                     {emImplantacao ? (
                       <>
                         <SortHeader
@@ -396,6 +428,7 @@ function UnidadesConsumidorasConteudo() {
                           active={sort.key === "espera"}
                           dir={sort.dir}
                           onClick={() => toggleSort("espera")}
+                          filtro={<FiltroColuna filtro={filtro} chave="espera" />}
                         />
                         <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">
                           Contas sem desconto
@@ -408,14 +441,23 @@ function UnidadesConsumidorasConteudo() {
                       <>
                         <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">
                           Distribuidora
+                          <FiltroColuna filtro={filtro} chave="distribuidora" />
                         </th>
                         <SortHeader label="Consumo" align="right" active={sort.key === "consumo"} dir={sort.dir} onClick={() => toggleSort("consumo")} />
                         <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">
                           1ª compensação
+                          <FiltroColuna filtro={filtro} chave="primeiraCompensacao" />
                         </th>
                       </>
                     )}
-                    <SortHeader label="Status" align="center" active={sort.key === "status"} dir={sort.dir} onClick={() => toggleSort("status")} />
+                    <SortHeader
+                      label="Status"
+                      align="center"
+                      active={sort.key === "status"}
+                      dir={sort.dir}
+                      onClick={() => toggleSort("status")}
+                      filtro={<FiltroColuna filtro={filtro} chave="status" />}
+                    />
                     <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Ações</th>
                   </tr>
                 </thead>
@@ -595,12 +637,15 @@ function SortHeader({
   dir,
   onClick,
   align = "left",
+  filtro,
 }: {
   label: string;
   active: boolean;
   dir: SortDir;
   onClick: () => void;
   align?: "left" | "center" | "right";
+  /** Funil da coluna. Fica FORA do botão de ordenar: clicar no funil não pode ordenar. */
+  filtro?: ReactNode;
 }) {
   const alignClass = align === "center" ? "text-center" : align === "right" ? "text-right" : "text-left";
   return (
@@ -612,6 +657,7 @@ function SortHeader({
         {label}
         <ArrowUpDown className={`h-3 w-3 ${active ? "opacity-100" : "opacity-40"} ${active && dir === "desc" ? "rotate-180" : ""} transition-transform`} />
       </button>
+      {filtro}
     </th>
   );
 }

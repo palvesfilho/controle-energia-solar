@@ -17,6 +17,7 @@ import {
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
 import { ExportarTabela } from "@/components/ui/exportar-tabela";
+import { FiltroColuna } from "@/components/ui/filtro-coluna";
 import { AvisoPrimeirasCompensacoes } from "@/components/consumer-units/aviso-primeiras-compensacoes";
 
 interface Row {
@@ -73,25 +74,21 @@ const FACETAS: Faceta<Row>[] = [
     chave: "status",
     label: "Status",
     valor: (r) => STATUS_LABEL[r.status] ?? r.status,
-    labelTodos: "Todos os status",
   },
   {
     chave: "situacao",
     label: "Situação",
     valor: (r) => (r.emImplantacao ? "Em implantação" : "Faturando"),
-    labelTodos: "Todas as situações",
   },
   {
     chave: "distribuidora",
     label: "Distribuidora",
     valor: (r) => r.consumerUnit.distribuidora,
-    labelTodos: "Todas as distribuidoras",
   },
   {
     chave: "consumidor",
     label: "Consumidor",
     valor: (r) => r.consumerUnit.consumer?.name,
-    labelTodos: "Todos os consumidores",
   },
 ];
 
@@ -602,29 +599,6 @@ export default function FaturamentoUCMesPage() {
                 ))}
               </select>
             </div>
-            {filtro.facetas.map((f) => {
-              const lista = filtro.opcoes[f.chave] ?? [];
-              if (lista.length < 2 && !filtro.selecionados[f.chave]) return null;
-              return (
-                <div key={f.chave} className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    {f.label}
-                  </label>
-                  <select
-                    value={filtro.selecionados[f.chave] ?? ""}
-                    onChange={(e) => filtro.setFaceta(f.chave, e.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="">{f.labelTodos}</option>
-                    {lista.map((v) => (
-                      <option key={v} value={v}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              );
-            })}
             <div className="relative flex-1 min-w-[220px] space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Buscar</label>
               <div className="relative">
@@ -685,10 +659,19 @@ export default function FaturamentoUCMesPage() {
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">UC</th>
-                    <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">Nome</th>
-                    <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">Distribuidora</th>
+                    <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">
+                      Nome
+                      <FiltroColuna filtro={filtro} chave="consumidor" />
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">
+                      Distribuidora
+                      <FiltroColuna filtro={filtro} chave="distribuidora" />
+                    </th>
                     <th className="px-3 py-2 text-right font-medium text-xs uppercase tracking-wide">Cobrança</th>
-                    <th className="px-3 py-2 text-center font-medium text-xs uppercase tracking-wide">Status</th>
+                    <th className="px-3 py-2 text-center font-medium text-xs uppercase tracking-wide">
+                      Status
+                      <FiltroColuna filtro={filtro} chave="status" />
+                    </th>
                     <th className="px-3 py-2 text-center font-medium text-xs uppercase tracking-wide">Ações</th>
                   </tr>
                 </thead>

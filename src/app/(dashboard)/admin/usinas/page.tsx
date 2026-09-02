@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ import { formatCpfCnpj } from "@/lib/documento";
 import { formatKWh } from "@/lib/formatters";
 import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
 import { FiltrosTabela } from "@/components/ui/filtros-tabela";
+import { FiltroColuna } from "@/components/ui/filtro-coluna";
 import { concessionariaDaUsina } from "@/lib/concessionarias";
 import { ExcluirUsinaDialog } from "@/components/plants/excluir-usina-dialog";
 
@@ -60,19 +61,16 @@ const FACETAS: Faceta<PlantData>[] = [
     label: "Concessionária",
     // Os dois campos são o mesmo conceito; a função escolhe o que vale.
     valor: (p) => concessionariaDaUsina(p),
-    labelTodos: "Todas as concessionárias",
   },
   {
     chave: "grupo",
     label: "Grupo",
     valor: (p) => p.grupo,
-    labelTodos: "Todos os grupos",
   },
   {
     chave: "status",
     label: "Status",
     valor: (p) => (p.active ? "Ativa" : "Inativa"),
-    labelTodos: "Todos os status",
   },
 ];
 
@@ -206,10 +204,23 @@ export default function UsinasPage() {
                     <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">CPF/CNPJ</th>
                     <SortHeader label="Potência" align="right" active={sort.key === "potencia"} dir={sort.dir} onClick={() => toggleSort("potencia")} />
                     <SortHeader label="Geração média/mês" align="right" active={sort.key === "geracao"} dir={sort.dir} onClick={() => toggleSort("geracao")} />
-                    <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Grupo</th>
-                    <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Concessionária</th>
+                    <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">
+                      Grupo
+                      <FiltroColuna filtro={filtro} chave="grupo" />
+                    </th>
+                    <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">
+                      Concessionária
+                      <FiltroColuna filtro={filtro} chave="concessionaria" />
+                    </th>
                     <SortHeader label="UCs" align="center" active={sort.key === "ucs"} dir={sort.dir} onClick={() => toggleSort("ucs")} />
-                    <SortHeader label="Status" align="center" active={sort.key === "status"} dir={sort.dir} onClick={() => toggleSort("status")} />
+                    <SortHeader
+                      label="Status"
+                      align="center"
+                      active={sort.key === "status"}
+                      dir={sort.dir}
+                      onClick={() => toggleSort("status")}
+                      filtro={<FiltroColuna filtro={filtro} chave="status" />}
+                    />
                     <th className="text-center py-2 px-3 font-medium text-xs uppercase tracking-wide">Ações</th>
                   </tr>
                 </thead>
@@ -340,12 +351,15 @@ function SortHeader({
   dir,
   onClick,
   align = "left",
+  filtro,
 }: {
   label: string;
   active: boolean;
   dir: SortDir;
   onClick: () => void;
   align?: "left" | "center" | "right";
+  /** Funil da coluna. Fica FORA do botao de ordenar: clicar nele nao ordena. */
+  filtro?: ReactNode;
 }) {
   const alignClass = align === "center" ? "text-center" : align === "right" ? "text-right" : "text-left";
   return (
@@ -357,6 +371,7 @@ function SortHeader({
         {label}
         <ArrowUpDown className={`h-3 w-3 ${active ? "opacity-100" : "opacity-40"} ${active && dir === "desc" ? "rotate-180" : ""} transition-transform`} />
       </button>
+      {filtro}
     </th>
   );
 }
