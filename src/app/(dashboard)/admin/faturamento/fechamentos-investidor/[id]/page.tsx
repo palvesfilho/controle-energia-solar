@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -360,8 +361,17 @@ export default function FechamentoDetalhePage() {
               Nenhum payable vinculado.
             </p>
           ) : (
+            <>
+            <div className="flex justify-end">
+              <ExportarTabela
+                tabela="fechamento-payables"
+                nome={`fechamento-${data.id}-payables`}
+                aba="Payables"
+                size="xs"
+              />
+            </div>
             <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="fechamento-payables">
                 <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">Usina / UC</th>
@@ -448,6 +458,7 @@ export default function FechamentoDetalhePage() {
                 </tfoot>
               </table>
             </div>
+            </>
           )}
         </CardContent>
       </Card>

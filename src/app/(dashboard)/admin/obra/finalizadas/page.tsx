@@ -12,7 +12,8 @@ import {
   Search,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { matchBusca } from "@/lib/busca";
+import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import type {
   GestaoObraRow,
   ObraStatus,
@@ -122,12 +123,31 @@ function ActionButton({
   );
 }
 
+/** Fora do componente para a identidade do array não mudar a cada render. */
+const FACETAS: Faceta<GestaoObraRow>[] = [
+  {
+    chave: "status",
+    label: "Status",
+    valor: (r) => STATUS_UI[r.status]?.label ?? r.status,
+    labelTodos: "Todas",
+  },
+  {
+    chave: "responsavel",
+    label: "Responsável",
+    valor: (r) => r.responsavel,
+    labelTodos: "Todos os responsáveis",
+  },
+];
+
 export default function ObrasFinalizadasPage() {
   const [rows, setRows] = useState<GestaoObraRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<FinalizadaFiltro>("all");
-  const [search, setSearch] = useState("");
+
+  const filtro = useFiltroTabela(rows, {
+    busca: (r) => [r.nome, r.cliente, r.proprietarioNome, r.local, r.responsavel],
+    facetas: FACETAS,
+  });
 
   const load = () => {
     setLoading(true);
@@ -143,24 +163,15 @@ export default function ObrasFinalizadasPage() {
 
   useEffect(load, []);
 
-  const filtered = useMemo(() => {
-    return rows
-      .filter((r) => {
-        if (statusFilter !== "all" && r.status !== statusFilter) return false;
-        return matchBusca(search, [
-          r.nome,
-          r.cliente,
-          r.proprietarioNome,
-          r.local,
-          r.responsavel,
-        ]);
-      })
-      .sort((a, b) => {
+  const filtered = useMemo(
+    () =>
+      [...filtro.filtrados].sort((a, b) => {
         const da = a.dataFimReal ? new Date(a.dataFimReal).getTime() : 0;
         const db = b.dataFimReal ? new Date(b.dataFimReal).getTime() : 0;
         return db - da;
-      });
-  }, [rows, statusFilter, search]);
+      }),
+    [filtro.filtrados],
+  );
 
   // Os KPIs contam sobre o conjunto FILTRADO: o número em cima da tela tem que
   // descrever a lista que está embaixo dela.
@@ -201,22 +212,29 @@ export default function ObrasFinalizadasPage() {
       <Card>
         <CardContent className="p-3">
           <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Status
-              </label>
-              <select
-                value={statusFilter}
-                onChange={(e) =>
-                  setStatusFilter(e.target.value as FinalizadaFiltro)
-                }
-                className={selectClass}
-              >
-                <option value="all">Todas</option>
-                <option value="CONCLUIDA">Concluídas</option>
-                <option value="CANCELADA">Canceladas</option>
-              </select>
-            </div>
+            {filtro.facetas.map((f) => {
+              const lista = filtro.opcoes[f.chave] ?? [];
+              if (lista.length < 2 && !filtro.selecionados[f.chave]) return null;
+              return (
+                <div key={f.chave} className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    {f.label}
+                  </label>
+                  <select
+                    value={filtro.selecionados[f.chave] ?? ""}
+                    onChange={(e) => filtro.setFaceta(f.chave, e.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="">{f.labelTodos}</option>
+                    {lista.map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
             <div className="space-y-1.5 flex-1 min-w-[220px]">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Buscar
@@ -224,8 +242,8 @@ export default function ObrasFinalizadasPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  value={filtro.busca}
+                  onChange={(e) => filtro.setBusca(e.target.value)}
                   placeholder="Nome, cliente, proprietário, local..."
                   className={`${selectClass} w-full pl-9`}
                 />
@@ -239,6 +257,12 @@ export default function ObrasFinalizadasPage() {
               <RefreshCw className="h-4 w-4" />
               Atualizar
             </button>
+            <ExportarTabela
+              tabela="obras-finalizadas"
+              nome="obras-finalizadas"
+              aba="Finalizadas"
+              className="h-9"
+            />
           </div>
         </CardContent>
       </Card>
@@ -274,7 +298,7 @@ export default function ObrasFinalizadasPage() {
         <Card>
           <CardContent className="p-3">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="obras-finalizadas">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">

@@ -14,6 +14,7 @@ import {
   Sun,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { brand } from "@/lib/brand-colors";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 
@@ -342,12 +343,20 @@ export default function RelatorioAgregadoPage() {
             />
           </div>
 
-          <h2 className="text-sm font-semibold uppercase tracking-wide mt-4" style={{ color: brand.tealDark }}>
-            Distribuição entre beneficiárias — {MESES_LONGO[mesSelecionado.mes - 1]}/{mesSelecionado.ano}
-          </h2>
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: brand.tealDark }}>
+              Distribuição entre beneficiárias — {MESES_LONGO[mesSelecionado.mes - 1]}/{mesSelecionado.ano}
+            </h2>
+            <ExportarTabela
+              tabela="bs-agregado-beneficiarias"
+              nome="distribuicao-beneficiarias"
+              aba="Beneficiárias"
+              size="xs"
+            />
+          </div>
           <Card>
             <CardContent className="p-4 overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full text-xs" data-tabela="bs-agregado-beneficiarias">
                 <thead>
                   <tr className="text-muted-foreground border-b">
                     <th className="text-left py-2 px-2">UC</th>
@@ -440,11 +449,19 @@ export default function RelatorioAgregadoPage() {
 
       <Card>
         <CardContent className="p-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide mb-3" style={{ color: brand.tealDark }}>
-            Histórico consolidado por mês
-          </h2>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: brand.tealDark }}>
+              Histórico consolidado por mês
+            </h2>
+            <ExportarTabela
+              tabela="bs-agregado-historico"
+              nome="historico-consolidado"
+              aba="Histórico"
+              size="xs"
+            />
+          </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+            <table className="w-full text-xs" data-tabela="bs-agregado-historico">
               <thead>
                 <tr className="text-muted-foreground border-b">
                   <th className="text-left py-2 px-2">Mês</th>

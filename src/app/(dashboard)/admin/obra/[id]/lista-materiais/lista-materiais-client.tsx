@@ -18,6 +18,7 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import Link from "next/link";
 import {
   LISTA_CATEGORIAS,
@@ -708,6 +709,13 @@ export default function ListaMateriaisClient({ obraId }: { obraId: string }) {
             >
               <div className="flex items-center justify-between border-b px-4 py-3">
                 <h2 className="text-sm font-semibold">{cat.label}</h2>
+                <ExportarTabela
+                  tabela={`materiais-${cat.value}`}
+                  nome={`materiais-${cat.label}`}
+                  aba={cat.label}
+                  size="xs"
+                  className="ml-auto mr-2"
+                />
                 {editavel && (
                   <button
                     type="button"
@@ -720,7 +728,7 @@ export default function ListaMateriaisClient({ obraId }: { obraId: string }) {
                 )}
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm" data-tabela={`materiais-${cat.value}`}>
                   <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
                     <tr>
                       <th className="px-3 py-2 text-left font-medium">Item</th>

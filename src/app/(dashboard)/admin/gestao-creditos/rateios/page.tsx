@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import {
   Select,
   SelectContent,
@@ -1101,6 +1102,13 @@ function RateioTable({
           </b>
         </span>
         <div className="ml-auto flex items-center gap-1">
+          <ExportarTabela
+            tabela={`rateio-${rateio.id}`}
+            nome={`rateio-${rateio.id}`}
+            aba="Rateio"
+            variant="ghost"
+            size="xs"
+          />
           {onEdit && (
             <button
               type="button"
@@ -1140,7 +1148,7 @@ function RateioTable({
       )}
 
       <div className="overflow-x-auto border rounded-lg">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" data-tabela={`rateio-${rateio.id}`}>
           <thead>
             <tr className="border-b text-muted-foreground bg-muted/30">
               <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">

@@ -20,7 +20,8 @@ import type {
   FechamentoStatus,
 } from "@/app/api/admin/faturas-energia/fechamento-mensal/route";
 import { formatCodigoUc } from "@/lib/uc-codigo";
-import { matchBusca } from "@/lib/busca";
+import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 
 const MESES = [
   { v: 1, l: "Janeiro" }, { v: 2, l: "Fevereiro" }, { v: 3, l: "Março" },
@@ -50,6 +51,34 @@ const STATUS_UI: Record<FechamentoStatus, { label: string; cls: string; Icon: Re
   pendente: { label: "Pendente concessionária", cls: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300", Icon: Clock },
 };
 
+/** Fora do componente para a identidade do array não mudar a cada render. */
+const FACETAS: Faceta<FechamentoMensalRow>[] = [
+  {
+    chave: "status",
+    label: "Status",
+    valor: (r) => STATUS_UI[r.status]?.label ?? r.status,
+    labelTodos: "Todos",
+  },
+  {
+    chave: "origem",
+    label: "Origem",
+    valor: (r) => (r.origem === "cliente" ? "Cliente" : "Usina"),
+    labelTodos: "Todas",
+  },
+  {
+    chave: "distribuidora",
+    label: "Distribuidora",
+    valor: (r) => r.distribuidora,
+    labelTodos: "Todas",
+  },
+  {
+    chave: "proprietario",
+    label: "Proprietário",
+    valor: (r) => r.proprietario,
+    labelTodos: "Todos",
+  },
+];
+
 function StatusBadge({ status }: { status: FechamentoStatus }) {
   const it = STATUS_UI[status];
   return (
@@ -65,12 +94,16 @@ export default function FechamentoMensalPage() {
   const [ano, setAno] = useState(now.getFullYear());
   const [mes, setMes] = useState(now.getMonth() + 1);
   const [rows, setRows] = useState<FechamentoMensalRow[]>([]);
+
+  const filtro = useFiltroTabela(rows, {
+    busca: (r) => [r.nome, r.codigoUc, r.proprietario, r.distribuidora],
+    facetas: FACETAS,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState<Record<string, boolean>>({});
   const [syncingAll, setSyncingAll] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<"all" | FechamentoStatus>("all");
-  const [search, setSearch] = useState("");
+
   const anos = useMemo(() => {
     const y = now.getFullYear();
     const arr: number[] = [];
@@ -89,7 +122,7 @@ export default function FechamentoMensalPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [ano, mes]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [ano, mes]);
 
   async function handleSyncAll() {
     if (
@@ -276,12 +309,7 @@ export default function FechamentoMensalPage() {
     }
   }
 
-  const filtered = useMemo(() => {
-    return rows.filter((r) => {
-      if (statusFilter !== "all" && r.status !== statusFilter) return false;
-      return matchBusca(search, [r.nome, r.codigoUc, r.proprietario, r.distribuidora]);
-    });
-  }, [rows, statusFilter, search]);
+  const filtered = filtro.filtrados;
 
   // Os KPIs contam sobre `filtered`, NÃO sobre `rows`: o número em cima da tela
   // tem que descrever a lista que está embaixo dela. Contando o mês inteiro, o
@@ -300,7 +328,7 @@ export default function FechamentoMensalPage() {
 
   // Com filtro ativo os KPIs deixam de ser o retrato do mês. Dizer isso na tela
   // é o que impede a leitura errada no sentido contrário.
-  const filtroAtivo = statusFilter !== "all" || search.trim() !== "";
+  const filtroAtivo = filtro.ativos > 0;
 
   const mesLabel = MESES.find((m) => m.v === mes)?.l ?? "";
 
@@ -341,25 +369,34 @@ export default function FechamentoMensalPage() {
                 ))}
               </select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</label>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-                className={selectClass}
-              >
-                <option value="all">Todos</option>
-                <option value="pronta">Prontas</option>
-                <option value="paga">Pagas</option>
-                <option value="erro">Com erro</option>
-                <option value="pendente">Pendentes (concessionária)</option>
-              </select>
-            </div>
+            {filtro.facetas.map((f) => {
+              const lista = filtro.opcoes[f.chave] ?? [];
+              if (lista.length < 2 && !filtro.selecionados[f.chave]) return null;
+              return (
+                <div key={f.chave} className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    {f.label}
+                  </label>
+                  <select
+                    value={filtro.selecionados[f.chave] ?? ""}
+                    onChange={(e) => filtro.setFaceta(f.chave, e.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="">{f.labelTodos}</option>
+                    {lista.map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
             <div className="space-y-1.5 flex-1 min-w-[200px]">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Buscar</label>
               <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={filtro.busca}
+                onChange={(e) => filtro.setBusca(e.target.value)}
                 placeholder="UC, nome, proprietário..."
                 className={`${selectClass} w-full`}
               />
@@ -372,6 +409,12 @@ export default function FechamentoMensalPage() {
               <RefreshCw className="h-4 w-4" />
               Atualizar
             </button>
+            <ExportarTabela
+              tabela="fechamento-mensal"
+              nome={`fechamento-mensal-${ano}-${String(mes).padStart(2, "0")}`}
+              aba="Fechamento"
+              className="h-9"
+            />
             <div className="ml-auto flex flex-col items-end gap-1">
               <button
                 type="button"
@@ -400,10 +443,7 @@ export default function FechamentoMensalPage() {
           </span>
           <button
             type="button"
-            onClick={() => {
-              setStatusFilter("all");
-              setSearch("");
-            }}
+            onClick={filtro.limpar}
             className="underline underline-offset-2 hover:text-foreground transition-colors"
           >
             limpar filtros
@@ -441,7 +481,7 @@ export default function FechamentoMensalPage() {
         <Card>
           <CardContent className="p-3">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="fechamento-mensal">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">UC</th>

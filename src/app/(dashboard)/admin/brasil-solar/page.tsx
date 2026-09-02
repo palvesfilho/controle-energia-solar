@@ -22,6 +22,7 @@ import {
   History,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { formatCpfCnpj } from "@/lib/documento";
 import { toast } from "sonner";
 
@@ -350,10 +351,18 @@ export default function BrasilSolarPage() {
             onChange={setFilters}
             totalResults={pagination.total}
           />
+          <div className="flex justify-end pt-2">
+            <ExportarTabela
+              tabela="bs-clientes"
+              nome="brasil-solar-clientes"
+              aba="Clientes"
+              paginada
+            />
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" data-tabela="bs-clientes">
               <thead>
                 <tr className="border-b text-muted-foreground text-xs">
                   <SortHeader field="nome">Cliente</SortHeader>

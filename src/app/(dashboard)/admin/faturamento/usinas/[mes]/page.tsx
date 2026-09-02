@@ -5,9 +5,10 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, CheckCircle2, FileText, Loader2, Minus, Search, ShieldCheck, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, FileText, Loader2, Minus, ShieldCheck, XCircle } from "lucide-react";
 import { formatMonthYear, formatBRL } from "@/lib/formatters";
-import { matchBusca } from "@/lib/busca";
+import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
+import { FiltrosTabela } from "@/components/ui/filtros-tabela";
 import { concessionariaDaUsina } from "@/lib/concessionarias";
 
 interface Row {
@@ -37,6 +38,22 @@ interface Row {
   } | null;
 }
 
+/** Fora do componente para a identidade do array não mudar a cada render. */
+const FACETAS: Faceta<Row>[] = [
+  {
+    chave: "concessionaria",
+    label: "Concessionária",
+    valor: (r) => concessionariaDaUsina(r.plant),
+    labelTodos: "Todas as concessionárias",
+  },
+  {
+    chave: "status",
+    label: "Status",
+    valor: (r) => STATUS_LABELS[r.status]?.label ?? r.status,
+    labelTodos: "Todos os status",
+  },
+];
+
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   PENDENTE: { label: "Pendente", className: "bg-slate-400 hover:bg-slate-500" },
   AGUARDANDO_DOCUMENTOS: { label: "Aguardando docs", className: "bg-amber-500 hover:bg-amber-600" },
@@ -52,9 +69,6 @@ interface ValidationState {
   message?: string;
 }
 
-const selectClass =
-  "text-sm border rounded-lg px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all";
-
 function parseMes(mes: string): { ano: number; mesNum: number } | null {
   const m = mes.match(/^(\d{4})-(\d{2})$/);
   if (!m) return null;
@@ -68,9 +82,16 @@ export default function FaturamentoMesPage() {
 
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
   const [opening, setOpening] = useState<string | null>(null);
   const [validations, setValidations] = useState<Record<string, ValidationState>>({});
+
+  // Antes do `return` de mês inválido logo abaixo: hook não pode ficar atrás de
+  // saída condicional.
+  const filtro = useFiltroTabela(rows, {
+    busca: (r) => [r.plant.name, r.plant.numeroUsina, r.plant.cpfCnpj],
+    facetas: FACETAS,
+  });
+  const filtered = filtro.filtrados;
 
   useEffect(() => {
     if (!parsed) {
@@ -152,9 +173,7 @@ export default function FaturamentoMesPage() {
     return <div className="p-8 text-center text-sm text-muted-foreground">Mês inválido</div>;
   }
 
-  const filtered = rows.filter((r) =>
-    matchBusca(search, [r.plant.name, r.plant.numeroUsina, r.plant.cpfCnpj])
-  );
+
 
   return (
     <div className="space-y-4">
@@ -177,16 +196,16 @@ export default function FaturamentoMesPage() {
 
       <Card>
         <CardContent className="p-3 space-y-3">
-          <div className="relative max-w-md">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Buscar usina..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className={`${selectClass} w-full pl-8`}
-            />
-          </div>
+          <FiltrosTabela
+            filtro={filtro}
+            placeholder="Buscar usina..."
+            substantivo="usinas"
+            exportar={{
+              tabela: "faturamento-mes",
+              nome: `faturamento-${mesParam}`,
+              aba: formatMonthYear(parsed.mesNum, parsed.ano),
+            }}
+          />
 
           {loading ? (
             <div className="p-8 text-center text-sm text-muted-foreground">Carregando...</div>
@@ -194,7 +213,7 @@ export default function FaturamentoMesPage() {
             <div className="p-8 text-center text-sm text-muted-foreground">Nenhuma usina encontrada.</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="faturamento-mes">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Usina</th>

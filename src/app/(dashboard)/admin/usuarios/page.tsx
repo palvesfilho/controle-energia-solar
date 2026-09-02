@@ -21,6 +21,8 @@ import {
   MailCheck,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
+import { FiltrosTabela } from "@/components/ui/filtros-tabela";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +42,33 @@ interface UserData {
   /** Já tem identidade no Clerk, ou seja: o convite foi aceito. */
   acessoEmitido: boolean;
 }
+
+/**
+ * Fora do componente para a identidade do array não mudar a cada render.
+ * Perfil e status saíram da API e vieram para cá: eram duas consultas a cada
+ * troca de seletor, e com o filtro no servidor o Exportar levaria só o recorte
+ * que a API devolveu, sem a tela saber disso.
+ */
+const FACETAS: Faceta<UserData>[] = [
+  {
+    chave: "perfil",
+    label: "Perfil",
+    valor: (u) => ROLE_LABELS[u.role] ?? u.role,
+    labelTodos: "Todos os perfis",
+  },
+  {
+    chave: "status",
+    label: "Status",
+    valor: (u) => (u.active ? "Ativo" : "Inativo"),
+    labelTodos: "Todos os status",
+  },
+  {
+    chave: "acesso",
+    label: "Acesso",
+    valor: (u) => (u.acessoEmitido ? "Acesso emitido" : "Sem acesso"),
+    labelTodos: "Com e sem acesso",
+  },
+];
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Administrador",
@@ -88,8 +117,12 @@ const ROLE_OPTIONS = [
 export default function UsuariosPage() {
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filterRole, setFilterRole] = useState("");
-  const [filterActive, setFilterActive] = useState("");
+
+  const filtro = useFiltroTabela(users, {
+    sincronizarUrl: true,
+    busca: (u) => [u.name, u.email],
+    facetas: FACETAS,
+  });
   const [toggling, setToggling] = useState<string | null>(null);
   const [desativarTarget, setDesativarTarget] = useState<UserData | null>(null);
   const [desativarText, setDesativarText] = useState("");
@@ -122,11 +155,7 @@ export default function UsuariosPage() {
 
   const fetchUsers = () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (filterRole) params.set("role", filterRole);
-    if (filterActive) params.set("active", filterActive);
-
-    fetch(`/api/users?${params.toString()}`)
+    fetch("/api/users")
       .then((res) => res.json())
       .then(setUsers)
       .finally(() => setLoading(false));
@@ -134,7 +163,7 @@ export default function UsuariosPage() {
 
   useEffect(() => {
     fetchUsers();
-  }, [filterRole, filterActive]);
+  }, []);
 
   const toggleActive = async (user: UserData) => {
     setToggling(user.id);
@@ -199,12 +228,15 @@ export default function UsuariosPage() {
         {ROLE_OPTIONS.map((role) => {
           const count = users.filter((u) => u.role === role).length;
           const Icon = ROLE_ICONS[role];
-          const isActive = filterRole === role;
+          // O card do perfil É o seletor de perfil da barra de filtros — os
+          // dois mexem na mesma faceta, senão a tela mostraria dois estados.
+          const rotulo = ROLE_LABELS[role];
+          const isActive = filtro.selecionados.perfil === rotulo;
           return (
             <Card
               key={role}
               className={`cursor-pointer hover:shadow-md transition-all ${isActive ? "ring-2 ring-primary/30" : ""}`}
-              onClick={() => setFilterRole(isActive ? "" : role)}
+              onClick={() => filtro.setFaceta("perfil", isActive ? "" : rotulo)}
             >
               <CardContent className="p-3 flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${ROLE_COLORS[role]} text-white`}>
@@ -222,40 +254,20 @@ export default function UsuariosPage() {
 
       <Card>
         <CardContent className="p-3 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={filterRole}
-              onChange={(e) => setFilterRole(e.target.value)}
-              className="text-sm border rounded-lg px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-            >
-              <option value="">Todos os perfis</option>
-              {ROLE_OPTIONS.map((role) => (
-                <option key={role} value={role}>
-                  {ROLE_LABELS[role]}
-                </option>
-              ))}
-            </select>
-            <select
-              value={filterActive}
-              onChange={(e) => setFilterActive(e.target.value)}
-              className="text-sm border rounded-lg px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-            >
-              <option value="">Todos os status</option>
-              <option value="true">Ativos</option>
-              <option value="false">Inativos</option>
-            </select>
-            <span className="ml-auto text-xs text-muted-foreground">
-              {users.length} usuário{users.length !== 1 ? "s" : ""}
-            </span>
-          </div>
+          <FiltrosTabela
+            filtro={filtro}
+            placeholder="Buscar por nome ou email..."
+            substantivo="usuários"
+            exportar={{ tabela: "usuarios", nome: "usuarios", aba: "Usuários" }}
+          />
 
           {loading ? (
             <div className="p-8 text-center text-sm text-muted-foreground">Carregando...</div>
-          ) : users.length === 0 ? (
+          ) : filtro.filtrados.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">Nenhum usuário encontrado.</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="usuarios">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Nome</th>
@@ -268,7 +280,7 @@ export default function UsuariosPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((user) => {
+                  {filtro.filtrados.map((user) => {
                     const RoleIcon = ROLE_ICONS[user.role] || Shield;
                     return (
                       <tr key={user.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">

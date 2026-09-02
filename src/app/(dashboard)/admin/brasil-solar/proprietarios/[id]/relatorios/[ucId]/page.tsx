@@ -16,6 +16,7 @@ import {
   Sun,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { brand } from "@/lib/brand-colors";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { anoPadraoDaSerie, serieMensalDoAno } from "@/lib/serie-mensal";
@@ -638,14 +639,22 @@ export default function RelatorioDetalhePage() {
       {/* Tabela mês a mês */}
       <Card>
         <CardContent className="p-4">
-          <h2
-            className="text-sm font-semibold uppercase tracking-wide mb-3"
-            style={{ color: brand.tealDark }}
-          >
-            Meses anteriores
-          </h2>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2
+              className="text-sm font-semibold uppercase tracking-wide"
+              style={{ color: brand.tealDark }}
+            >
+              Meses anteriores
+            </h2>
+            <ExportarTabela
+              tabela="bs-uc-meses"
+              nome="relatorio-uc-meses-anteriores"
+              aba="Meses"
+              size="xs"
+            />
+          </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+            <table className="w-full text-xs" data-tabela="bs-uc-meses">
               <thead>
                 <tr className="text-muted-foreground border-b">
                   <th className="text-left py-2 px-2">Mês</th>

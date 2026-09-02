@@ -4,12 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { matchBusca } from "@/lib/busca";
+import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
+import { FiltrosTabela } from "@/components/ui/filtros-tabela";
 import { formatCpfCnpj } from "@/lib/documento";
 import {
   Plus,
   Pencil,
-  Search,
   ArrowUpDown,
   Users,
   UserCheck,
@@ -33,11 +33,25 @@ interface ConsumerData {
 type SortKey = "name" | "cpfCnpj" | "ucs" | "status";
 type SortDir = "asc" | "desc";
 
+/** Fora do componente para a identidade do array não mudar a cada render. */
+const FACETAS: Faceta<ConsumerData>[] = [
+  {
+    chave: "status",
+    label: "Status",
+    valor: (c) => (c.active ? "Ativo" : "Inativo"),
+    labelTodos: "Todos os status",
+  },
+  {
+    chave: "ucs",
+    label: "UCs",
+    valor: (c) => (c.consumerUnits.length > 0 ? "Com UC" : "Sem UC"),
+    labelTodos: "Com e sem UC",
+  },
+];
+
 export default function ConsumidoresPage() {
   const [consumers, setConsumers] = useState<ConsumerData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"" | "ativo" | "inativo">("");
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "name", dir: "asc" });
 
   useEffect(() => {
@@ -47,24 +61,14 @@ export default function ConsumidoresPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const stats = useMemo(() => {
-    const ativos = consumers.filter((c) => c.active).length;
-    const totalUcs = consumers.reduce((acc, c) => acc + c.consumerUnits.length, 0);
-    return { total: consumers.length, ativos, inativos: consumers.length - ativos, totalUcs };
-  }, [consumers]);
+  const filtro = useFiltroTabela(consumers, {
+    sincronizarUrl: true,
+    busca: (c) => [c.name, c.cpfCnpj, c.document, c.phone, c.emailsRecebimento],
+    facetas: FACETAS,
+  });
 
   const filtered = useMemo(() => {
-    const rows = consumers.filter((c) => {
-      if (statusFilter === "ativo" && !c.active) return false;
-      if (statusFilter === "inativo" && c.active) return false;
-      return matchBusca(search, [
-        c.name,
-        c.cpfCnpj,
-        c.document,
-        c.phone,
-        c.emailsRecebimento,
-      ]);
-    });
+    const rows = [...filtro.filtrados];
 
     rows.sort((a, b) => {
       const dir = sort.dir === "asc" ? 1 : -1;
@@ -80,7 +84,7 @@ export default function ConsumidoresPage() {
       }
     });
     return rows;
-  }, [consumers, search, statusFilter, sort]);
+  }, [filtro.filtrados, sort]);
 
   // Os cards descrevem a lista que está embaixo deles — contam sobre `filtered`.
   // `stats` (global) continua servindo ao "N de M" acima da tabela, que fala da
@@ -126,29 +130,12 @@ export default function ConsumidoresPage() {
 
       <Card>
         <CardContent className="p-3 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[220px]">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por nome, CPF/CNPJ, telefone ou email..."
-                className="w-full pl-8 pr-3 py-1.5 text-sm border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-              />
-            </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-              className="text-sm border rounded-lg px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-            >
-              <option value="">Todos os status</option>
-              <option value="ativo">Ativos</option>
-              <option value="inativo">Inativos</option>
-            </select>
-            <span className="ml-auto text-xs text-muted-foreground">
-              {filtered.length} de {stats.total}
-            </span>
-          </div>
+          <FiltrosTabela
+            filtro={filtro}
+            placeholder="Buscar por nome, CPF/CNPJ, telefone ou email..."
+            substantivo="consumidores"
+            exportar={{ tabela: "consumidores", nome: "consumidores", aba: "Consumidores" }}
+          />
 
           {loading ? (
             <div className="p-8 text-center text-sm text-muted-foreground">Carregando...</div>
@@ -158,7 +145,7 @@ export default function ConsumidoresPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="consumidores">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <SortHeader label="Nome" active={sort.key === "name"} dir={sort.dir} onClick={() => toggleSort("name")} />

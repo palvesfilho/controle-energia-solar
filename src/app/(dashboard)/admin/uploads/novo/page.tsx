@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import { Card, CardContent } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
@@ -309,9 +310,17 @@ export default function UploadNovoPage() {
 
           <Card>
             <CardContent className="p-4 space-y-3">
-              <h2 className="text-sm font-semibold">Dados extraídos</h2>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold">Dados extraídos</h2>
+                <ExportarTabela
+                  tabela="upload-dados-extraidos"
+                  nome="dados-extraidos"
+                  aba="Extraídos"
+                  size="xs"
+                />
+              </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm" data-tabela="upload-dados-extraidos">
                   <thead>
                     <tr className="border-b text-muted-foreground">
                       <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Investidor</th>

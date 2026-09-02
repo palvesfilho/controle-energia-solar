@@ -5,7 +5,8 @@ import { Download, Loader2, Minus, X, Receipt, Upload, CheckCircle2, AlertCircle
 import { Card, CardContent } from "@/components/ui/card";
 import type { FaturasEnergiaRow, FaturaCell } from "@/app/api/admin/faturas-energia/route";
 import { formatCodigoUc } from "@/lib/uc-codigo";
-import { matchBusca } from "@/lib/busca";
+import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -50,6 +51,15 @@ function CellIcon({ cell }: { cell: FaturaCell }) {
   );
 }
 
+/** Texto do status do mês — é o que o Exportar leva para a planilha. */
+function rotuloStatus(cell: FaturaCell | undefined): string {
+  if (!cell) return "Não sincronizado";
+  if (cell.status === "ok") return cell.pdfUrl ? "Disponível" : "Sem PDF";
+  if (cell.status === "error") return "Arquivo perdido";
+  if (cell.status === "no_pdf") return "Sem PDF";
+  return "Não sincronizado";
+}
+
 function OrigemBadge({ origem }: { origem: FaturasEnergiaRow["origem"] }) {
   const map = {
     cliente: { label: "Cliente", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
@@ -71,14 +81,38 @@ interface UploadResultItem {
   valorTotal: number | null;
 }
 
+/**
+ * Facetas da tela. Ficam fora do componente para a identidade do array não
+ * mudar a cada render. Os controles são desenhados à mão logo abaixo, no estilo
+ * rotulado desta tela — quem filtra é o hook, quem desenha é a página.
+ */
+const FACETAS: Faceta<FaturasEnergiaRow>[] = [
+  {
+    chave: "origem",
+    label: "Origem",
+    valor: (r) => (r.origem === "usina" ? "Usinas" : "Clientes"),
+    labelTodos: "Todas",
+  },
+  {
+    chave: "distribuidora",
+    label: "Distribuidora",
+    valor: (r) => r.distribuidora,
+    labelTodos: "Todas",
+  },
+  {
+    chave: "proprietario",
+    label: "Proprietário",
+    valor: (r) => r.proprietario,
+    labelTodos: "Todos",
+  },
+];
+
 export default function FaturasEnergiaVisaoGeralPage() {
   const currentYear = new Date().getFullYear();
   const [ano, setAno] = useState(currentYear);
   const [rows, setRows] = useState<FaturasEnergiaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [origemFilter, setOrigemFilter] = useState<"all" | "cliente" | "usina">("all");
   const [apenasAtivas, setApenasAtivas] = useState(false);
 
   // Upload manual
@@ -146,13 +180,18 @@ export default function FaturasEnergiaVisaoGeralPage() {
     return arr;
   }, [currentYear]);
 
-  const filtered = useMemo(() => {
-    return rows.filter((r) => {
-      if (apenasAtivas && !r.active) return false;
-      if (origemFilter !== "all" && r.origem !== origemFilter) return false;
-      return matchBusca(search, [r.nome, r.codigoUc, r.proprietario, r.distribuidora]);
-    });
-  }, [rows, search, origemFilter, apenasAtivas]);
+  // "Apenas ativas" vem ANTES das facetas: é um recorte da base, e os seletores
+  // devem oferecer só o que existe dentro dele.
+  const base = useMemo(
+    () => (apenasAtivas ? rows.filter((r) => r.active) : rows),
+    [rows, apenasAtivas],
+  );
+
+  const filtro = useFiltroTabela(base, {
+    busca: (r) => [r.nome, r.codigoUc, r.proprietario, r.distribuidora],
+    facetas: FACETAS,
+  });
+  const filtered = filtro.filtrados;
 
   const totals = useMemo(() => {
     let ok = 0, err = 0, noPdf = 0, miss = 0;
@@ -214,23 +253,30 @@ export default function FaturasEnergiaVisaoGeralPage() {
                 ))}
               </select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Origem</label>
-              <select
-                value={origemFilter}
-                onChange={(e) => setOrigemFilter(e.target.value as typeof origemFilter)}
-                className={selectClass}
-              >
-                <option value="all">Todas</option>
-                <option value="cliente">Clientes</option>
-                <option value="usina">Usinas</option>
-              </select>
-            </div>
+            {filtro.facetas.map((f) => (
+              <div key={f.chave} className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  {f.label}
+                </label>
+                <select
+                  value={filtro.selecionados[f.chave] ?? ""}
+                  onChange={(e) => filtro.setFaceta(f.chave, e.target.value)}
+                  className={selectClass}
+                >
+                  <option value="">{f.labelTodos}</option>
+                  {(filtro.opcoes[f.chave] ?? []).map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
             <div className="space-y-1.5 flex-1 min-w-[220px]">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Buscar</label>
               <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={filtro.busca}
+                onChange={(e) => filtro.setBusca(e.target.value)}
                 placeholder="UC, nome, proprietário, distribuidora..."
                 className={`${selectClass} w-full`}
               />
@@ -244,6 +290,12 @@ export default function FaturasEnergiaVisaoGeralPage() {
               />
               Apenas ativas
             </label>
+            <ExportarTabela
+              tabela="faturas-energia"
+              nome={`faturas-energia-${ano}`}
+              aba={`Faturas ${ano}`}
+              className="h-9"
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
@@ -281,7 +333,7 @@ export default function FaturasEnergiaVisaoGeralPage() {
 
           {!loading && !error && (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="faturas-energia">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <th className="sticky left-0 z-10 bg-background px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">UC</th>
@@ -305,7 +357,13 @@ export default function FaturasEnergiaVisaoGeralPage() {
                       </td>
                       <td className="px-3 py-2 text-muted-foreground">{r.distribuidora ?? "-"}</td>
                       {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                        <td key={m} className="px-1 py-1 text-center">
+                        <td
+                          key={m}
+                          className="px-1 py-1 text-center"
+                          // A célula do mês é só um ícone: sem isto o Excel
+                          // receberia doze colunas em branco.
+                          data-export-valor={rotuloStatus(r.meses[m])}
+                        >
                           <CellIcon cell={r.meses[m]} />
                         </td>
                       ))}

@@ -15,7 +15,8 @@ import {
 } from "lucide-react";
 import { PlantBillingDetail } from "@/components/billing/plant-billing-detail";
 import { formatBRL, formatMonthYear, shortMonth } from "@/lib/formatters";
-import { matchBusca } from "@/lib/busca";
+import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 
 /* ------------------------------------------------------------------ */
 /* Tipos — espelham GET /api/billing/plants/matriz                      */
@@ -44,6 +45,17 @@ interface UsinaRow {
   primeiroPendente: { ano: number; mes: number } | null;
   totalDevidoPendente: number;
 }
+
+/** Fora do componente para a identidade do array não mudar a cada render. */
+const FACETAS: Faceta<UsinaRow>[] = [
+  {
+    chave: "investidor",
+    label: "Investidor",
+    // Usina com mais de um investidor aparece no filtro de qualquer um deles.
+    valor: (u) => u.investorNames,
+    labelTodos: "Todos os investidores",
+  },
+];
 
 interface Matriz {
   meses: Array<{ ano: number; mes: number }>;
@@ -168,7 +180,6 @@ export default function FaturamentoUsinasPage() {
   const [matriz, setMatriz] = useState<Matriz | null>(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
   const [soPendentes, setSoPendentes] = useState(false);
 
   const [aberto, setAberto] = useState<Aberto | null>(null);
@@ -498,13 +509,20 @@ export default function FaturamentoUsinasPage() {
     return { emAberto, devido, nuncaFaturados };
   }, [matriz]);
 
-  const usinasFiltradas = useMemo(() => {
+  // "Só com pendência" vem antes das facetas: é um recorte da base, e o seletor
+  // de investidor deve oferecer só quem existe dentro dele.
+  const base = useMemo(() => {
     if (!matriz) return [];
-    return matriz.usinas.filter((u) => {
-      if (soPendentes && u.qtdPendentes === 0) return false;
-      return matchBusca(search, [u.name, u.numeroUsina, ...u.investorNames]);
-    });
-  }, [matriz, search, soPendentes]);
+    return soPendentes
+      ? matriz.usinas.filter((u) => u.qtdPendentes > 0)
+      : matriz.usinas;
+  }, [matriz, soPendentes]);
+
+  const filtro = useFiltroTabela(base, {
+    busca: (u) => [u.name, u.numeroUsina, ...u.investorNames],
+    facetas: FACETAS,
+  });
+  const usinasFiltradas = filtro.filtrados;
 
   // Os indicadores descrevem a lista que está embaixo deles — contam sobre
   // `usinasFiltradas`. O `resumo` global segue alimentando o botão "Iniciar
@@ -755,11 +773,31 @@ export default function FaturamentoUsinasPage() {
             <input
               type="text"
               placeholder="Buscar usina ou investidor..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={filtro.busca}
+              onChange={(e) => filtro.setBusca(e.target.value)}
               className={`${inputClass} pl-8 w-56`}
             />
           </div>
+          {filtro.facetas.map((f) => {
+            const lista = filtro.opcoes[f.chave] ?? [];
+            if (lista.length < 2 && !filtro.selecionados[f.chave]) return null;
+            return (
+              <select
+                key={f.chave}
+                value={filtro.selecionados[f.chave] ?? ""}
+                onChange={(e) => filtro.setFaceta(f.chave, e.target.value)}
+                aria-label={f.label}
+                className={`${inputClass} max-w-[200px]`}
+              >
+                <option value="">{f.labelTodos}</option>
+                {lista.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            );
+          })}
           <button
             type="button"
             aria-pressed={soPendentes}
@@ -772,6 +810,11 @@ export default function FaturamentoUsinasPage() {
           >
             Só com pendência
           </button>
+          <ExportarTabela
+            tabela="faturamento-usinas"
+            nome="faturamento-usinas"
+            aba="Faturamento"
+          />
         </div>
       </div>
 
@@ -877,7 +920,7 @@ export default function FaturamentoUsinasPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm border-separate border-spacing-0">
+              <table className="w-full text-sm border-separate border-spacing-0" data-tabela="faturamento-usinas">
                 <thead>
                   <tr>
                     <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide text-muted-foreground border-b">
@@ -923,7 +966,13 @@ export default function FaturamentoUsinasPage() {
                             )
                           : -1;
                         return (
-                          <td key={`${c.ano}-${c.mes}`} className="p-0 border-b">
+                          <td
+                            key={`${c.ano}-${c.mes}`}
+                            className="p-0 border-b"
+                            // Na tela a sigla basta porque há legenda embaixo;
+                            // na planilha, não — vai o rótulo por extenso.
+                            data-export-valor={m.label}
+                          >
                             <button
                               type="button"
                               disabled={fora || abrindo === chave}

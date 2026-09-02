@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import {
   KeyboardIcon,
   Loader2,
@@ -279,6 +280,11 @@ export default function GeracaoManualLotePage() {
               )}
               Salvar {alteracoes.length > 0 && `(${alteracoes.length})`}
             </button>
+            <ExportarTabela
+              tabela="bs-geracao-manual-usinas"
+              nome={`geracao-manual-${ano}-${String(mes).padStart(2, "0")}`}
+              aba="Geração manual"
+            />
           </div>
 
           {alteracoes.length > 0 && (
@@ -305,7 +311,7 @@ export default function GeracaoManualLotePage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="bs-geracao-manual-usinas">
                 <thead>
                   <tr className="text-xs text-muted-foreground border-b bg-muted/30">
                     <th className="text-left font-medium p-3">Usina</th>

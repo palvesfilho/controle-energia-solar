@@ -41,6 +41,7 @@ import {
   YAxis,
 } from "recharts";
 import { Card, CardContent } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { formatBRL, formatKWh } from "@/lib/formatters";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import type {
@@ -796,13 +797,21 @@ export default function AnaliseCreditosPage() {
                 <span className="h-2 w-2 rounded-full bg-emerald-500" />
                 {data.saudePorUsina.filter((s) => s.status === "ok").length} ok
               </span>
+              {showSaude && (
+                <ExportarTabela
+                  tabela="analise-saude-usina"
+                  nome="analise-saude-por-usina"
+                  aba="Saúde por usina"
+                  size="xs"
+                />
+              )}
             </div>
           )}
         </div>
         {showSaude && data && data.saudePorUsina.length > 0 && (
           <div className="rounded-lg border overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full text-xs" data-tabela="analise-saude-usina">
                 <thead className="bg-muted/40 text-muted-foreground uppercase tracking-wide">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">Usina</th>
@@ -1571,6 +1580,14 @@ function BannerCompletude({
                 className={`h-3.5 w-3.5 transition-transform ${showFaltantes ? "rotate-180" : ""}`}
               />
             </button>
+            {showFaltantes && (
+              <ExportarTabela
+                tabela="analise-ucs-faltantes"
+                nome="analise-ucs-sem-fatura"
+                aba="UCs faltantes"
+                size="xs"
+              />
+            )}
           </div>
         )}
       </div>
@@ -1587,7 +1604,7 @@ function BannerCompletude({
 
       {!completo && showFaltantes && completude.ucsFaltantes.length > 0 && (
         <div className={`mt-3 ${muitosFaltantes ? "max-h-80" : "max-h-64"} overflow-y-auto rounded-md border border-amber-200 bg-white dark:border-amber-900 dark:bg-amber-950`}>
-          <table className="w-full text-xs">
+          <table className="w-full text-xs" data-tabela="analise-ucs-faltantes">
             <thead className="sticky top-0 bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100">
               <tr>
                 <th className="px-3 py-1.5 text-left font-medium">Usina</th>
@@ -1689,14 +1706,21 @@ function HistoricoView({
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onVoltar}
-          className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium hover:bg-muted/50 transition-colors"
-        >
-          <ChevronRight className="h-4 w-4 rotate-180" />
-          Voltar à análise
-        </button>
+        <div className="flex items-center gap-2">
+          <ExportarTabela
+            tabela="analise-historico"
+            nome="analise-historico-mensal"
+            aba="Histórico"
+          />
+          <button
+            type="button"
+            onClick={onVoltar}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium hover:bg-muted/50 transition-colors"
+          >
+            <ChevronRight className="h-4 w-4 rotate-180" />
+            Voltar à análise
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -1806,7 +1830,7 @@ function HistoricoView({
 
           <div className="rounded-lg border overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full text-xs" data-tabela="analise-historico">
                 <thead className="bg-muted/40 text-muted-foreground uppercase tracking-wide">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">Mês</th>

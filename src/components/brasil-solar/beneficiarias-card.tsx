@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -174,6 +175,13 @@ export function BeneficiariasCard({ proprietarioId }: { proprietarioId: string }
             <Users className="h-5 w-5 text-emerald-700" />
             <CardTitle className="text-base">Beneficiárias dos créditos</CardTitle>
           </div>
+          <ExportarTabela
+            tabela="bs-beneficiarias"
+            nome="beneficiarias"
+            aba="Beneficiárias"
+            size="xs"
+            className="ml-auto mr-2"
+          />
           {!editing && !loading && (
             <Button
               size="sm"
@@ -201,7 +209,7 @@ export function BeneficiariasCard({ proprietarioId }: { proprietarioId: string }
             </p>
           ) : (
             <div className="overflow-hidden border rounded-lg">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="bs-beneficiarias">
                 <thead className="bg-muted/40 text-xs text-muted-foreground">
                   <tr>
                     <th className="text-left font-medium px-3 py-2">Código UC</th>

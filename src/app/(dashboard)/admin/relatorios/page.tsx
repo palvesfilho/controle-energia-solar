@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { formatBRL, formatKWh, formatMonthYear } from "@/lib/formatters";
 import { Card, CardContent } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 
@@ -24,9 +25,16 @@ export default async function AdminRelatoriosPage() {
         <CardContent className="p-3 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">Todos os relatórios</h2>
-            <span className="text-xs text-muted-foreground">
-              {reports.length} relatório{reports.length !== 1 ? "s" : ""}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">
+                {reports.length} relatório{reports.length !== 1 ? "s" : ""}
+              </span>
+              <ExportarTabela
+                tabela="relatorios"
+                nome="relatorios-mensais"
+                aba="Relatórios"
+              />
+            </div>
           </div>
           {reports.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">
@@ -34,7 +42,7 @@ export default async function AdminRelatoriosPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="relatorios">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Investidor</th>

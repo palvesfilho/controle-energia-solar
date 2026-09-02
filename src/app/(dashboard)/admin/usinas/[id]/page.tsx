@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { Badge } from "@/components/ui/badge";
 import {
   avisoDivergenciaDommo,
@@ -864,6 +865,12 @@ export default function UsinaPage() {
               >
                 Ver rateios
               </Link>
+              <ExportarTabela
+                tabela="usina-consumidores"
+                nome={`usina-${plant.name}-consumidores`}
+                aba="Consumidores"
+                size="xs"
+              />
             </div>
             {totalConsumers === 0 ? (
               <div className="p-6 text-center text-sm text-muted-foreground border rounded-lg">
@@ -873,7 +880,7 @@ export default function UsinaPage() {
               </div>
             ) : (
               <div className="overflow-x-auto border rounded-lg">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm" data-tabela="usina-consumidores">
                   <thead>
                     <tr className="border-b text-muted-foreground">
                       <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Cliente</th>

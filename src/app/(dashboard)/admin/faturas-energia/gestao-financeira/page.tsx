@@ -26,6 +26,8 @@ import { toast } from "sonner";
 import type { FaturasEnergiaRow, FaturaCell } from "@/app/api/admin/faturas-energia/route";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { matchBusca } from "@/lib/busca";
+import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -49,6 +51,37 @@ function getPagamento(cell: FaturaCell | undefined): Pagamento {
   if (!interno && rge) return "so-rge";
   return "aberta";
 }
+
+/** Rótulo do pagamento do mês — é o que o Exportar leva para a planilha. */
+const ROTULO_PAGAMENTO: Record<Pagamento, string> = {
+  conferida: "Conferida",
+  "so-interno": "Paga (aguardando concessionária)",
+  "so-rge": "Concessionária diz paga (sem registro interno)",
+  aberta: "Em aberto",
+  missing: "Sem fatura",
+};
+
+/** Fora do componente para a identidade do array não mudar a cada render. */
+const FACETAS: Faceta<FaturasEnergiaRow>[] = [
+  {
+    chave: "origem",
+    label: "Origem",
+    valor: (r) => (r.origem === "usina" ? "Usinas" : "Clientes"),
+    labelTodos: "Todas",
+  },
+  {
+    chave: "distribuidora",
+    label: "Distribuidora",
+    valor: (r) => r.distribuidora,
+    labelTodos: "Todas",
+  },
+  {
+    chave: "proprietario",
+    label: "Proprietário",
+    valor: (r) => r.proprietario,
+    labelTodos: "Todos",
+  },
+];
 
 function formatBRL(v: number | null): string {
   if (v == null) return "-";
@@ -164,8 +197,6 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
   const [rows, setRows] = useState<FaturasEnergiaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [origemFilter, setOrigemFilter] = useState<"all" | "cliente" | "usina">("all");
   const [apenasAtivas, setApenasAtivas] = useState(false);
 
   // Pagar Faturas modal — reusa o grid mês×UC do main, mas só abre células abertas.
@@ -287,13 +318,18 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
     return arr;
   }, [currentYear]);
 
-  const filtered = useMemo(() => {
-    return rows.filter((r) => {
-      if (apenasAtivas && !r.active) return false;
-      if (origemFilter !== "all" && r.origem !== origemFilter) return false;
-      return matchBusca(search, [r.nome, r.codigoUc, r.proprietario, r.distribuidora]);
-    });
-  }, [rows, search, origemFilter, apenasAtivas]);
+  // "Apenas ativas" vem ANTES das facetas: é um recorte da base, e os seletores
+  // devem oferecer só o que existe dentro dele.
+  const base = useMemo(
+    () => (apenasAtivas ? rows.filter((r) => r.active) : rows),
+    [rows, apenasAtivas],
+  );
+
+  const filtro = useFiltroTabela(base, {
+    busca: (r) => [r.nome, r.codigoUc, r.proprietario, r.distribuidora],
+    facetas: FACETAS,
+  });
+  const filtered = filtro.filtrados;
 
   const totals = useMemo(() => {
     let conferida = 0,
@@ -371,23 +407,34 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
                 ))}
               </select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Origem</label>
-              <select
-                value={origemFilter}
-                onChange={(e) => setOrigemFilter(e.target.value as typeof origemFilter)}
-                className={selectClass}
-              >
-                <option value="all">Todas</option>
-                <option value="cliente">Clientes</option>
-                <option value="usina">Usinas</option>
-              </select>
-            </div>
+            {filtro.facetas.map((f) => {
+              const lista = filtro.opcoes[f.chave] ?? [];
+              if (lista.length < 2 && !filtro.selecionados[f.chave]) return null;
+              return (
+                <div key={f.chave} className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    {f.label}
+                  </label>
+                  <select
+                    value={filtro.selecionados[f.chave] ?? ""}
+                    onChange={(e) => filtro.setFaceta(f.chave, e.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="">{f.labelTodos}</option>
+                    {lista.map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
             <div className="space-y-1.5 flex-1 min-w-[200px]">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Buscar</label>
               <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={filtro.busca}
+                onChange={(e) => filtro.setBusca(e.target.value)}
                 placeholder="UC, nome, proprietário, distribuidora..."
                 className={`${selectClass} w-full`}
               />
@@ -401,6 +448,12 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
               />
               Apenas ativas
             </label>
+            <ExportarTabela
+              tabela="gestao-financeira"
+              nome={`gestao-financeira-${ano}`}
+              aba={`Pagamentos ${ano}`}
+              className="h-9"
+            />
           </div>
         </CardContent>
       </Card>
@@ -504,7 +557,7 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
               </span>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="gestao-financeira">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <th className="sticky left-0 z-10 bg-background px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">UC</th>
@@ -533,7 +586,13 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
                       </td>
                       <td className="px-3 py-2 text-muted-foreground">{r.distribuidora ?? "-"}</td>
                       {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                        <td key={m} className="px-1 py-1 text-center">
+                        <td
+                          key={m}
+                          className="px-1 py-1 text-center"
+                          // A célula do mês é só um ícone: sem isto o Excel
+                          // receberia doze colunas em branco.
+                          data-export-valor={ROTULO_PAGAMENTO[getPagamento(r.meses[m])]}
+                        >
                           <CellIcon cell={r.meses[m]} />
                         </td>
                       ))}
@@ -579,6 +638,12 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
                 />
                 Apenas UCs com fatura sem pagamento interno
               </label>
+              <ExportarTabela
+                tabela="pagar-faturas"
+                nome={`faturas-a-pagar-${ano}`}
+                aba="A pagar"
+                size="xs"
+              />
               <span className="text-xs text-muted-foreground">
                 Clique em <X className="inline h-3.5 w-3.5 text-red-700 mx-0.5" /> pra pagar.
               </span>
@@ -593,7 +658,7 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
               </div>
             ) : (
               <div className="overflow-auto flex-1 -mx-6 px-6">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm" data-tabela="pagar-faturas">
                   <thead className="sticky top-0 bg-background border-b z-10">
                     <tr className="text-muted-foreground">
                       <th className="sticky left-0 z-10 bg-background px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">

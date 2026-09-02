@@ -10,7 +10,8 @@ import type {
 } from "@/app/api/brasil-solar/relatorios/visao-geral/route";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { formatCpfCnpj } from "@/lib/documento";
-import { matchBusca } from "@/lib/busca";
+import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -36,6 +37,23 @@ function buildCellTooltip(cell: RelatorioCell, statusLine: string): string {
   }
   return lines.join("\n");
 }
+
+/** Rótulo do mês — é o que o Exportar leva para a planilha, no lugar do ícone. */
+function rotuloCelula(cell: RelatorioCell | undefined): string {
+  if (!cell || cell.status === "missing") return "Indisponível";
+  if (cell.status === "error") return "Dados faltando";
+  return "Relatório gerável";
+}
+
+/** Fora do componente para a identidade do array não mudar a cada render. */
+const FACETAS: Faceta<RelatorioVisaoGeralRow>[] = [
+  {
+    chave: "distribuidora",
+    label: "Distribuidora",
+    valor: (r) => r.distribuidora,
+    labelTodos: "Todas as distribuidoras",
+  },
+];
 
 function CellIcon({
   cell,
@@ -101,7 +119,6 @@ export default function RelatoriosVisaoGeralPage() {
   const [rows, setRows] = useState<RelatorioVisaoGeralRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
   const [escopo, setEscopo] = useState<"todos" | "comUc" | "semUc">("todos");
   const [plano, setPlano] = useState<"ativos" | "todos">("ativos");
 
@@ -121,20 +138,22 @@ export default function RelatoriosVisaoGeralPage() {
     return arr;
   }, [currentYear]);
 
-  const filtered = useMemo(() => {
+  // Plano e escopo vêm ANTES da faceta: recortam a base de que a tela fala, e o
+  // seletor de distribuidora deve oferecer só o que existe dentro do recorte.
+  const base = useMemo(() => {
     return rows.filter((r) => {
       if (plano === "ativos" && !r.acessoAtivo) return false;
       if (escopo === "comUc" && !r.ucId) return false;
       if (escopo === "semUc" && r.ucId) return false;
-      return matchBusca(search, [
-        r.proprietarioNome,
-        r.cpfCnpj,
-        r.codigoUc,
-        r.ucNome,
-        r.distribuidora,
-      ]);
+      return true;
     });
-  }, [rows, search, escopo, plano]);
+  }, [rows, escopo, plano]);
+
+  const filtro = useFiltroTabela(base, {
+    busca: (r) => [r.proprietarioNome, r.cpfCnpj, r.codigoUc, r.ucNome, r.distribuidora],
+    facetas: FACETAS,
+  });
+  const filtered = filtro.filtrados;
 
   const totals = useMemo(() => {
     let ok = 0,
@@ -206,15 +225,44 @@ export default function RelatoriosVisaoGeralPage() {
                 <option value="semUc">Sem UC vinculada</option>
               </select>
             </div>
+            {filtro.facetas.map((f) => {
+              const lista = filtro.opcoes[f.chave] ?? [];
+              if (lista.length < 2 && !filtro.selecionados[f.chave]) return null;
+              return (
+                <div key={f.chave} className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    {f.label}
+                  </label>
+                  <select
+                    value={filtro.selecionados[f.chave] ?? ""}
+                    onChange={(e) => filtro.setFaceta(f.chave, e.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="">{f.labelTodos}</option>
+                    {lista.map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
             <div className="space-y-1.5 flex-1 min-w-[220px]">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Buscar</label>
               <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={filtro.busca}
+                onChange={(e) => filtro.setBusca(e.target.value)}
                 placeholder="Proprietário, CPF/CNPJ, UC, distribuidora..."
                 className={`${selectClass} w-full`}
               />
             </div>
+            <ExportarTabela
+              tabela="bs-relatorios"
+              nome={`brasil-solar-relatorios-${ano}`}
+              aba={`Relatórios ${ano}`}
+              className="h-9 self-end"
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
@@ -253,7 +301,7 @@ export default function RelatoriosVisaoGeralPage() {
 
           {!loading && !error && (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="bs-relatorios">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <th className="sticky left-0 z-10 bg-background px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">
@@ -318,7 +366,13 @@ export default function RelatoriosVisaoGeralPage() {
                       <td className="px-3 py-2">{r.ucNome ?? "-"}</td>
                       <td className="px-3 py-2 text-muted-foreground">{r.distribuidora ?? "-"}</td>
                       {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                        <td key={m} className="px-1 py-1 text-center">
+                        <td
+                          key={m}
+                          className="px-1 py-1 text-center"
+                          // A célula do mês é só um ícone: sem isto o Excel
+                          // receberia doze colunas em branco.
+                          data-export-valor={rotuloCelula(r.meses[m])}
+                        >
                           <CellIcon
                             cell={r.meses[m]}
                             proprietarioId={r.proprietarioId}

@@ -28,6 +28,7 @@ import {
   Target,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import {
   Dialog,
   DialogContent,
@@ -1009,6 +1010,12 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
               <Plus className="h-3.5 w-3.5" />
               Vincular Usina
             </button>
+            <ExportarTabela
+              tabela="bs-proprietario-usinas"
+              nome={`usinas-${data.nome}`}
+              aba="Usinas"
+              size="xs"
+            />
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -1018,7 +1025,7 @@ export default function ProprietarioDetailPage({ params }: { params: Promise<{ i
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="bs-proprietario-usinas">
                 <thead>
                   <tr className="border-b text-muted-foreground text-xs">
                     <th className="text-left py-2 px-3 font-medium">Nome</th>

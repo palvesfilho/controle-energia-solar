@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { formatKWh, formatBRL, formatMonthYear } from "@/lib/formatters";
@@ -258,15 +259,23 @@ export default function LancamentosPage() {
             <CardContent className="p-3 space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold">Histórico de Geração</h2>
-                <span className="text-xs text-muted-foreground">
-                  {plantHistory.length} lançamento{plantHistory.length !== 1 ? "s" : ""}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {plantHistory.length} lançamento{plantHistory.length !== 1 ? "s" : ""}
+                  </span>
+                  <ExportarTabela
+                    tabela="lancamentos-geracao"
+                    nome="lancamentos-geracao"
+                    aba="Geração"
+                    size="xs"
+                  />
+                </div>
               </div>
               {plantHistory.length === 0 ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">Nenhum lançamento registrado.</div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm" data-tabela="lancamentos-geracao">
                     <thead>
                       <tr className="border-b text-muted-foreground">
                         <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Usina</th>
@@ -417,15 +426,23 @@ export default function LancamentosPage() {
             <CardContent className="p-3 space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold">Histórico de Consumo</h2>
-                <span className="text-xs text-muted-foreground">
-                  {consumerHistory.length} lançamento{consumerHistory.length !== 1 ? "s" : ""}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {consumerHistory.length} lançamento{consumerHistory.length !== 1 ? "s" : ""}
+                  </span>
+                  <ExportarTabela
+                    tabela="lancamentos-consumo"
+                    nome="lancamentos-consumo"
+                    aba="Consumo"
+                    size="xs"
+                  />
+                </div>
               </div>
               {consumerHistory.length === 0 ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">Nenhum lançamento registrado.</div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm" data-tabela="lancamentos-consumo">
                     <thead>
                       <tr className="border-b text-muted-foreground">
                         <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Consumidor</th>

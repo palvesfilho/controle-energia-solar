@@ -10,6 +10,7 @@ import {
   Copy,
   Filter,
 } from "lucide-react";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { toast } from "sonner";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 
@@ -370,7 +371,16 @@ export function UploadFaturasButton({
               )}
 
               {rows && rows.length > 0 && (
-                <table className="w-full text-sm">
+                <>
+                <div className="flex justify-end px-4 pt-3">
+                  <ExportarTabela
+                    tabela="upload-faturas-resultado"
+                    nome="resultado-upload-faturas"
+                    aba="Resultado"
+                    size="xs"
+                  />
+                </div>
+                <table className="w-full text-sm" data-tabela="upload-faturas-resultado">
                   <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur">
                     <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground">
                       <th className="px-4 py-2 font-semibold">Arquivo</th>
@@ -466,6 +476,7 @@ export function UploadFaturasButton({
                     })}
                   </tbody>
                 </table>
+                </>
               )}
 
               {rows && visiveis.length === 0 && (

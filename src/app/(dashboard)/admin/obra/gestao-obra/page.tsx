@@ -19,7 +19,8 @@ import {
   Users,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { matchBusca } from "@/lib/busca";
+import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import type {
   GestaoObraRow,
   ObraStatus,
@@ -58,6 +59,22 @@ function formatPotencia(v: number | null): string {
   if (v == null) return "—";
   return `${v.toFixed(2)} kWp`;
 }
+
+/** Fora do componente para a identidade do array não mudar a cada render. */
+const FACETAS: Faceta<GestaoObraRow>[] = [
+  {
+    chave: "status",
+    label: "Status",
+    valor: (r) => STATUS_UI[r.status]?.label ?? r.status,
+    labelTodos: "Todos",
+  },
+  {
+    chave: "responsavel",
+    label: "Responsável",
+    valor: (r) => r.responsavel,
+    labelTodos: "Todos os responsáveis",
+  },
+];
 
 function StatusBadge({ status }: { status: ObraStatus }) {
   const it = STATUS_UI[status] ?? STATUS_UI.PLANEJAMENTO;
@@ -134,8 +151,11 @@ export default function GestaoObraPage() {
   const [rows, setRows] = useState<GestaoObraRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<"all" | ObraStatus>("all");
-  const [search, setSearch] = useState("");
+
+  const filtro = useFiltroTabela(rows, {
+    busca: (r) => [r.nome, r.cliente, r.proprietarioNome, r.local, r.responsavel],
+    facetas: FACETAS,
+  });
   const [finalizandoId, setFinalizandoId] = useState<string | null>(null);
 
   const load = () => {
@@ -169,18 +189,7 @@ export default function GestaoObraPage() {
     }
   }
 
-  const filtered = useMemo(() => {
-    return rows.filter((r) => {
-      if (statusFilter !== "all" && r.status !== statusFilter) return false;
-      return matchBusca(search, [
-        r.nome,
-        r.cliente,
-        r.proprietarioNome,
-        r.local,
-        r.responsavel,
-      ]);
-    });
-  }, [rows, statusFilter, search]);
+  const filtered = filtro.filtrados;
 
   // Os KPIs contam sobre o conjunto FILTRADO: o número em cima da tela tem que
   // descrever a lista que está embaixo dela.
@@ -241,23 +250,29 @@ export default function GestaoObraPage() {
       <Card>
         <CardContent className="p-3">
           <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Status
-              </label>
-              <select
-                value={statusFilter}
-                onChange={(e) =>
-                  setStatusFilter(e.target.value as typeof statusFilter)
-                }
-                className={selectClass}
-              >
-                <option value="all">Todos</option>
-                <option value="PLANEJAMENTO">Planejamento</option>
-                <option value="EM_EXECUCAO">Em execução</option>
-                <option value="PAUSADA">Pausada</option>
-              </select>
-            </div>
+            {filtro.facetas.map((f) => {
+              const lista = filtro.opcoes[f.chave] ?? [];
+              if (lista.length < 2 && !filtro.selecionados[f.chave]) return null;
+              return (
+                <div key={f.chave} className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    {f.label}
+                  </label>
+                  <select
+                    value={filtro.selecionados[f.chave] ?? ""}
+                    onChange={(e) => filtro.setFaceta(f.chave, e.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="">{f.labelTodos}</option>
+                    {lista.map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
             <div className="space-y-1.5 flex-1 min-w-[220px]">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Buscar
@@ -265,8 +280,8 @@ export default function GestaoObraPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  value={filtro.busca}
+                  onChange={(e) => filtro.setBusca(e.target.value)}
                   placeholder="Nome, cliente, proprietário, local..."
                   className={`${selectClass} w-full pl-9`}
                 />
@@ -287,6 +302,12 @@ export default function GestaoObraPage() {
               <RefreshCw className="h-4 w-4" />
               Atualizar
             </button>
+            <ExportarTabela
+              tabela="gestao-obra"
+              nome="obras"
+              aba="Obras"
+              className="h-9"
+            />
           </div>
         </CardContent>
       </Card>
@@ -328,7 +349,7 @@ export default function GestaoObraPage() {
         <Card>
           <CardContent className="p-3">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="gestao-obra">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">

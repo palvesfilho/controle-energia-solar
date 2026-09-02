@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -923,14 +924,22 @@ export function PlantBillingDetail({
 
       <Card>
         <CardContent className="p-4 space-y-3">
-          <div>
-            <h2 className="text-sm font-semibold flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-emerald-600" />
-              Resumo do faturamento mensal da usina
-            </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {data.ucsCompensacao.length} UC(s) no rateio do período
-            </p>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-emerald-600" />
+                Resumo do faturamento mensal da usina
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {data.ucsCompensacao.length} UC(s) no rateio do período
+              </p>
+            </div>
+            <ExportarTabela
+              tabela="faturamento-usina-ucs"
+              nome="faturamento-usina-ucs"
+              aba="UCs do rateio"
+              size="xs"
+            />
           </div>
           {data.ucsCompensacao.length === 0 ? (
             <p className="text-sm text-muted-foreground italic">
@@ -939,7 +948,7 @@ export function PlantBillingDetail({
             </p>
           ) : (
             <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="faturamento-usina-ucs">
                 <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">UC</th>

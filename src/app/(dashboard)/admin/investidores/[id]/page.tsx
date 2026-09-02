@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
@@ -564,6 +565,13 @@ export default function DetalhesInvestidorPage() {
                     <h3 className="text-sm font-semibold flex items-center gap-2 mb-3">
                       <Users className="h-4 w-4 text-emerald-600" />
                       Clientes vinculados ({ip.plant.consumers.length})
+                      <ExportarTabela
+                        tabela={`investidor-clientes-${ip.plant.id}`}
+                        nome={`clientes-${ip.plant.name}`}
+                        aba="Clientes"
+                        size="xs"
+                        className="ml-auto"
+                      />
                     </h3>
 
                     {ip.plant.consumers.length === 0 ? (
@@ -572,7 +580,10 @@ export default function DetalhesInvestidorPage() {
                       </p>
                     ) : (
                       <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
+                        <table
+                          className="w-full text-sm"
+                          data-tabela={`investidor-clientes-${ip.plant.id}`}
+                        >
                           <thead>
                             <tr className="border-b text-muted-foreground">
                               <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">

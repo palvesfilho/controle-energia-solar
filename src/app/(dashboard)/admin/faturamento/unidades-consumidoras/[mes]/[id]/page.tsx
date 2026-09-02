@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { ArrowLeft, RefreshCw, Save, Send, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { formatMonthYear, formatBRL } from "@/lib/formatters";
@@ -389,14 +390,22 @@ export default function CobrancaUCDetalhePage() {
                     <strong>
                       Cobrança parcelada — {pagas}/{installments.length} pagas
                     </strong>
-                    {data.asaasSyncedAt && (
-                      <span className="text-xs text-muted-foreground">
-                        Última sync:{" "}
-                        {new Date(data.asaasSyncedAt).toLocaleString("pt-BR")}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {data.asaasSyncedAt && (
+                        <span className="text-xs text-muted-foreground">
+                          Última sync:{" "}
+                          {new Date(data.asaasSyncedAt).toLocaleString("pt-BR")}
+                        </span>
+                      )}
+                      <ExportarTabela
+                        tabela="cobranca-parcelas"
+                        nome="parcelas-da-cobranca"
+                        aba="Parcelas"
+                        size="xs"
+                      />
+                    </div>
                   </div>
-                  <table className="w-full text-xs">
+                  <table className="w-full text-xs" data-tabela="cobranca-parcelas">
                     <thead>
                       <tr className="text-muted-foreground border-b">
                         <th className="text-left py-1">#</th>

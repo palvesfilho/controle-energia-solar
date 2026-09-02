@@ -15,6 +15,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { toast } from "sonner";
 import { matchBusca } from "@/lib/busca";
 
@@ -507,14 +508,22 @@ export default function ImportarClientesBrasilSolarPage() {
       {rows.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              3. Preview ({rows.length} registros)
-            </CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                3. Preview ({rows.length} registros)
+              </CardTitle>
+              <ExportarTabela
+                tabela="bs-import-preview"
+                nome="importacao-preview"
+                aba="Preview"
+                size="xs"
+              />
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto max-h-[500px]">
-              <table className="w-full text-xs">
+              <table className="w-full text-xs" data-tabela="bs-import-preview">
                 <thead className="sticky top-0 bg-background z-10">
                   <tr className="border-b text-muted-foreground">
                     <th className="text-left py-2 px-3 font-medium">#</th>

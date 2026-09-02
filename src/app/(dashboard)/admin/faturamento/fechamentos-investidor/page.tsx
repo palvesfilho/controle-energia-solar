@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { CalendarCheck, Loader2, PlayCircle } from "lucide-react";
 import { toast } from "sonner";
 import { formatBRL, formatMonthYear } from "@/lib/formatters";
@@ -174,6 +175,11 @@ export default function FechamentosInvestidorPage() {
                 </>
               )}
             </button>
+            <ExportarTabela
+              tabela="fechamentos-investidor"
+              nome={`fechamentos-investidor-${ano}-${String(mes).padStart(2, "0")}`}
+              aba="Fechamentos"
+            />
           </div>
         </CardContent>
       </Card>
@@ -226,7 +232,7 @@ export default function FechamentosInvestidorPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="fechamentos-investidor">
                 <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">Investidor</th>

@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Eye, Trash2, Search, ArrowUpDown, Users, UserCheck, UserX, Sun, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Eye, Trash2, ArrowUpDown, Users, UserCheck, UserX, Sun, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
-import { matchBusca } from "@/lib/busca";
+import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
+import { FiltrosTabela } from "@/components/ui/filtros-tabela";
 import {
   Dialog,
   DialogContent,
@@ -29,11 +30,26 @@ interface InvestorData {
 type SortKey = "name" | "email" | "usinas" | "status";
 type SortDir = "asc" | "desc";
 
+/** Fora do componente para a identidade do array não mudar a cada render. */
+const FACETAS: Faceta<InvestorData>[] = [
+  {
+    chave: "usina",
+    label: "Usina",
+    // Investidor com mais de uma usina aparece em qualquer uma delas.
+    valor: (i) => i.plants.map((p) => p.plant.name),
+    labelTodos: "Todas as usinas",
+  },
+  {
+    chave: "status",
+    label: "Status",
+    valor: (i) => (i.user.active ? "Ativo" : "Inativo"),
+    labelTodos: "Todos os status",
+  },
+];
+
 export default function InvestidoresPage() {
   const [investors, setInvestors] = useState<InvestorData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"" | "ativo" | "inativo">("");
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "name", dir: "asc" });
   const [confirmTarget, setConfirmTarget] = useState<InvestorData | null>(null);
   const [confirmText, setConfirmText] = useState("");
@@ -89,23 +105,14 @@ export default function InvestidoresPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const stats = useMemo(() => {
-    const ativos = investors.filter((i) => i.user.active).length;
-    const comUsinas = investors.filter((i) => i.plants.length > 0).length;
-    return { total: investors.length, ativos, inativos: investors.length - ativos, comUsinas };
-  }, [investors]);
+  const filtro = useFiltroTabela(investors, {
+    sincronizarUrl: true,
+    busca: (inv) => [inv.user.name, inv.user.email, inv.phone, inv.document],
+    facetas: FACETAS,
+  });
 
   const filtered = useMemo(() => {
-    const rows = investors.filter((inv) => {
-      if (statusFilter === "ativo" && !inv.user.active) return false;
-      if (statusFilter === "inativo" && inv.user.active) return false;
-      return matchBusca(search, [
-        inv.user.name,
-        inv.user.email,
-        inv.phone,
-        inv.document,
-      ]);
-    });
+    const rows = [...filtro.filtrados];
 
     rows.sort((a, b) => {
       const dir = sort.dir === "asc" ? 1 : -1;
@@ -121,11 +128,10 @@ export default function InvestidoresPage() {
       }
     });
     return rows;
-  }, [investors, search, statusFilter, sort]);
+  }, [filtro.filtrados, sort]);
 
   // Os cards descrevem a lista que está embaixo deles — contam sobre `filtered`.
-  // `stats` (global) continua servindo ao "N de M" acima da tabela, que fala da
-  // base inteira de propósito.
+  // O "N de M" acima da tabela é da própria barra de filtros.
   const statsFiltrados = useMemo(
     () => ({
       total: filtered.length,
@@ -165,29 +171,12 @@ export default function InvestidoresPage() {
 
       <Card>
         <CardContent className="p-3 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[220px]">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por nome, email, telefone ou documento..."
-                className="w-full pl-8 pr-3 py-1.5 text-sm border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-              />
-            </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-              className="text-sm border rounded-lg px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-            >
-              <option value="">Todos os status</option>
-              <option value="ativo">Ativos</option>
-              <option value="inativo">Inativos</option>
-            </select>
-            <span className="ml-auto text-xs text-muted-foreground">
-              {filtered.length} de {stats.total}
-            </span>
-          </div>
+          <FiltrosTabela
+            filtro={filtro}
+            placeholder="Buscar por nome, email, telefone ou documento..."
+            substantivo="investidores"
+            exportar={{ tabela: "investidores", nome: "investidores", aba: "Investidores" }}
+          />
 
           {loading ? (
             <div className="p-8 text-center text-sm text-muted-foreground">Carregando...</div>
@@ -197,7 +186,7 @@ export default function InvestidoresPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="investidores">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <SortHeader label="Nome" active={sort.key === "name"} dir={sort.dir} onClick={() => toggleSort("name")} />

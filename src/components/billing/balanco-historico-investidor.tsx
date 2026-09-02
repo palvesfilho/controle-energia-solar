@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Check, Loader2, Pencil, ScrollText } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -191,10 +192,19 @@ export function BalancoHistoricoInvestidor({
                         {brl(bloco.saldoAcumulado)}
                       </b>
                     </span>
+                    <ExportarTabela
+                      tabela={`balanco-investidor-${bloco.investorId}`}
+                      nome={`balanco-${bloco.investorNome}`}
+                      aba="Balanço"
+                      size="xs"
+                    />
                   </div>
                 </div>
                 <div className="overflow-x-auto rounded border bg-background">
-                  <table className="w-full text-sm">
+                  <table
+                    className="w-full text-sm"
+                    data-tabela={`balanco-investidor-${bloco.investorId}`}
+                  >
                     <thead className="bg-muted/40">
                       <tr className="text-xs uppercase tracking-wide text-muted-foreground">
                         <th className="py-2 px-2 text-left">Mês</th>

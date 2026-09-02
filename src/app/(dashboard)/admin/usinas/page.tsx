@@ -8,7 +8,6 @@ import {
   Plus,
   Pencil,
   Trash2,
-  Search,
   ArrowUpDown,
   Sun,
   Zap,
@@ -18,7 +17,8 @@ import {
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { formatCpfCnpj } from "@/lib/documento";
 import { formatKWh } from "@/lib/formatters";
-import { matchBusca } from "@/lib/busca";
+import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
+import { FiltrosTabela } from "@/components/ui/filtros-tabela";
 import { concessionariaDaUsina } from "@/lib/concessionarias";
 import { ExcluirUsinaDialog } from "@/components/plants/excluir-usina-dialog";
 
@@ -50,13 +50,52 @@ interface PlantData {
 type SortKey = "name" | "potencia" | "geracao" | "ucs" | "status";
 type SortDir = "asc" | "desc";
 
+/**
+ * Fora do componente para a identidade do array não mudar a cada render — é o
+ * que mantém estável o cálculo das opções de cada seletor.
+ */
+const FACETAS: Faceta<PlantData>[] = [
+  {
+    chave: "concessionaria",
+    label: "Concessionária",
+    // Os dois campos são o mesmo conceito; a função escolhe o que vale.
+    valor: (p) => concessionariaDaUsina(p),
+    labelTodos: "Todas as concessionárias",
+  },
+  {
+    chave: "grupo",
+    label: "Grupo",
+    valor: (p) => p.grupo,
+    labelTodos: "Todos os grupos",
+  },
+  {
+    chave: "status",
+    label: "Status",
+    valor: (p) => (p.active ? "Ativa" : "Inativa"),
+    labelTodos: "Todos os status",
+  },
+];
+
 export default function UsinasPage() {
   const [plants, setPlants] = useState<PlantData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"" | "ativo" | "inativo">("");
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "name", dir: "asc" });
   const [excluirTarget, setExcluirTarget] = useState<PlantData | null>(null);
+
+  const filtro = useFiltroTabela(plants, {
+    sincronizarUrl: true,
+    busca: (p) => [
+      p.name,
+      p.numeroUsina,
+      p.unidadeConsumidora,
+      p.cpfCnpj,
+      // Buscar pelos DOIS: quem digita "RGE" tem que achar tanto a usina
+      // legada (distribuidora="RGE") quanto a nova (concessionaria="RGE/CPFL").
+      p.concessionaria,
+      p.distribuidora,
+    ],
+    facetas: FACETAS,
+  });
 
   useEffect(() => {
     fetch("/api/plants")
@@ -65,32 +104,8 @@ export default function UsinasPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const stats = useMemo(() => {
-    // Conta pelo `active`, o campo que os filtros de Faturamento, Agenda e
-    // painel admin usam de fato. O `statusContrato` é texto solto da importação
-    // (9 das 29 usinas estão em branco) e contava menos usinas do que a operação
-    // realmente tem em circulação.
-    const ativas = plants.filter((p) => p.active).length;
-    const totalPotencia = plants.reduce((acc, p) => acc + (p.potenciaInstalada ?? 0), 0);
-    const totalUcs = plants.reduce((acc, p) => acc + p.ucsRateioCount, 0);
-    return { total: plants.length, ativas, totalPotencia, totalUcs };
-  }, [plants]);
-
   const filtered = useMemo(() => {
-    const rows = plants.filter((p) => {
-      if (statusFilter === "ativo" && !p.active) return false;
-      if (statusFilter === "inativo" && p.active) return false;
-      return matchBusca(search, [
-        p.name,
-        p.numeroUsina,
-        p.unidadeConsumidora,
-        p.cpfCnpj,
-        // Buscar pelos DOIS: quem digita "RGE" tem que achar tanto a usina
-        // legada (distribuidora="RGE") quanto a nova (concessionaria="RGE/CPFL").
-        p.concessionaria,
-        p.distribuidora,
-      ]);
-    });
+    const rows = [...filtro.filtrados];
 
     rows.sort((a, b) => {
       const dir = sort.dir === "asc" ? 1 : -1;
@@ -117,10 +132,13 @@ export default function UsinasPage() {
       }
     });
     return rows;
-  }, [plants, search, statusFilter, sort]);
+  }, [filtro.filtrados, sort]);
 
   // Os cards descrevem a lista que está embaixo deles — contam sobre `filtered`.
-  // `stats` (global) continua servindo ao "N de M" acima da tabela.
+  // O "N de M" acima da tabela é da própria barra de filtros.
+  // A contagem de ativas é pelo `active`, o campo que Faturamento, Agenda e
+  // painel admin usam de fato — o `statusContrato` é texto solto da importação
+  // (9 das 29 usinas em branco) e contava menos usinas do que a operação tem.
   const statsFiltrados = useMemo(
     () => ({
       total: filtered.length,
@@ -165,29 +183,12 @@ export default function UsinasPage() {
 
       <Card>
         <CardContent className="p-3 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[220px]">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por nome, número, CPF/CNPJ ou concessionária..."
-                className="w-full pl-8 pr-3 py-1.5 text-sm border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-              />
-            </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-              className="text-sm border rounded-lg px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-            >
-              <option value="">Todos os status</option>
-              <option value="ativo">Ativas</option>
-              <option value="inativo">Inativas</option>
-            </select>
-            <span className="ml-auto text-xs text-muted-foreground">
-              {filtered.length} de {stats.total}
-            </span>
-          </div>
+          <FiltrosTabela
+            filtro={filtro}
+            placeholder="Buscar por nome, número, CPF/CNPJ ou concessionária..."
+            substantivo="usinas"
+            exportar={{ tabela: "usinas", nome: "usinas", aba: "Usinas" }}
+          />
 
           {loading ? (
             <div className="p-8 text-center text-sm text-muted-foreground">Carregando...</div>
@@ -197,7 +198,7 @@ export default function UsinasPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="usinas">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <SortHeader label="Nome" active={sort.key === "name"} dir={sort.dir} onClick={() => toggleSort("name")} />

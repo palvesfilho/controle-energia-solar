@@ -5,7 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ArrowUpDown, Search } from "lucide-react";
 import { formatBRL, formatKWh, formatMonthYear } from "@/lib/formatters";
 import { formatCodigoUc } from "@/lib/uc-codigo";
-import { matchBusca } from "@/lib/busca";
+import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 
 interface BalancoRow {
   id: string;
@@ -18,6 +19,16 @@ interface BalancoRow {
   valorCobranca: number | null;
   valorEconomia: number | null;
 }
+
+/** Fora do componente para a identidade do array não mudar a cada render. */
+const FACETAS: Faceta<BalancoRow>[] = [
+  {
+    chave: "consumidor",
+    label: "Consumidor",
+    valor: (r) => r.consumerName,
+    labelTodos: "Todos os consumidores",
+  },
+];
 
 type SortKey =
   | "codigoUc"
@@ -38,8 +49,12 @@ export default function BalancoMensalPage() {
   const [mes, setMes] = useState(now.getMonth() + 1);
 
   const [rows, setRows] = useState<BalancoRow[]>([]);
+
+  const filtro = useFiltroTabela(rows, {
+    busca: (r) => [r.nome, r.codigoUc, r.consumerName],
+    facetas: FACETAS,
+  });
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({
     key: "nome",
     dir: "asc",
@@ -55,9 +70,7 @@ export default function BalancoMensalPage() {
   }, [ano, mes]);
 
   const filtered = useMemo(() => {
-    const list = rows.filter((r) =>
-      matchBusca(search, [r.nome, r.codigoUc, r.consumerName])
-    );
+    const list = [...filtro.filtrados];
 
     const dir = sort.dir === "asc" ? 1 : -1;
     list.sort((a, b) => {
@@ -70,7 +83,7 @@ export default function BalancoMensalPage() {
       return (av - bv) * dir;
     });
     return list;
-  }, [rows, search, sort]);
+  }, [filtro.filtrados, sort]);
 
   // Rodapé de totais soma `filtered`, NÃO `rows`: uma linha de "Totais" embaixo
   // de uma tabela filtrada tem que somar o que está acima dela.
@@ -116,12 +129,32 @@ export default function BalancoMensalPage() {
             <div className="relative flex-1 min-w-[240px]">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                value={filtro.busca}
+                onChange={(e) => filtro.setBusca(e.target.value)}
                 placeholder="Buscar por UC, nome ou consumidor..."
                 className="w-full pl-8 pr-3 py-1.5 text-sm border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
               />
             </div>
+            {filtro.facetas.map((f) => {
+              const lista = filtro.opcoes[f.chave] ?? [];
+              if (lista.length < 2 && !filtro.selecionados[f.chave]) return null;
+              return (
+                <select
+                  key={f.chave}
+                  value={filtro.selecionados[f.chave] ?? ""}
+                  onChange={(e) => filtro.setFaceta(f.chave, e.target.value)}
+                  aria-label={f.label}
+                  className={selectClass}
+                >
+                  <option value="">{f.labelTodos}</option>
+                  {lista.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              );
+            })}
             <select
               value={mes}
               onChange={(e) => setMes(Number(e.target.value))}
@@ -147,6 +180,11 @@ export default function BalancoMensalPage() {
             <span className="ml-auto text-xs text-muted-foreground">
               {filtered.length} de {rows.length}
             </span>
+            <ExportarTabela
+              tabela="balanco-mensal"
+              nome={`balanco-mensal-${ano}-${String(mes).padStart(2, "0")}`}
+              aba="Balanço"
+            />
           </div>
 
           {loading ? (
@@ -161,7 +199,7 @@ export default function BalancoMensalPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="balanco-mensal">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <SortHeader
@@ -242,7 +280,7 @@ export default function BalancoMensalPage() {
                   <tfoot>
                     <tr className="border-t bg-muted/20 font-medium">
                       <td className="py-2.5 px-3" colSpan={2}>
-                        {search.trim()
+                        {filtro.ativos > 0
                           ? `Totais do filtro (${filtered.length} de ${rows.length})`
                           : "Totais"}
                       </td>

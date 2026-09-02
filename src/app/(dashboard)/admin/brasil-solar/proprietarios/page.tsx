@@ -14,6 +14,7 @@ import {
   FileBarChart2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { InversorTag } from "@/components/brasil-solar/inversor-tag";
 
 interface Proprietario {
@@ -151,11 +152,18 @@ export default function ProprietariosPage() {
             <span className="text-xs text-muted-foreground">
               {pagination.total} proprietarios
             </span>
+            <ExportarTabela
+              tabela="bs-proprietarios"
+              nome="brasil-solar-proprietarios"
+              aba="Proprietários"
+              paginada
+              className="ml-auto"
+            />
           </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" data-tabela="bs-proprietarios">
               <thead>
                 <tr className="border-b text-muted-foreground text-xs">
                   <SortHeader field="nome">Nome</SortHeader>

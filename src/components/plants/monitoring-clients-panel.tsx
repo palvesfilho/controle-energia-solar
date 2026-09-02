@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { formatKWh } from "@/lib/formatters";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { formatCpfCnpj } from "@/lib/documento";
@@ -149,7 +150,7 @@ export function MonitoringClientsPanel({ plantId, embedded }: Props) {
               </span>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="usinas-monitoradas">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <th className="text-left py-2 px-3 font-medium text-xs uppercase tracking-wide">Nome</th>
@@ -227,6 +228,13 @@ export function MonitoringClientsPanel({ plantId, embedded }: Props) {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">Usinas Monitoradas (Inversores)</CardTitle>
+          <div className="flex items-center gap-2">
+          <ExportarTabela
+            tabela="usinas-monitoradas"
+            nome="usinas-monitoradas"
+            aba="Monitoradas"
+            size="xs"
+          />
           <button
             type="button"
             onClick={() => setPickerOpen(true)}
@@ -235,6 +243,7 @@ export function MonitoringClientsPanel({ plantId, embedded }: Props) {
             <Plus className="h-3.5 w-3.5" />
             Adicionar
           </button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="p-0">{body}</CardContent>

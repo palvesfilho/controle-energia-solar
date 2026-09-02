@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import {
   Loader2,
   PencilLine,
@@ -231,6 +232,11 @@ export function GeracaoManualCard({
             <Plus className="h-4 w-4" />
             Lançar período
           </button>
+          <ExportarTabela
+            tabela="bs-geracao-manual"
+            nome="geracao-manual"
+            aba="Geração manual"
+          />
         </div>
       </CardHeader>
       <CardContent>
@@ -245,7 +251,7 @@ export function GeracaoManualCard({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" data-tabela="bs-geracao-manual">
               <thead>
                 <tr className="text-xs text-muted-foreground border-b">
                   <th className="text-left font-medium py-2 pr-3">Período</th>

@@ -8,7 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   Plus,
   Pencil,
-  Search,
   ArrowUpDown,
   Factory,
   CheckCircle2,
@@ -17,7 +16,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { formatCodigoUc } from "@/lib/uc-codigo";
-import { matchBusca } from "@/lib/busca";
+import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
+import { FiltrosTabela } from "@/components/ui/filtros-tabela";
 import {
   type FaseImplantacao,
   type FaseUc,
@@ -46,6 +46,34 @@ interface UCData {
 
 type SortKey = "nome" | "codigoUc" | "consumo" | "status" | "espera";
 type SortDir = "asc" | "desc";
+
+/** Fora do componente para a identidade do array não mudar a cada render. */
+const FACETAS: Faceta<UCData>[] = [
+  {
+    chave: "usina",
+    label: "Usina",
+    valor: (u) => u.plant?.name,
+    labelTodos: "Todas as usinas",
+  },
+  {
+    chave: "distribuidora",
+    label: "Distribuidora",
+    valor: (u) => u.distribuidora,
+    labelTodos: "Todas as distribuidoras",
+  },
+  {
+    chave: "status",
+    label: "Status do contrato",
+    valor: (u) => u.statusContrato,
+    labelTodos: "Todos os status",
+  },
+  {
+    chave: "cidade",
+    label: "Cidade",
+    valor: (u) => u.cidade,
+    labelTodos: "Todas as cidades",
+  },
+];
 
 /**
  * Aba da lista. A separação existe porque as duas fases exigem trabalhos
@@ -88,9 +116,6 @@ function UnidadesConsumidorasConteudo() {
 
   const [ucs, setUcs] = useState<UCData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [filterDistribuidora, setFilterDistribuidora] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
   const [recarregar, setRecarregar] = useState(0);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "nome", dir: "asc" });
 
@@ -107,22 +132,25 @@ function UnidadesConsumidorasConteudo() {
 
   const irPara = useCallback(
     (nova: Aba, apenasNovas = false) => {
-      const p = new URLSearchParams();
+      // Parte da query atual, e não de uma vazia: a busca e as facetas da barra
+      // de filtros também moram na URL, e trocar de aba não pode apagá-las.
+      const p = new URLSearchParams(Array.from(searchParams.entries()));
       if (nova !== "faturando") p.set("fase", nova);
+      else p.delete("fase");
       if (apenasNovas) p.set("novas", "1");
+      else p.delete("novas");
       const qs = p.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
-    [router, pathname],
+    [router, pathname, searchParams],
   );
 
+  // A lista vem inteira e o filtro é do navegador. Antes, distribuidora e status
+  // iam para a API e cada troca de seletor custava uma consulta — e o Exportar
+  // teria que adivinhar se o que está na tela é tudo ou um recorte do servidor.
   useEffect(() => {
     let cancelado = false;
-    const params = new URLSearchParams();
-    if (filterDistribuidora) params.set("distribuidora", filterDistribuidora);
-    if (filterStatus) params.set("status", filterStatus);
-
-    fetch(`/api/consumer-units?${params.toString()}`)
+    fetch("/api/consumer-units")
       .then((res) => res.json())
       .then((d) => {
         if (!cancelado) setUcs(d);
@@ -133,12 +161,7 @@ function UnidadesConsumidorasConteudo() {
     return () => {
       cancelado = true;
     };
-  }, [filterDistribuidora, filterStatus, recarregar]);
-
-  const distribuidoras = useMemo(
-    () => Array.from(new Set(ucs.map((u) => u.distribuidora).filter(Boolean))) as string[],
-    [ucs]
-  );
+  }, [recarregar]);
 
   const stats = useMemo(() => {
     // O KPI de "ativas" saiu daqui: com todas as UCs da tela ativas, ele não
@@ -165,12 +188,26 @@ function UnidadesConsumidorasConteudo() {
     [ucs]
   );
 
+  // A aba e o recorte "só novas" vêm ANTES da barra de filtros: eles decidem de
+  // que lista se está falando, e as opções dos seletores têm que sair dela.
+  const ucsDaAba = useMemo(
+    () =>
+      ucs.filter((u) => {
+        if (aba !== "todas" && u.implantacao?.fase !== faseDaAba(aba)) return false;
+        if (soNovas && !u.implantacao?.aguardandoLiberacao) return false;
+        return true;
+      }),
+    [ucs, aba, soNovas],
+  );
+
+  const filtro = useFiltroTabela(ucsDaAba, {
+    sincronizarUrl: true,
+    busca: (u) => [u.nome, u.codigoUc, u.consumer?.name, u.plant?.name, u.cidade],
+    facetas: FACETAS,
+  });
+
   const filtered = useMemo(() => {
-    const rows = ucs.filter((u) => {
-      if (aba !== "todas" && u.implantacao?.fase !== faseDaAba(aba)) return false;
-      if (soNovas && !u.implantacao?.aguardandoLiberacao) return false;
-      return matchBusca(search, [u.nome, u.codigoUc, u.consumer?.name, u.plant?.name]);
-    });
+    const rows = [...filtro.filtrados];
 
     rows.sort((a, b) => {
       const dir = sort.dir === "asc" ? 1 : -1;
@@ -196,7 +233,7 @@ function UnidadesConsumidorasConteudo() {
       }
     });
     return rows;
-  }, [ucs, search, sort, aba, soNovas]);
+  }, [filtro.filtrados, sort]);
 
   // Os cards descrevem a lista que está embaixo deles — contam sobre `filtered`,
   // e não sobre a base inteira. `stats` (global) segue servindo às três coisas
@@ -321,42 +358,16 @@ function UnidadesConsumidorasConteudo() {
             </p>
           )}
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[220px]">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por nome, código, consumidor ou usina..."
-                className="w-full pl-8 pr-3 py-1.5 text-sm border rounded-lg bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-              />
-            </div>
-            <select
-              value={filterDistribuidora}
-              onChange={(e) => setFilterDistribuidora(e.target.value)}
-              className="text-sm border rounded-lg px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-            >
-              <option value="">Todas distribuidoras</option>
-              {distribuidoras.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="text-sm border rounded-lg px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-            >
-              <option value="">Todos status</option>
-              <option value="Ativo">Ativo</option>
-              <option value="Inativo">Inativo</option>
-              <option value="Pendente">Pendente</option>
-            </select>
-            <span className="ml-auto text-xs text-muted-foreground">
-              {filtered.length} de {stats.total}
-            </span>
-          </div>
+          <FiltrosTabela
+            filtro={filtro}
+            placeholder="Buscar por nome, código, consumidor, usina ou cidade..."
+            substantivo="UCs"
+            exportar={{
+              tabela: "unidades-consumidoras",
+              nome: "unidades-consumidoras",
+              aba: "UCs",
+            }}
+          />
 
           {loading ? (
             <div className="p-8 text-center text-sm text-muted-foreground">Carregando...</div>
@@ -370,7 +381,7 @@ function UnidadesConsumidorasConteudo() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="unidades-consumidoras">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <SortHeader label="Nome" active={sort.key === "nome"} dir={sort.dir} onClick={() => toggleSort("nome")} />

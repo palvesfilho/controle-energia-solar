@@ -15,7 +15,8 @@ import {
   splitValueEvenly,
 } from "@/lib/billing-installments";
 import { formatCodigoUc } from "@/lib/uc-codigo";
-import { matchBusca } from "@/lib/busca";
+import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
+import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { AvisoPrimeirasCompensacoes } from "@/components/consumer-units/aviso-primeiras-compensacoes";
 
 interface Row {
@@ -46,6 +47,41 @@ interface Row {
   status: string;
   faturaDistribuidoraDisponivel: boolean;
 }
+
+const STATUS_LABEL: Record<string, string> = {
+  PENDENTE: "Pendente",
+  ENVIADO_ASAAS: "Enviado ao Asaas",
+  PAGO: "Pago",
+  ATRASADO: "Atrasado",
+  CANCELADO: "Cancelado",
+};
+
+/**
+ * Fora do componente para a identidade do array não mudar a cada render.
+ * O status entrou aqui junto com distribuidora e consumidor: os três recortam a
+ * mesma lista, e um seletor só oferece o que existe no mês carregado — status
+ * sem nenhuma cobrança some em vez de devolver tabela vazia.
+ */
+const FACETAS: Faceta<Row>[] = [
+  {
+    chave: "status",
+    label: "Status",
+    valor: (r) => STATUS_LABEL[r.status] ?? r.status,
+    labelTodos: "Todos os status",
+  },
+  {
+    chave: "distribuidora",
+    label: "Distribuidora",
+    valor: (r) => r.consumerUnit.distribuidora,
+    labelTodos: "Todas as distribuidoras",
+  },
+  {
+    chave: "consumidor",
+    label: "Consumidor",
+    valor: (r) => r.consumerUnit.consumer?.name,
+    labelTodos: "Todos os consumidores",
+  },
+];
 
 interface CobrancaModalState {
   billingId: string;
@@ -117,8 +153,6 @@ export default function FaturamentoUCMesPage() {
 
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "PENDENTE" | "ENVIADO_ASAAS" | "PAGO" | "ATRASADO" | "CANCELADO">("all");
   const [opening, setOpening] = useState<string | null>(null);
   const [batchSending, setBatchSending] = useState(false);
   const [batchType, setBatchType] = useState<"UNDEFINED" | "BOLETO" | "PIX" | "CREDIT_CARD">("BOLETO");
@@ -129,6 +163,17 @@ export default function FaturamentoUCMesPage() {
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [previewModal, setPreviewModal] = useState<{ billingId: string; codigoUc: string; nome: string } | null>(null);
   const [validatingId, setValidatingId] = useState<string | null>(null);
+
+  // Antes do `return` de mês inválido lá embaixo: hook não pode ficar atrás de
+  // saída condicional.
+  const filtro = useFiltroTabela(rows, {
+    busca: (r) => [
+      r.consumerUnit.nome,
+      r.consumerUnit.codigoUc,
+      r.consumerUnit.consumer?.name,
+    ],
+    facetas: FACETAS,
+  });
 
   useEffect(() => {
     if (!parsed) {
@@ -386,18 +431,11 @@ export default function FaturamentoUCMesPage() {
     return <div className="p-8 text-center text-sm text-muted-foreground">Mês inválido</div>;
   }
 
-  const filtered = rows.filter((r) => {
-    if (statusFilter !== "all" && r.status !== statusFilter) return false;
-    return matchBusca(search, [
-      r.consumerUnit.nome,
-      r.consumerUnit.codigoUc,
-      r.consumerUnit.consumer?.name,
-    ]);
-  });
+  const filtered = filtro.filtrados;
 
   // Com filtro ativo os KPIs deixam de ser o retrato do mês. Dizer isso na tela
   // é o que impede a leitura errada no sentido contrário.
-  const filtroAtivo = statusFilter !== "all" || search.trim() !== "";
+  const filtroAtivo = filtro.ativos > 0;
 
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
@@ -459,10 +497,7 @@ export default function FaturamentoUCMesPage() {
           </span>
           <button
             type="button"
-            onClick={() => {
-              setStatusFilter("all");
-              setSearch("");
-            }}
+            onClick={filtro.limpar}
             className="underline underline-offset-2 hover:text-foreground transition-colors"
           >
             limpar filtros
@@ -555,21 +590,29 @@ export default function FaturamentoUCMesPage() {
                 ))}
               </select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</label>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-                className={selectClass}
-              >
-                <option value="all">Todas</option>
-                <option value="PENDENTE">Pendente</option>
-                <option value="ENVIADO_ASAAS">Enviado ao Asaas</option>
-                <option value="PAGO">Pago</option>
-                <option value="ATRASADO">Atrasado</option>
-                <option value="CANCELADO">Cancelado</option>
-              </select>
-            </div>
+            {filtro.facetas.map((f) => {
+              const lista = filtro.opcoes[f.chave] ?? [];
+              if (lista.length < 2 && !filtro.selecionados[f.chave]) return null;
+              return (
+                <div key={f.chave} className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    {f.label}
+                  </label>
+                  <select
+                    value={filtro.selecionados[f.chave] ?? ""}
+                    onChange={(e) => filtro.setFaceta(f.chave, e.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="">{f.labelTodos}</option>
+                    {lista.map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
             <div className="relative flex-1 min-w-[220px] space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Buscar</label>
               <div className="relative">
@@ -577,12 +620,18 @@ export default function FaturamentoUCMesPage() {
                 <input
                   type="text"
                   placeholder="UC, código ou consumidor..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  value={filtro.busca}
+                  onChange={(e) => filtro.setBusca(e.target.value)}
                   className={`${selectClass} w-full pl-8`}
                 />
               </div>
             </div>
+            <ExportarTabela
+              tabela="faturamento-ucs-mes"
+              nome={`faturamento-ucs-${mesParam}`}
+              aba="Cobranças"
+              className="h-9"
+            />
             <select
               value={batchType}
               onChange={(e) => setBatchType(e.target.value as typeof batchType)}
@@ -620,7 +669,7 @@ export default function FaturamentoUCMesPage() {
             <div className="p-8 text-center text-sm text-muted-foreground">Nenhuma UC encontrada.</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" data-tabela="faturamento-ucs-mes">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <th className="px-3 py-2 text-left font-medium text-xs uppercase tracking-wide">UC</th>
