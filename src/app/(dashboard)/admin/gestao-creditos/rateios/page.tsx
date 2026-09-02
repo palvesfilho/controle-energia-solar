@@ -1483,16 +1483,22 @@ function CreateRateioDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* 63rem = 1008px: os 672px do sm:max-w-2xl + 50%, pedido do Paulo em 01/09/2026 */}
-      {/* para a tabela UNIDADE | UC | CPF/CNPJ | PERCENTUAL respirar. O max-w-[calc(100%-2rem)] */}
-      {/* da base continua valendo abaixo de sm, entao a janela segue cabendo em tela estreita. */}
-      <DialogContent className="sm:max-w-[63rem]">
+      {/* LARGURA: 76rem = 1216px, os 672px do sm:max-w-2xl de origem + ~80%, para a tabela
+          UNIDADE | UC | CPF/CNPJ | PERCENTUAL respirar. O max-w-[calc(100%-2rem)] da base
+          continua valendo abaixo de sm, entao a janela segue cabendo em tela estreita.
+          ALTURA: o DialogContent base e "fixed top-1/2 -translate-y-1/2" SEM max-h, entao
+          conteudo mais alto que a tela transborda por cima e por baixo e o rodape com
+          Cancelar / Criar rateio fica inalcancavel — nao ha o que rolar. O max-h-[90dvh]
+          + grid-rows-[auto_minmax(0,1fr)_auto] prende cabecalho e rodape e manda a sobra
+          para o miolo, que rola. dvh (e nao vh) para nao sumir atras da barra do navegador
+          no celular. */}
+      <DialogContent className="sm:max-w-[76rem] max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)_auto]">
         <DialogHeader>
           <DialogTitle>Novo rateio — {plantName}</DialogTitle>
           <DadosDaUsina uc={plantUc} ucAntiga={plantUcAntiga} documento={plantDoc} />
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 overflow-y-auto pr-1">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <p className="max-w-sm text-xs text-muted-foreground">
               Informe o percentual dos créditos destinado a cada UC. UCs com 0
@@ -1968,13 +1974,15 @@ function EditRateioDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      {/* Mesma trava de altura do CreateRateioDialog: sem max-h o rodape com Cancelar /
+          Salvar cai para fora da tela quando a lista de UCs cresce, e nao ha o que rolar. */}
+      <DialogContent className="sm:max-w-2xl max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)_auto]">
         <DialogHeader>
           <DialogTitle>Editar rateio — {plantName}</DialogTitle>
           <DadosDaUsina uc={plantUc} ucAntiga={plantUcAntiga} documento={plantDoc} />
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 overflow-y-auto pr-1">
           {isVigente && (
             <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-800 dark:text-amber-200">
               ⚠ Este é o rateio <b>VIGENTE</b>. Edição direta NÃO recalcula
