@@ -29,6 +29,11 @@ import { toast } from "sonner";
 /**
  * Os portais de monitoramento que o botão "Importar Plantas" percorre, na ordem.
  * Cada um tem a sua rota; o botão só as encadeia.
+ *
+ * ⚠️ Portal que não estiver AQUI não é importado por clique nenhum, e o toast
+ * ainda assim diz "importado" — foi o que aconteceu com a Growatt: as 78 usinas
+ * dela entraram por script em 09/08/2026 e as plantas novas ficaram invisíveis
+ * até 03/09/2026. Marca nova no sistema entra nesta lista junto com a rota.
  */
 const PORTAIS = [
   { endpoint: "sync", nome: "Fronius" },
@@ -36,6 +41,7 @@ const PORTAIS = [
   { endpoint: "sync-sungrow", nome: "Sungrow" },
   { endpoint: "sync-solaredge", nome: "SolarEdge" },
   { endpoint: "sync-weg", nome: "WEG" },
+  { endpoint: "sync-growatt", nome: "Growatt" },
 ] as const;
 
 interface BrasilSolarClient {
@@ -223,7 +229,7 @@ export default function BrasilSolarPage() {
     setSyncing(null);
 
     if (falhas.length === 0) {
-      toast.success("Plantas importadas dos 5 portais", { description: ok.join(" · ") });
+      toast.success(`Plantas importadas dos ${PORTAIS.length} portais`, { description: ok.join(" · ") });
     } else {
       // Sucesso parcial nao pode virar "deu certo": os portais que falharam
       // aparecem nomeados, senao a planta que faltou some sem ninguem notar.
@@ -276,7 +282,7 @@ export default function BrasilSolarPage() {
           <button
             onClick={handleImportarPlantas}
             disabled={syncing !== null}
-            title="Importa as plantas dos 5 portais: Fronius, Huawei, Sungrow, SolarEdge e WEG"
+            title={`Importa as plantas dos ${PORTAIS.length} portais: ${PORTAIS.map((p) => p.nome).join(", ")}`}
             className="flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
           >
             {syncing === "todos-portais" ? (
@@ -306,8 +312,8 @@ export default function BrasilSolarPage() {
       {/* Sync Controls */}
       <Card>
         <CardContent className="p-3">
-          {/* Acoes globais. A fileira de 5 botoes por marca virou o botao
-              "Importar Plantas" do cabecalho, que percorre os mesmos 5 portais. */}
+          {/* Acoes globais. A fileira de botoes por marca virou o botao
+              "Importar Plantas" do cabecalho, que percorre todos os PORTAIS. */}
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => handleSync("sync-all/refresh", "Atualizar geração e status (todas as marcas)")}
