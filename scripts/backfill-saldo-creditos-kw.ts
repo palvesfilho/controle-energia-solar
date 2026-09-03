@@ -46,10 +46,17 @@ async function main() {
   const alvos = await p.consumerBill.findMany({
     where: {
       saldoInstalacaoKwh: null,
-      energiaCompensada: { not: null },
       pdfUrl: { not: null },
       saldoPontaKwh: null,
       saldoForaPontaKwh: null,
+      // 🔑 NAO exigir `energiaCompensada != null` aqui. A compensacao e outra
+      // pergunta: uma fatura pode ter o saldo impresso e mesmo assim ter ficado
+      // sem a compensacao lida. Com aquela exigencia o script via 13 candidatas
+      // e deixava 354 de fora — entre elas a CLINICA RAD. CARIDADE 08/2026,
+      // cujo PDF traz "Saldo em Energia ... 55.857,64 kW" e que so nao entrava
+      // porque a compensacao tambem estava nula.
+      // Quem nao tiver a linha no PDF cai em "sem linha" e nao e tocado, entao
+      // alargar o filtro nao grava nada indevido — so custa a leitura do PDF.
     },
     include: { consumerUnit: { select: { codigoUc: true, nome: true } } },
     orderBy: [{ anoReferencia: "desc" }, { mesReferencia: "desc" }],
