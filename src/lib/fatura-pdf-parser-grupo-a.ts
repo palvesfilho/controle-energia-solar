@@ -571,15 +571,21 @@ function parseSaldoPosto(lines: string[]): { saldoPontaKwh: number | null; saldo
     if (!d.includes("saldo em energia")) continue;
     const window = lines.slice(i, Math.min(i + 4, lines.length)).join(" ");
     const wd = normDesc(window);
+    // O "h" é OPCIONAL nas três regexes abaixo: a RGE imprime a unidade deste
+    // aviso ora "kWh", ora só "kW" ("... Convencional 49.821,7603910798 kW").
+    // Medido em 03/09/2026 sobre 60 faturas reais: 7 de 64 vinham sem o "h".
+    // Exigir o "h" fazia o saldo ser descartado CALADO — a fatura ficava com
+    // saldo nulo e o Balanço Mensal mostrava "-". O mesmo já valia para o
+    // aviso do Grupo B (`fatura-pdf-parser.ts`) e para o caminho Infosimples.
     // Ponta primeiro
-    const mPonta = window.match(/Ponta[:\s]+([\d.]+(?:,\d+)?)\s*kwh/i);
+    const mPonta = window.match(/Ponta[:\s]+([\d.]+(?:,\d+)?)\s*kwh?/i);
     if (mPonta && ponta == null) ponta = parseNumBR(mPonta[1]);
     // FPonta — atenção pra não confundir com "Ponta" sem prefixo "Fora"
-    const mFp = window.match(/(?:Fora\s+Ponta|FPonta)[:\s]+([\d.]+(?:,\d+)?)\s*kwh/i);
+    const mFp = window.match(/(?:Fora\s+Ponta|FPonta)[:\s]+([\d.]+(?:,\d+)?)\s*kwh?/i);
     if (mFp && fp == null) fp = parseNumBR(mFp[1]);
     // Caso especial: saldo único sem distinção de posto (Convencional ou Grupo B)
     if (ponta == null && fp == null) {
-      const mUnico = window.match(/saldo em energia[^0-9]*([\d.]+(?:,\d+)?)\s*kwh/i);
+      const mUnico = window.match(/saldo em energia[^0-9]*([\d.]+(?:,\d+)?)\s*kwh?/i);
       // não atribui aqui — saldo único cai em saldoCreditos do bill principal
       void mUnico;
     }

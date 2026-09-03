@@ -801,7 +801,12 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
       if (m) saldoInstalacaoKwh = parseNumBR(m[1]);
     }
     if (saldoExpirarProxMesKwh == null && d.includes("saldo a expirar")) {
-      const m = line.match(/([\d.]+(?:,\d+)?)\s*kwh/i);
+      // Mesma tolerância do "saldo em energia" logo acima: a RGE imprime a
+      // unidade ora "kWh", ora só "kW". Medido em 03/09/2026 sobre 60 faturas
+      // reais: 7 de 64 avisos de "Saldo em Energia" vinham sem o "h". Nesta
+      // linha ainda não apareceu, mas é o MESMO aviso e a mesma armadilha —
+      // exigir o "h" descarta o valor CALADO.
+      const m = line.match(/([\d.]+(?:,\d+)?)\s*kwh?/i);
       if (m) saldoExpirarProxMesKwh = parseNumBR(m[1]);
     }
     if (participacaoGeracaoPct == null && d.includes("participacao na geracao")) {

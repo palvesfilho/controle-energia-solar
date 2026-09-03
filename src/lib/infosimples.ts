@@ -752,7 +752,7 @@ function parseEncargos(
 /** Regex no aviso: "Saldo a expirar próximo mês: 0,0000000000 kWh" */
 function parseSaldoExpirar(aviso: string | undefined): number | null {
   if (!aviso) return null;
-  const m = aviso.match(/saldo a expirar[^0-9]*([\d.]+(?:,\d+)?)\s*kwh/i);
+  const m = aviso.match(/saldo a expirar[^0-9]*([\d.]+(?:,\d+)?)\s*kwh?/i);
   if (!m) return null;
   return parseNum(m[1]);
 }
@@ -885,10 +885,15 @@ function parseBandeiraValores(items: InfosimplesOcrConsumoItem[]): BandeiraValor
   return result;
 }
 
-/** Regex no texto "aviso" para "Saldo em Energia da Instalação: ... 1.059,0000 kWh". */
+/** Regex no texto "aviso" para "Saldo em Energia da Instalação: ... 1.059,0000 kWh".
+ *  A RGE imprime a unidade das duas formas: "kWh" e, em boa parte das faturas,
+ *  só "kW" ("... Convencional 61.344,6000000000 kW"). Exigir o "h" descartava o
+ *  saldo CALADO — a fatura ficava com `saldoCreditos = null` e o Balanço Mensal
+ *  mostrava "-". O parser de PDF (`fatura-pdf-parser.ts`) já aceitava as duas;
+ *  o caminho Infosimples tinha ficado para trás. */
 function parseSaldoCreditos(aviso: string | undefined): number | null {
   if (!aviso) return null;
-  const m = aviso.match(/saldo em energia[^0-9]*([\d.]+(?:,\d+)?)\s*kwh/i);
+  const m = aviso.match(/saldo em energia[^0-9]*([\d.]+(?:,\d+)?)\s*kwh?/i);
   if (!m) return null;
   return parseNum(m[1]);
 }
