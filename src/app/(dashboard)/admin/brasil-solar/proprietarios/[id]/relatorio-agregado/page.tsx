@@ -64,6 +64,15 @@ interface ApiResponse {
   economiaMediaMensalRs: number;
   retornoTotalPct: number;
   meses: MonthRow[];
+  /** Conclusão "Situação do rateio" que fecha o relatório. `null` = não apurada. */
+  situacao: unknown | null;
+  /** Preenchido EXATAMENTE quando `situacao` é `null` — ver relatório por UC. */
+  situacaoIndisponivel: {
+    motivo: "SEM_USINA_MONITORADA" | "SEM_GERACAO_MEDIDA" | "SEM_HISTORICO";
+    titulo: string;
+    texto: string;
+    acaoInterna: string;
+  } | null;
 }
 
 const MES_ABREV = [
@@ -253,6 +262,26 @@ export default function RelatorioAgregadoPage() {
             <p className="text-muted-foreground mt-0.5">
               Os campos de geração do inversor e retorno do investimento estão indisponíveis. Os valores
               de economia consideram apenas os créditos compensados — a economia real tende a ser maior.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Aviso de CONCLUSÃO AUSENTE — antes de exportar/enviar. Mesma regra do
+          relatório por UC: a análise nunca some calada do documento. */}
+      {data.situacaoIndisponivel && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-600" />
+          <div className="text-xs">
+            <p className="font-semibold text-amber-800">
+              O relatório vai sair SEM a análise final — {data.situacaoIndisponivel.titulo}
+            </p>
+            <p className="text-amber-900/80 mt-0.5">
+              {data.situacaoIndisponivel.acaoInterna}
+            </p>
+            <p className="text-muted-foreground mt-1">
+              <span className="font-medium">O cliente lerá, no lugar da análise:</span>{" "}
+              {data.situacaoIndisponivel.texto}
             </p>
           </div>
         </div>

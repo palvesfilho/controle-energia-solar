@@ -15,6 +15,7 @@ import {
 import type {
   RelatorioAgregadoData,
   RelatorioAgregadoMonthRow,
+  SituacaoIndisponivel,
   SituacaoRateio,
   SituacaoRateioItem,
 } from "@/lib/brasil-solar-relatorio";
@@ -201,6 +202,55 @@ const NIVEL_ROTULO: Record<SituacaoRateioItem["nivel"], string> = {
  * usina e leitura da concessionária). `wrap={false}` no bloco de abertura
  * mantém veredito e números juntos; os itens podem quebrar de página.
  */
+/**
+ * Substituto da "Situação do rateio" quando a conclusão não pôde ser apurada —
+ * o relatório nunca termina sem dizer por que a análise não saiu. Texto único,
+ * vindo de `explicarSituacaoRateioIndisponivel`.
+ *
+ * Sem emoji e sem os glifos ausentes na Helvetica embutida
+ * (`feedback_pdf_helvetica_winansi_glifos`).
+ */
+function SituacaoIndisponivelSection({ info }: { info: SituacaoIndisponivel }) {
+  return (
+    <View wrap={false}>
+      <Text style={s.sectionTitle}>Situação do rateio</Text>
+      <View
+        style={[
+          s.sectionCard,
+          { backgroundColor: "#FFF6EE", borderColor: C.orangeLight },
+        ]}
+      >
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          <View
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 3,
+              marginTop: 3,
+              backgroundColor: C.orange,
+            }}
+          />
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                fontSize: 9.5,
+                fontWeight: 700,
+                color: C.orange,
+                marginBottom: 4,
+              }}
+            >
+              {info.titulo}
+            </Text>
+            <Text style={{ fontSize: 8, color: C.gray, lineHeight: 1.5 }}>
+              {info.texto}
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function SituacaoRateioSection({ situacao }: { situacao: SituacaoRateio }) {
   const stat = (label: string, valor: string, cor: string) => (
     <View style={{ flex: 1 }}>
@@ -739,7 +789,11 @@ export function SolarPaybackReportProprietarioPDF({
         {/* Situação do rateio — conclusão automática (atendimento do grupo,
             distribuição entre as unidades, usina e leitura da concessionária).
             Fecha o relatório, logo abaixo do histórico consolidado. */}
-        {data.situacao && <SituacaoRateioSection situacao={data.situacao} />}
+        {data.situacao ? (
+          <SituacaoRateioSection situacao={data.situacao} />
+        ) : data.situacaoIndisponivel ? (
+          <SituacaoIndisponivelSection info={data.situacaoIndisponivel} />
+        ) : null}
 
         <View style={s.footer} fixed>
           <Text>

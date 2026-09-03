@@ -17,6 +17,7 @@ import {
 import type {
   RelatorioData,
   RelatorioMonthRow,
+  SituacaoIndisponivel,
   SituacaoUsina,
   SituacaoUsinaItem,
 } from "@/lib/brasil-solar-relatorio";
@@ -623,6 +624,64 @@ function SituacaoUsinaSection({ situacao }: { situacao: SituacaoUsina }) {
               : "") +
             `. Cobertura = geração total ÷ consumo total do período.`}
         </Text>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Substituto da "Situação da usina" quando o diagnóstico não pôde ser apurado.
+ *
+ * 🔑 Antes desta seção o relatório simplesmente ACABAVA: `{data.situacao && ...}`
+ * omitia o bloco em silêncio e o cliente (Gliomar Bolson, 09/2026) recebia o
+ * documento sem análise nenhuma e sem uma linha dizendo por quê. A ausência
+ * agora é escrita — texto único vindo de `explicarSituacaoIndisponivel`, para
+ * tela e PDF nunca divergirem.
+ *
+ * Sem emoji e sem os glifos que a Helvetica embutida não desenha
+ * (ver `feedback_pdf_helvetica_winansi_glifos`): o marcador é um quadrado
+ * desenhado com `View`, não um caractere.
+ */
+function SituacaoIndisponivelSection({
+  info,
+}: {
+  info: SituacaoIndisponivel;
+}) {
+  return (
+    <View wrap={false}>
+      <Text style={s.sectionTitle}>Situação da usina</Text>
+      <View
+        style={[
+          s.sectionCard,
+          { backgroundColor: "#FFF6EE", borderColor: C.orangePale },
+        ]}
+      >
+        <View style={{ flexDirection: "row", gap: 6 }}>
+          <View
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 3,
+              marginTop: 3,
+              backgroundColor: C.orange,
+            }}
+          />
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                fontSize: 9.5,
+                fontWeight: 700,
+                color: C.orangeDark,
+                marginBottom: 4,
+              }}
+            >
+              {info.titulo}
+            </Text>
+            <Text style={{ fontSize: 8, color: C.gray, lineHeight: 1.5 }}>
+              {info.texto}
+            </Text>
+          </View>
+        </View>
       </View>
     </View>
   );
@@ -1281,7 +1340,11 @@ export function SolarPaybackReportPDF({
 
         {/* Situação da usina — diagnóstico automático (dimensionamento,
             créditos, desempenho). Vem logo abaixo do histórico por mês. */}
-        {data.situacao && <SituacaoUsinaSection situacao={data.situacao} />}
+        {data.situacao ? (
+          <SituacaoUsinaSection situacao={data.situacao} />
+        ) : data.situacaoIndisponivel ? (
+          <SituacaoIndisponivelSection info={data.situacaoIndisponivel} />
+        ) : null}
 
         {/* Footer */}
         <View style={s.footer} fixed>

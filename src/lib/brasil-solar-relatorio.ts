@@ -370,6 +370,13 @@ export interface RelatorioData {
    * monitoramento) — sem geração não há o que diagnosticar.
    */
   situacao: SituacaoUsina | null;
+  /**
+   * Preenchido EXATAMENTE quando `situacao` é `null` — diz, em texto de
+   * cliente, por que a análise não pôde ser feita. Nunca os dois ao mesmo
+   * tempo, nunca os dois vazios: a ausência do diagnóstico é informação e o
+   * relatório precisa dizê-la, em vez de terminar sem explicação.
+   */
+  situacaoIndisponivel: SituacaoIndisponivel | null;
 }
 
 // =============================================================================
@@ -464,6 +471,95 @@ export interface SituacaoUsina {
   /** Veredito de uma linha, pra abrir a seção */
   resumo: string;
   itens: SituacaoUsinaItem[];
+}
+
+/**
+ * Por que a "Situação da usina" NÃO pôde ser apurada.
+ *
+ * 🔑 Até 03/09/2026 o diagnóstico simplesmente sumia do relatório quando
+ * `avaliarSituacaoUsina` devolvia `null`: o PDF renderiza a seção sob
+ * `{data.situacao && ...}`, então o cliente recebia o documento terminando
+ * abruptamente, sem uma linha explicando a ausência — e o operador que gerou
+ * também não era avisado. Foi assim que o Gliomar Bolson recebeu 31 meses de
+ * relatório sem análise nenhuma (proprietário sem `BrasilSolarClient`, logo
+ * sem geração medida).
+ *
+ * A ausência agora é INFORMAÇÃO, não silêncio: o relatório diz o que falta e
+ * o que já dá pra afirmar mesmo assim.
+ */
+export type MotivoSemSituacao =
+  /** Nenhuma usina monitorada vinculada ao proprietário — não temos acesso ao inversor. */
+  | "SEM_USINA_MONITORADA"
+  /** Usina vinculada, mas nenhum mês da janela trouxe leitura de geração. */
+  | "SEM_GERACAO_MEDIDA"
+  /** Nenhuma fatura no período — não há histórico sobre o que opinar. */
+  | "SEM_HISTORICO";
+
+export interface SituacaoIndisponivel {
+  motivo: MotivoSemSituacao;
+  titulo: string;
+  /**
+   * Texto que vai ao CLIENTE, no lugar da análise. Sem emoji e sem os glifos
+   * que a Helvetica embutida do `@react-pdf` não desenha (≥ − ⚠ →) — ver
+   * [[feedback_pdf_helvetica_winansi_glifos]].
+   */
+  texto: string;
+  /** Complemento dirigido ao OPERADOR (tela do admin), não ao cliente. */
+  acaoInterna: string;
+}
+
+/**
+ * Traduz a ausência do diagnóstico em texto. Só é chamada quando
+ * `avaliarSituacaoUsina` devolveu `null`, e é derivada do MESMO resultado —
+ * assim os dois nunca aparecem juntos nem somem juntos, que é o modo de falha
+ * de [[feedback_correcao_pela_metade_falha_calada]].
+ */
+export function explicarSituacaoIndisponivel(
+  meses: RelatorioMonthRow[],
+  usinasMonitoradas: number,
+): SituacaoIndisponivel {
+  if (meses.length === 0) {
+    return {
+      motivo: "SEM_HISTORICO",
+      titulo: "Análise indisponível neste período",
+      texto:
+        "Ainda não há faturas registradas no período deste relatório, então não é possível " +
+        "apurar consumo, cobertura nem saldo de créditos. Assim que as faturas do período " +
+        "forem processadas, a análise passa a sair automaticamente no relatório.",
+      acaoInterna:
+        "Nenhuma fatura no período. Verifique o cadastro/sincronização de faturas desta UC.",
+    };
+  }
+  if (usinasMonitoradas === 0) {
+    return {
+      motivo: "SEM_USINA_MONITORADA",
+      titulo: "Análise da usina indisponível: sem acesso ao monitoramento",
+      texto:
+        "Não é possível apresentar a análise da usina neste relatório porque ainda não temos " +
+        "acesso ao monitoramento do seu inversor. Sem a leitura de geração não dá para calcular " +
+        "quanto a usina produziu, a cobertura em relação ao seu consumo, o desempenho frente ao " +
+        "previsto nem o retorno do investimento. Os números de consumo, compensação e economia " +
+        "que aparecem acima vêm das suas faturas e continuam válidos. Para liberar a análise " +
+        "completa, basta nos dar acesso ao portal de monitoramento do inversor (usuário e senha " +
+        "da plataforma do fabricante). Fale com a nossa equipe que fazemos a configuração.",
+      acaoInterna:
+        "Proprietário sem usina monitorada (BrasilSolarClient) vinculada. Cadastre a usina com a " +
+        "plataforma de monitoramento e o ID da planta para liberar a análise.",
+    };
+  }
+  return {
+    motivo: "SEM_GERACAO_MEDIDA",
+    titulo: "Análise da usina indisponível: sem leitura de geração no período",
+    texto:
+      "A usina está cadastrada, mas o monitoramento não enviou nenhuma leitura de geração nos " +
+      "meses deste relatório. Sem esse dado não dá para calcular produção, cobertura, desempenho " +
+      "nem retorno do investimento. Os números de consumo, compensação e economia acima vêm das " +
+      "suas faturas e continuam válidos. Nossa equipe já foi acionada para restabelecer a " +
+      "comunicação com o inversor.",
+    acaoInterna:
+      "Usina vinculada, porém sem leitura de geração na janela do relatório. Verifique credenciais " +
+      "da plataforma, o vínculo do monitoramento e o datalogger da usina.",
+  };
 }
 
 function media(valores: number[]): number | null {
@@ -1432,6 +1528,11 @@ export async function getProprietarioRelatorio(
   const retornoTotalPct =
     investimentoTotal > 0 ? (economiaAcumulada / investimentoTotal) * 100 : 0;
 
+  // Diagnóstico e sua ausência saem da MESMA avaliação, de propósito: derivar
+  // `situacaoIndisponivel` do resultado (e não recalcular as guardas) garante
+  // que nunca apareçam os dois, nem falte os dois.
+  const situacao = avaliarSituacaoUsina(meses, geracaoEsperadaMensalKwh);
+
   return {
     proprietario,
     uc: {
@@ -1459,7 +1560,11 @@ export async function getProprietarioRelatorio(
     paybackQuitado,
     meses,
     mesesComFatura,
-    situacao: avaliarSituacaoUsina(meses, geracaoEsperadaMensalKwh),
+    situacao,
+    situacaoIndisponivel:
+      situacao == null
+        ? explicarSituacaoIndisponivel(meses, monitoringClients.length)
+        : null,
   };
 }
 
@@ -1576,6 +1681,11 @@ export interface RelatorioAgregadoData {
    * `null` quando não há consumo faturado no período (nada a concluir).
    */
   situacao: SituacaoRateio | null;
+  /**
+   * Preenchido EXATAMENTE quando `situacao` é `null` — mesma regra do
+   * relatório por UC: a conclusão nunca some calada do documento.
+   */
+  situacaoIndisponivel: SituacaoIndisponivel | null;
 }
 
 // =============================================================================
@@ -1688,6 +1798,40 @@ export interface SituacaoRateio {
  * Retorna `null` quando nenhum mês da janela tem consumo faturado — sem consumo
  * medido não há como afirmar se o grupo foi atendido.
  */
+/**
+ * Contraparte de `explicarSituacaoIndisponivel` para o relatório agregado. As
+ * guardas de `avaliarSituacaoRateio` são outras — ele conclui a partir do
+ * CONSUMO faturado das beneficiárias, não da geração —, então os motivos
+ * também são outros: aqui não ter monitoramento não impede a conclusão.
+ */
+export function explicarSituacaoRateioIndisponivel(
+  meses: RelatorioAgregadoMonthRow[],
+): SituacaoIndisponivel {
+  if (meses.length === 0) {
+    return {
+      motivo: "SEM_HISTORICO",
+      titulo: "Análise do rateio indisponível neste período",
+      texto:
+        "Ainda não há faturas registradas no período deste relatório para as unidades " +
+        "beneficiárias, então não é possível concluir se os créditos chegaram e se os " +
+        "percentuais do rateio estão adequados. Assim que as faturas forem processadas, a " +
+        "análise passa a sair automaticamente.",
+      acaoInterna:
+        "Nenhuma fatura das beneficiárias no período. Verifique cadastro/sincronização de faturas.",
+    };
+  }
+  return {
+    motivo: "SEM_HISTORICO",
+    titulo: "Análise do rateio indisponível neste período",
+    texto:
+      "As faturas do período não trouxeram consumo da rede nas unidades beneficiárias, e é sobre " +
+      "esse consumo que a análise do rateio se apoia. Sem ele não é possível concluir se os " +
+      "créditos cobriram a necessidade do grupo. Os números apresentados acima continuam válidos.",
+    acaoInterna:
+      "Faturas existem, mas sem consumo da rede lido. Confira o parser/leitura das faturas das beneficiárias.",
+  };
+}
+
 export function avaliarSituacaoRateio(
   meses: RelatorioAgregadoMonthRow[],
 ): SituacaoRateio | null {
@@ -2430,6 +2574,9 @@ export async function getProprietarioRelatorioAgregado(
   const retornoTotalPct =
     investimentoTotal > 0 ? (economiaAcumulada / investimentoTotal) * 100 : 0;
 
+  // Mesma amarração do relatório por UC: a explicação é DERIVADA do resultado.
+  const situacaoRateio = avaliarSituacaoRateio(meses);
+
   return {
     proprietario: {
       id: proprietario.id,
@@ -2456,7 +2603,9 @@ export async function getProprietarioRelatorioAgregado(
     paybackQuitacaoPrevista,
     paybackQuitado,
     meses,
-    situacao: avaliarSituacaoRateio(meses),
+    situacao: situacaoRateio,
+    situacaoIndisponivel:
+      situacaoRateio == null ? explicarSituacaoRateioIndisponivel(meses) : null,
   };
 }
 
