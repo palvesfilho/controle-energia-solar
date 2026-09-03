@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
@@ -19,13 +19,13 @@ export async function POST(req: NextRequest) {
     // Buscar clientes já existentes indexados por monitoramentoPlantId
     const existingClients = await prisma.brasilSolarClient.findMany({
       where: { plataformaMonitoramento: "FRONIUS" },
-      select: { id: true, monitoramentoPlantId: true },
+      select: { id: true, monitoramentoPlantId: true, ultimaLeitura: true },
     });
 
     const existingMap = new Map(
       existingClients
         .filter((c) => c.monitoramentoPlantId)
-        .map((c) => [c.monitoramentoPlantId!, c.id])
+        .map((c) => [c.monitoramentoPlantId!, c])
     );
 
     let created = 0;
@@ -39,21 +39,28 @@ export async function POST(req: NextRequest) {
 
       const operations = batch.map((sys) => {
         const data = mapFroniusToClient(sys);
-        const existingId = existingMap.get(sys.pvSystemId);
+        const existente = existingMap.get(sys.pvSystemId);
 
-        if (existingId) {
+        if (existente) {
           // Atualizar dados que podem ter mudado
           return prisma.brasilSolarClient
             .update({
-              where: { id: existingId },
+              where: { id: existente.id },
               data: {
                 nome: data.nome,
                 endereco: data.endereco,
                 cidade: data.cidade,
                 potenciaInstalada: data.potenciaInstalada,
                 monitoramentoUrl: data.monitoramentoUrl,
-                // Atualizar status baseado no lastImport
-                ultimaLeitura: data.ultimaLeitura,
+                // Carimbo de leitura so AVANCA. O `lastImport` do /pvsystems
+                // ja veio mais VELHO que o guardado — a ADAIR MILANESI recuou de
+                // 10/08 para 31/07 na tela em 19/08/2026, e 3 usinas Fronius
+                // seguem com carimbo anterior ao proprio ultimo log. Leitura pior
+                // nao apaga leitura melhor.
+                ...(data.ultimaLeitura &&
+                (!existente.ultimaLeitura || data.ultimaLeitura > existente.ultimaLeitura)
+                  ? { ultimaLeitura: data.ultimaLeitura }
+                  : {}),
               },
             })
             .then(() => { updated++; })

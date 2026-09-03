@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
@@ -48,15 +48,19 @@ export async function POST(_req: NextRequest) {
                 latitude: data.latitude,
                 longitude: data.longitude,
                 potenciaInstalada: data.potenciaInstalada,
-                statusMonitoramento: data.statusMonitoramento,
-                ultimaLeitura: new Date(),
+                // Status so com evidencia (ver `mapSungrowToClient`).
+                ...(data.statusMonitoramento ? { statusMonitoramento: data.statusMonitoramento } : {}),
+                // ⛔ `ultimaLeitura: new Date()` REMOVIDO — a importacao nao le
+                // geracao, e carimbo fresco em usina muda cega o alerta de mudez
+                // por horas solares. Medido em 03/09/2026: 45 Sungrow com leitura
+                // dos ultimos 7 dias e ZERO log de geracao no periodo.
               },
             })
             .then(() => { updated++; })
             .catch(() => { errors++; });
         } else {
           return prisma.brasilSolarClient
-            .create({ data })
+            .create({ data: { ...data, statusMonitoramento: data.statusMonitoramento ?? "SEM_DADOS" } })
             .then(() => { created++; })
             .catch(() => { errors++; });
         }
@@ -79,7 +83,10 @@ export async function POST(_req: NextRequest) {
 }
 
 function mapSungrowToClient(station: SungrowStation) {
-  const statusMonitoramento = station.ps_status === 1 ? "ONLINE" : "OFFLINE";
+  // `ps_status` ausente NAO e usina offline — e a lista nao ter dito nada.
+  // undefined faz o update ignorar o campo em vez de rebaixar o cadastro.
+  const statusMonitoramento =
+    station.ps_status == null ? undefined : station.ps_status === 1 ? "ONLINE" : "OFFLINE";
   const capacityKw = getStationCapacityKwp(station);
   const potenciaInstalada = capacityKw > 0 ? capacityKw : undefined;
 

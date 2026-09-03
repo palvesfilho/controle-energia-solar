@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
@@ -68,15 +68,26 @@ export async function POST(req: NextRequest) {
                 nome: data.nome,
                 endereco: data.endereco,
                 potenciaInstalada: data.potenciaInstalada,
-                statusMonitoramento: data.statusMonitoramento,
-                ultimaLeitura: new Date(),
+                // Status so muda com EVIDENCIA: sem o KPI da estacao, `undefined`
+                // faz o Prisma ignorar o campo e o status bom fica onde estava.
+                // Escrever SEM_DADOS na falta do KPI e o mesmo defeito que jogou
+                // 249 usinas SolarEdge para SEM_DADOS em 19/08/2026.
+                ...(data.statusMonitoramento ? { statusMonitoramento: data.statusMonitoramento } : {}),
+                // ⛔ `ultimaLeitura: new Date()` REMOVIDO. A importacao de plantas
+                // nao LE geracao — carimbar "agora" aqui e informacao inventada, e
+                // o alerta de mudez mede horas solares desde esse campo: carimbo
+                // fresco em usina muda cega o alarme. Medido em 03/09/2026: 83
+                // usinas com leitura dos ultimos 7 dias e ZERO log de geracao no
+                // periodo, 31 delas Huawei. Quem carimba leitura e quem mede: o
+                // coletor intradiario e o "Atualizar geracao e status".
               },
             })
             .then(() => { updated++; })
             .catch(() => { errors++; });
         } else {
           return prisma.brasilSolarClient
-            .create({ data })
+            // Usina NOVA sem KPI nasce SEM_DADOS: ai "nao sei" e a verdade.
+            .create({ data: { ...data, statusMonitoramento: data.statusMonitoramento ?? "SEM_DADOS" } })
             .then(() => { created++; })
             .catch(() => { errors++; });
         }
@@ -102,10 +113,8 @@ function mapHuaweiToClient(
   station: HuaweiStation,
   kpi?: { isOnline: boolean; capacityKwp: number },
 ) {
-  let statusMonitoramento = "SEM_DADOS";
-  if (kpi) {
-    statusMonitoramento = kpi.isOnline ? "ONLINE" : "OFFLINE";
-  }
+  // undefined = "nao sei", e nao SEM_DADOS. Ver o update acima.
+  const statusMonitoramento = kpi ? (kpi.isOnline ? "ONLINE" : "OFFLINE") : undefined;
 
   return {
     nome: station.stationName,
