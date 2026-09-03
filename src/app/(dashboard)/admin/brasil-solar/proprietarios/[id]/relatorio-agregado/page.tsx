@@ -45,6 +45,12 @@ interface MonthRow {
   injetadaMedidorKwh: number | null;
   saldoCreditosTitular: number | null;
   beneficiarias: BeneficiariaRow[];
+  /**
+   * Mês com fatura de alguma beneficiária. Falso nos meses em que só a geradora
+   * tinha fatura: entram no HISTÓRICO (pela geração) mas não podem ser o mês de
+   * referência — o card "Resultado consolidado" sairia inteiro vazio.
+   */
+  temFaturaBeneficiaria: boolean;
 }
 
 interface ApiResponse {
@@ -122,10 +128,11 @@ export default function RelatorioAgregadoPage() {
       })
       .then((d) => {
         setData(d);
-        if (d.meses.length > 0) {
-          const ultimo = d.meses[d.meses.length - 1];
-          setMesSelecionadoKey(`${ultimo.ano}-${ultimo.mes}`);
-        }
+        // Abre no mês de referência mais recente que TEM fatura de beneficiária
+        // — o histórico pode terminar num mês só da geradora.
+        const selecionaveis = d.meses.filter((m) => m.temFaturaBeneficiaria);
+        const ultimo = selecionaveis[selecionaveis.length - 1];
+        if (ultimo) setMesSelecionadoKey(`${ultimo.ano}-${ultimo.mes}`);
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
@@ -138,9 +145,15 @@ export default function RelatorioAgregadoPage() {
     return <p className="p-8 text-sm text-red-600">Erro: {error}</p>;
   }
 
+  // Meses que podem ser o "mês de referência" do relatório: o card e o PDF
+  // falam do resultado do GRUPO, então precisam de fatura de beneficiária. O
+  // histórico logo abaixo continua mostrando todos os meses.
+  const mesesSelecionaveis = data.meses.filter((m) => m.temFaturaBeneficiaria);
   const mesSelecionado =
-    data.meses.find((m) => `${m.ano}-${m.mes}` === mesSelecionadoKey) ??
-    (data.meses.length > 0 ? data.meses[data.meses.length - 1] : null);
+    mesesSelecionaveis.find((m) => `${m.ano}-${m.mes}` === mesSelecionadoKey) ??
+    (mesesSelecionaveis.length > 0
+      ? mesesSelecionaveis[mesesSelecionaveis.length - 1]
+      : null);
 
   const semMonitoramento = data.usinasMonitoradas.length === 0;
   const semFaturaTitular =
@@ -228,7 +241,7 @@ export default function RelatorioAgregadoPage() {
                 ` · ${data.potenciaTotalKwp.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kWp`}
             </p>
           </div>
-          {data.meses.length > 0 && (
+          {mesesSelecionaveis.length > 0 && (
             <div className="flex items-center gap-2 bg-white/15 backdrop-blur-sm rounded-lg px-3 py-2">
               <label className="text-xs uppercase tracking-wide text-white/80">
                 Mês de referência
@@ -238,7 +251,7 @@ export default function RelatorioAgregadoPage() {
                 onChange={(e) => setMesSelecionadoKey(e.target.value)}
                 className="bg-white/90 text-foreground text-sm font-medium rounded px-2 py-1 outline-none"
               >
-                {[...data.meses].reverse().map((m) => (
+                {[...mesesSelecionaveis].reverse().map((m) => (
                   <option key={`${m.ano}-${m.mes}`} value={`${m.ano}-${m.mes}`}>
                     {MESES_LONGO[m.mes - 1]}/{m.ano}
                   </option>
@@ -452,10 +465,14 @@ export default function RelatorioAgregadoPage() {
             color={brand.tealDark}
           />
         )}
+        {/* O sublabel conta os meses que GERARAM economia (com fatura de
+            beneficiária) — o histórico abaixo tem mais meses, os que só a
+            geradora faturou, e contá-los diria "25 meses" pra um acumulado de
+            um mês só. */}
         <KpiCard
           label="Economia Total"
           value={formatBRL(economiaTotal)}
-          sublabel={`${data.meses.length} mês(es) com fatura`}
+          sublabel={`${mesesSelecionaveis.length} mês(es) com fatura`}
           icon={<TrendingUp className="h-4 w-4" />}
           color={brand.teal}
         />

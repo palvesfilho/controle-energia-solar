@@ -23,6 +23,7 @@ import {
   getProprietarioRelatorio,
   getProprietarioRelatorioAgregado,
   listarRelatoriosProprietario,
+  mesesComDadoDeBeneficiaria,
   type RelatorioMonthRow,
   type RelatorioAgregadoMonthRow,
   type SituacaoUsina,
@@ -574,7 +575,13 @@ export async function getAcoesComerciaisProprietario(
 
     const ops = oportunidadesDoRateio(
       agregado.situacao,
-      faturadoMedio(agregado.meses, agregado.situacao.mesesConsiderados),
+      // Mesma base do diagnóstico: o histórico consolidado inclui meses em que
+      // só a geradora faturou, e eles não têm fatura de beneficiária pra entrar
+      // nessa média (ver `mesesComDadoDeBeneficiaria`).
+      faturadoMedio(
+        mesesComDadoDeBeneficiaria(agregado.meses),
+        agregado.situacao.mesesConsiderados,
+      ),
     );
     if (planoOp) ops.push(planoOp);
     return {

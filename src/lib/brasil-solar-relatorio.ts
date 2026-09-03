@@ -1638,6 +1638,13 @@ export interface RelatorioAgregadoMonthRow {
   saldoCreditosTitular: number | null;
   /** Breakdown por UC beneficiária do mês */
   beneficiarias: RelatorioAgregadoBeneficiariaRow[];
+  /**
+   * Alguma beneficiária tem fatura NESTE mês. Falso nos meses em que só a
+   * geradora tinha fatura — que entram no histórico pela geração (ver
+   * `periodosUsados`), mas NÃO podem alimentar o diagnóstico do rateio: mês sem
+   * fatura de beneficiária é mês sem dado, não "crédito que não chegou".
+   */
+  temFaturaBeneficiaria: boolean;
   inversoresErros: string[];
 }
 
@@ -1807,7 +1814,8 @@ export interface SituacaoRateio {
 export function explicarSituacaoRateioIndisponivel(
   meses: RelatorioAgregadoMonthRow[],
 ): SituacaoIndisponivel {
-  if (meses.length === 0) {
+  // Mesma base do diagnóstico: mês só-geradora não conta como "fatura existe".
+  if (mesesComDadoDeBeneficiaria(meses).length === 0) {
     return {
       motivo: "SEM_HISTORICO",
       titulo: "Análise do rateio indisponível neste período",
@@ -1832,12 +1840,27 @@ export function explicarSituacaoRateioIndisponivel(
   };
 }
 
+/**
+ * Meses que sustentam o diagnóstico do rateio: os que têm fatura de alguma
+ * beneficiária. O histórico consolidado inclui também os meses em que só a
+ * geradora tinha fatura (pra não perder o histórico de geração), mas esses NÃO
+ * entram aqui — sem fatura da beneficiária não há consumo do grupo pra medir, e
+ * contá-los faria o relatório acusar "a usina gerou e o crédito não chegou" num
+ * mês em que a unidade sequer estava no rateio.
+ */
+export function mesesComDadoDeBeneficiaria(
+  meses: RelatorioAgregadoMonthRow[],
+): RelatorioAgregadoMonthRow[] {
+  return meses.filter((m) => m.temFaturaBeneficiaria);
+}
+
 export function avaliarSituacaoRateio(
   meses: RelatorioAgregadoMonthRow[],
 ): SituacaoRateio | null {
-  if (meses.length === 0) return null;
+  const mesesBase = mesesComDadoDeBeneficiaria(meses);
+  if (mesesBase.length === 0) return null;
 
-  const janela = meses.slice(-JANELA_MEDIAS_MESES);
+  const janela = mesesBase.slice(-JANELA_MEDIAS_MESES);
   const consumosTotais = janela
     .map((m) => m.consumoRedeKwhTotal)
     .filter((v): v is number => v != null && v > 0);
@@ -2387,21 +2410,29 @@ export async function getProprietarioRelatorioAgregado(
     },
   });
 
-  // Agrupa por (ano, mes). Mantém só os últimos 12 períodos onde HÁ fatura em
-  // alguma beneficiária (titular sozinha não conta).
+  // Agrupa por (ano, mes).
   const periodKey = (a: number, m: number) =>
     `${String(a).padStart(4, "0")}-${String(m).padStart(2, "0")}`;
   const billsByPeriod = new Map<string, typeof todasBills>();
-  const periodsComBeneficiaria = new Set<string>();
   for (const b of todasBills) {
     if (!b.consumerUnitId) continue;
     const key = periodKey(b.anoReferencia, b.mesReferencia);
     if (!billsByPeriod.has(key)) billsByPeriod.set(key, []);
     billsByPeriod.get(key)!.push(b);
-    if (b.consumerUnitId !== ucTitularId) periodsComBeneficiaria.add(key);
   }
 
-  const sortedPeriods = Array.from(periodsComBeneficiaria).sort();
+  // UNIÃO dos períodos: mês com fatura da GERADORA entra mesmo sem fatura de
+  // beneficiária. Até 03/09/2026 o histórico era ancorado só nas beneficiárias
+  // ("titular sozinha não conta"), e beneficiária cadastrada DEPOIS da geradora
+  // apagava todo o passado: o Sandro Souza tinha 25 meses de fatura na geradora
+  // e 1 na beneficiária, e o "Histórico consolidado por mês" saía com UMA linha
+  // — sem o histórico de geração que o cliente foi ver. Ver
+  // [[project_historico_consolidado_uniao_meses]].
+  //
+  // O mês só-geradora traz geração, injeção e saldo da titular; as colunas das
+  // beneficiárias saem vazias (`temFaturaBeneficiaria: false`) porque não havia
+  // fatura — e é assim que o diagnóstico do rateio as ignora.
+  const sortedPeriods = Array.from(billsByPeriod.keys()).sort();
   // TODOS os períodos desde a operação (tabela + acúmulo). Os gráficos do PDF
   // agregado fatiam os últimos 12 internamente pra ficarem legíveis.
   const periodosUsados = sortedPeriods;
@@ -2536,6 +2567,7 @@ export async function getProprietarioRelatorioAgregado(
       injetadaMedidorKwh: billTitular?.energiaInjetadaMedidorKwh ?? null,
       saldoCreditosTitular: billTitular?.saldoCreditos ?? null,
       beneficiarias: beneficiariasRows,
+      temFaturaBeneficiaria: billsBenef.length > 0,
       inversoresErros,
     });
   }

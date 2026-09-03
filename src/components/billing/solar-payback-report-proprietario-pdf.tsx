@@ -390,8 +390,14 @@ export function SolarPaybackReportProprietarioPDF({
   emissao,
   mesRef,
 }: SolarPaybackReportProprietarioPDFProps) {
+  // Meses que podem ser referência do relatório: o documento fala do resultado
+  // do GRUPO, então precisa de fatura de beneficiária. O histórico consolidado
+  // (`data.meses`) tem mais meses — inclui os que só a geradora faturou, pra
+  // não perder o histórico de geração.
+  const mesesComGrupo = data.meses.filter((m) => m.temFaturaBeneficiaria);
   const mes =
-    mesRef ?? (data.meses.length > 0 ? data.meses[data.meses.length - 1] : null);
+    mesRef ??
+    (mesesComGrupo.length > 0 ? mesesComGrupo[mesesComGrupo.length - 1] : null);
   const labelMes = mes ? `${MES_LONGO[mes.mes - 1]}/${mes.ano}` : "—";
   const semMonitoramento = data.usinasMonitoradas.length === 0;
   const semFaturaTitular =
@@ -683,7 +689,9 @@ export function SolarPaybackReportProprietarioPDF({
             <Text style={[s.kpiValue, { color: C.teal }]}>
               {formatBRL(economiaTotal)}
             </Text>
-            <Text style={s.kpiSub}>{data.meses.length} mês(es) desde a operação</Text>
+            {/* Meses que geraram economia (com fatura de beneficiária) — não o
+                tamanho do histórico, que inclui meses só da geradora. */}
+            <Text style={s.kpiSub}>{mesesComGrupo.length} mês(es) desde a operação</Text>
           </View>
           <View style={s.kpiCard}>
             <Text style={s.kpiLabel}>Economia média</Text>
