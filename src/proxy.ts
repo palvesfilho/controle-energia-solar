@@ -75,6 +75,13 @@ const isPublicApi = createRouteMatcher([
   // Pagamento branded: o cliente paga ANTES de ter conta. A chave é o
   // conviteToken (UUID) na URL — a rota valida o token, não a sessão.
   "/api/portal/cobranca/(.*)",
+  // Robô de protocolos da RGE (`protocolos/gestor_rateios.py`), que roda FORA do
+  // Railway, na máquina do operador: não tem e nunca terá sessão Clerk. A rota se
+  // autentica sozinha por `X-API-Key: $RGE_PROTOCOLOS_API_KEY` e responde 503
+  // enquanto a variável não existir — não há modo aberto. Sem esta linha o
+  // middleware devolvia 401 "Não autenticado" ANTES do handler, e o robô nunca
+  // conseguiria falar com o Gestor por mais certa que estivesse a chave.
+  "/api/integracoes/rge/protocolos-rateio",
 ]);
 
 // Página pública de pagamento branded (/portal-cliente/pagar/<token>): o pagador
