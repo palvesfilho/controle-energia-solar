@@ -1,9 +1,13 @@
-import { prisma } from "@/lib/prisma";
+﻿import { prisma } from "@/lib/prisma";
 import {
   carregarContextoSugestoes,
   gerarSugestoesParaAcao,
   type Sugestao,
 } from "@/lib/sugestoes-acoes";
+import {
+  consumoDoRateioPorPlant,
+  taxaOcupacaoPct,
+} from "@/lib/taxa-ocupacao";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
 
@@ -850,34 +854,10 @@ export async function computeAnaliseCreditos(
     );
   }
 
-  // 9.b) Taxa de ocupação por usina = consumo cadastrado no rateio VIGENTE
-  // dividido pela geração média mensal da usina. Responde "quanto do crédito
-  // que a usina gera tem cliente pra usar".
-  //
-  // Denominador = Plant.geracaoMediaMensal (CADASTRO), não a geração medida.
-  // Medição existe hoje pra 2 das 29 usinas (MonitoringLog depende de
-  // BrasilSolarClient.plantId) e diverge ~35% do cadastro nessas duas — usar
-  // "medida quando houver, cadastro quando não" deixaria a coluna incomparável
-  // entre linhas da MESMA tabela. Base única, mesmo critério pra todo mundo.
-  //
-  // Numerador = Σ ConsumerUnit.consumoMedio das UCs do rateio vigente, mesma
-  // base do ucsCount (rateio vigente manda; plantId é só cadastro).
-  const ocupacaoPorPlant = new Map<
-    string,
-    { consumoKwh: number; ucsSemConsumo: number }
-  >();
-  for (const r of rateios) {
-    const cur = ocupacaoPorPlant.get(r.plantId) ?? {
-      consumoKwh: 0,
-      ucsSemConsumo: 0,
-    };
-    for (const it of r.items) {
-      const consumo = it.consumerUnit?.consumoMedio ?? 0;
-      if (consumo > 0) cur.consumoKwh += consumo;
-      else cur.ucsSemConsumo++;
-    }
-    ocupacaoPorPlant.set(r.plantId, cur);
-  }
+  // 9.b) Taxa de ocupação por usina. A conta e o porquê de cada base moram em
+  // lib/taxa-ocupacao.ts — o dashboard da Gestora exibe o MESMO número, e duas
+  // implementações da mesma métrica divergem sem ninguém perceber.
+  const ocupacaoPorPlant = consumoDoRateioPorPlant(rateios);
 
   const saudePorUsina: PlantHealthRow[] = plants.map((p) => {
     const saldo = saldoPorPlant.get(p.id);
@@ -906,8 +886,7 @@ export async function computeAnaliseCreditos(
         ? p.geracaoMediaMensal
         : null;
     const consumoRateioKwh = ocup?.consumoKwh ?? 0;
-    const taxaOcupacaoPct =
-      geracaoMedia != null ? consumoRateioKwh / geracaoMedia : null;
+    const taxaOcupacao = taxaOcupacaoPct(consumoRateioKwh, geracaoMedia);
 
     return {
       plantId: p.id,
@@ -922,7 +901,7 @@ export async function computeAnaliseCreditos(
       temRateioVigente: !semRateio,
       acoesAbertas: acoesQtd,
       status,
-      taxaOcupacaoPct,
+      taxaOcupacaoPct: taxaOcupacao,
       ocupacaoConsumoKwh: consumoRateioKwh,
       ocupacaoGeracaoKwh: geracaoMedia,
       ocupacaoUcsSemConsumo: ocup?.ucsSemConsumo ?? 0,
