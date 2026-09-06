@@ -91,9 +91,14 @@ export default function ComunicadoEditor({
         body: JSON.stringify({
           publico: f.publico,
           filtro: f.publicoFiltro,
-          assunto: f.assunto,
-          corpoEmail: f.corpoEmail,
-          corpoWhatsapp: f.corpoWhatsapp,
+          // 🪤 O corpo do canal DESLIGADO não vai para a prévia. Ele existe no
+          // formulário (para o operador poder ligar o canal depois sem perder o
+          // texto), mas mostrá-lo faria a prévia exibir uma mensagem que não
+          // seria enviada — visto na tela em 06/09/2026, com o WhatsApp
+          // desmarcado e o painel dele preenchido assim mesmo.
+          assunto: f.canais.includes("EMAIL") ? f.assunto : undefined,
+          corpoEmail: f.canais.includes("EMAIL") ? f.corpoEmail : undefined,
+          corpoWhatsapp: f.canais.includes("WHATSAPP") ? f.corpoWhatsapp : undefined,
         }),
       });
       if (!r.ok) throw new Error("Falha ao calcular o público");
@@ -103,7 +108,7 @@ export default function ComunicadoEditor({
     } finally {
       setCarregandoPublico(false);
     }
-  }, [f.publico, f.publicoFiltro, f.assunto, f.corpoEmail, f.corpoWhatsapp]);
+  }, [f.publico, f.publicoFiltro, f.assunto, f.corpoEmail, f.corpoWhatsapp, f.canais]);
 
   // O recorte recarrega enquanto se digita, mas não a cada tecla: 500 ms de
   // silêncio. Sem isso, escrever o texto dispararia uma consulta por letra.
