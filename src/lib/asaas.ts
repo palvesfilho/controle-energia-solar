@@ -14,6 +14,17 @@ export interface AsaasCustomerInput {
   addressNumber?: string | null;
   complement?: string | null;
   externalReference?: string | null;
+  /**
+   * Silencia TODAS as notificações do Asaas para este pagador.
+   *
+   * 🚨 **Não confundir com o `notificationDisabled` da COBRANÇA.** Em 06/09/2026
+   * emitimos uma cobrança de teste com o campo da cobrança ligado e o cliente
+   * recebeu DOIS emails: o nosso e o do Asaas. O motivo: quem decide se o email
+   * sai é o cadastro do PAGADOR, que nasce com tudo ligado
+   * (`PAYMENT_CREATED`, `SEND_LINHA_DIGITAVEL`, `PAYMENT_DUEDATE_WARNING`,
+   * `PAYMENT_OVERDUE`, ...). Desligar só na cobrança não silencia nada.
+   */
+  notificationDisabled?: boolean;
 }
 
 export interface AsaasCustomer {
@@ -21,6 +32,11 @@ export interface AsaasCustomer {
   name: string;
   cpfCnpj: string;
   email?: string | null;
+  /**
+   * Notificações do Asaas para ESTE pagador. É aqui que a régua vale de fato —
+   * ver o comentário em `getOrCreateCustomer`.
+   */
+  notificationDisabled?: boolean;
 }
 
 export interface AsaasPaymentInput {
@@ -114,6 +130,9 @@ export async function createCustomer(input: AsaasCustomerInput): Promise<AsaasCu
     name: input.name,
     cpfCnpj: sanitizeDoc(input.cpfCnpj),
   };
+  if (input.notificationDisabled !== undefined) {
+    payload.notificationDisabled = input.notificationDisabled;
+  }
   if (input.email) payload.email = input.email;
   if (input.phone) payload.phone = input.phone;
   if (input.mobilePhone) payload.mobilePhone = input.mobilePhone;
@@ -129,10 +148,48 @@ export async function createCustomer(input: AsaasCustomerInput): Promise<AsaasCu
   });
 }
 
+/**
+ * Atualiza um pagador já existente. Usado só para acertar o
+ * `notificationDisabled` — não mexemos em nome, email ou endereço de cadastro
+ * que já está no Asaas, porque lá pode ter sido corrigido à mão.
+ */
+export async function updateCustomer(
+  id: string,
+  patch: { notificationDisabled?: boolean },
+): Promise<AsaasCustomer> {
+  return asaasFetch<AsaasCustomer>(`/customers/${id}`, {
+    method: "POST",
+    body: JSON.stringify(patch),
+  });
+}
+
+/**
+ * Encontra o pagador pelo CPF/CNPJ ou cria.
+ *
+ * 🔑 **O pagador ENCONTRADO também é corrigido.** Um cliente que já foi cobrado
+ * antes existe no Asaas com as notificações LIGADAS, e criar novas cobranças
+ * para ele continuaria gerando o email duplicado para sempre. Por isso, quando
+ * pedimos silêncio e o cadastro de lá discorda, atualizamos.
+ */
 export async function getOrCreateCustomer(input: AsaasCustomerInput): Promise<AsaasCustomer> {
   const found = await findCustomerByCpfCnpj(input.cpfCnpj);
-  if (found) return found;
-  return createCustomer(input);
+  if (!found) return createCustomer(input);
+
+  if (
+    input.notificationDisabled !== undefined &&
+    found.notificationDisabled !== input.notificationDisabled
+  ) {
+    try {
+      return await updateCustomer(found.id, {
+        notificationDisabled: input.notificationDisabled,
+      });
+    } catch (err) {
+      // Não derruba a emissão por causa disto: o pior caso é o cliente receber
+      // um email a mais, não deixar de ser cobrado.
+      console.error("[asaas] falha ao silenciar notificações do pagador:", err);
+    }
+  }
+  return found;
 }
 
 export async function createPayment(input: AsaasPaymentInput): Promise<AsaasPayment> {

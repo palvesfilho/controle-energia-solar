@@ -194,6 +194,10 @@ export async function emitBillingToAsaas(
       addressNumber: uc.numero,
       complement: uc.complemento,
       externalReference: consumer.id,
+      // 🔇 Silencia o Asaas no cadastro do PAGADOR, que é onde a régua vale.
+      // Ver o comentário em AsaasCustomerInput: desligar só na cobrança deixou
+      // o cliente receber dois emails no teste de 06/09/2026.
+      notificationDisabled: !asaasDeveNotificar,
     });
 
     // Caminho parcelado: cria N cobranças Asaas independentes.
