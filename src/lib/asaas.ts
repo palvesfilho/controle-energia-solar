@@ -53,6 +53,18 @@ export interface AsaasPaymentInput {
   // presente, a cobrança é debitada automaticamente da conta do pagador (sem
   // ação dele). Deve ser criada de 2 a 10 dias úteis antes do vencimento.
   pixAutomaticAuthorizationId?: string;
+  /**
+   * Multa por atraso. `PERCENTAGE` = % do valor; `FIXED` = reais.
+   *
+   * 🪤 **Omitir e mandar zero NÃO são a mesma coisa.** A conta do Asaas tem
+   * multa e juros globais no painel, e a doc diz que enviar estes objetos
+   * SOBRESCREVE a configuração de lá. Quem monta o payload decide: ver
+   * `encargosParaAsaas` em `lib/cobranca-textos.ts`, que devolve `{}` quando o
+   * operador não configurou nada.
+   */
+  fine?: { value: number; type: "PERCENTAGE" | "FIXED" };
+  /** Juros de mora. `value` é percentual AO MÊS — a API não aceita outro tipo. */
+  interest?: { value: number };
 }
 
 export interface AsaasPayment {

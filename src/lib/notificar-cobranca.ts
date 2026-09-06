@@ -23,6 +23,12 @@
 import { prisma } from "@/lib/prisma";
 import { parseInstallments } from "@/lib/billing-installments";
 import { linkPublicoDaFatura } from "@/lib/fatura-publica";
+import {
+  textosDeCobranca,
+  getEncargosCobranca,
+  type TextoEstagio,
+  type EncargosCobranca,
+} from "@/lib/cobranca-textos";
 import { enviarEmail, emailConfigurado } from "@/lib/email-transport";
 import { enviarTextoWhatsapp, uazapiConfigurado } from "@/lib/whatsapp-uazapi";
 import { gerarESalvarDemonstrativo } from "@/lib/demonstrativo-pdf";
@@ -152,8 +158,15 @@ export async function notificarCobranca(
     codigoUc: uc.codigoUc,
   };
 
-  const email = await notificarPorEmail(billingId, dados, contato, modo, opcoes);
-  const whatsapp = await notificarPorWhatsapp(billingId, dados, contato, modo);
+  // A redação e os encargos vêm do banco (Personalizações → Textos de
+  // cobrança). Lidos UMA vez por cobrança: os dois canais têm que dizer a
+  // mesma coisa, e reler no meio abriria a janela para o operador salvar entre
+  // o email e o WhatsApp.
+  const textos = await textosDeCobranca();
+  const encargos = await getEncargosCobranca();
+
+  const email = await notificarPorEmail(billingId, dados, contato, modo, opcoes, textos.FATURA, encargos);
+  const whatsapp = await notificarPorWhatsapp(billingId, dados, contato, modo, textos.FATURA, encargos);
 
   if (modo === "simulacao") {
     console.log(
@@ -174,6 +187,8 @@ async function notificarPorEmail(
   contato: ContatoUc,
   modo: ModoNotificacao,
   opcoes: NotificarOpcoes,
+  texto: TextoEstagio,
+  encargos: EncargosCobranca,
 ): Promise<ResultadoCanal> {
   if (contato.emails.length === 0) {
     const erro = "Cliente sem email cadastrado";
@@ -189,7 +204,7 @@ async function notificarPorEmail(
     return { status: "erro", destino, erro };
   }
 
-  const assunto = assuntoEmailCobranca(dados);
+  const assunto = assuntoEmailCobranca(dados, texto, encargos);
 
   // ⚠️ A simulação sai ANTES de gerar o PDF de propósito.
   // `gerarESalvarDemonstrativo` escreve no storage e atualiza
@@ -201,7 +216,7 @@ async function notificarPorEmail(
       status: "simulado",
       destino,
       erro: null,
-      previa: `[${assunto}] ${textoEmailCobranca(dados)}`,
+      previa: `[${assunto}] ${textoEmailCobranca(dados, texto, encargos)}`,
     };
   }
 
@@ -226,8 +241,8 @@ async function notificarPorEmail(
       to: contato.emails[0],
       cc: contato.emails.slice(1),
       subject: assunto,
-      html: htmlEmailCobranca(dados),
-      text: textoEmailCobranca(dados),
+      html: htmlEmailCobranca(dados, texto, encargos),
+      text: textoEmailCobranca(dados, texto, encargos),
       attachments: pdf
         ? [
             {
@@ -274,6 +289,8 @@ async function notificarPorWhatsapp(
   dados: DadosCobranca,
   contato: ContatoUc,
   modo: ModoNotificacao,
+  texto: TextoEstagio,
+  encargos: EncargosCobranca,
 ): Promise<ResultadoCanal> {
   if (!contato.telefone) {
     const erro = contato.telefoneCadastrado
@@ -301,13 +318,13 @@ async function notificarPorWhatsapp(
     return { status: "erro", destino, erro };
   }
 
-  const texto = textoWhatsappCobranca(dados);
+  const mensagem = textoWhatsappCobranca(dados, texto, encargos);
   if (modo === "simulacao") {
-    return { status: "simulado", destino, erro: null, previa: texto };
+    return { status: "simulado", destino, erro: null, previa: mensagem };
   }
 
   try {
-    await enviarTextoWhatsapp(contato.telefone, texto);
+    await enviarTextoWhatsapp(contato.telefone, mensagem);
     await gravarWhatsapp(billingId, {
       enviadoEm: new Date(),
       numero: contato.telefone,

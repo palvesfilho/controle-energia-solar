@@ -37,7 +37,8 @@ export type AdminSection =
   | "persAcessoPortal"
   | "persFrequenciaMensagens"
   | "persComunicacaoCobranca"
-  | "persCadenciaCobrancas";
+  | "persCadenciaCobrancas"
+  | "persTextosCobranca";
 
 const FULL_ADMIN_TRIO: UserRole[] = ["ADMIN", "GESTOR", "FINANCEIRO"];
 
@@ -85,6 +86,9 @@ export const SECTION_ROLES: Record<AdminSection, UserRole[]> = {
   // Mudar a cadência decide quando o celular de todo cliente com fatura em
   // aberto toca. Não é parâmetro técnico.
   persCadenciaCobrancas: FULL_ADMIN_TRIO,
+  // Mesma trinca da cadência: quem escreve o texto da cobrança escreve em nome
+  // da empresa, para a carteira inteira.
+  persTextosCobranca: FULL_ADMIN_TRIO,
 };
 
 export function canAccessSection(

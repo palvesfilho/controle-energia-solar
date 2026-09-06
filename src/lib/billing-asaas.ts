@@ -5,6 +5,7 @@ import {
   getOrCreateCustomer,
   type AsaasBillingType,
 } from "@/lib/asaas";
+import { getEncargosCobranca, encargosParaAsaas } from "@/lib/cobranca-textos";
 import { formatMonthYear } from "@/lib/formatters";
 import {
   buildInstallmentReference,
@@ -184,6 +185,11 @@ export async function emitBillingToAsaas(
     : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const description = `Energia solar - UC ${formatCodigoUc(uc.codigoUc)} - ${formatMonthYear(billing.mes, billing.ano)}`;
 
+  // Multa e juros do boleto, como configurados em Personalizações → Textos de
+  // cobrança. Vem VAZIO quando ninguém configurou, e aí o Asaas mantém o que
+  // estiver no painel dele — ver `encargosParaAsaas`.
+  const encargos = encargosParaAsaas(await getEncargosCobranca());
+
   try {
     const customer = await getOrCreateCustomer({
       name: consumer.name,
@@ -214,6 +220,7 @@ export async function emitBillingToAsaas(
           description: `${description} (parcela ${i + 1}/${options.installments.length})`,
           externalReference: buildInstallmentReference(billing.id, i),
           notificationDisabled: asaasDeveNotificar ? !billing.notificarEmail : true,
+          ...encargos,
         });
         created.push({
           dueDate: it.dueDate,
@@ -264,6 +271,7 @@ export async function emitBillingToAsaas(
       description,
       externalReference: billing.id,
       notificationDisabled: asaasDeveNotificar ? !billing.notificarEmail : true,
+      ...encargos,
     });
     await prisma.consumerUnitBilling.update({
       where: { id: billing.id },

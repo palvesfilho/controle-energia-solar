@@ -13,6 +13,7 @@ import {
   Gauge,
   MessageCircle,
   Bell,
+  MessageSquareText,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { getServerSession } from "@/lib/auth-compat";
@@ -149,6 +150,16 @@ const items: HubItem[] = [
     group: "Financeiro",
     accent: "from-amber-500 to-orange-600",
     section: "persCadenciaCobrancas",
+  },
+  {
+    title: "Textos de cobrança",
+    description:
+      "O que o cliente lê em cada momento da régua: fatura emitida, véspera do vencimento, atraso recente e atraso prolongado. Também é aqui que se define a multa e os juros que vão no boleto do Asaas.",
+    href: "/admin/personalizacoes/textos-cobranca",
+    icon: MessageSquareText,
+    group: "Financeiro",
+    accent: "from-teal-500 to-emerald-600",
+    section: "persTextosCobranca",
   },
 ];
 

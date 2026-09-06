@@ -24,6 +24,10 @@ export const APP_SETTING_KEYS = {
   cobrancaLembreteAntesDias: "cobranca.lembreteAntesDias",
   cobrancaLembreteAtrasoDias: "cobranca.lembreteAtrasoDias",
   cobrancaLembreteCanais: "cobranca.lembreteCanais",
+  // Encargos do boleto e o degrau do tom. Ver `lib/cobranca-textos.ts`.
+  cobrancaMultaPercentual: "cobranca.multaPercentual",
+  cobrancaJurosMensalPercentual: "cobranca.jurosMensalPercentual",
+  cobrancaAtrasoFirmeDias: "cobranca.atrasoFirmeDias",
 } as const;
 
 export const APP_SETTING_DEFAULTS = {
@@ -41,6 +45,12 @@ export const APP_SETTING_DEFAULTS = {
   // entrada de todo cliente com fatura em aberto, de uma vez. Ligar é decisão,
   // não default.
   [APP_SETTING_KEYS.cobrancaLembretesAtivos]: 0,
+  // ⚠️ Multa e juros nascem em ZERO — que aqui significa "não mande nada ao
+  // Asaas", preservando a configuração global do painel dele. Ver
+  // `encargosParaAsaas` em `lib/cobranca-textos.ts`.
+  [APP_SETTING_KEYS.cobrancaMultaPercentual]: 0,
+  [APP_SETTING_KEYS.cobrancaJurosMensalPercentual]: 0,
+  [APP_SETTING_KEYS.cobrancaAtrasoFirmeDias]: 15,
 } as const;
 
 /**
@@ -192,7 +202,7 @@ function parseDias(
   return [...new Set(dias)].sort((a, b) => a - b);
 }
 
-async function getTextSetting(key: string): Promise<string | null> {
+export async function getTextSetting(key: string): Promise<string | null> {
   const row = await prisma.appSetting.findUnique({ where: { key } });
   return row?.value ?? null;
 }
@@ -235,7 +245,7 @@ export async function setCadenciaCobranca(c: CadenciaCobranca): Promise<void> {
   ]);
 }
 
-async function setTextSetting(key: string, value: string): Promise<void> {
+export async function setTextSetting(key: string, value: string): Promise<void> {
   await prisma.appSetting.upsert({
     where: { key },
     update: { value },

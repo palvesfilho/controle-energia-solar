@@ -21,6 +21,7 @@
 import { prisma } from "@/lib/prisma";
 import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
 import { getCadenciaCobranca, type CadenciaCobranca } from "@/lib/app-settings";
+import { textosDeCobranca, getEncargosCobranca } from "@/lib/cobranca-textos";
 import { montarContato, formatarTelefone } from "@/lib/uc-trava-contato";
 import { enviarEmail, emailConfigurado } from "@/lib/email-transport";
 import { enviarTextoWhatsapp, uazapiConfigurado } from "@/lib/whatsapp-uazapi";
@@ -98,6 +99,10 @@ export async function dispararLembretesDoDia(
 ): Promise<ResultadoLembretes> {
   const modo = modoNotificacao();
   const cadencia = await getCadenciaCobranca();
+  // A redação e os encargos são lidos UMA vez por rodada: uma edição no meio
+  // do disparo faria dois clientes do mesmo dia receberem textos diferentes.
+  const textos = await textosDeCobranca();
+  const encargos = await getEncargosCobranca();
   const base: ResultadoLembretes = {
     modo,
     cadenciaAtiva: cadencia.ativos,
@@ -155,9 +160,9 @@ export async function dispararLembretesDoDia(
         enviarEmail({
           to: contato.emails[0],
           cc: contato.emails.slice(1),
-          subject: assuntoLembrete(dados),
-          html: htmlLembrete(dados),
-          text: textoLembreteEmail(dados),
+          subject: assuntoLembrete(dados, textos, encargos),
+          html: htmlLembrete(dados, textos, encargos),
+          text: textoLembreteEmail(dados, textos, encargos),
         }).then(() => undefined),
       );
     }
@@ -171,7 +176,7 @@ export async function dispararLembretesDoDia(
         "WHATSAPP",
         formatarTelefone(numero),
         modo,
-        () => enviarTextoWhatsapp(numero, textoLembreteWhatsapp(dados)).then(() => undefined),
+        () => enviarTextoWhatsapp(numero, textoLembreteWhatsapp(dados, textos, encargos)).then(() => undefined),
       );
     }
   }
