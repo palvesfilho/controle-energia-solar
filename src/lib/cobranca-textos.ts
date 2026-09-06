@@ -150,12 +150,13 @@ export function renderTexto(texto: string, valores: Record<NomeVariavel, string>
  * A exceção é `ATRASO_FIRME`, que não tinha equivalente — nasce a partir do
  * texto de atraso, mais direto e sem ameaça vazia.
  *
- * 🪤 **Ele NÃO cita `{{multa}}` nem `{{juros}}` por padrão**, e isso foi
- * descoberto olhando a prévia em produção, em 06/09/2026: com os encargos
- * zerados (que é como eles nascem), a frase saía "já contempla multa de — e
- * juros de —". Texto de fábrica tem que fazer sentido na configuração de
- * fábrica. Quem ligar os encargos acrescenta a frase na tela, e a tela avisa
- * quando as variáveis são usadas com o valor em zero.
+ * 🪤 **Ele cita `{{multa}}` e `{{juros}}`, e isso só é seguro porque
+ * `ENCARGOS_PADRAO` traz os dois preenchidos.** Enquanto nasciam zerados, esta
+ * mesma frase saía como "já contempla multa de — e juros de —" — visto na
+ * prévia em produção, em 06/09/2026. A regra que fica: **texto de fábrica tem
+ * que fazer sentido na configuração de fábrica**, e as duas coisas se movem
+ * juntas. A guarda de build amarra isso, e a tela avisa em âmbar quando o
+ * operador zera um encargo que o texto cita.
  *
  * 🪧 Um detalhe MUDOU de propósito: o assunto perdeu o sufixo "— {{empresa}}".
  * Ele agora é também o TÍTULO dentro do email, e "Sua fatura set/26 —
@@ -221,7 +222,7 @@ export const TEXTOS_PADRAO: TextosCobranca = {
     corpoEmail: [
       "{{saudacao}}, a fatura da unidade {{uc}} venceu em {{vencimento}} e continua em aberto há {{diasAtraso}} dias.",
       "",
-      "O boleto continua válido e pode ser pago pelo link abaixo.",
+      "O boleto continua válido e já contempla a multa de {{multa}} e os juros de {{juros}} previstos em contrato.",
       "",
       "Se houver qualquer dificuldade com este pagamento, responda este email — é melhor conversarmos do que deixar a pendência crescer.",
     ].join("\n"),
@@ -231,7 +232,7 @@ export const TEXTOS_PADRAO: TextosCobranca = {
       "*Unidade:* {{uc}}",
       "*Valor:* {{valor}}",
       "",
-      "O boleto continua válido e pode ser pago aqui:",
+      "O boleto continua válido, já com a multa de {{multa}} e os juros de {{juros}} previstos em contrato:",
       "{{link}}",
       "",
       "Se estiver com dificuldade para pagar, responda esta mensagem — a gente encontra uma saída.",
@@ -296,13 +297,23 @@ export interface EncargosCobranca {
   atrasoFirmeDias: number;
 }
 
+/**
+ * ⚠️ **Estes valores JÁ VALEM, sem ninguém salvar a tela.** `getEncargosCobranca`
+ * cai neles quando a chave não existe no `AppSetting`, então toda cobrança nova
+ * sai com multa e juros a partir do deploy de 06/09/2026. Foi decisão explícita
+ * dele: *"já sai com eles configurados com multa de 5% e juros de 3% ao mês"*.
+ *
+ * 🚩 **5% e 3% ao mês estão acima dos tetos usuais em relação de consumo** — o
+ * CDC (art. 52, §1º) limita a multa de mora a 2%, e juros de mora em contrato
+ * de consumo costumam ser fixados em 1% ao mês. Foi avisado em 06/09/2026 e ele
+ * manteve. Quem for mexer aqui: o número certo é o que estiver no CONTRATO DE
+ * ADESÃO, não o que está neste arquivo.
+ *
+ * Boleto já emitido não muda — o Asaas guarda os encargos na cobrança.
+ */
 export const ENCARGOS_PADRAO: EncargosCobranca = {
-  // Nasce ZERADO de propósito: é exatamente o que o sistema faz hoje. Ligar
-  // encargo é decisão de quem conhece o contrato de adesão, não default de
-  // software — e um boleto que nasce com multa que o contrato não prevê é um
-  // problema pior do que um boleto sem multa.
-  multaPercentual: 0,
-  jurosMensalPercentual: 0,
+  multaPercentual: 5,
+  jurosMensalPercentual: 3,
   atrasoFirmeDias: 15,
 };
 

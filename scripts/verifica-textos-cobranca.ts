@@ -3,8 +3,9 @@
  * editável em Personalizações → Textos de cobrança.
  *
  * Texto editável é entrada de usuário que vai direto para o cliente, sem
- * ninguém no meio. As cinco regras abaixo quebram CALADAS, cada uma do seu
- * jeito:
+ * ninguém no meio. As oito regras abaixo quebram CALADAS, cada uma do seu
+ * jeito — as cinco primeiras estão detalhadas aqui, as outras três junto do
+ * código que as verifica:
  *
  * 1. **Variável declarada que ninguém preenche.** A tela oferece
  *    `{{mesExtenso}}`, o operador usa, e o envio manda `{{mesExtenso}}` escrito
@@ -30,12 +31,14 @@
 import {
   ESTAGIOS,
   TEXTOS_PADRAO,
+  ENCARGOS_PADRAO,
   VARIAVEIS,
   encargosParaAsaas,
   variaveisDesconhecidas,
   type EncargosCobranca,
   type TextosCobranca,
 } from "../src/lib/cobranca-textos";
+import { APP_SETTING_DEFAULTS, APP_SETTING_KEYS } from "../src/lib/app-settings";
 import {
   assuntoLembrete,
   estagioDoLembrete,
@@ -225,32 +228,56 @@ for (const estagio of ESTAGIOS) {
 // prolongado citava `{{multa}}` e `{{juros}}`, que nascem ZERADOS e viram um
 // travessão. A frase que chegaria ao cliente era "já contempla multa de — e
 // juros de —". Texto de fábrica tem que funcionar na configuração de fábrica.
-const SEM_ENCARGO: EncargosCobranca = {
-  multaPercentual: 0,
-  jurosMensalPercentual: 0,
-  atrasoFirmeDias: 15,
-};
+// As duas coisas se movem JUNTAS: se um texto padrão cita o encargo, o encargo
+// padrão precisa existir. Zerar `ENCARGOS_PADRAO` sem mexer no texto traz o
+// travessão de volta.
 for (const estagio of ESTAGIOS) {
   for (const campo of ["assunto", "corpoEmail", "corpoWhatsapp"] as const) {
     const texto = TEXTOS_PADRAO[estagio][campo];
-    if (texto.includes("{{multa}}") || texto.includes("{{juros}}")) {
+    if (texto.includes("{{multa}}") && ENCARGOS_PADRAO.multaPercentual <= 0) {
       erros.push(
-        `O texto PADRÃO de ${estagio}/${campo} cita {{multa}} ou {{juros}}.\n` +
-          "  Os dois nascem ZERADOS e viram um travessão: o cliente leria\n" +
-          '  "multa de — e juros de —". Quem ligar os encargos acrescenta a frase na tela.',
+        `O texto PADRÃO de ${estagio}/${campo} cita {{multa}}, mas ENCARGOS_PADRAO.multaPercentual é ${ENCARGOS_PADRAO.multaPercentual}.\n` +
+          '  O cliente leria "multa de —". Ou o texto para de citar, ou o encargo padrão volta a existir.',
+      );
+    }
+    if (texto.includes("{{juros}}") && ENCARGOS_PADRAO.jurosMensalPercentual <= 0) {
+      erros.push(
+        `O texto PADRÃO de ${estagio}/${campo} cita {{juros}}, mas ENCARGOS_PADRAO.jurosMensalPercentual é ${ENCARGOS_PADRAO.jurosMensalPercentual}.\n` +
+          '  O cliente leria "juros de —". Ou o texto para de citar, ou o encargo padrão volta a existir.',
       );
     }
   }
 }
-const semEncargoNaMensagem = [
-  textoLembreteEmail({ ...LEMBRETE, diasAtraso: 20 }, TEXTOS_PADRAO, SEM_ENCARGO),
-  textoLembreteWhatsapp({ ...LEMBRETE, diasAtraso: 20 }, TEXTOS_PADRAO, SEM_ENCARGO),
+
+const padraoNaMensagem = [
+  textoLembreteEmail({ ...LEMBRETE, diasAtraso: 20 }, TEXTOS_PADRAO, ENCARGOS_PADRAO),
+  textoLembreteWhatsapp({ ...LEMBRETE, diasAtraso: 20 }, TEXTOS_PADRAO, ENCARGOS_PADRAO),
 ].join("\n");
-if (/\bde —/.test(semEncargoNaMensagem)) {
+if (/\bde —/.test(padraoNaMensagem)) {
   erros.push(
-    'A mensagem padrão saiu com "de —" quando multa e juros estão zerados.\n' +
-      "  É o buraco do encargo não configurado aparecendo no texto do cliente.",
+    'A mensagem padrão saiu com "de —" na configuração PADRÃO.\n' +
+      "  É o buraco do encargo não preenchido aparecendo no texto do cliente.",
   );
+}
+
+// ── 8. Os DOIS lugares que guardam os percentuais dizem a mesma coisa ───────
+//
+// 🪤 `ENCARGOS_PADRAO` e `APP_SETTING_DEFAULTS` guardam os mesmos números em
+// arquivos diferentes — `cobranca-textos.ts` importa `app-settings.ts`, então
+// um não pode derivar do outro sem ciclo. A divergência seria silenciosa: a
+// tela mostraria um valor e o boleto sairia com outro.
+const paresDeEncargo: [string, number, number][] = [
+  ["multa", ENCARGOS_PADRAO.multaPercentual, APP_SETTING_DEFAULTS[APP_SETTING_KEYS.cobrancaMultaPercentual]],
+  ["juros", ENCARGOS_PADRAO.jurosMensalPercentual, APP_SETTING_DEFAULTS[APP_SETTING_KEYS.cobrancaJurosMensalPercentual]],
+  ["dias do tom firme", ENCARGOS_PADRAO.atrasoFirmeDias, APP_SETTING_DEFAULTS[APP_SETTING_KEYS.cobrancaAtrasoFirmeDias]],
+];
+for (const [nome, aqui, la] of paresDeEncargo) {
+  if (aqui !== la) {
+    erros.push(
+      `O padrão de ${nome} está DIFERENTE nos dois arquivos: ENCARGOS_PADRAO tem ${aqui}, APP_SETTING_DEFAULTS tem ${la}.\n` +
+        "  A tela leria um e a cobrança sairia com outro, sem nada apitar.",
+    );
+  }
 }
 
 // A fatura também passa pelos seus próprios construtores, que têm assinatura

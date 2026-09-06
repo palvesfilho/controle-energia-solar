@@ -152,9 +152,9 @@ const items: HubItem[] = [
     section: "persCadenciaCobrancas",
   },
   {
-    title: "Textos de cobrança",
+    title: "Textos de cobrança e encargos",
     description:
-      "O que o cliente lê em cada momento da régua: fatura emitida, véspera do vencimento, atraso recente e atraso prolongado. Também é aqui que se define a multa e os juros que vão no boleto do Asaas.",
+      "A multa e os juros que saem no boleto do Asaas, e o que o cliente lê em cada momento da régua: fatura emitida, véspera do vencimento, atraso recente e atraso prolongado.",
     href: "/admin/personalizacoes/textos-cobranca",
     icon: MessageSquareText,
     group: "Financeiro",

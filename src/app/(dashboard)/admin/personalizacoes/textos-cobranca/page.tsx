@@ -11,9 +11,10 @@
  * envia de verdade — uma prévia montada na tela um dia divergiria do que sai,
  * e a divergência só apareceria numa cobrança já entregue.
  *
- * ⚠️ Multa e juros nascem em zero. Zero aqui significa **não mandar nada ao
- * Asaas**, preservando o que estiver configurado no painel dele; não significa
- * "cobrar zero".
+ * ⚠️ Multa e juros JÁ NASCEM preenchidos (5% e 3% ao mês, decisão dele em
+ * 06/09/2026) — ver `ENCARGOS_PADRAO`. Zerar um campo aqui não é "cobrar zero":
+ * é **não mandar nada ao Asaas**, preservando o que estiver configurado no
+ * painel dele.
  */
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -160,9 +161,9 @@ export default function TextosCobrancaPage() {
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold">Textos de cobrança</h1>
+          <h1 className="text-2xl font-bold">Textos de cobrança e encargos</h1>
           <p className="text-sm text-muted-foreground">
-            O que o cliente lê em cada momento. Quando ele lê se decide na{" "}
+            A multa e os juros do boleto, e o que o cliente lê em cada momento. Quando ele lê se decide na{" "}
             <Link
               href="/admin/personalizacoes/cadencia-cobrancas"
               className="underline underline-offset-2"

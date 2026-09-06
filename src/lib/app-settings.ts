@@ -45,11 +45,12 @@ export const APP_SETTING_DEFAULTS = {
   // entrada de todo cliente com fatura em aberto, de uma vez. Ligar é decisão,
   // não default.
   [APP_SETTING_KEYS.cobrancaLembretesAtivos]: 0,
-  // ⚠️ Multa e juros nascem em ZERO — que aqui significa "não mande nada ao
-  // Asaas", preservando a configuração global do painel dele. Ver
-  // `encargosParaAsaas` em `lib/cobranca-textos.ts`.
-  [APP_SETTING_KEYS.cobrancaMultaPercentual]: 0,
-  [APP_SETTING_KEYS.cobrancaJurosMensalPercentual]: 0,
+  // ⚠️ Estes valores VALEM sem ninguém salvar a tela — e por decisão dele, de
+  // 06/09/2026, não nascem mais em zero. Toda cobrança nova sai com eles.
+  // O porquê, e a ressalva do CDC, estão em `ENCARGOS_PADRAO`
+  // (`lib/cobranca-textos.ts`); mantenha os dois lugares iguais.
+  [APP_SETTING_KEYS.cobrancaMultaPercentual]: 5,
+  [APP_SETTING_KEYS.cobrancaJurosMensalPercentual]: 3,
   [APP_SETTING_KEYS.cobrancaAtrasoFirmeDias]: 15,
 } as const;
 
