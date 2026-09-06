@@ -132,6 +132,21 @@ const MES_EXTENSO = [
  */
 export interface ResumoFatura {
   custoSemDesconto: number;
+  /**
+   * `custoSemDesconto − economiaMes` dá exatamente o valor cobrado?
+   *
+   * 🪤 **Quase nunca dá.** Só nas regras com multiplicador de exibição (a
+   * DIMARZARI) o "sem desconto" é derivado da própria cobrança, e aí a conta
+   * fecha. Nas demais o "sem desconto" é `fatura da RGE + crédito compensado` e
+   * a economia vem de outro campo — dois números que descrevem a mesma
+   * realidade por caminhos diferentes, sem obrigação de reconciliar.
+   *
+   * O PDF mostra os três como CARDS separados por causa disso. A página só pode
+   * apresentá-los como extrato (com o sinal de menos e um total) quando isto é
+   * verdadeiro; caso contrário o cliente faz a conta de cabeça, vê que não bate
+   * e perde a confiança no documento inteiro.
+   */
+  extratoFecha: boolean;
   economiaMes: number;
   economiaAcumulada: number;
   descontoPercentual: number;
@@ -168,9 +183,14 @@ export async function getFaturaView(token: string): Promise<FaturaView | null> {
   try {
     const d = await loadDemonstrativoFaturaData(ctx.billingId, { semBoletos: true });
     if (d) {
+      const custoSemDesconto = d.resumoDoMes.custoTotalSemDesconto.valor;
+      const economiaMes = d.resumoDoMes.economiaMensal.valor;
       resumo = {
-        custoSemDesconto: d.resumoDoMes.custoTotalSemDesconto.valor,
-        economiaMes: d.resumoDoMes.economiaMensal.valor,
+        custoSemDesconto,
+        // Tolerância de um centavo: arredondamento não pode reprovar uma conta
+        // que fecha.
+        extratoFecha: Math.abs(custoSemDesconto - economiaMes - ctx.valor) < 0.011,
+        economiaMes,
         economiaAcumulada: d.resumoDoMes.economiaTotalAcumulada.valor,
         descontoPercentual: d.fatura.descontoTotalPercentual,
         bandeira: d.fatura.bandeira,

@@ -43,6 +43,8 @@ const PAPER_BG = "#E8EDEB";
 
 export interface ResumoFatura {
   custoSemDesconto: number;
+  /** Ver `lib/fatura-publica.ts`: quase nunca é verdadeiro. */
+  extratoFecha: boolean;
   economiaMes: number;
   economiaAcumulada: number;
   descontoPercentual: number;
@@ -86,6 +88,47 @@ function Rotulo({ children, cor = INK_SOFT }: { children: React.ReactNode; cor?:
       }}
     >
       {children}
+    </div>
+  );
+}
+
+/** Uma linha do bloco de explicação do valor. */
+function Linha({
+  rotulo,
+  valor,
+  cor = INK_SOFT,
+  riscado = false,
+  forte = false,
+}: {
+  rotulo: React.ReactNode;
+  valor: string;
+  cor?: string;
+  riscado?: boolean;
+  forte?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "10px 0",
+        borderBottom: `1px solid ${LINE_SOFT}`,
+        gap: 12,
+      }}
+    >
+      <span style={{ fontSize: 12, color: "#374151" }}>{rotulo}</span>
+      <span
+        style={{
+          fontSize: 12,
+          color: cor,
+          fontWeight: forte ? 700 : 400,
+          textDecoration: riscado ? "line-through" : "none",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {valor}
+      </span>
     </div>
   );
 }
@@ -213,41 +256,32 @@ export default function FaturaPublicaView({
             </div>
           </div>
 
-          {/* Extrato: o desconto abatido linha a linha */}
+          {/* Como o valor se explica.
+              ⚠️ Só vira EXTRATO (com o sinal de menos e um total) quando os
+              números reconciliam — ver `extratoFecha`. Nas demais regras o
+              "sem desconto" e a economia descrevem a mesma realidade por
+              caminhos diferentes e não se subtraem; apresentá-los como conta
+              faria o cliente somar de cabeça, ver que não bate e desconfiar do
+              documento. Aí viram três linhas rotuladas, como os cards do PDF. */}
           {r && (
             <div style={{ padding: "4px 16px 14px" }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "10px 0",
-                  borderBottom: `1px solid ${LINE_SOFT}`,
-                }}
-              >
-                <span style={{ fontSize: 12, color: "#374151" }}>Custo sem o desconto</span>
-                <span style={{ fontSize: 12, color: INK_SOFT, textDecoration: "line-through" }}>
-                  {brl(r.custoSemDesconto)}
-                </span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "10px 0",
-                  borderBottom: `1px solid ${LINE_SOFT}`,
-                }}
-              >
-                <span style={{ fontSize: 12, color: "#374151" }}>
-                  Desconto do contrato{" "}
-                  <span style={{ fontSize: 10, color: INK_FAINT }}>({r.descontoPercentual}%)</span>
-                </span>
-                {/* O "−" é U+2212, não hífen: alinha com os dígitos. */}
-                <span style={{ fontSize: 12, fontWeight: 700, color: ORANGE }}>
-                  − {brl(r.economiaMes)}
-                </span>
-              </div>
+              <Linha
+                rotulo="Custo sem o desconto"
+                valor={brl(r.custoSemDesconto)}
+                riscado={r.extratoFecha}
+              />
+              <Linha
+                rotulo={
+                  <>
+                    {r.extratoFecha ? "Desconto do contrato" : "Economia deste mês"}{" "}
+                    <span style={{ fontSize: 10, color: INK_FAINT }}>({r.descontoPercentual}%)</span>
+                  </>
+                }
+                /* O "−" é U+2212, não hífen: alinha com os dígitos. */
+                valor={`${r.extratoFecha ? "− " : ""}${brl(r.economiaMes)}`}
+                cor={ORANGE}
+                forte
+              />
               <div
                 style={{
                   display: "flex",
@@ -256,8 +290,12 @@ export default function FaturaPublicaView({
                   padding: "12px 0 2px",
                 }}
               >
-                <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Você paga</span>
-                <span style={{ fontSize: 16, fontWeight: 700, color: TEAL_DARK }}>{brl(view.valor)}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>
+                  {r.extratoFecha ? "Você paga" : "Valor desta fatura"}
+                </span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: TEAL_DARK }}>
+                  {brl(view.valor)}
+                </span>
               </div>
             </div>
           )}
