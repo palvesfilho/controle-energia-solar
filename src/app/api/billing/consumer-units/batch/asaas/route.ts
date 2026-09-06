@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 import { emitBillingToAsaas } from "@/lib/billing-asaas";
+import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
 import type { AsaasBillingType } from "@/lib/asaas";
 
 export async function POST(req: NextRequest) {
@@ -37,6 +38,10 @@ export async function POST(req: NextRequest) {
         mes: body.mes,
         asaasChargeId: null,
         valorCobranca: { gt: 0 },
+        // Lote é da ASSOCIAÇÃO. `emitBillingToAsaas` também recusa UC do módulo
+        // Brasil Solar, mas ali a recusa vira 264 linhas de erro no resultado;
+        // aqui elas nem entram na seleção. Ver lib/uc-origem.ts.
+        consumerUnit: { ...SEM_UC_BRASIL_SOLAR },
       },
       select: { id: true },
     });

@@ -673,9 +673,20 @@ model ConsumerUnitBilling {
   demonstrativoValidadoEm  DateTime? @map("demonstrativo_validado_em")
   demonstrativoValidadoPor String?   @map("demonstrativo_validado_por")
 
-  // Envio do demonstrativo por email (Resend)
-  emailEnviadoEm DateTime? @map("email_enviado_em")
-  emailErro      String?   @map("email_erro")
+  // Envio do demonstrativo por email (SMTP do Google; ver lib/email-transport.ts)
+  emailEnviadoEm  DateTime? @map("email_enviado_em")
+  emailErro       String?   @map("email_erro")
+  // Para quem foi, separado por ";". Sem isto, "não recebi" vira discussão sem
+  // prova — o cadastro pode ter mudado depois do envio.
+  emailDestinatarios String? @map("email_destinatarios")
+
+  // Aviso de cobrança por WhatsApp (Uazapi; ver lib/whatsapp-uazapi.ts)
+  whatsappEnviadoEm DateTime? @map("whatsapp_enviado_em")
+  whatsappErro      String?   @map("whatsapp_erro")
+  // E.164 EFETIVAMENTE usado, já normalizado. O campo do cadastro pode estar
+  // "(55)99161-375"; o que saiu foi "5555999161375", e é esse que responde
+  // "para qual número vocês mandaram?".
+  whatsappNumero    String?   @map("whatsapp_numero")
 
   // Preferências de envio escolhidas pelo operador (persistidas mesmo sem disparar)
   notificarEmail    Boolean @default(true) @map("notificar_email")

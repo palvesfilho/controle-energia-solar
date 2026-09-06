@@ -2,13 +2,13 @@
  * Email de resumo mensal da Análise de Créditos.
  *
  * Disparado pelo script `scripts/run-analise-mensal.ts` quando um mês
- * fecha (completude=100%). Skip silencioso se RESEND_API_KEY ausente —
- * o snapshot ainda é gravado, só não notifica.
+ * fecha (completude=100%). Skip silencioso se o provedor de email não estiver
+ * configurado — o snapshot ainda é gravado, só não notifica.
  *
- * Variáveis de ambiente:
- *   RESEND_API_KEY   — obrigatório pra enviar
- *   RESEND_FROM      — opcional, default: "Análise Créditos <onboarding@resend.dev>"
- *   RESEND_REPLY_TO  — opcional
+ * O envio vai por `lib/email-transport.ts` (SMTP do Google por padrão), o mesmo
+ * caminho do email de cobrança — ver as variáveis lá.
+ *
+ * Variável própria daqui:
  *   ANALISE_EMAIL_DESTINATARIOS  — CSV de emails (gestão recebe aqui)
  */
 import type { AnaliseCreditosResult } from "@/lib/analise-creditos";
@@ -156,26 +156,20 @@ export async function enviarEmailResumo(args: {
   payload: AnaliseCreditosResult;
   destinatarios: string[];
 }): Promise<{ enviado: boolean; motivo?: string }> {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) {
-    return { enviado: false, motivo: "RESEND_API_KEY ausente" };
-  }
   if (args.destinatarios.length === 0) {
     return { enviado: false, motivo: "destinatários vazios" };
   }
 
-  // Import dinâmico pra não puxar `resend` em paths que nunca enviam.
-  const { Resend } = await import("resend");
-  const resend = new Resend(key);
-  const from =
-    process.env.RESEND_FROM || "Análise Créditos <onboarding@resend.dev>";
-  const replyTo = process.env.RESEND_REPLY_TO;
-  const mesLabel = `${MESES[args.payload.filtros.mes - 1]}/${args.payload.filtros.ano}`;
+  // Import dinâmico pra não puxar o transporte em paths que nunca enviam.
+  const { enviarEmail, emailConfigurado } = await import("@/lib/email-transport");
+  const cfg = emailConfigurado();
+  if (!cfg.ok) {
+    return { enviado: false, motivo: cfg.motivo };
+  }
 
-  await resend.emails.send({
-    from,
+  const mesLabel = `${MESES[args.payload.filtros.mes - 1]}/${args.payload.filtros.ano}`;
+  await enviarEmail({
     to: args.destinatarios,
-    ...(replyTo ? { reply_to: replyTo } : {}),
     subject: `Análise de Créditos — ${mesLabel}`,
     html: renderHtmlResumo(args.payload),
   });

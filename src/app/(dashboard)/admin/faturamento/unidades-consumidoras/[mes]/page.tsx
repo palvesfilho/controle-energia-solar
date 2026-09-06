@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileText, FileBarChart2, Filter, Search, Send, Receipt, X, XCircle, CheckCircle2, Plug, Hourglass } from "lucide-react";
+import { FileText, FileBarChart2, Filter, Search, Send, Receipt, X, XCircle, CheckCircle2, Plug, Hourglass, Mail, MessageCircle, UserX, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { formatMonthYear, formatBRL } from "@/lib/formatters";
 import {
@@ -44,9 +44,28 @@ interface Row {
     demonstrativoUrl?: string | null;
     emailEnviadoEm?: string | null;
     emailErro?: string | null;
+    emailDestinatarios?: string | null;
+    whatsappEnviadoEm?: string | null;
+    whatsappErro?: string | null;
+    whatsappNumero?: string | null;
   } | null;
   status: string;
   faturaDistribuidoraDisponivel: boolean;
+  /**
+   * 🔒 Trava de contato: emitir dispara email + WhatsApp, e sem os dois canais
+   * a cobrança sairia sem ninguém ser avisado. `bloqueia` já considera a chave
+   * TRAVA_CONTATO_COBRANCA — com ela desligada a pendência ainda aparece, mas
+   * não impede cobrar.
+   */
+  contato: {
+    temEmail: boolean;
+    temTelefone: boolean;
+    emails: string[];
+    telefone: string | null;
+    telefoneCadastrado: string | null;
+    pendencia: string | null;
+    bloqueia: boolean;
+  };
   /**
    * 🔒 Trava de faturamento: a UC ainda não teve NENHUMA fatura com
    * compensação. O servidor recusa validar e emitir (lib/uc-trava-faturamento);
@@ -90,6 +109,12 @@ const FACETAS: Faceta<Row>[] = [
     label: "Consumidor",
     valor: (r) => r.consumerUnit.consumer?.name,
   },
+  {
+    chave: "contato",
+    label: "Contato",
+    valor: (r) =>
+      r.contato.pendencia ? "Cadastro incompleto" : "Email e WhatsApp ok",
+  },
 ];
 
 interface CobrancaModalState {
@@ -100,6 +125,9 @@ interface CobrancaModalState {
   dataVencimento: string;
   notificarEmail: boolean;
   notificarWhatsapp: boolean;
+  /** Para quem o aviso vai — mostrado antes de confirmar. */
+  emails: string[];
+  telefone: string | null;
   jaEnviado: boolean;
   // Parcelamento
   parcelarAtivo: boolean;
@@ -142,6 +170,71 @@ const MESES_OPTS = [
 // (3) filtrar por status (hoje a query pega até fatura CANCELADA sem asaasChargeId).
 const LOTE_ASAAS_DESATIVADO = true;
 
+/** `5555999768597` → `(55) 99976-8597`. Só exibição. */
+function formatarTelefoneBR(e164: string): string {
+  const d = e164.replace(/\D/g, "");
+  if (d.length !== 13) return e164;
+  return `(${d.slice(2, 4)}) ${d.slice(4, 9)}-${d.slice(9)}`;
+}
+
+/**
+ * Um sinal por canal (email / WhatsApp) na coluna "Avisado".
+ *
+ * Quatro estados, e a distinção entre eles é o ponto:
+ *   verde   — saiu
+ *   âmbar   — saiu, mas com ressalva (ex.: sem o PDF anexado). Os DOIS campos
+ *             preenchidos, `enviadoEm` e `erro`, é o que produz este estado.
+ *   vermelho— tentou e falhou
+ *   cinza   — ainda não houve envio (ou nem há para onde enviar)
+ *
+ * ⚠️ "Sem destino cadastrado" nunca pode parecer "ainda não enviamos": é
+ * pendência de cadastro, e some da vista se ficar cinza igual ao resto.
+ */
+function SinalCanal({
+  Icone,
+  enviadoEm,
+  erro,
+  destino,
+  rotulo,
+  temDestino,
+}: {
+  Icone: typeof Mail;
+  enviadoEm?: string | null;
+  erro?: string | null;
+  destino?: string | null;
+  rotulo: string;
+  temDestino: boolean;
+}) {
+  const enviado = !!enviadoEm;
+  const comRessalva = enviado && !!erro;
+  const falhou = !enviado && !!erro;
+
+  const cor = comRessalva
+    ? "text-amber-600 dark:text-amber-400"
+    : enviado
+      ? "text-emerald-600 dark:text-emerald-400"
+      : falhou || !temDestino
+        ? "text-red-600 dark:text-red-400"
+        : "text-slate-300 dark:text-slate-600";
+
+  const quando = enviadoEm ? new Date(enviadoEm).toLocaleString("pt-BR") : null;
+  const titulo = !temDestino
+    ? `${rotulo}: sem destino cadastrado — preencha no cadastro do cliente`
+    : comRessalva
+      ? `${rotulo} enviado em ${quando} para ${destino ?? "—"}. Ressalva: ${erro}`
+      : enviado
+        ? `${rotulo} enviado em ${quando} para ${destino ?? "—"}`
+        : falhou
+          ? `${rotulo} falhou: ${erro}`
+          : `${rotulo} ainda não enviado${destino ? ` — iria para ${destino}` : ""}`;
+
+  return (
+    <span title={titulo} className={`inline-flex ${cor}`}>
+      <Icone className="h-4 w-4" />
+    </span>
+  );
+}
+
 export default function FaturamentoUCMesPage() {
   const params = useParams();
   const router = useRouter();
@@ -172,6 +265,7 @@ export default function FaturamentoUCMesPage() {
   const [cancelingId, setCancelingId] = useState<string | null>(null);
   const [previewModal, setPreviewModal] = useState<{ billingId: string; codigoUc: string; nome: string } | null>(null);
   const [validatingId, setValidatingId] = useState<string | null>(null);
+  const [reenviandoId, setReenviandoId] = useState<string | null>(null);
 
   // Antes do `return` de mês inválido lá embaixo: hook não pode ficar atrás de
   // saída condicional.
@@ -184,6 +278,14 @@ export default function FaturamentoUCMesPage() {
     facetas: FACETAS,
   });
 
+  const recarregar = async () => {
+    if (!parsed) return;
+    const data = await fetch(
+      `/api/billing/consumer-units?ano=${parsed.ano}&mes=${parsed.mesNum}`,
+    ).then((r) => r.json());
+    setRows(Array.isArray(data) ? data : []);
+  };
+
   useEffect(() => {
     if (!parsed) {
       setLoading(false);
@@ -194,6 +296,62 @@ export default function FaturamentoUCMesPage() {
       .then((data: Row[]) => setRows(Array.isArray(data) ? data : []))
       .finally(() => setLoading(false));
   }, [parsed?.ano, parsed?.mesNum]);
+
+  /**
+   * Reenvia o aviso ao cliente SEM tocar na cobrança do Asaas — é o que o
+   * operador faz depois de consertar o email ou o telefone no cadastro.
+   * Reemitir a cobrança para conseguir o mesmo efeito criaria uma segunda
+   * cobrança para o mesmo mês.
+   */
+  const handleReenviarAviso = async (billingId: string) => {
+    setReenviandoId(billingId);
+    try {
+      const res = await fetch(
+        `/api/admin/faturamento/unidades-consumidoras/${billingId}/notificar`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? "Falha ao reenviar o aviso");
+        return;
+      }
+      // O modo `simulacao` é o padrão do servidor: dizer "enviado" quando nada
+      // saiu seria a pior mentira possível nesta tela.
+      if (data.modo === "simulacao") {
+        toast.warning(
+          `SIMULAÇÃO — nada foi enviado. Iria para ${data.email?.destino ?? "—"} e ${data.whatsapp?.destino ?? "—"}.`,
+        );
+      } else {
+        const partes = [
+          `Email: ${data.email?.status ?? "—"}`,
+          `WhatsApp: ${data.whatsapp?.status ?? "—"}`,
+        ];
+        const houveErro = data.email?.erro || data.whatsapp?.erro;
+        if (houveErro) {
+          toast.error(`${partes.join(" · ")} — ${data.email?.erro ?? data.whatsapp?.erro}`);
+        } else {
+          toast.success(partes.join(" · "));
+        }
+      }
+      await recarregar();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao reenviar o aviso");
+    } finally {
+      setReenviandoId(null);
+    }
+  };
+
+  /**
+   * UCs que não podem ser cobradas por falta de contato.
+   *
+   * Conta sobre TODAS as linhas do mês, não sobre o filtro: é um aviso de
+   * cadastro, e escondê-lo quando o operador filtra a tela faria a pendência
+   * sumir sem ter sido resolvida.
+   */
+  const semContato = useMemo(
+    () => rows.filter((r) => r.contato.pendencia),
+    [rows],
+  );
 
   const handleOpen = async (consumerUnitId: string) => {
     if (!parsed) return;
@@ -273,6 +431,8 @@ export default function FaturamentoUCMesPage() {
       dataVencimento: vencISO,
       notificarEmail: r.billing.notificarEmail ?? true,
       notificarWhatsapp: r.billing.notificarWhatsapp ?? false,
+      emails: r.contato.emails,
+      telefone: r.contato.telefone,
       jaEnviado: !!r.billing.asaasChargeId && r.status !== "CANCELADO",
       parcelarAtivo: false,
       parcelasN: 2,
@@ -498,6 +658,75 @@ export default function FaturamentoUCMesPage() {
           ir conferir a outra tela. Some sozinho quando não há pendência. */}
       <AvisoPrimeirasCompensacoes />
 
+      {/* 🔒 TRAVA DE CONTATO — cadastro urgente.
+          Emitir dispara email + WhatsApp; sem os dois canais a cobrança sairia
+          sem ninguém ser avisado. Este bloco existe para o operador saber QUEM
+          consertar, não só que "algo está errado". */}
+      {semContato.length > 0 && (
+        <Card className="border-red-300 dark:border-red-900">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <UserX className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+                  {semContato.length}{" "}
+                  {semContato.length === 1 ? "UC precisa" : "UCs precisam"} de cadastro de contato
+                  {semContato.some((r) => r.contato.bloqueia)
+                    ? " — a cobrança está bloqueada"
+                    : " (trava desligada: a cobrança sai mesmo assim)"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Toda cobrança emitida envia a fatura por email e um aviso por WhatsApp.
+                  Sem email e celular no cadastro do cliente, o boleto sairia e o cliente
+                  só descobriria no vencimento.
+                </p>
+              </div>
+            </div>
+            <div className="overflow-x-auto max-h-64 overflow-y-auto rounded border">
+              <table className="w-full text-xs" data-tabela="faturamento-sem-contato">
+                <thead className="sticky top-0 bg-muted/80 backdrop-blur">
+                  <tr className="text-left text-muted-foreground">
+                    <th className="px-2 py-1.5 font-medium">UC</th>
+                    <th className="px-2 py-1.5 font-medium">Cliente</th>
+                    <th className="px-2 py-1.5 font-medium">O que falta</th>
+                    <th className="px-2 py-1.5 font-medium text-right">Cadastro</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {semContato.map((r) => (
+                    <tr key={r.consumerUnit.id} className="border-t">
+                      <td className="px-2 py-1.5 font-mono">
+                        {formatCodigoUc(r.consumerUnit.codigoUc)}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        {r.consumerUnit.consumer?.name ?? r.consumerUnit.nome}
+                      </td>
+                      <td className="px-2 py-1.5 text-red-700 dark:text-red-300">
+                        {r.contato.pendencia}
+                      </td>
+                      <td className="px-2 py-1.5 text-right">
+                        <Link
+                          href={`/admin/unidades-consumidoras/${r.consumerUnit.id}`}
+                          className="text-blue-700 dark:text-blue-400 hover:underline font-medium"
+                        >
+                          Abrir cadastro
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <ExportarTabela
+              tabela="faturamento-sem-contato"
+              nome={`ucs-sem-contato-${mesParam}`}
+              aba="Sem contato"
+              className="h-8"
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {filtroAtivo && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-medium text-blue-700 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
@@ -672,6 +901,10 @@ export default function FaturamentoUCMesPage() {
                       Status
                       <FiltroColuna filtro={filtro} chave="status" />
                     </th>
+                    <th className="px-3 py-2 text-center font-medium text-xs uppercase tracking-wide">
+                      Avisado
+                      <FiltroColuna filtro={filtro} chave="contato" />
+                    </th>
                     <th className="px-3 py-2 text-center font-medium text-xs uppercase tracking-wide">Ações</th>
                   </tr>
                 </thead>
@@ -688,6 +921,13 @@ export default function FaturamentoUCMesPage() {
                     // trava so toma a frente quando ja daria pra tentar cobrar.
                     const travadoPorImplantacao =
                       r.emImplantacao &&
+                      !r.billing?.asaasChargeId &&
+                      (r.billing != null || r.faturaDistribuidoraDisponivel);
+                    // 🔒 Trava de contato. Mesma regra da de implantação:
+                    // cobrança já emitida fica de fora — a trava impede COMEÇAR
+                    // a cobrar, não esconde o "Cancelar" de um boleto vivo.
+                    const travadoPorContato =
+                      r.contato.bloqueia &&
                       !r.billing?.asaasChargeId &&
                       (r.billing != null || r.faturaDistribuidoraDisponivel);
                     // Visualizar vale nos dois caminhos: mesmo travada, o
@@ -722,6 +962,44 @@ export default function FaturamentoUCMesPage() {
                         <td className="px-3 py-2.5 text-center">
                           <Badge className={`${st.className} text-white`}>{st.label}</Badge>
                         </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center justify-center gap-2">
+                            <SinalCanal
+                              Icone={Mail}
+                              enviadoEm={r.billing?.emailEnviadoEm}
+                              erro={r.billing?.emailErro}
+                              destino={
+                                r.billing?.emailDestinatarios ??
+                                (r.contato.emails.join("; ") || null)
+                              }
+                              rotulo="Email"
+                              temDestino={r.contato.temEmail}
+                            />
+                            <SinalCanal
+                              Icone={MessageCircle}
+                              enviadoEm={r.billing?.whatsappEnviadoEm}
+                              erro={r.billing?.whatsappErro}
+                              destino={r.billing?.whatsappNumero ?? r.contato.telefone}
+                              rotulo="WhatsApp"
+                              temDestino={r.contato.temTelefone}
+                            />
+                            {/* Reenviar só faz sentido depois de a cobrança existir:
+                                sem boleto não há link de pagamento para avisar. */}
+                            {r.billing?.asaasChargeId && (
+                              <button
+                                type="button"
+                                onClick={() => handleReenviarAviso(r.billing!.id)}
+                                disabled={reenviandoId === r.billing.id}
+                                title="Reenviar email e WhatsApp desta cobrança (não mexe no boleto do Asaas)"
+                                className="inline-flex items-center rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40"
+                              >
+                                <RefreshCw
+                                  className={`h-3.5 w-3.5 ${reenviandoId === r.billing.id ? "animate-spin" : ""}`}
+                                />
+                              </button>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-3 py-2.5 text-center">
                           <div className="flex items-center justify-center gap-1">
                             {travadoPorImplantacao ? (
@@ -737,6 +1015,22 @@ export default function FaturamentoUCMesPage() {
                                   <Hourglass className="h-3.5 w-3.5" />
                                   Em implantação — sem compensação
                                 </span>
+                              </>
+                            ) : travadoPorContato ? (
+                              /* 0b. TRAVA DE CONTATO — falta email e/ou celular.
+                                 Emitir mandaria o boleto para o Asaas e nenhum
+                                 aviso para o cliente. O link vai direto para o
+                                 cadastro: a ação existe, é preencher. */
+                              <>
+                                {botaoVisualizar}
+                                <Link
+                                  href={`/admin/unidades-consumidoras/${r.consumerUnit.id}`}
+                                  title={`Não é possível cobrar: ${r.contato.pendencia}. A cobrança envia email e WhatsApp ao cliente — clique para abrir o cadastro e preencher.`}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-900/40 transition-colors text-xs font-medium"
+                                >
+                                  <UserX className="h-3.5 w-3.5" />
+                                  Cadastrar contato do cliente
+                                </Link>
                               </>
                             ) : r.billing ? (
                               <>
@@ -1081,38 +1375,47 @@ export default function FaturamentoUCMesPage() {
                 )}
               </div>
 
+              {/* Quem será avisado, ANTES de confirmar.
+                  Os dois canais saem sempre — a trava de contato já garantiu
+                  que existem os dois destinos, então não há o que desmarcar.
+                  O que faltava aqui era o operador VER para onde vai. */}
               <div>
-                <div className="text-sm font-medium mb-2">Notificar por</div>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={cobrancaModal.notificarEmail}
-                      onChange={(e) =>
-                        setCobrancaModal((s) =>
-                          s ? { ...s, notificarEmail: e.target.checked } : s,
-                        )
-                      }
-                      className="h-4 w-4"
-                    />
-                    E-mail
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={cobrancaModal.notificarWhatsapp}
-                      onChange={(e) =>
-                        setCobrancaModal((s) =>
-                          s ? { ...s, notificarWhatsapp: e.target.checked } : s,
-                        )
-                      }
-                      className="h-4 w-4"
-                    />
-                    WhatsApp
-                    <span className="text-xs text-muted-foreground">
-                      (preferência gravada; envio ainda não implementado)
+                <div className="text-sm font-medium mb-2">Ao confirmar, o cliente recebe</div>
+                <div className="space-y-1.5 rounded border bg-muted/30 p-3">
+                  <div className="flex items-start gap-2 text-sm">
+                    <Mail className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                    <span className="break-all">
+                      {cobrancaModal.emails.length > 0 ? (
+                        <>
+                          {cobrancaModal.emails.join("; ")}
+                          <span className="block text-xs text-muted-foreground">
+                            com o demonstrativo em PDF anexado
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-red-600 dark:text-red-400">
+                          sem email cadastrado
+                        </span>
+                      )}
                     </span>
-                  </label>
+                  </div>
+                  <div className="flex items-start gap-2 text-sm">
+                    <MessageCircle className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                    <span>
+                      {cobrancaModal.telefone ? (
+                        <>
+                          {formatarTelefoneBR(cobrancaModal.telefone)}
+                          <span className="block text-xs text-muted-foreground">
+                            aviso com valor, vencimento e link do boleto/PIX
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-red-600 dark:text-red-400">
+                          sem telefone válido cadastrado
+                        </span>
+                      )}
+                    </span>
+                  </div>
                 </div>
               </div>
 

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
 import { ucsQueJaCompensaram } from "@/lib/uc-trava-faturamento";
+import { contatosDasUcs, travaContatoAtiva } from "@/lib/uc-trava-contato";
 
 /**
  * GET /api/billing/consumer-units?ano=2026&mes=4  → lista do mês
@@ -54,7 +55,15 @@ export async function GET(req: NextRequest) {
         codigoUc: true,
         cpfCnpj: true,
         distribuidora: true,
-        consumer: { select: { id: true, name: true } },
+        consumer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            emailsRecebimento: true,
+            phone: true,
+          },
+        },
       },
     }),
     prisma.consumerUnitBilling.findMany({ where: { ano, mes } }),
@@ -77,12 +86,33 @@ export async function GET(req: NextRequest) {
   // consulta para todas as UCs do mês, não uma por linha.
   const jaCompensaram = await ucsQueJaCompensaram(units.map((u) => u.id));
 
+  // 🔒 TRAVA DE CONTATO — mesma ideia: a recusa dura mora no servidor
+  // (lib/uc-trava-contato.ts); isto aqui é para a tela mostrar O QUE FALTA e
+  // desabilitar o botão, em vez de deixar clicar e receber 409. Uma consulta
+  // para todas as UCs do mês.
+  const contatos = await contatosDasUcs(units.map((u) => u.id));
+  const travaContato = travaContatoAtiva();
+
   const data = units.map((u) => ({
     consumerUnit: u,
     billing: billingByUc.get(u.id) ?? null,
     status: billingByUc.get(u.id)?.status ?? "PENDENTE",
     faturaDistribuidoraDisponivel: ucsComFatura.has(u.id),
     emImplantacao: !jaCompensaram.has(u.id),
+    contato: (() => {
+      const c = contatos.get(u.id);
+      return {
+        temEmail: c?.temEmail ?? false,
+        temTelefone: c?.temTelefone ?? false,
+        emails: c?.emails ?? [],
+        telefone: c?.telefone ?? null,
+        telefoneCadastrado: c?.telefoneCadastrado ?? null,
+        pendencia: c?.pendencia ?? "a UC não tem cliente vinculado",
+        // Separado de `pendencia` de propósito: com a trava desligada a
+        // pendência continua aparecendo na tela, mas não impede cobrar.
+        bloqueia: travaContato && !!(c?.pendencia ?? true),
+      };
+    })(),
   }));
 
   return NextResponse.json(data);

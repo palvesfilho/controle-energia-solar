@@ -2,28 +2,36 @@
  * Pipeline de emissão de cobrança ao cliente.
  *
  * Fluxo:
- *   1. Valida pré-condição: demonstrativo precisa estar validado.
+ *   1. Valida pré-condições: demonstrativo validado, UC já compensou, cliente
+ *      com contato cadastrado.
  *   2. Cria cobrança no Asaas (delegado pra `emitBillingToAsaas`).
- *   3. Gera o PDF do novo demonstrativo (com código de barras Asaas embutido).
- *   4. Salva o PDF no storage (R2/local) e grava demonstrativoUrl + timestamp.
- *   5. (Fase 4) Dispara email pro cliente via Resend.
+ *   3. Gera o PDF do novo demonstrativo (com código de barras Asaas embutido)
+ *      e salva no storage (`demonstrativo-pdf.ts`).
+ *   4. Avisa o cliente por EMAIL e WHATSAPP (`notificar-cobranca.ts`).
  *
- * O envio do email é feito SÍNCRONAMENTE no fim do pipeline: se falhar, o
- * billing fica com `emailErro` preenchido pra o operador clicar "Reenviar"
- * na UI. A cobrança Asaas continua ativa mesmo com falha de email.
+ * 🔑 O aviso é disparado AQUI, e não dentro do `emitBillingToAsaas`, porque
+ * este caminho tem o PDF fresco em mãos — anexar o buffer que acabou de ser
+ * renderizado evita gerar o mesmo documento duas vezes. Por isso o
+ * `notificar: false` na chamada abaixo: sem ele, o cliente receberia dois
+ * emails da mesma cobrança.
+ *
+ * Falha de aviso NÃO cancela a cobrança — o erro de cada canal fica gravado em
+ * `emailErro` / `whatsappErro` para o operador clicar "Reenviar" na tela.
  */
 import { prisma } from "@/lib/prisma";
-import { renderToBuffer } from "@react-pdf/renderer";
 import { emitBillingToAsaas, type EmitBillingOptions } from "@/lib/billing-asaas";
-import { loadDemonstrativoFaturaData } from "@/lib/demonstrativo-fatura";
-import { DemonstrativoFaturaPdf } from "@/components/billing/demonstrativo-fatura-pdf";
-import { saveBufferToStorage } from "@/lib/file-storage";
-import { sendDemonstrativoEmail } from "@/lib/demonstrativo-email";
+import { gerarESalvarDemonstrativo } from "@/lib/demonstrativo-pdf";
+import { notificarCobranca, type ResultadoNotificacao } from "@/lib/notificar-cobranca";
 import {
   MENSAGEM_SEM_COMPENSACAO,
   SKIP_SEM_COMPENSACAO,
   ucJaCompensou,
 } from "@/lib/uc-trava-faturamento";
+import {
+  SKIP_SEM_CONTATO,
+  avaliarContato,
+  contatoDaUc,
+} from "@/lib/uc-trava-contato";
 
 export interface EmitirCobrancaResult {
   ok: boolean;
@@ -33,12 +41,16 @@ export interface EmitirCobrancaResult {
   demonstrativoUrl?: string | null;
   emailEnviado?: boolean;
   emailErro?: string | null;
+  whatsappEnviado?: boolean;
+  whatsappErro?: string | null;
+  /** Resultado completo dos dois canais — a tela usa para o toast detalhado. */
+  notificacao?: ResultadoNotificacao;
   error?: string;
   skipped?: string;
 }
 
 export interface EmitirCobrancaOptions extends EmitBillingOptions {
-  /** Pula a etapa de envio de email (útil em testes / smoke). */
+  /** Pula a etapa de aviso ao cliente (útil em testes / smoke). */
   pularEmail?: boolean;
 }
 
@@ -49,14 +61,15 @@ export async function emitirCobrancaComDemonstrativo(
   // 1) Pré-condição: demonstrativo validado
   const pre = await prisma.consumerUnitBilling.findUnique({
     where: { id: billingId },
-    select: { id: true, demonstrativoValidadoEm: true, consumerUnitId: true, ano: true, mes: true },
+    select: { id: true, demonstrativoValidadoEm: true, consumerUnitId: true },
   });
   if (!pre) return { ok: false, billingId, error: "Cobrança não encontrada" };
   if (!pre.demonstrativoValidadoEm) {
     return {
       ok: false,
       billingId,
-      error: "Demonstrativo ainda não foi validado — clique em 'Validar Demonstrativo' antes de realizar a cobrança.",
+      error:
+        "Demonstrativo ainda não foi validado — clique em 'Validar Demonstrativo' antes de realizar a cobrança.",
     };
   }
 
@@ -73,12 +86,24 @@ export async function emitirCobrancaComDemonstrativo(
     };
   }
 
-  // 2) Emite no Asaas (reaproveita o fluxo existente que já trata installments,
-  //    cliente Asaas, etc.). Pra esse fluxo novo, sempre desligamos as
-  //    notificações padrão do Asaas — quem envia somos nós, via Resend.
+  // 🔒 TRAVA DE CONTATO — mesmo motivo de repetir: emitir para um cliente sem
+  // email e telefone cria boleto que ninguém é avisado que existe.
+  const travaContato = avaliarContato(await contatoDaUc(pre.consumerUnitId));
+  if (!travaContato.liberado) {
+    return {
+      ok: false,
+      billingId,
+      skipped: SKIP_SEM_CONTATO,
+      error: travaContato.motivo,
+    };
+  }
+
+  // 2) Emite no Asaas. `notificar: false` porque quem avisa é este pipeline,
+  //    lá embaixo, com o PDF em mãos.
   const asaasResult = await emitBillingToAsaas(billingId, {
     ...options,
     notificarEmail: false,
+    notificar: false,
   });
   if (!asaasResult.ok) {
     return {
@@ -91,51 +116,23 @@ export async function emitirCobrancaComDemonstrativo(
 
   // 3) Gera o PDF com o código de barras Asaas já incluído (o loader busca
   //    direto do Asaas a partir do asaasChargeId que acabou de ser gravado).
-  const data = await loadDemonstrativoFaturaData(billingId);
-  if (!data) {
-    return {
-      ok: false,
-      billingId,
-      asaasChargeId: asaasResult.asaasChargeId,
-      asaasInvoiceUrl: asaasResult.asaasInvoiceUrl,
-      error: "Falha ao montar dados do demonstrativo após criar a cobrança Asaas",
-    };
+  let pdf: { buffer: Buffer; nomeArquivo: string } | undefined;
+  let demonstrativoUrl: string | null = null;
+  try {
+    const gerado = await gerarESalvarDemonstrativo(billingId);
+    pdf = { buffer: gerado.buffer, nomeArquivo: gerado.nomeArquivo };
+    demonstrativoUrl = gerado.url;
+  } catch (err) {
+    // A cobrança no Asaas já existe. Recusar aqui deixaria o operador tentando
+    // de novo e criando cobrança duplicada — segue sem anexo, e o aviso do
+    // canal de email registra a ressalva.
+    console.error("[emitirCobrancaComDemonstrativo] falha ao gerar PDF:", err);
   }
 
-  const pdfBuffer = await renderToBuffer(DemonstrativoFaturaPdf({ data }));
-
-  // 4) Salva no storage (mesmo padrão dos PDFs de fatura RGE)
-  const fileName = `${pre.ano}-${String(pre.mes).padStart(2, "0")}-demonstrativo.pdf`;
-  const subdir = `demonstrativos/${pre.consumerUnitId}`;
-  await saveBufferToStorage(Buffer.from(pdfBuffer), subdir, fileName);
-  const demonstrativoUrl = `/api/files/${subdir}/${fileName}`;
-
-  await prisma.consumerUnitBilling.update({
-    where: { id: billingId },
-    data: {
-      demonstrativoUrl,
-      demonstrativoGeradoEm: new Date(),
-    },
-  });
-
-  // 5) Email (Fase 4). Falha de email não cancela a cobrança — só sinaliza.
-  let emailEnviado = false;
-  let emailErro: string | null = null;
+  // 4) Avisa o cliente (email + WhatsApp).
+  let notificacao: ResultadoNotificacao | undefined;
   if (!options.pularEmail) {
-    try {
-      await sendDemonstrativoEmail(billingId, Buffer.from(pdfBuffer));
-      emailEnviado = true;
-      await prisma.consumerUnitBilling.update({
-        where: { id: billingId },
-        data: { emailEnviadoEm: new Date(), emailErro: null },
-      });
-    } catch (err) {
-      emailErro = err instanceof Error ? err.message : String(err);
-      await prisma.consumerUnitBilling.update({
-        where: { id: billingId },
-        data: { emailErro },
-      });
-    }
+    notificacao = await notificarCobranca(billingId, pdf ? { pdf } : {});
   }
 
   return {
@@ -144,7 +141,10 @@ export async function emitirCobrancaComDemonstrativo(
     asaasChargeId: asaasResult.asaasChargeId ?? null,
     asaasInvoiceUrl: asaasResult.asaasInvoiceUrl ?? null,
     demonstrativoUrl,
-    emailEnviado,
-    emailErro,
+    emailEnviado: notificacao?.email.status === "enviado",
+    emailErro: notificacao?.email.erro ?? null,
+    whatsappEnviado: notificacao?.whatsapp.status === "enviado",
+    whatsappErro: notificacao?.whatsapp.erro ?? null,
+    notificacao,
   };
 }

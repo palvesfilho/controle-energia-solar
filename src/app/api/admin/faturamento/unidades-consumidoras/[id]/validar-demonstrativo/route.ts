@@ -15,6 +15,7 @@ import {
   MENSAGEM_SEM_COMPENSACAO,
   ucJaCompensou,
 } from "@/lib/uc-trava-faturamento";
+import { avaliarContato, contatoDaUc } from "@/lib/uc-trava-contato";
 
 interface RouteCtx {
   params: Promise<{ id: string }>;
@@ -45,6 +46,13 @@ export async function POST(_req: NextRequest, ctx: RouteCtx) {
   // prometer uma cobrança que o Asaas depois recusa.
   if (!(await ucJaCompensou(billing.consumerUnitId))) {
     return NextResponse.json({ error: MENSAGEM_SEM_COMPENSACAO }, { status: 409 });
+  }
+  // 🔒 TRAVA DE CONTATO — mesmo raciocínio: validar acende o botão de cobrar,
+  // e cobrar dispara email + WhatsApp. Sem contato cadastrado, o botão acenderia
+  // para uma emissão que a trava depois recusa.
+  const travaContato = avaliarContato(await contatoDaUc(billing.consumerUnitId));
+  if (!travaContato.liberado) {
+    return NextResponse.json({ error: travaContato.motivo }, { status: 409 });
   }
   const updated = await prisma.consumerUnitBilling.update({
     where: { id },

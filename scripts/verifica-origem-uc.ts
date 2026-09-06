@@ -47,7 +47,61 @@ interface Falha {
   trecho: string;
 }
 
-const arquivos = globSync("src/**/*.{ts,tsx}");
+/**
+ * `scripts/` entra junto desde 05/09/2026.
+ *
+ * Antes a guarda so varria `src/`, e foi por ai que passou
+ * `diagnostico-notificacao-cobranca.ts`: um script de diagnostico sem o filtro
+ * de origem contou 117 UCs "faturaveis" onde ha 83, e apresentou ANDRE LEIVAS,
+ * FUNDACAO MENEGHETTI e GRAFICA JACUI — todos clientes da BRASIL SOLAR — como
+ * pendencia de cadastro da Associacao. Script de diagnostico nao mostra tela,
+ * mas e por ele que se DECIDE, e um numero errado ali manda o operador
+ * trabalhar num problema que nao existe.
+ *
+ * A propria guarda fica de fora: ela fala sobre o padrao, nao o usa.
+ */
+/**
+ * Scripts de uso unico ja executados, de antes de 05/09/2026. NAO foram
+ * auditados: estao aqui porque ja rodaram e nao voltam a decidir nada, e
+ * porque carimbar "origem-ok" dentro deles seria afirmar sobre codigo que eu
+ * nao li. A lista e FECHADA — script novo nao entra, declara.
+ *
+ * Se algum destes voltar a ser usado para decidir alguma coisa, tire da lista
+ * e faca ele declarar a origem antes.
+ */
+const LEGADOS_NAO_AUDITADOS = new Set([
+  "backfill-desconto-crm-ucs.ts",
+  "backfill-uc-tem-geracao-propria.ts",
+  "check-rateios-historico.ts",
+  "check-uc-produza.ts",
+  "diag-fechamento-pendentes.ts",
+  "diag-relatorio-antunes.ts",
+  "normalize-percent-uc.ts",
+  "rename-regra-by-name.ts",
+  "rename-regra-desc-to-fat-unica.ts",
+  "rename-regra-generic.ts",
+  "seed-demonstrativo-ficticio.ts",
+  "sidinei-status.ts",
+]);
+
+/** Nome do arquivo, sem a pasta, em qualquer separador. */
+function base(caminho: string): string {
+  return caminho.split(/[\\/]/).pop() ?? caminho;
+}
+
+const arquivos = [
+  ...globSync("src/**/*.{ts,tsx}"),
+  ...globSync("scripts/**/*.ts").filter((f) => {
+    const nome = base(f);
+    // A propria guarda fala SOBRE o padrao, nao o usa.
+    if (nome.startsWith("verifica-origem-uc")) return false;
+    // `_` e a convencao de rascunho do repo (`_check-sandro-4`, `_diag-*`):
+    // investigacao de uma tarde, apagada depois. Cobrar declaracao ai so
+    // ensinaria a escrever `origem-ok` no automatico.
+    if (nome.startsWith("_")) return false;
+    return !LEGADOS_NAO_AUDITADOS.has(nome);
+  }),
+];
 const falhas: Falha[] = [];
 let filtradas = 0;
 let dispensadas = 0;

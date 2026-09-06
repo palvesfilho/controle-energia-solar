@@ -13,11 +13,18 @@ import {
 } from "@/lib/billing-installments";
 import { fragmentPayablesForInstallments } from "@/lib/investor-payables";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { isOrigemBrasilSolar } from "@/lib/uc-origem";
 import {
   MENSAGEM_SEM_COMPENSACAO,
   SKIP_SEM_COMPENSACAO,
   ucJaCompensou,
 } from "@/lib/uc-trava-faturamento";
+import {
+  SKIP_SEM_CONTATO,
+  avaliarContato,
+  montarContato,
+} from "@/lib/uc-trava-contato";
+import { notificacaoPropriaAtiva, notificarCobranca } from "@/lib/notificar-cobranca";
 
 export interface EmitResult {
   billingId: string;
@@ -63,6 +70,13 @@ export interface EmitBillingOptions {
   // independentes em vez de uma única. Cada item define dueDate (YYYY-MM-DD)
   // e valor. Soma deve bater com billing.valorCobranca (sem validação rígida).
   installments?: { dueDate: string; valor: number }[];
+  /**
+   * Avisar o cliente (email + WhatsApp) depois de emitir. Padrão `true` — é o
+   * que faz "Emitir cobrança" e "Cobrar em lote" notificarem sem cada rota
+   * precisar lembrar. `emit-cobranca.ts` passa `false` porque notifica ele
+   * mesmo, depois de gerar o PDF, para o email sair com o anexo fresco.
+   */
+  notificar?: boolean;
 }
 
 export async function emitBillingToAsaas(
@@ -70,6 +84,12 @@ export async function emitBillingToAsaas(
   options: EmitBillingOptions = {},
 ): Promise<EmitResult> {
   const { billingType = "UNDEFINED" } = options;
+
+  // 🔇 Quem avisa o cliente somos nós (lib/notificar-cobranca.ts). Enquanto a
+  // notificação própria estiver ligada, o Asaas fica calado — senão o cliente
+  // recebe DOIS emails da mesma cobrança, um nosso e um do gateway, com textos
+  // e remetentes diferentes.
+  const asaasDeveNotificar = !notificacaoPropriaAtiva();
 
   // Persistir escolhas (data + canais) antes de tentar enviar, para que fique
   // gravado mesmo se o envio ao Asaas falhar.
@@ -101,6 +121,24 @@ export async function emitBillingToAsaas(
   }
   const uc = billing.consumerUnit;
 
+  // 🔒 UC DO MÓDULO BRASIL SOLAR NÃO É COBRADA AQUI.
+  // Faturamento é o mundo da ASSOCIAÇÃO. A UC BS existe para baixar fatura e
+  // alimentar o relatório do cliente BS — quem cobra ela é outro fluxo.
+  // Existem 264 linhas de `ConsumerUnitBilling` em UC do Brasil Solar (todas
+  // com valor zero, herdadas do cálculo mensal). Hoje o lote não as pega porque
+  // filtra `valorCobranca > 0` — por ACIDENTE, não por regra: no dia em que uma
+  // delas ganhar valor, o lote emitiria boleto real para cliente da rede BS.
+  // Ver lib/uc-origem.ts.
+  if (isOrigemBrasilSolar(uc.origem)) {
+    return {
+      billingId,
+      ok: false,
+      skipped: "uc_brasil_solar",
+      error:
+        "Esta UC é do módulo Brasil Solar e não é faturada pela Associação de Energia.",
+    };
+  }
+
   // 🔒 TRAVA DE FATURAMENTO — UC que nunca compensou não pode ser cobrada.
   // Vem ANTES da checagem de valor de propósito: sem compensação o motivo real
   // é a implantação, e um "no_value" mandaria o operador procurar defeito no
@@ -118,6 +156,22 @@ export async function emitBillingToAsaas(
   if (!billing.valorCobranca || billing.valorCobranca <= 0) {
     return { billingId, ok: false, skipped: "no_value" };
   }
+
+  // 🔒 TRAVA DE CONTATO — sem email E telefone, a cobrança não sai.
+  // Vem DEPOIS do `no_value` de propósito: UC sem valor a cobrar não é uma
+  // pendência de cadastro, e marcá-la como tal encheria a tela de falso alarme.
+  // Substitui o antigo `skipped: "no_consumer"`, que recusava sem dizer por quê.
+  // Ver lib/uc-trava-contato.ts.
+  const travaContato = avaliarContato(montarContato(uc.id, uc.consumer));
+  if (!travaContato.liberado) {
+    return {
+      billingId,
+      ok: false,
+      skipped: SKIP_SEM_CONTATO,
+      error: travaContato.motivo,
+    };
+  }
+
   const consumer = uc.consumer;
   if (!consumer) return { billingId, ok: false, skipped: "no_consumer" };
 
@@ -154,7 +208,7 @@ export async function emitBillingToAsaas(
           dueDate: it.dueDate,
           description: `${description} (parcela ${i + 1}/${options.installments.length})`,
           externalReference: buildInstallmentReference(billing.id, i),
-          notificationDisabled: !billing.notificarEmail,
+          notificationDisabled: asaasDeveNotificar ? !billing.notificarEmail : true,
         });
         created.push({
           dueDate: it.dueDate,
@@ -187,6 +241,7 @@ export async function emitBillingToAsaas(
             e,
           ),
       );
+      await avisarCliente(billingId, options);
       return {
         billingId,
         ok: true,
@@ -202,7 +257,7 @@ export async function emitBillingToAsaas(
       dueDate,
       description,
       externalReference: billing.id,
-      notificationDisabled: !billing.notificarEmail,
+      notificationDisabled: asaasDeveNotificar ? !billing.notificarEmail : true,
     });
     await prisma.consumerUnitBilling.update({
       where: { id: billing.id },
@@ -215,6 +270,7 @@ export async function emitBillingToAsaas(
         installments: null,
       },
     });
+    await avisarCliente(billingId, options);
     return {
       billingId,
       ok: true,
@@ -225,5 +281,23 @@ export async function emitBillingToAsaas(
   } catch (err) {
     const msg = err instanceof AsaasError ? err.message : String(err);
     return { billingId, ok: false, error: msg };
+  }
+}
+
+/**
+ * Dispara email + WhatsApp depois de a cobrança existir no Asaas.
+ *
+ * ⚠️ **Engole o erro de propósito.** A cobrança JÁ foi criada no gateway e
+ * gravada aqui; deixar uma falha de email estourar faria a rota devolver erro
+ * para um boleto que existe, e o operador tentaria emitir de novo — criando a
+ * segunda cobrança para o mesmo mês. Cada canal grava a própria falha no
+ * billing (`emailErro` / `whatsappErro`) e a tela oferece "Reenviar".
+ */
+async function avisarCliente(billingId: string, options: EmitBillingOptions) {
+  if (options.notificar === false) return;
+  try {
+    await notificarCobranca(billingId);
+  } catch (e) {
+    console.error("[emitBillingToAsaas] notificarCobranca falhou:", e);
   }
 }
