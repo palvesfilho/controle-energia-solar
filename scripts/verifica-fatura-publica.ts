@@ -23,6 +23,7 @@
  * Rodar:  npx tsx scripts/verifica-fatura-publica.ts
  */
 import { readFileSync, existsSync } from "node:fs";
+import { formatarLinhaDigitavel } from "../src/lib/linha-digitavel";
 
 interface Alvo {
   arquivo: string;
@@ -71,6 +72,12 @@ const ALVOS: Alvo[] = [
     porque:
       "e quem escolhe o link da mensagem — sem isto o cliente volta a ser mandado para o checkout do Asaas",
     exige: ["linkPublicoDaFatura", "tokenPublico"],
+  },
+  {
+    arquivo: "src/components/pagamento/abas-pagamento.tsx",
+    porque:
+      "mostra a linha digitavel e o PDF do boleto — a fatura de energia aponta para o NOSSO demonstrativo",
+    exige: ["formatarLinhaDigitavel", "pdfHref"],
   },
   {
     arquivo: "src/lib/cobranca-lembretes.ts",
@@ -146,6 +153,41 @@ for (const alvo of ALVOS) {
   }
 }
 
+/**
+ * A linha digitavel so pode ser AGRUPADA, nunca alterada.
+ *
+ * Um digito perdido ou trocado na formatacao manda o pagamento para outro
+ * boleto — e ninguem confere 47 digitos a olho. Por isso a guarda nao verifica
+ * so o agrupamento: verifica que os digitos que saem sao exatamente os que
+ * entraram.
+ */
+const LINHAS = [
+  "46191110000000000004282981993015715830000000500",
+  "836100000009123420240610000012345678901234567890",
+  "12345",
+  "",
+];
+for (const bruto of LINHAS) {
+  const saida = formatarLinhaDigitavel(bruto);
+  const antes = bruto.replace(/\D/g, "");
+  const depois = saida.replace(/\D/g, "");
+  if (antes !== depois) {
+    erros.push(
+      `formatarLinhaDigitavel ALTEROU os digitos de "${bruto}":
+` +
+        `  entrou ${antes}
+  saiu   ${depois}
+` +
+        "  Formatacao de linha digitavel so agrupa. Digito trocado manda o pagamento para outro boleto.",
+    );
+  }
+}
+if (formatarLinhaDigitavel(LINHAS[0]).split(" ").length !== 5) {
+  erros.push(
+    "formatarLinhaDigitavel nao devolveu os 5 campos do boleto bancario (47 digitos).",
+  );
+}
+
 if (erros.length > 0) {
   console.error("\n[verifica-fatura-publica] FALHOU\n");
   for (const e of erros) console.error(`- ${e}\n`);
@@ -155,4 +197,6 @@ if (erros.length > 0) {
   process.exit(1);
 }
 
-console.log(`[verifica-fatura-publica] ok — ${ALVOS.length} arquivos conferidos`);
+console.log(
+  `[verifica-fatura-publica] ok — ${ALVOS.length} arquivos e ${LINHAS.length} linhas digitaveis conferidos`,
+);

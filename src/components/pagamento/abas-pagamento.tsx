@@ -18,6 +18,7 @@
  */
 import { useEffect, useState } from "react";
 import { Barcode, Check, Copy, Download, Loader2, QrCode } from "lucide-react";
+import { formatarLinhaDigitavel } from "@/lib/linha-digitavel";
 
 export const TEAL = "#2E9B87";
 export const TEAL_DARK = "#1B5E54";
@@ -161,7 +162,23 @@ export function AbaPix({ apiBase }: { apiBase: string }) {
 
 // ── Boleto ──────────────────────────────────────────────────────────────────
 
-export function AbaBoleto({ apiBase }: { apiBase: string }) {
+export function AbaBoleto({
+  apiBase,
+  pdfHref,
+  pdfLabel,
+}: {
+  apiBase: string;
+  /**
+   * Substitui o PDF do boleto hospedado pelo Asaas.
+   *
+   * 🔑 A fatura de energia aponta para o NOSSO demonstrativo, que já traz o
+   * código de barras impresso: o cliente baixa um documento com a marca da
+   * empresa e a explicação do valor, em vez de um boleto avulso do gateway.
+   * O portal Brasil Solar não passa a prop e continua com o PDF do Asaas.
+   */
+  pdfHref?: string;
+  pdfLabel?: string;
+}) {
   const [dados, setDados] = useState<{ linhaDigitavel: string | null; bankSlipUrl: string | null } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
@@ -192,17 +209,24 @@ export function AbaBoleto({ apiBase }: { apiBase: string }) {
       <p className="text-xs" style={{ color: INK_SOFT }}>
         Linha digitável
       </p>
+      {/* Agrupada como sai impressa no boleto — é assim que a pessoa confere
+          contra o papel ou contra a tela do banco antes de pagar. O `break-all`
+          saiu junto: quebrar no meio de um bloco desfaz o agrupamento. */}
       <div
-        className="mt-1 rounded-lg border px-3 py-2.5 text-sm font-mono break-all"
-        style={{ borderColor: BORDER, color: INK }}
+        className="mt-1 rounded-lg border px-3 py-2.5 text-sm font-mono"
+        style={{ borderColor: BORDER, color: INK, wordSpacing: "0.15em", lineHeight: 1.55 }}
       >
-        {dados.linhaDigitavel || "—"}
+        {dados.linhaDigitavel ? formatarLinhaDigitavel(dados.linhaDigitavel) : "—"}
       </div>
       {dados.linhaDigitavel && (
         <button
           type="button"
           onClick={async () => {
-            await navigator.clipboard.writeText(dados.linhaDigitavel!);
+            // Copia SÓ OS DÍGITOS: o campo do app do banco costuma recusar
+            // ponto e espaço. Na tela fica agrupado, na área de transferência
+            // vai limpo — o contrário obrigaria a pessoa a apagar separador a
+            // separador no celular.
+            await navigator.clipboard.writeText(dados.linhaDigitavel!.replace(/\D/g, ""));
             setCopiado(true);
             setTimeout(() => setCopiado(false), 2000);
           }}
@@ -213,16 +237,16 @@ export function AbaBoleto({ apiBase }: { apiBase: string }) {
           {copiado ? "Copiado!" : "Copiar linha digitável"}
         </button>
       )}
-      {dados.bankSlipUrl && (
+      {(pdfHref || dados.bankSlipUrl) && (
         <a
-          href={dados.bankSlipUrl}
+          href={pdfHref ?? dados.bankSlipUrl!}
           target="_blank"
           rel="noopener noreferrer"
           className="mt-2 w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white"
           style={{ background: ORANGE }}
         >
           <Download className="h-4 w-4" />
-          Baixar boleto (PDF)
+          {pdfLabel ?? "Baixar boleto (PDF)"}
         </a>
       )}
     </div>

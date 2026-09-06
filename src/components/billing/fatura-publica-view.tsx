@@ -20,7 +20,7 @@
  * 06/09/2026.
  */
 import { useEffect, useState } from "react";
-import { CheckCircle2, FileText, ShieldCheck } from "lucide-react";
+import { CheckCircle2, ShieldCheck } from "lucide-react";
 import {
   AbaBoleto,
   AbaPix,
@@ -175,7 +175,13 @@ export default function FaturaPublicaView({
         minHeight: "100vh",
         background: PAPER_BG,
         padding: "20px 14px 26px",
-        fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+        // 🔤 A MESMA do relatório em PDF, que usa a Helvetica embutida do
+        // react-pdf. "Helvetica Neue" saiu de propósito: em Mac e iPhone ela
+        // existe e é uma face visivelmente diferente da Helvetica clássica,
+        // então a página não batia com o documento justamente em quem abre
+        // pelo celular. Arial é metricamente compatível e cobre Windows e
+        // Android.
+        fontFamily: 'Helvetica, Arial, "Liberation Sans", sans-serif',
       }}
     >
       <div style={{ maxWidth: 420, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -422,36 +428,19 @@ export default function FaturaPublicaView({
               ))}
             </div>
 
-            {aba === "pix" ? <AbaPix apiBase={apiBase} /> : <AbaBoleto apiBase={apiBase} />}
+            {aba === "pix" ? (
+              <AbaPix apiBase={apiBase} />
+            ) : (
+              /* O PDF daqui é o NOSSO demonstrativo, que já traz o código de
+                 barras impresso — não o boleto avulso do Asaas. É também o que
+                 dispensa um segundo botão "ver demonstrativo" na página. */
+              <AbaBoleto
+                apiBase={apiBase}
+                pdfHref={`${apiBase}/demonstrativo`}
+                pdfLabel="Baixar demonstrativo com código de barras"
+              />
+            )}
           </div>
-        )}
-
-        {/* O demonstrativo aparece SEMPRE, inclusive depois de pago: é o
-            documento que explica o valor, e é justamente depois de pagar que
-            alguém volta para conferir a conta. */}
-        {view.temDemonstrativo && (
-          <a
-            href={`${apiBase}/demonstrativo`}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 7,
-              background: "#FFFFFF",
-              border: `1px solid ${BORDER}`,
-              borderRadius: 4,
-              padding: "13px 0",
-              fontSize: 12.5,
-              fontWeight: 700,
-              color: TEAL_DARK,
-              textDecoration: "none",
-            }}
-          >
-            <FileText style={{ width: 15, height: 15 }} />
-            Ver demonstrativo completo
-          </a>
         )}
 
         <div
