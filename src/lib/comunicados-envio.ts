@@ -37,6 +37,7 @@ import {
   textoWhatsappComunicado,
   variaveisDesconhecidas,
   type TipoComunicado,
+  type DesenhoComunicado,
 } from "@/lib/comunicados-textos";
 
 export type ModoComunicado = "simulacao" | "real";
@@ -198,7 +199,18 @@ export async function dispararComunicado(comunicadoId: string): Promise<Resultad
 }
 
 async function mandarEmail(
-  c: { assunto: string; corpoEmail: string; tipo: string },
+  c: {
+    assunto: string;
+    corpoEmail: string;
+    tipo: string;
+    desenho: string;
+    destaqueRotulo: string | null;
+    destaqueValor: string | null;
+    destaqueNota: string | null;
+    botaoTexto: string | null;
+    botaoUrl: string | null;
+    botaoNota: string | null;
+  },
   d: Destinatario,
   envioId: string,
   modo: ModoComunicado,
@@ -224,7 +236,14 @@ async function mandarEmail(
       to: d.emails[0],
       cc: d.emails.slice(1),
       subject: assunto,
-      html: htmlComunicado(assunto, corpo, c.tipo as TipoComunicado),
+      html: htmlComunicado(assunto, corpo, c.tipo as TipoComunicado, c.desenho as DesenhoComunicado, {
+        destaqueRotulo: c.destaqueRotulo,
+        destaqueValor: c.destaqueValor,
+        destaqueNota: c.destaqueNota,
+        botaoTexto: c.botaoTexto,
+        botaoUrl: c.botaoUrl,
+        botaoNota: c.botaoNota,
+      }),
       text: corpo,
     });
     await prisma.comunicadoEnvio.update({

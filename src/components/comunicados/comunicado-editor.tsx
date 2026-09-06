@@ -54,10 +54,46 @@ const TIPO_COR: Record<TipoComunicado, string> = {
   URGENTE: "border-red-600 bg-red-50 text-red-900 dark:bg-red-950/30 dark:text-red-200",
 };
 
+export type Desenho =
+  | "PADRAO"
+  | "TIMBRE_LATERAL"
+  | "CABECALHO_SOLIDO"
+  | "CARTA"
+  | "DESTAQUE"
+  | "BOTAO"
+  | "AVISO_CURTO";
+
+const DESENHO_LABEL: Record<Desenho, string> = {
+  PADRAO: "Padrão",
+  TIMBRE_LATERAL: "Timbre lateral",
+  CABECALHO_SOLIDO: "Cabeçalho sólido",
+  CARTA: "Carta",
+  DESTAQUE: "Número em destaque",
+  BOTAO: "Com um botão",
+  AVISO_CURTO: "Aviso curto",
+};
+
+const DESENHO_QUANDO: Record<Desenho, string> = {
+  PADRAO: "Faixa da marca no topo. Serve para quase tudo.",
+  TIMBRE_LATERAL: "A cor vira barra de canto. Mais discreto.",
+  CABECALHO_SOLIDO: "Bloco de cor cheio, marca e título dentro.",
+  CARTA: "Sem cor, serifada, assinada. Assunto delicado.",
+  DESTAQUE: "Quando uma cifra é a notícia.",
+  BOTAO: "Quando o cliente precisa FAZER algo.",
+  AVISO_CURTO: "Um recado de uma frase, lido sem rolar.",
+};
+
 export interface ComunicadoForm {
   id?: string;
   nome: string;
   tipo: TipoComunicado;
+  desenho: Desenho;
+  destaqueRotulo: string;
+  destaqueValor: string;
+  destaqueNota: string;
+  botaoTexto: string;
+  botaoUrl: string;
+  botaoNota: string;
   publico: Publico;
   publicoFiltro: Filtro;
   canais: string[];
@@ -122,6 +158,13 @@ export default function ComunicadoEditor({
           corpoEmail: f.canais.includes("EMAIL") ? f.corpoEmail : undefined,
           corpoWhatsapp: f.canais.includes("WHATSAPP") ? f.corpoWhatsapp : undefined,
           tipo: f.tipo,
+          desenho: f.desenho,
+          destaqueRotulo: f.destaqueRotulo,
+          destaqueValor: f.destaqueValor,
+          destaqueNota: f.destaqueNota,
+          botaoTexto: f.botaoTexto,
+          botaoUrl: f.botaoUrl,
+          botaoNota: f.botaoNota,
         }),
       });
       if (!r.ok) throw new Error("Falha ao calcular o público");
@@ -131,7 +174,8 @@ export default function ComunicadoEditor({
     } finally {
       setCarregandoPublico(false);
     }
-  }, [f.publico, f.publicoFiltro, f.assunto, f.corpoEmail, f.corpoWhatsapp, f.canais, f.tipo]);
+  }, [f.publico, f.publicoFiltro, f.assunto, f.corpoEmail, f.corpoWhatsapp, f.canais, f.tipo, f.desenho,
+    f.destaqueRotulo, f.destaqueValor, f.destaqueNota, f.botaoTexto, f.botaoUrl, f.botaoNota]);
 
   // O recorte recarrega enquanto se digita, mas não a cada tecla: 500 ms de
   // silêncio. Sem isso, escrever o texto dispararia uma consulta por letra.
@@ -383,6 +427,92 @@ export default function ComunicadoEditor({
           {canalEmail && (
             <div className="space-y-1.5">
               <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Desenho do email
+              </label>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {(Object.keys(DESENHO_LABEL) as Desenho[]).map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    disabled={!!jaEnviado}
+                    onClick={() => setF({ ...f, desenho: d })}
+                    className={`rounded-lg border p-2.5 text-left text-sm transition-colors disabled:opacity-60 ${
+                      f.desenho === d ? "border-primary bg-primary/5 font-medium" : "hover:bg-muted"
+                    }`}
+                  >
+                    <div>{DESENHO_LABEL[d]}</div>
+                    <div className="text-xs font-normal text-muted-foreground">
+                      {DESENHO_QUANDO[d]}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Os dois desenhos que pedem mais do que assunto e texto. */}
+              {f.desenho === "DESTAQUE" && (
+                <div className="grid gap-3 rounded-lg border bg-muted/30 p-3 sm:grid-cols-3">
+                  <Campo
+                    rotulo="Rótulo"
+                    valor={f.destaqueRotulo}
+                    desabilitado={!!jaEnviado}
+                    onChange={(v) => setF({ ...f, destaqueRotulo: v })}
+                    ajuda="Ex.: Reajuste da RGE"
+                  />
+                  <Campo
+                    rotulo="Valor *"
+                    valor={f.destaqueValor}
+                    desabilitado={!!jaEnviado}
+                    onChange={(v) => setF({ ...f, destaqueValor: v })}
+                    ajuda="Ex.: +8,4%"
+                  />
+                  <Campo
+                    rotulo="Observação"
+                    valor={f.destaqueNota}
+                    desabilitado={!!jaEnviado}
+                    onChange={(v) => setF({ ...f, destaqueNota: v })}
+                    ajuda="Ex.: a partir de setembro"
+                  />
+                </div>
+              )}
+
+              {f.desenho === "BOTAO" && (
+                <div className="grid gap-3 rounded-lg border bg-muted/30 p-3 sm:grid-cols-3">
+                  <Campo
+                    rotulo="Texto do botão *"
+                    valor={f.botaoTexto}
+                    desabilitado={!!jaEnviado}
+                    onChange={(v) => setF({ ...f, botaoTexto: v })}
+                    ajuda="Ex.: Ver a minha fatura"
+                  />
+                  <Campo
+                    rotulo="Link *"
+                    valor={f.botaoUrl}
+                    desabilitado={!!jaEnviado}
+                    onChange={(v) => setF({ ...f, botaoUrl: v })}
+                    ajuda="Precisa começar com https://"
+                  />
+                  <Campo
+                    rotulo="Observação"
+                    valor={f.botaoNota}
+                    desabilitado={!!jaEnviado}
+                    onChange={(v) => setF({ ...f, botaoNota: v })}
+                    ajuda="Uma linha dizendo o que o botão abre."
+                  />
+                </div>
+              )}
+
+              {f.desenho === "AVISO_CURTO" && (
+                <p className="text-xs text-muted-foreground">
+                  Este desenho vive de ser curto: um título e uma frase. Texto longo aqui
+                  desmonta o cartão.
+                </p>
+              )}
+            </div>
+          )}
+
+          {canalEmail && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Peso da mensagem
               </label>
               <div className="grid gap-2 sm:grid-cols-3">
@@ -406,6 +536,13 @@ export default function ComunicadoEditor({
                   <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   Vermelho gasta rápido: se todo comunicado for urgente, o cliente para de
                   distinguir e o destaque perde a função.
+                </p>
+              )}
+              {f.desenho === "CARTA" && (
+                <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                  <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  O desenho <strong>Carta</strong> ignora o peso: ele existe justamente para não
+                  ter cor. Para um aviso que precisa parar o cliente, troque de desenho.
                 </p>
               )}
               {canalZap && (

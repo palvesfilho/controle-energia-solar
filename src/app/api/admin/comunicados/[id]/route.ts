@@ -10,7 +10,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { descreverPublico, type PublicoComunicado } from "@/lib/comunicados-publico";
-import { autorizado, canaisDe, tipoDe, validar } from "../route";
+import { autorizado, canaisDe, desenhoEExtras, tipoDe, validar } from "../route";
 
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions);
@@ -70,6 +70,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
       publicoResumo: descreverPublico(publico, filtro),
       canais: canaisDe(body.canais),
       tipo: tipoDe(body.tipo),
+      ...desenhoEExtras(body),
       assunto: String(body.assunto).trim(),
       corpoEmail: String(body.corpoEmail).trim(),
       corpoWhatsapp: String(body.corpoWhatsapp ?? "").trim(),

@@ -28,7 +28,9 @@ import {
   variaveisDoPublico,
   variaveisDesconhecidas,
   TIPOS,
+  DESENHOS,
   type TipoComunicado,
+  type DesenhoComunicado,
 } from "@/lib/comunicados-textos";
 import { autorizado } from "../route";
 
@@ -45,6 +47,13 @@ export async function POST(req: NextRequest) {
     corpoEmail?: string;
     corpoWhatsapp?: string;
     tipo?: string;
+    desenho?: string;
+    destaqueRotulo?: string;
+    destaqueValor?: string;
+    destaqueNota?: string;
+    botaoTexto?: string;
+    botaoUrl?: string;
+    botaoNota?: string;
   };
 
   const publico = PUBLICOS.includes(body.publico as PublicoComunicado)
@@ -85,7 +94,25 @@ export async function POST(req: NextRequest) {
       resposta.previa = {
         para: alvo.nome,
         assunto,
-        html: htmlComunicado(assunto, corpoEmail, tipoDaPrevia(body.tipo)),
+        html: htmlComunicado(
+          assunto,
+          corpoEmail,
+          tipoDaPrevia(body.tipo),
+          desenhoDaPrevia(body.desenho),
+          {
+            // 🔑 Os extras vêm do formulário, não do banco: a prévia tem de
+            // mostrar o que está na tela AGORA, inclusive o que ainda não foi
+            // salvo. Uma prévia que lê o gravado mostraria a versão anterior.
+            destaqueRotulo: body.destaqueRotulo,
+            destaqueValor: body.destaqueValor,
+            destaqueNota: body.destaqueNota,
+            botaoTexto: body.botaoTexto,
+            // Link inválido não vai para a prévia: melhor o botão sumir e a
+            // pessoa notar, do que ele parecer bom e a rota recusar ao salvar.
+            botaoUrl: /^https?:\/\//i.test(String(body.botaoUrl ?? "")) ? body.botaoUrl : null,
+            botaoNota: body.botaoNota,
+          },
+        ),
         whatsapp: body.corpoWhatsapp
           ? textoWhatsappComunicado(renderParaDestinatario(body.corpoWhatsapp, alvo))
           : null,
@@ -100,4 +127,10 @@ export async function POST(req: NextRequest) {
 function tipoDaPrevia(v: unknown): TipoComunicado {
   const t = String(v ?? "").toUpperCase();
   return (TIPOS as readonly string[]).includes(t) ? (t as TipoComunicado) : "INFORMATIVO";
+}
+
+/** Mesma rede: desenho estranho vira PADRAO. */
+function desenhoDaPrevia(v: unknown): DesenhoComunicado {
+  const d = String(v ?? "").toUpperCase();
+  return (DESENHOS as readonly string[]).includes(d) ? (d as DesenhoComunicado) : "PADRAO";
 }

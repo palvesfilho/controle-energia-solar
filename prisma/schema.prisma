@@ -2900,6 +2900,27 @@ model Comunicado {
   /// EMAIL, WHATSAPP, ou os dois separados por vírgula.
   canais String @default("EMAIL")
 
+  /// PADRAO | TIMBRE_LATERAL | CABECALHO_SOLIDO | CARTA | DESTAQUE | BOTAO |
+  /// AVISO_CURTO — a ESTRUTURA do email. Ver `comunicados-desenhos.ts`.
+  ///
+  /// 🪤 Não confundir com `tipo`, que é o PESO (cor e selo). Os dois se
+  /// combinam: o desenho decide onde as coisas ficam, o peso decide com que
+  /// força. A exceção é CARTA, que ignora o peso de propósito — carta urgente
+  /// vermelha é uma contradição.
+  desenho String @default("PADRAO")
+
+  /// Só o desenho DESTAQUE usa. Ex.: "Reajuste da RGE" / "+8,4%" / "a partir
+  /// de setembro". Nulos nos outros desenhos.
+  destaqueRotulo String? @map("destaque_rotulo")
+  destaqueValor  String? @map("destaque_valor")
+  destaqueNota   String? @map("destaque_nota")
+
+  /// Só o desenho BOTAO usa. `botaoUrl` é validado como http(s) na rota — um
+  /// link quebrado num email em massa não tem conserto depois de enviado.
+  botaoTexto String? @map("botao_texto")
+  botaoUrl   String? @map("botao_url")
+  botaoNota  String? @map("botao_nota")
+
   /// INFORMATIVO | ATENCAO | URGENTE — o peso visual do email.
   ///
   /// 🪤 Vale SÓ para o email. O WhatsApp não tem layout: lá a mensagem é texto,

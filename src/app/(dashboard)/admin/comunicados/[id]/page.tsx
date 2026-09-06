@@ -15,7 +15,10 @@ import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { modoComunicado } from "@/lib/comunicados-envio";
-import ComunicadoEditor, { type Filtro } from "@/components/comunicados/comunicado-editor";
+import ComunicadoEditor, {
+  type Filtro,
+  type Desenho,
+} from "@/components/comunicados/comunicado-editor";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +64,13 @@ export default async function ComunicadoPage({
           id: c.id,
           nome: c.nome,
           tipo: c.tipo as "INFORMATIVO" | "ATENCAO" | "URGENTE",
+          desenho: c.desenho as Desenho,
+          destaqueRotulo: c.destaqueRotulo ?? "",
+          destaqueValor: c.destaqueValor ?? "",
+          destaqueNota: c.destaqueNota ?? "",
+          botaoTexto: c.botaoTexto ?? "",
+          botaoUrl: c.botaoUrl ?? "",
+          botaoNota: c.botaoNota ?? "",
           publico: c.publico as "INVESTIDOR" | "CLIENTE_DESCONTO",
           publicoFiltro: (c.publicoFiltro ?? {}) as Filtro,
           canais: c.canais.split(",").filter(Boolean),

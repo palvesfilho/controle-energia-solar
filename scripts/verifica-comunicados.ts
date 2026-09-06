@@ -30,7 +30,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { emailUtilizavel } from "../src/lib/comunicados-publico";
 import { modoComunicado } from "../src/lib/comunicados-envio";
-import { TIPOS, htmlComunicado } from "../src/lib/comunicados-textos";
+import { TIPOS, htmlComunicado, DESENHOS, desenhoIgnoraPeso } from "../src/lib/comunicados-textos";
 
 const erros: string[] = [];
 
@@ -235,6 +235,82 @@ if (comLixo !== htmlComunicado("x", "y", "INFORMATIVO")) {
   );
 }
 
+// ── 7. Os SETE desenhos são realmente diferentes entre si ───────────────────
+//
+// Mesmo teste da regra 6, no outro eixo. Um seletor com sete opções que geram o
+// mesmo email é sete vezes pior do que um seletor de cor inútil.
+const EXTRAS = {
+  destaqueRotulo: "Reajuste da RGE",
+  destaqueValor: "+8,4%",
+  destaqueNota: "a partir de setembro",
+  botaoTexto: "Ver a minha fatura",
+  botaoUrl: "https://exemplo/fatura",
+  botaoNota: "Abre a fatura do mês.",
+};
+const porDesenho = DESENHOS.map((d) =>
+  htmlComunicado("Assunto", "Corpo do aviso.", "INFORMATIVO", d, EXTRAS),
+);
+if (new Set(porDesenho).size !== DESENHOS.length) {
+  const repetidos = DESENHOS.filter((_, i) => porDesenho.indexOf(porDesenho[i]) !== i);
+  erros.push(
+    `Desenhos que produzem HTML IDÊNTICO a outro: ${repetidos.join(", ")}\n` +
+      "  O seletor de desenho na tela não mudaria nada no email que o cliente abre.",
+  );
+}
+
+// ── 8. Os dois desenhos com campo extra REALMENTE o usam ────────────────────
+//
+// 🪤 Um desenho que promete uma cifra e não a mostra é pior do que o padrão: o
+// operador preenche o campo, confia, e o cliente recebe o email sem o número.
+const comDestaque = htmlComunicado("A", "B", "INFORMATIVO", "DESTAQUE", EXTRAS);
+if (!comDestaque.includes("+8,4%")) {
+  erros.push("O desenho DESTAQUE não mostrou o valor em destaque no email.");
+}
+const comBotao = htmlComunicado("A", "B", "INFORMATIVO", "BOTAO", EXTRAS);
+if (!comBotao.includes("Ver a minha fatura") || !comBotao.includes("https://exemplo/fatura")) {
+  erros.push("O desenho BOTAO não montou o botão com o texto e o link.");
+}
+// Sem os campos o bloco SOME, em vez de sair vazio: caixa colorida sem número e
+// botão sem destino são piores do que a ausência deles.
+if (htmlComunicado("A", "B", "INFORMATIVO", "DESTAQUE", {}).includes("border-radius:8px")) {
+  erros.push("DESTAQUE sem valor deixou a caixa vazia no email, em vez de omiti-la.");
+}
+
+// ── 9. Link de botão só pode ser http(s) ────────────────────────────────────
+//
+// 🔒 `javascript:` num href montado com texto do operador é a porta óbvia — e o
+// email já saiu quando alguém percebe. A rota recusa; aqui se prova que recusa.
+const rotaCriacao = readFileSync("src/app/api/admin/comunicados/route.ts", "utf8");
+if (!rotaCriacao.includes("^https?:")) {
+  erros.push(
+    "A rota não valida o link do botão como http(s).\n" +
+      "  Um `javascript:` digitado na tela viraria link executável no email de dezenas de pessoas.",
+  );
+}
+
+// ── 10. CARTA ignora o peso, e isso é deliberado ────────────────────────────
+//
+// Se um dia ela passar a mudar com o peso, ou outro desenho passar a ignorá-lo,
+// tem de ser decisão de desenho — não acidente de refactor.
+if (!desenhoIgnoraPeso("CARTA")) {
+  erros.push("CARTA deixou de ignorar o peso. Era deliberado: carta urgente vermelha é contradição.");
+}
+for (const d of DESENHOS) {
+  const ignora = desenhoIgnoraPeso(d);
+  const mudaComPeso =
+    htmlComunicado("A", "B", "INFORMATIVO", d, EXTRAS) !==
+    htmlComunicado("A", "B", "URGENTE", d, EXTRAS);
+  if (ignora && mudaComPeso) {
+    erros.push(`${d} deveria ignorar o peso, mas o email muda com ele.`);
+  }
+  if (!ignora && !mudaComPeso) {
+    erros.push(
+      `${d} NÃO muda quando o peso vai de informativo para urgente.\n` +
+        "  O operador escolhe o peso, confia, e o cliente recebe sempre a mesma coisa.",
+    );
+  }
+}
+
 if (erros.length > 0) {
   console.error("\n[verifica-comunicados] FALHOU\n");
   for (const e of erros) console.error(`- ${e}\n`);
@@ -243,5 +319,5 @@ if (erros.length > 0) {
 }
 
 console.log(
-  `[verifica-comunicados] ok — ${RECUSAR.length + ACEITAR.length} endereços, ${ALVOS.length} arquivos e o índice de reenvio conferidos`,
+  `[verifica-comunicados] ok — ${RECUSAR.length + ACEITAR.length} endereços, ${DESENHOS.length} desenhos × ${TIPOS.length} pesos, ${ALVOS.length} arquivos e o índice de reenvio conferidos`,
 );

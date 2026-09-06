@@ -11,7 +11,14 @@ import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { PUBLICOS, descreverPublico, type PublicoComunicado } from "@/lib/comunicados-publico";
-import { variaveisDesconhecidas, TIPOS, type TipoComunicado } from "@/lib/comunicados-textos";
+import {
+  variaveisDesconhecidas,
+  TIPOS,
+  DESENHOS,
+  DESENHO_LABEL,
+  type TipoComunicado,
+  type DesenhoComunicado,
+} from "@/lib/comunicados-textos";
 import { modoComunicado } from "@/lib/comunicados-envio";
 
 export function autorizado(role: string | undefined): boolean {
@@ -29,7 +36,7 @@ export async function GET() {
     take: 100,
     select: {
       id: true, nome: true, publico: true, publicoResumo: true, canais: true,
-      status: true, simulacao: true, totalDestinatarios: true, tipo: true,
+      status: true, simulacao: true, totalDestinatarios: true, tipo: true, desenho: true,
       enviadoEm: true, createdAt: true, criadoPorNome: true,
       _count: { select: { envios: true } },
     },
@@ -59,6 +66,7 @@ export async function POST(req: NextRequest) {
       publicoResumo: descreverPublico(publico, filtro),
       canais: canaisDe(body.canais),
       tipo: tipoDe(body.tipo),
+      ...desenhoEExtras(body),
       assunto: String(body.assunto).trim(),
       corpoEmail: String(body.corpoEmail).trim(),
       corpoWhatsapp: String(body.corpoWhatsapp).trim(),
@@ -80,6 +88,38 @@ export function tipoDe(v: unknown): TipoComunicado {
   return (TIPOS as readonly string[]).includes(t) ? (t as TipoComunicado) : "INFORMATIVO";
 }
 
+export function desenhoDe(v: unknown): DesenhoComunicado {
+  const d = String(v ?? "").toUpperCase();
+  return (DESENHOS as readonly string[]).includes(d) ? (d as DesenhoComunicado) : "PADRAO";
+}
+
+/**
+ * O desenho e os campos que só ele usa.
+ *
+ * 🔑 **Os extras são ZERADOS quando o desenho não os usa.** Trocar de "número
+ * em destaque" para "carta" e deixar o valor gravado faria a cifra voltar a
+ * aparecer se alguém trocasse de volta meses depois, sem lembrar que ela estava
+ * lá. O que a tela não mostra não pode ficar guardado em silêncio.
+ */
+function desenhoEExtras(body: Record<string, unknown>) {
+  const desenho = desenhoDe(body.desenho);
+  const t = (k: string) => {
+    const v = String(body[k] ?? "").trim();
+    return v || null;
+  };
+  return {
+    desenho,
+    destaqueRotulo: desenho === "DESTAQUE" ? t("destaqueRotulo") : null,
+    destaqueValor: desenho === "DESTAQUE" ? t("destaqueValor") : null,
+    destaqueNota: desenho === "DESTAQUE" ? t("destaqueNota") : null,
+    botaoTexto: desenho === "BOTAO" ? t("botaoTexto") : null,
+    botaoUrl: desenho === "BOTAO" ? t("botaoUrl") : null,
+    botaoNota: desenho === "BOTAO" ? t("botaoNota") : null,
+  };
+}
+
+export { desenhoEExtras };
+
 export function canaisDe(v: unknown): string {
   const lista = Array.isArray(v) ? v.map(String) : String(v ?? "").split(",");
   const limpos = lista.map((c) => c.trim().toUpperCase()).filter((c) => c === "EMAIL" || c === "WHATSAPP");
@@ -100,6 +140,29 @@ export function validar(body: Record<string, unknown>): string | null {
 
   const canais = canaisDe(body.canais);
   if (!canais) return "Escolha ao menos um canal.";
+
+  // 🔒 Desenho que promete um elemento e não o tem sai pior do que o padrão:
+  // "Número em destaque" sem número é uma caixa vazia, e botão sem link é um
+  // convite a clicar em nada. Recusar aqui é a única chance — depois do
+  // disparo, o email já está na caixa de 75 pessoas.
+  const desenho = desenhoDe(body.desenho);
+  if (canais.includes("EMAIL")) {
+    if (desenho === "DESTAQUE" && !String(body.destaqueValor ?? "").trim()) {
+      return `O desenho "${DESENHO_LABEL.DESTAQUE}" precisa do valor em destaque (ex.: +8,4%).`;
+    }
+    if (desenho === "BOTAO") {
+      const texto = String(body.botaoTexto ?? "").trim();
+      const url = String(body.botaoUrl ?? "").trim();
+      if (!texto || !url) {
+        return `O desenho "${DESENHO_LABEL.BOTAO}" precisa do texto e do link do botão.`;
+      }
+      // 🔒 `javascript:` num href montado com texto do operador é a porta
+      // óbvia, e o email já saiu quando alguém percebe.
+      if (!/^https?:\/\//i.test(url)) {
+        return "O link do botão precisa começar com http:// ou https://.";
+      }
+    }
+  }
 
   const campos: [string, string][] = [
     ["assunto", "assunto do email"],

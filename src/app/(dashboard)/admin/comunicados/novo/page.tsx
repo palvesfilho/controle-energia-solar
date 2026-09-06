@@ -41,6 +41,13 @@ export default async function NovoComunicadoPage() {
         inicial={{
           nome: "",
           tipo: "INFORMATIVO",
+          desenho: "PADRAO",
+          destaqueRotulo: "",
+          destaqueValor: "",
+          destaqueNota: "",
+          botaoTexto: "",
+          botaoUrl: "",
+          botaoNota: "",
           publico: "CLIENTE_DESCONTO",
           publicoFiltro: {},
           canais: ["EMAIL"],
