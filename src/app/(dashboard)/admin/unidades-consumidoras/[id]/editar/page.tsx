@@ -254,6 +254,10 @@ export default function EditarUCPage() {
         cancelHref="/admin/unidades-consumidoras"
         submitLabel="Salvar Alterações"
         createdAt={createdAt}
+        // UC cadastrada pela fila do CRM guarda no `cpfCnpj` o documento de
+        // quem ASSINOU a adesão; a legada guarda o titular da distribuidora,
+        // que pela regra do Paulo não diz nada sobre quem se cobra.
+        documentoVeioDaAdesao={documentos?.docsAdesaoIdCrm != null}
         painelLateral={
           // Mesmo lugar da tela de cadastro — ao lado da Identificação: são
           // esses os campos que se conferem olhando o papel (o CNPJ digitado

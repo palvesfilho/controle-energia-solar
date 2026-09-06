@@ -299,6 +299,10 @@ function NovaUCConteudo() {
         // Só no caminho do CRM: no cadastro manual o campo segue opcional,
         // como sempre foi.
         regraRemuneracaoObrigatoria={Boolean(crmUcId)}
+        // Vindo da fila do CRM, o CPF/CNPJ do formulário é o da ADESÃO — o
+        // documento de quem assinou conosco. Só aí faz sentido confrontá-lo
+        // com o do cliente escolhido no seletor.
+        documentoVeioDaAdesao={Boolean(crmUcId)}
         painelLateral={
           ucCrm ? (
             <DocumentosAdesao

@@ -164,6 +164,12 @@ export const percentInputToDb = (v: string): string => {
 };
 
 interface Props {
+  /**
+   * O `cpfCnpj` desta UC veio da ADESÃO assinada no CRM (não de importação da
+   * distribuidora). Só nesse caso vale confrontá-lo com o do cliente — ver o
+   * comentário de `confrontoDocumento`.
+   */
+  documentoVeioDaAdesao?: boolean;
   initialData?: Partial<UCFormData>;
   onSubmit: (data: UCFormData) => Promise<void>;
   saving: boolean;
@@ -207,6 +213,7 @@ export function UCForm({
   painelLateral,
   createdAt,
   regraRemuneracaoObrigatoria = false,
+  documentoVeioDaAdesao = false,
 }: Props) {
   const [form, setForm] = useState<UCFormData>(() => {
     const base = { ...EMPTY_UC_FORM, ...initialData };
@@ -258,13 +265,25 @@ export function UCForm({
       percentCompensado: Number(percentInputToDb(form.percentCompensado)) || null,
     });
 
-  // O titular da UC contra o titular do cadastro apontado. Aviso, não trava:
-  // divergência legítima existe (procurador, espólio, imóvel alugado), e o que
-  // não pode é ela passar despercebida. Ver `comparaDocumentos`.
+  // 📏 REGRA DO PAULO (06/09/2026): a titularidade da FATURA não tem nada a ver
+  // com a unidade consumidora. Se na RGE/CPFL a conta está no nome dele ou da
+  // Dommo, isso serve só para encaixar na solicitação regulatória de envio dos
+  // créditos — quem se cobra é definido pelo NÚMERO e pelo NOME da UC.
+  //
+  // Por isso o confronto de documento só vale quando o `cpfCnpj` da UC veio da
+  // ADESÃO assinada (o documento de quem fechou o contrato conosco). Nas UCs
+  // legadas ele guarda o titular da distribuidora, e comparar os dois acusava
+  // 4 divergências que são todas LEGÍTIMAS (ESTAÇÃO CAMOBI e CAUZZO TOROPI no
+  // CPF do Paulo, COLIBRI no CNPJ da Dommo, DIMARZARI-CAMOBI no CPF do Victor).
+  //
+  // Medido em 06/09/2026: entre as 30 UCs vindas do CRM, ZERO divergem; as 4
+  // divergências estão todas entre as 86 legadas. Aviso que grita à toa é aviso
+  // que alguém aprende a ignorar — e aí não serve quando importar.
   const clienteEscolhido = consumers.find((c) => c.id === form.consumerId);
-  const confrontoDocumento = form.consumerId
-    ? comparaDocumentos(form.cpfCnpj, clienteEscolhido?.documento)
-    : "igual";
+  const confrontoDocumento =
+    form.consumerId && documentoVeioDaAdesao
+      ? comparaDocumentos(form.cpfCnpj, clienteEscolhido?.documento)
+      : "igual";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -378,7 +397,9 @@ export function UCForm({
               </p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                É quem recebe a cobrança: o boleto sai no CPF/CNPJ dele.
+                É quem recebe a cobrança: o boleto sai no CPF/CNPJ dele. O
+                titular da conta na distribuidora pode ser outro — isso é da
+                solicitação de créditos, não da cobrança.
               </p>
             )}
           </div>
