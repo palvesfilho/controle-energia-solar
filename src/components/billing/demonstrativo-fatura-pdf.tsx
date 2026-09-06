@@ -1,5 +1,6 @@
 import React from "react";
-import { emailSuporte, nomeRemetente } from "@/lib/identidade-remetente";
+import { descricaoNegocio, emailSuporte, nomeRemetente } from "@/lib/identidade-remetente";
+import { logoEmpresaDataUri, LOGO_EMPRESA_RATIO } from "@/lib/logo-empresa";
 import {
   Document,
   Page,
@@ -101,6 +102,10 @@ const s = StyleSheet.create({
   clienteNome: { fontSize: 10, fontFamily: "Helvetica-Bold", color: C.ink, textTransform: "uppercase" },
   clienteSub: { fontSize: 7.5, color: C.muted, marginTop: 1 },
   brandWrap: { alignItems: "flex-end" },
+  // 96pt de largura: a folha A4 tem 595pt e o timbre não pode competir com o
+  // nome do cliente à esquerda. A altura sai da proporção do arquivo — chutar
+  // um valor aqui esticaria o logotipo.
+  brandLogo: { width: 96, height: 96 / LOGO_EMPRESA_RATIO, marginBottom: 3 },
   brandNome: { fontSize: 9, fontFamily: "Helvetica-Bold", color: C.teal800 },
   brandSub: { fontSize: 6.5, color: C.muted, marginTop: 1 },
 
@@ -400,6 +405,7 @@ function BoletoBox({ b }: { b: DemonstrativoFaturaBoleto }) {
 
 // ─── Documento principal ───
 export function DemonstrativoFaturaPdf({ data }: { data: DemonstrativoFaturaData }) {
+  const logo = logoEmpresaDataUri();
   return (
     <Document>
       <Page size="A4" style={s.page}>
@@ -417,8 +423,17 @@ export function DemonstrativoFaturaPdf({ data }: { data: DemonstrativoFaturaData
             {data.cliente.endereco ? <Text style={s.clienteSub}>{data.cliente.endereco}</Text> : null}
           </View>
           <View style={s.brandWrap}>
-            <Text style={s.brandNome}>Associação de Energia Brasil Solar</Text>
-            <Text style={s.brandSub}>Aluguel de usinas fotovoltaicas</Text>
+            {/* 🎨 A marca no timbre, desde 06/09/2026 — o mesmo logotipo da
+                página pública da fatura, para quem recebe o PDF por email e
+                depois abre o link reconhecer o documento.
+                ⚠️ `null` quando o arquivo não está no `public/` do deploy: o
+                cabeçalho cai no nome em texto em vez de derrubar o PDF. */}
+            {/* eslint-disable-next-line jsx-a11y/alt-text --
+                este `Image` e o do @react-pdf/renderer, que desenha no PDF e
+                nao aceita `alt`; a regra pensa que e um <img> de pagina. */}
+            {logo ? <Image src={logo} style={s.brandLogo} /> : null}
+            <Text style={s.brandNome}>{nomeRemetente()}</Text>
+            <Text style={s.brandSub}>{descricaoNegocio()}</Text>
             <Text style={s.brandSub}>{emailSuporte()}</Text>
           </View>
         </View>

@@ -24,6 +24,7 @@
  */
 import { readFileSync, existsSync } from "node:fs";
 import { formatarLinhaDigitavel } from "../src/lib/linha-digitavel";
+import { logoEmpresaDataUri, LOGO_EMPRESA_PATH } from "../src/lib/logo-empresa";
 
 interface Alvo {
   arquivo: string;
@@ -65,7 +66,18 @@ const ALVOS: Alvo[] = [
   {
     arquivo: "src/app/fatura/[token]/page.tsx",
     porque: "a URL E a credencial — a pagina nao pode ser indexada por buscador",
-    exige: ["robots", "index: false"],
+    exige: ["robots", "index: false", "LOGO_EMPRESA_PATH"],
+  },
+  {
+    arquivo: "src/components/billing/fatura-publica-view.tsx",
+    porque:
+      "e a fatura como o cliente a ve — sem a marca no timbre ela parece cobranca de terceiro",
+    exige: ["<img", "src={logo}"],
+  },
+  {
+    arquivo: "src/components/billing/demonstrativo-fatura-pdf.tsx",
+    porque: "o PDF anexado ao email leva o mesmo timbre da pagina",
+    exige: ["logoEmpresaDataUri", "brandLogo"],
   },
   {
     arquivo: "src/lib/notificar-cobranca.ts",
@@ -186,6 +198,32 @@ if (formatarLinhaDigitavel(LINHAS[0]).split(" ").length !== 5) {
   erros.push(
     "formatarLinhaDigitavel nao devolveu os 5 campos do boleto bancario (47 digitos).",
   );
+}
+
+/**
+ * A MARCA existe no disco e chega inteira ao PDF.
+ *
+ * 🔑 Esta e a falha mais calada do conjunto: se o PNG sumir do `public/`, a
+ * pagina mostra um icone quebrado e o PDF simplesmente sai sem timbre — sem
+ * erro no build, sem log, sem excecao. O cliente recebe uma cobranca sem marca
+ * nenhuma e ninguem descobre ate alguem perguntar de quem e o boleto.
+ *
+ * Por isso a guarda nao olha so o caminho: pede o data URI de verdade, que e o
+ * que o `@react-pdf/renderer` consome.
+ */
+if (!existsSync(`public${LOGO_EMPRESA_PATH}`)) {
+  erros.push(
+    `FALTA O LOGOTIPO public${LOGO_EMPRESA_PATH}` +
+      "\n  Sem ele a pagina da fatura mostra imagem quebrada e o PDF sai sem timbre, os dois em silencio.",
+  );
+} else {
+  const uri = logoEmpresaDataUri();
+  if (!uri || !uri.startsWith("data:image/png;base64,") || uri.length < 5000) {
+    erros.push(
+      "logoEmpresaDataUri() nao devolveu o PNG da marca.\n" +
+        "  O timbre do demonstrativo em PDF depende deste data URI — sem ele o PDF sai so com o nome em texto.",
+    );
+  }
 }
 
 if (erros.length > 0) {

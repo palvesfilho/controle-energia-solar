@@ -11,6 +11,7 @@
 
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { emailSuporte, nomeRemetente } from "@/lib/identidade-remetente";
+import { logoEmpresaUrl } from "@/lib/logo-empresa";
 
 const MES_LABEL = [
   "jan", "fev", "mar", "abr", "mai", "jun",
@@ -135,6 +136,24 @@ export function textoEmailCobranca(d: DadosCobranca): string {
   ].join("\n");
 }
 
+/**
+ * O timbre do email — a marca acima do texto.
+ *
+ * ⚠️ **Devolve vazio sem `APP_BASE_URL`.** Cliente de email não resolve
+ * caminho relativo: sem domínio o `<img>` viraria um ícone quebrado no topo de
+ * uma cobrança, que é pior do que não ter marca nenhuma. A mesma variável já
+ * decide se o link de pagamento entra (ver `notificar-cobranca.ts`).
+ *
+ * 🖼️ Muitos clientes bloqueiam imagem externa por padrão — por isso o `alt`
+ * é o nome da empresa e o nome continua escrito no rodapé. A marca ilustra;
+ * ela nunca é o único jeito de saber quem está cobrando.
+ */
+function timbreEmail(): string {
+  const url = logoEmpresaUrl();
+  if (!url) return "";
+  return `<img src="${url}" alt="${nomeRemetente()}" width="132" style="display:block;width:132px;max-width:60%;height:auto;margin:0 0 16px">`;
+}
+
 export function htmlEmailCobranca(d: DadosCobranca): string {
   const mes = mesLabel(d.mes, d.ano);
   const botao = d.linkPagamento
@@ -147,6 +166,7 @@ export function htmlEmailCobranca(d: DadosCobranca): string {
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Helvetica,Arial,sans-serif;color:#111827">
   <div style="max-width:560px;margin:24px auto;background:#fff;border-radius:10px;padding:28px 32px;box-shadow:0 2px 12px rgba(0,0,0,.05)">
     <div style="height:6px;background:linear-gradient(90deg,#1B5E54 0%,#3BAE99 50%,#EA6E2C 100%);border-radius:3px;margin-bottom:20px"></div>
+    ${timbreEmail()}
     <h1 style="font-size:18px;font-weight:700;color:#1B5E54;margin:0 0 12px">Sua fatura de ${mes} chegou</h1>
     <p style="font-size:14px;line-height:1.55;color:#374151;margin:0 0 14px">
       Olá <strong>${d.clienteNome}</strong>, esta é a sua fatura mensal da ${nomeRemetente()}, referente à unidade consumidora <strong>${formatCodigoUc(d.codigoUc)}</strong>.
@@ -273,6 +293,7 @@ export function htmlLembrete(d: DadosLembrete): string {
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Helvetica,Arial,sans-serif;color:#111827">
   <div style="max-width:560px;margin:24px auto;background:#fff;border-radius:10px;padding:28px 32px;box-shadow:0 2px 12px rgba(0,0,0,.05)">
     <div style="height:6px;background:linear-gradient(90deg,#1B5E54 0%,#3BAE99 50%,#EA6E2C 100%);border-radius:3px;margin-bottom:20px"></div>
+    ${timbreEmail()}
     <h1 style="font-size:18px;font-weight:700;color:#1B5E54;margin:0 0 12px">${titulo}</h1>
     <p style="font-size:14px;line-height:1.55;color:#374151;margin:0 0 14px">Olá <strong>${d.clienteNome}</strong>, ${linha}</p>
     <p style="font-size:15px;font-weight:700;color:#1B5E54;margin:0 0 18px">${moeda(d.valor)}</p>

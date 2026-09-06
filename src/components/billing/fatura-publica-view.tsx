@@ -169,11 +169,20 @@ export default function FaturaPublicaView({
   inicial,
   empresa,
   suporte,
+  logo,
+  descricao,
 }: {
   token: string;
   inicial: FaturaView;
   empresa: string;
   suporte: string;
+  /**
+   * Caminho público do logotipo. Vem por prop, e não de um import, porque quem
+   * sabe onde ele mora é `lib/logo-empresa.ts` — que lê disco e por isso não
+   * pode entrar no bundle do cliente.
+   */
+  logo: string;
+  descricao: string;
 }) {
   const [view, setView] = useState<FaturaView>(inicial);
   const [aba, setAba] = useState<"pix" | "boleto">("pix");
@@ -240,38 +249,61 @@ export default function FaturaPublicaView({
             }}
           />
 
+          {/* ── TIMBRE ──────────────────────────────────────────────────
+              🎨 A marca ganhou linha própria em 06/09/2026. Antes o nome da
+              empresa era só um texto no canto, disputando espaço com o nome do
+              cliente — e num documento de cobrança quem emite tem que ser
+              reconhecido ANTES de o cliente ler o valor, senão a página parece
+              de terceiro.
+              📐 O logotipo é um bloco quase quadrado (o "B" ao lado das três
+              linhas), então altura pequena o torna ilegível: a `min()` dá
+              150px no desktop e 42% da folha no celular, onde não há espaço
+              para os dois lados. */}
           <div
             style={{
-              padding: "16px 16px 0",
+              padding: "16px 16px 14px",
               display: "flex",
               justifyContent: "space-between",
-              alignItems: "flex-start",
-              gap: 10,
+              alignItems: "center",
+              gap: 12,
+              borderBottom: `1px solid ${LINE_SOFT}`,
             }}
           >
-            <div>
-              <Rotulo cor={INK_FAINT}>Demonstrativo de cobrança</Rotulo>
-              <div
-                style={{
-                  fontSize: T.forte,
-                  fontWeight: 700,
-                  color: INK,
-                  textTransform: "uppercase",
-                  marginTop: 4,
-                  lineHeight: 1.2,
-                }}
-              >
-                {view.clienteNome}
-              </div>
-              <div style={{ fontSize: T.apoio, color: INK_SOFT, marginTop: 2 }}>
-                UC {view.unidadeConsumidora} · {view.referencia}
-              </div>
-            </div>
-            <div style={{ textAlign: "right", flexShrink: 0 }}>
-              <div style={{ fontSize: T.corpo, fontWeight: 700, color: TEAL_DARK, lineHeight: 1.25 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element --
+                `next/image` otimiza no servidor e exige configuração; aqui é um
+                PNG estático de 30 KB numa página que precisa nascer pronta. */}
+            <img
+              src={logo}
+              alt={empresa}
+              width={480}
+              height={365}
+              style={{ width: "min(150px, 42%)", height: "auto", display: "block", flexShrink: 0 }}
+            />
+            <div style={{ textAlign: "right", minWidth: 0 }}>
+              <div style={{ fontSize: T.apoio, fontWeight: 700, color: TEAL_DARK, lineHeight: 1.3 }}>
                 {empresa}
               </div>
-              <div style={{ fontSize: T.micro, color: INK_FAINT, marginTop: 2 }}>{suporte}</div>
+              <div style={{ fontSize: T.micro, color: INK_SOFT, marginTop: 2 }}>{descricao}</div>
+              <div style={{ fontSize: T.micro, color: INK_FAINT, marginTop: 1 }}>{suporte}</div>
+            </div>
+          </div>
+
+          <div style={{ padding: "14px 16px 0" }}>
+            <Rotulo cor={INK_FAINT}>Demonstrativo de cobrança</Rotulo>
+            <div
+              style={{
+                fontSize: T.forte,
+                fontWeight: 700,
+                color: INK,
+                textTransform: "uppercase",
+                marginTop: 4,
+                lineHeight: 1.2,
+              }}
+            >
+              {view.clienteNome}
+            </div>
+            <div style={{ fontSize: T.apoio, color: INK_SOFT, marginTop: 2 }}>
+              UC {view.unidadeConsumidora} · {view.referencia}
             </div>
           </div>
 

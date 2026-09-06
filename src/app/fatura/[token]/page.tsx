@@ -11,7 +11,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getFaturaView } from "@/lib/fatura-publica";
-import { emailSuporte, nomeRemetente } from "@/lib/identidade-remetente";
+import { descricaoNegocio, emailSuporte, nomeRemetente } from "@/lib/identidade-remetente";
+import { LOGO_EMPRESA_PATH } from "@/lib/logo-empresa";
 import FaturaPublicaView from "@/components/billing/fatura-publica-view";
 
 // Cobrança muda de situação a qualquer momento (o cliente pode ter pago há um
@@ -39,6 +40,8 @@ export default async function FaturaPage({
       inicial={view}
       empresa={nomeRemetente()}
       suporte={emailSuporte()}
+      descricao={descricaoNegocio()}
+      logo={LOGO_EMPRESA_PATH}
     />
   );
 }
