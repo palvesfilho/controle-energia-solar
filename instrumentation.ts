@@ -1,8 +1,8 @@
 /**
  * Instrumentação Next.js — registra schedulers de background no boot do server.
  *
- * Dois hoje: o de alertas (de hora em hora) e o do sync do CRM (13h e 19h BRT,
- * em `@/lib/crm-sync-scheduler`).
+ * Três hoje: o de alertas (de hora em hora), o do sync do CRM (13h e 19h BRT)
+ * e o dos lembretes de cobrança (9h BRT, em `@/lib/cobranca-lembretes-scheduler`).
  *
  * Roda uma vez por processo (HMR no dev pode reimportar; usamos guard no globalThis
  * pra não duplicar). Em deploy serverless (Vercel), setInterval não persiste —
@@ -22,6 +22,12 @@ export async function register() {
   // interrompido pelo `return` do alert-scheduler logo abaixo.
   const { registrarCrmSyncScheduler } = await import("@/lib/crm-sync-scheduler");
   registrarCrmSyncScheduler();
+
+  // Lembretes de cobrança (vencimento e atraso), 9h BRT. Guardas próprias:
+  // a cadência nasce desligada e o modo `simulacao` não envia. Fica ANTES do
+  // `return` do alert-scheduler pelo mesmo motivo do sync do CRM.
+  const { registrarLembretesScheduler } = await import("@/lib/cobranca-lembretes-scheduler");
+  registrarLembretesScheduler();
 
   if (process.env.DISABLE_ALERT_SCHEDULER === "1") return;
 

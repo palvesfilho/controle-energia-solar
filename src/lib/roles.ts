@@ -36,7 +36,8 @@ export type AdminSection =
   | "persRelatorioParametros"
   | "persAcessoPortal"
   | "persFrequenciaMensagens"
-  | "persComunicacaoCobranca";
+  | "persComunicacaoCobranca"
+  | "persCadenciaCobrancas";
 
 const FULL_ADMIN_TRIO: UserRole[] = ["ADMIN", "GESTOR", "FINANCEIRO"];
 
@@ -81,6 +82,9 @@ export const SECTION_ROLES: Record<AdminSection, UserRole[]> = {
   // Quem pode disparar mensagem de teste para celular e caixa de entrada de
   // gente de verdade e quem ja pode emitir cobranca.
   persComunicacaoCobranca: FULL_ADMIN_TRIO,
+  // Mudar a cadência decide quando o celular de todo cliente com fatura em
+  // aberto toca. Não é parâmetro técnico.
+  persCadenciaCobrancas: FULL_ADMIN_TRIO,
 };
 
 export function canAccessSection(

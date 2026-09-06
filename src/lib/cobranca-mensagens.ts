@@ -175,3 +175,114 @@ export function htmlEmailCobranca(d: DadosCobranca): string {
 </body>
 </html>`;
 }
+
+// ─────────────────────────────────────────────────────── Lembretes de cobrança
+
+/**
+ * O texto dos lembretes de vencimento e de atraso.
+ *
+ * 🔑 **Tom.** Antes do vencimento é um favor ("passando para lembrar"); no
+ * atraso é um aviso factual, nunca uma ameaça. Cliente de energia solar não
+ * está fugindo da conta — na maioria das vezes o boleto se perdeu no email. O
+ * texto que acusa transforma um esquecimento em atrito, e o link resolve mais
+ * do que a firmeza.
+ */
+export interface DadosLembrete {
+  clienteNome: string;
+  codigoUc: string;
+  mes: number;
+  ano: number;
+  valor: number;
+  vencimento: Date | null;
+  link: string | null;
+  tipo: "ANTES" | "ATRASO";
+  diasAtraso: number;
+}
+
+export function assuntoLembrete(d: DadosLembrete): string {
+  const mes = mesLabel(d.mes, d.ano);
+  return d.tipo === "ANTES"
+    ? `Sua fatura ${mes} vence em ${dataBR(d.vencimento)}`
+    : `Fatura ${mes} em aberto — ${nomeRemetente()}`;
+}
+
+export function textoLembreteWhatsapp(d: DadosLembrete): string {
+  const saudacao = primeiroNome(d.clienteNome);
+  const abertura =
+    d.tipo === "ANTES"
+      ? `Olá${saudacao ? `, ${saudacao}` : ""}! Passando para lembrar que a sua fatura de energia solar de ${mesLabel(d.mes, d.ano)} vence em ${dataBR(d.vencimento)}.`
+      : `Olá${saudacao ? `, ${saudacao}` : ""}! A sua fatura de energia solar de ${mesLabel(d.mes, d.ano)} venceu em ${dataBR(d.vencimento)} e consta em aberto.`;
+
+  return [
+    abertura,
+    "",
+    `*Unidade:* ${formatCodigoUc(d.codigoUc)}`,
+    `*Valor:* ${moeda(d.valor)}`,
+    "",
+    ...(d.link
+      ? ["Pague por PIX ou boleto e veja o demonstrativo neste link:", d.link, ""]
+      : []),
+    d.tipo === "ATRASO"
+      ? "Se já pagou nos últimos dias, pode desconsiderar — a confirmação pode levar um pouco para chegar."
+      : "",
+    nomeRemetente(),
+  ]
+    .filter((l, i, a) => !(l === "" && a[i - 1] === ""))
+    .join("\n");
+}
+
+export function textoLembreteEmail(d: DadosLembrete): string {
+  return [
+    `Olá ${d.clienteNome},`,
+    "",
+    d.tipo === "ANTES"
+      ? `Passando para lembrar que a sua fatura de ${mesLabel(d.mes, d.ano)}, da UC ${formatCodigoUc(d.codigoUc)}, vence em ${dataBR(d.vencimento)}.`
+      : `A sua fatura de ${mesLabel(d.mes, d.ano)}, da UC ${formatCodigoUc(d.codigoUc)}, venceu em ${dataBR(d.vencimento)} e consta em aberto.`,
+    "",
+    `Valor: ${moeda(d.valor)}`,
+    ...(d.link ? ["", `Pagar e ver o demonstrativo: ${d.link}`] : []),
+    "",
+    ...(d.tipo === "ATRASO"
+      ? ["Se o pagamento foi feito nos últimos dias, pode desconsiderar este aviso.", ""]
+      : []),
+    `Dúvidas: responda este email ou escreva para ${emailSuporte()}.`,
+    "",
+    nomeRemetente(),
+  ].join("\n");
+}
+
+export function htmlLembrete(d: DadosLembrete): string {
+  const mes = mesLabel(d.mes, d.ano);
+  const titulo =
+    d.tipo === "ANTES" ? `Sua fatura de ${mes} vence em breve` : `Fatura de ${mes} em aberto`;
+  const linha =
+    d.tipo === "ANTES"
+      ? `Passando para lembrar: a fatura da unidade <strong>${formatCodigoUc(d.codigoUc)}</strong> vence em <strong>${dataBR(d.vencimento)}</strong>.`
+      : `A fatura da unidade <strong>${formatCodigoUc(d.codigoUc)}</strong> venceu em <strong>${dataBR(d.vencimento)}</strong> e consta em aberto.`;
+  const botao = d.link
+    ? `<p style="margin:0 0 18px"><a href="${d.link}" style="display:inline-block;background:#1B5E54;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 22px;border-radius:6px">Pagar por PIX ou boleto</a></p>`
+    : "";
+  const ressalva =
+    d.tipo === "ATRASO"
+      ? `<p style="font-size:12px;color:#6b7280;margin:0 0 8px">Se o pagamento foi feito nos últimos dias, pode desconsiderar este aviso — a confirmação bancária leva algum tempo para chegar até nós.</p>`
+      : "";
+
+  return `<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><title>${titulo}</title></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Helvetica,Arial,sans-serif;color:#111827">
+  <div style="max-width:560px;margin:24px auto;background:#fff;border-radius:10px;padding:28px 32px;box-shadow:0 2px 12px rgba(0,0,0,.05)">
+    <div style="height:6px;background:linear-gradient(90deg,#1B5E54 0%,#3BAE99 50%,#EA6E2C 100%);border-radius:3px;margin-bottom:20px"></div>
+    <h1 style="font-size:18px;font-weight:700;color:#1B5E54;margin:0 0 12px">${titulo}</h1>
+    <p style="font-size:14px;line-height:1.55;color:#374151;margin:0 0 14px">Olá <strong>${d.clienteNome}</strong>, ${linha}</p>
+    <p style="font-size:15px;font-weight:700;color:#1B5E54;margin:0 0 18px">${moeda(d.valor)}</p>
+    ${botao}
+    ${ressalva}
+    <p style="font-size:12px;color:#6b7280;margin:18px 0 0">
+      Dúvidas? Responda este email ou escreva para <a href="mailto:${emailSuporte()}" style="color:#1B5E54">${emailSuporte()}</a>.
+    </p>
+  </div>
+  <p style="text-align:center;font-size:11px;color:#9ca3af;margin:12px 16px 24px">${nomeRemetente()}</p>
+</body>
+</html>`;
+}

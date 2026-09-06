@@ -12,6 +12,7 @@ import {
   PackageSearch,
   Gauge,
   MessageCircle,
+  Bell,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { getServerSession } from "@/lib/auth-compat";
@@ -138,6 +139,16 @@ const items: HubItem[] = [
     group: "Clientes",
     accent: "from-emerald-500 to-teal-700",
     section: "persComunicacaoCobranca",
+  },
+  {
+    title: "Cadência de cobranças",
+    description:
+      "Quando lembrar o cliente de uma fatura que vence ou já venceu: quantos dias antes, em quais dias de atraso e por quais canais. Substitui os avisos que o Asaas mandava antes de silenciarmos as notificações dele.",
+    href: "/admin/personalizacoes/cadencia-cobrancas",
+    icon: Bell,
+    group: "Financeiro",
+    accent: "from-amber-500 to-orange-600",
+    section: "persCadenciaCobrancas",
   },
 ];
 
