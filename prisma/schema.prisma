@@ -62,22 +62,22 @@ model Investor {
   // Quem cede o telhado não é consumidor — não gera UC — mas a papelada dele
   // é a mesma e precisa ficar guardada aqui, não apontando para o CRM, que
   // apaga adesão.
-  docTermoAdesao        String? @map("doc_termo_adesao")
-  docTermoAdesaoNome    String? @map("doc_termo_adesao_nome")
-  docProcuracao         String? @map("doc_procuracao")
-  docProcuracaoNome     String? @map("doc_procuracao_nome")
+  docTermoAdesao           String? @map("doc_termo_adesao")
+  docTermoAdesaoNome       String? @map("doc_termo_adesao_nome")
+  docProcuracao            String? @map("doc_procuracao")
+  docProcuracaoNome        String? @map("doc_procuracao_nome")
   // Assinada no mesmo envelope do termo e da procuração desde 21/08/2026. Vazia
   // nas adesões anteriores: lá a autorização era pedida à parte, depois.
   docAutorizacaoAcesso     String? @map("doc_autorizacao_acesso")
   docAutorizacaoAcessoNome String? @map("doc_autorizacao_acesso_nome")
-  docIdentidade         String? @map("doc_identidade")
-  docIdentidadeNome     String? @map("doc_identidade_nome")
-  docCartaoCnpj         String? @map("doc_cartao_cnpj")
-  docCartaoCnpjNome     String? @map("doc_cartao_cnpj_nome")
-  docContratoSocial     String? @map("doc_contrato_social")
-  docContratoSocialNome String? @map("doc_contrato_social_nome")
-  docOutros             String? @map("doc_outros")
-  docOutrosNome         String? @map("doc_outros_nome")
+  docIdentidade            String? @map("doc_identidade")
+  docIdentidadeNome        String? @map("doc_identidade_nome")
+  docCartaoCnpj            String? @map("doc_cartao_cnpj")
+  docCartaoCnpjNome        String? @map("doc_cartao_cnpj_nome")
+  docContratoSocial        String? @map("doc_contrato_social")
+  docContratoSocialNome    String? @map("doc_contrato_social_nome")
+  docOutros                String? @map("doc_outros")
+  docOutrosNome            String? @map("doc_outros_nome")
 
   docsAdesaoIdCrm Int?      @map("docs_adesao_id_crm")
   docsCopiadosEm  DateTime? @map("docs_copiados_em")
@@ -96,20 +96,20 @@ model Investor {
 }
 
 model Plant {
-  id                 String  @id @default(cuid())
-  name               String
-  location           String?
-  potenciaModulos    Float?  @map("potencia_modulos")
-  potenciaInversor   Float?  @map("potencia_inversor")
-  geracaoMediaMensal Float?  @map("geracao_media_mensal")
-  enquadramento      String?
-  unidadeConsumidora String? @map("unidade_consumidora")
+  id                       String  @id @default(cuid())
+  name                     String
+  location                 String?
+  potenciaModulos          Float?  @map("potencia_modulos")
+  potenciaInversor         Float?  @map("potencia_inversor")
+  geracaoMediaMensal       Float?  @map("geracao_media_mensal")
+  enquadramento            String?
+  unidadeConsumidora       String? @map("unidade_consumidora")
   // Código de instalação ANTERIOR à migração de códigos da RGE (jul/2026).
   unidadeConsumidoraAntiga String? @map("unidade_consumidora_antiga")
-  concessionaria     String?
-  formatoLeitura     String? @map("formato_leitura")
-  regraInstalacao    String? @map("regra_instalacao") // USINA_DEDICADA | USINA_CONSUMO_PROPRIO | USINA_CONSUMO_DESCONTADO
-  active             Boolean @default(true)
+  concessionaria           String?
+  formatoLeitura           String? @map("formato_leitura")
+  regraInstalacao          String? @map("regra_instalacao") // USINA_DEDICADA | USINA_CONSUMO_PROPRIO | USINA_CONSUMO_DESCONTADO
+  active                   Boolean @default(true)
 
   // Dados do Inversor
   inversorMarca  String? @map("inversor_marca")
@@ -523,10 +523,10 @@ model ConsumerUnit {
   // Default GESTORA porque é o que as 74 UCs de fatura única já faziam; UC nova
   // vinda do gerador de propostas entra como CLIENTE (ver nova/page.tsx).
   // Quem lê isto para decidir caixa é a agenda (task PAGAR_FATURA).
-  pagadorFaturaEnergia String @default("GESTORA") @map("pagador_fatura_energia")
-  percentBandeira   Float?  @map("percent_bandeira")
-  regraVencimento   String? @map("regra_vencimento")
-  valorVencimento   Float?  @map("valor_vencimento")
+  pagadorFaturaEnergia String  @default("GESTORA") @map("pagador_fatura_energia")
+  percentBandeira      Float?  @map("percent_bandeira")
+  regraVencimento      String? @map("regra_vencimento")
+  valorVencimento      Float?  @map("valor_vencimento")
 
   // Contrato
   statusContrato      String?   @map("status_contrato")
@@ -565,8 +565,8 @@ model ConsumerUnit {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  consumer                 Consumer?                 @relation(fields: [consumerId], references: [id], onDelete: SetNull)
-  plant                    Plant?                    @relation(fields: [plantId], references: [id], onDelete: SetNull)
+  consumer                 Consumer?             @relation(fields: [consumerId], references: [id], onDelete: SetNull)
+  plant                    Plant?                @relation(fields: [plantId], references: [id], onDelete: SetNull)
   billings                 ConsumerUnitBilling[]
   bills                    ConsumerBill[]
   cpflCredential           CpflCredential?
@@ -585,22 +585,22 @@ model ConsumerUnit {
   // Quando o mesmo titular tem várias UCs (a LABIMED tem 11), o arquivo é
   // gravado UMA vez, com chave derivada da adesão de origem, e todas as UCs
   // apontam para ele. Campo por UC, objeto único no bucket.
-  docTermoAdesao        String? @map("doc_termo_adesao")
-  docTermoAdesaoNome    String? @map("doc_termo_adesao_nome")
-  docProcuracao         String? @map("doc_procuracao")
-  docProcuracaoNome     String? @map("doc_procuracao_nome")
+  docTermoAdesao           String?               @map("doc_termo_adesao")
+  docTermoAdesaoNome       String?               @map("doc_termo_adesao_nome")
+  docProcuracao            String?               @map("doc_procuracao")
+  docProcuracaoNome        String?               @map("doc_procuracao_nome")
   // Assinada no mesmo envelope do termo e da procuração desde 21/08/2026. Vazia
   // nas adesões anteriores: lá a autorização era pedida à parte, depois.
-  docAutorizacaoAcesso     String? @map("doc_autorizacao_acesso")
-  docAutorizacaoAcessoNome String? @map("doc_autorizacao_acesso_nome")
-  docIdentidade         String? @map("doc_identidade")
-  docIdentidadeNome     String? @map("doc_identidade_nome")
-  docCartaoCnpj         String? @map("doc_cartao_cnpj")
-  docCartaoCnpjNome     String? @map("doc_cartao_cnpj_nome")
-  docContratoSocial     String? @map("doc_contrato_social")
-  docContratoSocialNome String? @map("doc_contrato_social_nome")
-  docOutros             String? @map("doc_outros")
-  docOutrosNome         String? @map("doc_outros_nome")
+  docAutorizacaoAcesso     String?               @map("doc_autorizacao_acesso")
+  docAutorizacaoAcessoNome String?               @map("doc_autorizacao_acesso_nome")
+  docIdentidade            String?               @map("doc_identidade")
+  docIdentidadeNome        String?               @map("doc_identidade_nome")
+  docCartaoCnpj            String?               @map("doc_cartao_cnpj")
+  docCartaoCnpjNome        String?               @map("doc_cartao_cnpj_nome")
+  docContratoSocial        String?               @map("doc_contrato_social")
+  docContratoSocialNome    String?               @map("doc_contrato_social_nome")
+  docOutros                String?               @map("doc_outros")
+  docOutrosNome            String?               @map("doc_outros_nome")
 
   // Procedência: de qual adesão do CRM vieram, e quando. Sem isto, daqui a seis
   // meses ninguém sabe de onde o arquivo saiu.
@@ -674,11 +674,11 @@ model ConsumerUnitBilling {
   demonstrativoValidadoPor String?   @map("demonstrativo_validado_por")
 
   // Envio do demonstrativo por email (SMTP do Google; ver lib/email-transport.ts)
-  emailEnviadoEm  DateTime? @map("email_enviado_em")
-  emailErro       String?   @map("email_erro")
+  emailEnviadoEm     DateTime? @map("email_enviado_em")
+  emailErro          String?   @map("email_erro")
   // Para quem foi, separado por ";". Sem isto, "não recebi" vira discussão sem
   // prova — o cadastro pode ter mudado depois do envio.
-  emailDestinatarios String? @map("email_destinatarios")
+  emailDestinatarios String?   @map("email_destinatarios")
 
   // Aviso de cobrança por WhatsApp (Uazapi; ver lib/whatsapp-uazapi.ts)
   whatsappEnviadoEm DateTime? @map("whatsapp_enviado_em")
@@ -687,6 +687,19 @@ model ConsumerUnitBilling {
   // "(55)99161-375"; o que saiu foi "5555999161375", e é esse que responde
   // "para qual número vocês mandaram?".
   whatsappNumero    String?   @map("whatsapp_numero")
+
+  // Chave PÚBLICA desta fatura: abre a página de pagamento com a nossa marca
+  // (/fatura/<token>) e serve o demonstrativo em PDF, sem login. É o link que
+  // vai no email e no WhatsApp.
+  //
+  // ⚠️ Quem tem o link vê ESTA fatura — mesmo modelo do pagamento branded do
+  // portal (BrasilSolarAcesso.conviteToken): o pagador não tem conta, a chave é
+  // um UUID. Por isso as rotas públicas devolvem só o necessário para pagar.
+  //
+  // Anulável: as 1.429 cobranças anteriores a 06/09/2026 não têm token e não
+  // precisam — ele nasce na emissão, e link só serve para cobrança que ainda
+  // vai ser comunicada.
+  tokenPublico String? @unique @map("token_publico")
 
   // Preferências de envio escolhidas pelo operador (persistidas mesmo sem disparar)
   notificarEmail    Boolean @default(true) @map("notificar_email")
@@ -709,12 +722,44 @@ model ConsumerUnitBilling {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  consumerUnit     ConsumerUnit      @relation(fields: [consumerUnitId], references: [id], onDelete: Cascade)
+  consumerUnit     ConsumerUnit       @relation(fields: [consumerUnitId], references: [id], onDelete: Cascade)
   investorPayables InvestorPayable[]
+  lembretes        CobrancaLembrete[]
 
   @@unique([consumerUnitId, ano, mes])
   @@index([ano, mes])
   @@map("consumer_unit_billings")
+}
+
+/// Lembrete de cobrança JÁ DISPARADO (ou tentado) — o histórico e, ao mesmo
+/// tempo, a trava contra repetição.
+///
+/// 🔑 O `@@unique` não é higiene, é a regra: sem ele, um restart de contêiner no
+/// dia do vencimento manda o mesmo lembrete de novo, e cobrança repetida queima
+/// a confiança do cliente mais rápido do que atraso nenhum. Deploy, duas
+/// instâncias e re-execução manual passam a ser inofensivos.
+///
+/// `diaReferencia` é o dia da régua: negativo antes do vencimento (-3), positivo
+/// no atraso (1, 5, 10). Guardar o DIA, e não a data, é o que torna a chave
+/// estável quando o vencimento é alterado depois.
+model CobrancaLembrete {
+  id            String    @id @default(cuid())
+  billingId     String    @map("billing_id")
+  /// ANTES | ATRASO
+  tipo          String
+  diaReferencia Int       @map("dia_referencia")
+  /// EMAIL | WHATSAPP
+  canal         String
+  /// Null quando a tentativa falhou — o `erro` diz por quê.
+  enviadoEm     DateTime? @map("enviado_em")
+  erro          String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  billing ConsumerUnitBilling @relation(fields: [billingId], references: [id], onDelete: Cascade)
+
+  @@unique([billingId, tipo, diaReferencia, canal])
+  @@index([billingId])
+  @@map("cobranca_lembretes")
 }
 
 model ConsumerPlant {
@@ -902,31 +947,31 @@ model ConsumerBill {
   energiaInjetadaPropriaTusdValor Float? @map("energia_injetada_propria_tusd_valor")
 
   // Tarifas
-  tarifaTE                      Float?  @map("tarifa_te") // Tarifa Energia (ANEEL) — base sem impostos
-  tarifaTUSD                    Float?  @map("tarifa_tusd") // Tarifa Uso Sistema Distribuicao — base sem impostos
+  tarifaTE                      Float?    @map("tarifa_te") // Tarifa Energia (ANEEL) — base sem impostos
+  tarifaTUSD                    Float?    @map("tarifa_tusd") // Tarifa Uso Sistema Distribuicao — base sem impostos
   // Tarifa "com tributos" (ICMS+PIS+COFINS aplicados) — é o R$/kWh que o cliente
   // efetivamente paga. Usada no cálculo de cobrança da UC geradora DESCONTADO
   // (consumo instantâneo) para refletir o valor real economizado.
-  tarifaTeComTributos           Float?  @map("tarifa_te_com_tributos")
-  tarifaTusdComTributos         Float?  @map("tarifa_tusd_com_tributos")
+  tarifaTeComTributos           Float?    @map("tarifa_te_com_tributos")
+  tarifaTusdComTributos         Float?    @map("tarifa_tusd_com_tributos")
   // Quando o operador digitou TE/TUSD a mao (tela "Manutencao da fatura"),
   // porque o OCR rotacionado corrompeu a tarifa. Marcado, o reparse do PDF
   // NAO sobrescreve mais esses dois campos: escolha explicita ganha de
   // deteccao. Ver lib/infosimples-pdf-fallback.ts e lib/preco-kwh.ts.
   tarifasManuaisEm              DateTime? @map("tarifas_manuais_em")
-  bandeiraTarifaria             String? @map("bandeira_tarifaria")
-  bandeiraValor                 Float?  @map("bandeira_valor") // Soma R$ de todas as linhas de bandeira da fatura
+  bandeiraTarifaria             String?   @map("bandeira_tarifaria")
+  bandeiraValor                 Float?    @map("bandeira_valor") // Soma R$ de todas as linhas de bandeira da fatura
   // Adicional de Bandeira por cor — preenchido na linha "Adicional de Bandeira X".
   // Valor positivo (cobrança). Soma desses 3 = bandeiraValor (em Grupo B sem posto).
-  bandeiraAmarelaValor          Float?  @map("bandeira_amarela_valor")
-  bandeiraVermelhaValor         Float?  @map("bandeira_vermelha_valor")
-  bandeiraVermelha2Valor        Float?  @map("bandeira_vermelha2_valor")
+  bandeiraAmarelaValor          Float?    @map("bandeira_amarela_valor")
+  bandeiraVermelhaValor         Float?    @map("bandeira_vermelha_valor")
+  bandeiraVermelha2Valor        Float?    @map("bandeira_vermelha2_valor")
   // Crédito de Adicional de Bandeira por cor — preenchido na linha "Cred Adc Band X".
   // Valor NEGATIVO (vem com "-" na fatura, ex.: "4,34-"). Não entra na soma da fatura;
   // virará desconto pro cliente em etapa futura (mesma lógica do ajusteSaldoCredito).
-  bandeiraAmarelaCreditoValor   Float?  @map("bandeira_amarela_credito_valor")
-  bandeiraVermelhaCreditoValor  Float?  @map("bandeira_vermelha_credito_valor")
-  bandeiraVermelha2CreditoValor Float?  @map("bandeira_vermelha2_credito_valor")
+  bandeiraAmarelaCreditoValor   Float?    @map("bandeira_amarela_credito_valor")
+  bandeiraVermelhaCreditoValor  Float?    @map("bandeira_vermelha_credito_valor")
+  bandeiraVermelha2CreditoValor Float?    @map("bandeira_vermelha2_credito_valor")
 
   // Consumo instantâneo: energia gerada pela usina e consumida na hora, sem
   // passar pela rede (não compensada). Só faz sentido para UC geradora em
@@ -947,11 +992,11 @@ model ConsumerBill {
   cofins Float?
 
   // Encargos e ajustes
-  jurosMora            Float? @map("juros_mora")
-  multaAtraso          Float? @map("multa_atraso")
-  atualizacaoMonetaria Float? @map("atualizacao_monetaria")
-  iluminacaoPublicaCip Float? @map("iluminacao_publica_cip")
-  ajusteSaldoCredito   Float? @map("ajuste_saldo_credito")
+  jurosMora              Float? @map("juros_mora")
+  multaAtraso            Float? @map("multa_atraso")
+  atualizacaoMonetaria   Float? @map("atualizacao_monetaria")
+  iluminacaoPublicaCip   Float? @map("iluminacao_publica_cip")
+  ajusteSaldoCredito     Float? @map("ajuste_saldo_credito")
   // Linha "Devol Pagamento Indevido" da seção CRÉDITOS / DEVOLUÇÕES da RGE/CPFL.
   // Gravada NEGATIVA, como vem impressa: a concessionária está devolvendo na
   // conta do mês um valor que JÁ FOI PAGO antes — e quem pagou, em fatura única,
@@ -1313,7 +1358,7 @@ model EmpresaTerceira {
   id String @id @default(cuid())
 
   /// Nome como o operador digitou — é o que aparece na tela.
-  nome String
+  nome            String
   /// Chave de deduplicação: `nome` em minúsculas e sem acento.
   nomeNormalizado String @unique @map("nome_normalizado")
 
@@ -1425,12 +1470,12 @@ model BrasilSolarBeneficiaria {
   id             String @id @default(cuid())
   proprietarioId String @map("proprietario_id")
 
-  codigoUc    String  @map("codigo_uc")
+  codigoUc       String  @map("codigo_uc")
   // Código de instalação ANTERIOR à migração de códigos da RGE (jul/2026).
   codigoUcAntigo String? @map("codigo_uc_antigo")
-  nome        String?
-  percentual  Float
-  observacoes String?
+  nome           String?
+  percentual     Float
+  observacoes    String?
 
   // UC física vinculada — guarda as faturas baixadas. Preenchida pelo PUT bulk
   // que cria/linka uma ConsumerUnit por código de beneficiária.
@@ -1724,9 +1769,9 @@ model ObraListaMaterial {
   // RETIRADA  → retirada fechada e assinada; comprovante emitido, tudo travado.
   status String @default("RASCUNHO")
 
-  liberadaEm       DateTime? @map("liberada_em")
-  liberadaPorId    String?   @map("liberada_por_id")
-  liberadaPorNome  String?   @map("liberada_por_nome")
+  liberadaEm      DateTime? @map("liberada_em")
+  liberadaPorId   String?   @map("liberada_por_id")
+  liberadaPorNome String?   @map("liberada_por_nome")
 
   // Último PDF gerado a partir desta lista
   pdfRelativePath String?   @map("pdf_relative_path")
@@ -1756,10 +1801,10 @@ model ObraListaMaterial {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  obra          Obra                    @relation(fields: [obraId], references: [id], onDelete: Cascade)
-  itens         ObraListaMaterialItem[]
-  fotos         ObraListaMaterialFoto[]
-  equipeRetirada EquipeExecucao?        @relation(fields: [equipeRetiradaId], references: [id], onDelete: SetNull)
+  obra           Obra                    @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  itens          ObraListaMaterialItem[]
+  fotos          ObraListaMaterialFoto[]
+  equipeRetirada EquipeExecucao?         @relation(fields: [equipeRetiradaId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([equipeRetiradaId])
@@ -1892,8 +1937,8 @@ model EquipeExecucao {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  obras           Obra[]
-  listasRetirada  ObraListaMaterial[]
+  obras          Obra[]
+  listasRetirada ObraListaMaterial[]
 
   @@index([active])
   @@map("equipes_execucao")
@@ -1988,9 +2033,9 @@ model RateioVersion {
   protocoloTentativaEm  DateTime? @map("protocolo_tentativa_em")
   protocoloErro         String?   @map("protocolo_erro")
 
-  plant            Plant             @relation(fields: [plantId], references: [id], onDelete: Cascade)
-  items            RateioItem[]
-  investorPayables InvestorPayable[]
+  plant              Plant                     @relation(fields: [plantId], references: [id], onDelete: Cascade)
+  items              RateioItem[]
+  investorPayables   InvestorPayable[]
   consultasProtocolo RateioProtocoloConsulta[]
 
   @@index([plantId, status])
@@ -2001,16 +2046,16 @@ model RateioVersion {
 // aceite automático: quando um rateio vira VIGENTE sozinho, tem de haver a linha
 // que mostra o que a tela da RGE dizia naquela hora, com o payload cru.
 model RateioProtocoloConsulta {
-  id           String   @id @default(cuid())
-  versionId    String   @map("version_id")
-  protocolo    String
-  situacao     String
-  statusRge    String?  @map("status_rge")
-  erro         String?
+  id            String   @id @default(cuid())
+  versionId     String   @map("version_id")
+  protocolo     String
+  situacao      String
+  statusRge     String?  @map("status_rge")
+  erro          String?
   // Cartão cru devolvido pelo robô (numero, status, datas, UC). Auditoria.
-  detalhe      Json?
-  aceitouRateio Boolean @default(false) @map("aceitou_rateio")
-  consultadoEm DateTime @default(now()) @map("consultado_em")
+  detalhe       Json?
+  aceitouRateio Boolean  @default(false) @map("aceitou_rateio")
+  consultadoEm  DateTime @default(now()) @map("consultado_em")
 
   version RateioVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
@@ -2534,8 +2579,8 @@ model CrmUcImportada {
 
   // Chaves no CRM. A unicidade é (adesão, código) e não a proposta,
   // justamente porque a proposta se repete.
-  propostaIdCrm Int    @map("proposta_id_crm")
-  adesaoIdCrm   Int    @map("adesao_id_crm")
+  propostaIdCrm Int @map("proposta_id_crm")
+  adesaoIdCrm   Int @map("adesao_id_crm")
 
   // Ordem de exibição, copiada do CRM para a conferência ficar linha a linha.
   // O CRM lista adesões com `criado_em` DESCENDENTE (a mais nova primeiro) —
@@ -2545,9 +2590,9 @@ model CrmUcImportada {
   adesaoCriadaEm DateTime? @map("adesao_criada_em")
   ordemNaAdesao  Int       @default(0) @map("ordem_na_adesao")
   // Só dígitos, para casar com ConsumerUnit.codigoUc. Ver [[whereCodigoUc]].
-  codigoUc      String @map("codigo_uc")
+  codigoUc       String    @map("codigo_uc")
   // Como veio do CRM ("2.715.094.001-03"), para exibir igual ao termo.
-  codigoUcBruto String? @map("codigo_uc_bruto")
+  codigoUcBruto  String?   @map("codigo_uc_bruto")
 
   // kWh/mês DESTA UC. Vem de `medias_mensais_kwh[i]`, pareado por POSIÇÃO com
   // `unidades_consumidoras[i]`. Os dois arrays batem em 23/23 adesões; quando
@@ -2732,8 +2777,8 @@ model CampanhaEnvio {
   pushStatus String  @default("SEM_APARELHO") @map("push_status")
   erro       String?
 
-  lidoEm       DateTime? @map("lido_em")
-  interesseEm  DateTime? @map("interesse_em")
+  lidoEm      DateTime? @map("lido_em")
+  interesseEm DateTime? @map("interesse_em")
 
   /// Quem do pós-venda já falou com este cliente, e quando. Enquanto for null o
   /// lead conta no sino do AURA — é o que separa "levantou a mão" de "já foi
@@ -2743,7 +2788,7 @@ model CampanhaEnvio {
   atendidoPorNome String?   @map("atendido_por_nome")
   /// Cliente tocou "não tenho interesse" — some da caixa e vira sinal de que
   /// aquela oferta não colou. Não silencia campanhas futuras.
-  dispensadoEm DateTime? @map("dispensado_em")
+  dispensadoEm    DateTime? @map("dispensado_em")
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -2791,7 +2836,7 @@ model Ativacao {
   gatilho String
   /// Parâmetros do gatilho (tipos de alerta, dia do mês, meses…). Json de
   /// propósito: gatilho novo não pode exigir migração de banco.
-  params Json?
+  params  Json?
 
   titulo   String
   mensagem String
@@ -2806,7 +2851,7 @@ model Ativacao {
   /// diário sobre a mesma coisa, e a pessoa desinstala o app.
   cooldownDias Int @default(30) @map("cooldown_dias")
 
-  criadoPorNome String?   @map("criado_por_nome")
+  criadoPorNome     String?   @map("criado_por_nome")
   /// Quando foi ligada pela última vez. Ao ligar, quem já está na condição é
   /// marcado como visto SEM receber — senão acender a regra dispararia de uma
   /// vez para todo mundo que já estava com problema há meses.

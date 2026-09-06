@@ -22,6 +22,7 @@
  */
 import { prisma } from "@/lib/prisma";
 import { parseInstallments } from "@/lib/billing-installments";
+import { linkPublicoDaFatura } from "@/lib/fatura-publica";
 import { enviarEmail, emailConfigurado } from "@/lib/email-transport";
 import { enviarTextoWhatsapp, uazapiConfigurado } from "@/lib/whatsapp-uazapi";
 import { gerarESalvarDemonstrativo } from "@/lib/demonstrativo-pdf";
@@ -87,18 +88,31 @@ const desligado = (): ResultadoCanal => ({
 });
 
 /**
- * Link público de pagamento.
+ * Link de pagamento que vai na mensagem.
+ *
+ * 🔑 **Preferimos SEMPRE o nosso** (`/fatura/<token>`): o cliente paga por PIX
+ * ou boleto e abre o demonstrativo no domínio da empresa, em vez de ser jogado
+ * no checkout hospedado do Asaas. Ver `lib/fatura-publica.ts`.
+ *
+ * O link do Asaas fica como reserva, e não é decoração: as cobranças emitidas
+ * antes de 06/09/2026 não têm `tokenPublico`, e sem esta linha o reenvio de uma
+ * delas sairia sem link nenhum.
  *
  * 🪤 **Cobrança parcelada não tem `asaasInvoiceUrl`.** Nesse caminho o campo
  * fica null de propósito (o "principal" é virtual — cada parcela tem o seu id
- * dentro do JSON `installments`). Sem esta função o cliente parcelado receberia
- * "cobrança sem link" para sempre, calado. O link que vale é o da PRIMEIRA
- * parcela, que é a que vence primeiro.
+ * dentro do JSON `installments`). Sem tratar isso, o cliente parcelado receberia
+ * "cobrança sem link" para sempre, calado.
  */
 function linkDePagamento(billing: {
+  tokenPublico: string | null;
   asaasInvoiceUrl: string | null;
   installments: string | null;
 }): string | null {
+  // `APP_BASE_URL` vazio produziria "/fatura/xxx" sem domínio — inútil dentro de
+  // um email. Nesse caso vale mais o link do Asaas do que um link quebrado.
+  if (billing.tokenPublico && process.env.APP_BASE_URL) {
+    return linkPublicoDaFatura(billing.tokenPublico);
+  }
   if (billing.asaasInvoiceUrl) return billing.asaasInvoiceUrl;
   const parcelas = parseInstallments(billing.installments);
   return parcelas?.find((p) => p.asaasInvoiceUrl)?.asaasInvoiceUrl ?? null;

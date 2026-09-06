@@ -82,11 +82,20 @@ const isPublicApi = createRouteMatcher([
   // middleware devolvia 401 "Não autenticado" ANTES do handler, e o robô nunca
   // conseguiria falar com o Gestor por mais certa que estivesse a chave.
   "/api/integracoes/rge/protocolos-rateio",
+  // Fatura de energia com a nossa marca: o cliente abre o link do email/WhatsApp
+  // e paga sem ter conta. A chave é o `tokenPublico` da cobrança (UUID) na URL —
+  // a rota valida o token, não a sessão. Ver lib/fatura-publica.ts.
+  "/api/fatura/(.*)",
 ]);
 
 // Página pública de pagamento branded (/portal-cliente/pagar/<token>): o pagador
 // ainda não tem login. Fica FORA do isProtected mesmo casando /portal-cliente(.*).
-const isPagamentoPublico = createRouteMatcher(["/portal-cliente/pagar/(.*)"]);
+const isPagamentoPublico = createRouteMatcher([
+  "/portal-cliente/pagar/(.*)",
+  // Página pública da fatura de energia. Não casa com `isProtected`, mas fica
+  // declarada aqui do lado para quem for ler as duas juntas.
+  "/fatura/(.*)",
+]);
 
 export default clerkMiddleware(async (auth, req) => {
   const pathname = req.nextUrl.pathname;

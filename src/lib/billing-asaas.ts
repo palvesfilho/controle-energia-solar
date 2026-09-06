@@ -25,6 +25,7 @@ import {
   montarContato,
 } from "@/lib/uc-trava-contato";
 import { notificacaoPropriaAtiva, notificarCobranca } from "@/lib/notificar-cobranca";
+import { randomUUID } from "node:crypto";
 
 export interface EmitResult {
   billingId: string;
@@ -245,6 +246,7 @@ export async function emitBillingToAsaas(
             e,
           ),
       );
+      await garantirTokenPublico(billingId);
       await avisarCliente(billingId, options);
       return {
         billingId,
@@ -274,6 +276,7 @@ export async function emitBillingToAsaas(
         installments: null,
       },
     });
+    await garantirTokenPublico(billingId);
     await avisarCliente(billingId, options);
     return {
       billingId,
@@ -297,6 +300,22 @@ export async function emitBillingToAsaas(
  * segunda cobrança para o mesmo mês. Cada canal grava a própria falha no
  * billing (`emailErro` / `whatsappErro`) e a tela oferece "Reenviar".
  */
+/**
+ * Garante o token público desta cobrança — a chave de `/fatura/<token>`, que vai
+ * no email e no WhatsApp.
+ *
+ * Gerado na emissão e nunca regerado: o link já pode estar no celular do
+ * cliente, e trocar a chave quebraria um link que ele guardou. Por isso o
+ * `updateMany` com `tokenPublico: null` — dois processos emitindo ao mesmo tempo
+ * não sobrescrevem um token já entregue.
+ */
+async function garantirTokenPublico(billingId: string): Promise<void> {
+  await prisma.consumerUnitBilling.updateMany({
+    where: { id: billingId, tokenPublico: null },
+    data: { tokenPublico: randomUUID() },
+  });
+}
+
 async function avisarCliente(billingId: string, options: EmitBillingOptions) {
   if (options.notificar === false) return;
   try {

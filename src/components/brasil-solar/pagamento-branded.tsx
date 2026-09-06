@@ -6,26 +6,30 @@
  * por PIX, boleto ou cartão sem sair do domínio da Brasil Solar.
  * Dados vêm das rotas públicas /api/portal/cobranca/[token]/*.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   QrCode,
   Barcode,
   CreditCard,
-  Copy,
-  Check,
-  Download,
   Loader2,
   ShieldCheck,
   CheckCircle2,
 } from "lucide-react";
-
-const TEAL = "#2E9B87";
-const TEAL_DARK = "#1B5E54";
-const ORANGE = "#EA6E2C";
-const INK = "#1F1F1F";
-const INK_SOFT = "#59604F";
-const INK_FAINT = "#8A938D";
-const BORDER = "#E1EAE7";
+// PIX, boleto e os blocos visuais são compartilhados com a fatura de energia
+// (/fatura/<token>). Ver components/pagamento/abas-pagamento.tsx: o que muda
+// entre os dois fluxos é só o `apiBase`.
+import {
+  AbaBoleto,
+  AbaBotao,
+  AbaPix,
+  Aviso,
+  CartaoBranco,
+  BORDER,
+  INK,
+  INK_FAINT,
+  INK_SOFT,
+  TEAL,
+} from "@/components/pagamento/abas-pagamento";
 
 type Situacao = "aberto" | "pago" | "indisponivel";
 type Aba = "pix" | "boleto" | "cartao";
@@ -56,6 +60,7 @@ export default function PagamentoBranded({
 }) {
   const [view, setView] = useState<CobrancaView>(inicial);
   const [aba, setAba] = useState<Aba>("pix");
+  const apiBase = `/api/portal/cobranca/${token}`;
 
   // Polling: enquanto estiver "aberto", checa a cada 6s se o pagamento entrou
   // (PIX/boleto confirmam de forma assíncrona pelo banco → webhook Asaas).
@@ -145,8 +150,8 @@ export default function PagamentoBranded({
             </div>
 
             <CartaoBranco>
-              {aba === "pix" && <AbaPix token={token} />}
-              {aba === "boleto" && <AbaBoleto token={token} />}
+              {aba === "pix" && <AbaPix apiBase={apiBase} />}
+              {aba === "boleto" && <AbaBoleto apiBase={apiBase} />}
               {aba === "cartao" && (
                 <AbaCartao token={token} onPago={() => setView((v) => ({ ...v, situacao: "pago" }))} />
               )}
@@ -160,51 +165,6 @@ export default function PagamentoBranded({
         </div>
       </div>
     </div>
-  );
-}
-
-function CartaoBranco({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={`bg-white border rounded-2xl p-5 ${className}`}
-      style={{ borderColor: BORDER, boxShadow: "0 1px 2px rgba(27,94,84,0.04)" }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function AbaBotao({
-  ativo,
-  onClick,
-  icon,
-  label,
-}: {
-  ativo: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex flex-col items-center gap-1 rounded-xl border py-2.5 text-xs font-semibold transition-colors"
-      style={{
-        borderColor: ativo ? TEAL : BORDER,
-        background: ativo ? "#EAF6F2" : "#FFFFFF",
-        color: ativo ? TEAL_DARK : INK_SOFT,
-      }}
-    >
-      {icon}
-      {label}
-    </button>
   );
 }
 
@@ -227,137 +187,7 @@ function PagamentoConfirmado({ view }: { view: CobrancaView }) {
 }
 
 // ── PIX ─────────────────────────────────────────────────────────────────────
-function AbaPix({ token }: { token: string }) {
-  const [dados, setDados] = useState<{ encodedImage: string | null; payload: string | null } | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-  const [copiado, setCopiado] = useState(false);
-
-  useEffect(() => {
-    let vivo = true;
-    (async () => {
-      try {
-        const r = await fetch(`/api/portal/cobranca/${token}/pix`, { cache: "no-store" });
-        const j = await r.json();
-        if (!vivo) return;
-        if (!r.ok) setErro(j.error || "Não foi possível gerar o PIX.");
-        else setDados(j);
-      } catch {
-        if (vivo) setErro("Falha de conexão ao gerar o PIX.");
-      }
-    })();
-    return () => {
-      vivo = false;
-    };
-  }, [token]);
-
-  if (erro) return <Aviso texto={erro} />;
-  if (!dados) return <Carregando texto="Gerando PIX…" />;
-
-  return (
-    <div className="flex flex-col items-center">
-      {dados.encodedImage ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={`data:image/png;base64,${dados.encodedImage}`}
-          alt="QR Code do PIX"
-          className="h-52 w-52 rounded-lg border"
-          style={{ borderColor: BORDER }}
-        />
-      ) : (
-        <Aviso texto="QR indisponível — use o código copia-e-cola abaixo." />
-      )}
-      <p className="mt-3 text-xs text-center" style={{ color: INK_SOFT }}>
-        Abra o app do seu banco, escolha pagar com PIX e escaneie o QR Code ou use
-        o código abaixo.
-      </p>
-      {dados.payload && (
-        <button
-          type="button"
-          onClick={async () => {
-            await navigator.clipboard.writeText(dados.payload!);
-            setCopiado(true);
-            setTimeout(() => setCopiado(false), 2000);
-          }}
-          className="mt-3 w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white"
-          style={{ background: TEAL }}
-        >
-          {copiado ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-          {copiado ? "Código copiado!" : "Copiar código PIX"}
-        </button>
-      )}
-    </div>
-  );
-}
-
 // ── Boleto ──────────────────────────────────────────────────────────────────
-function AbaBoleto({ token }: { token: string }) {
-  const [dados, setDados] = useState<{ linhaDigitavel: string | null; bankSlipUrl: string | null } | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-  const [copiado, setCopiado] = useState(false);
-
-  useEffect(() => {
-    let vivo = true;
-    (async () => {
-      try {
-        const r = await fetch(`/api/portal/cobranca/${token}/boleto`, { cache: "no-store" });
-        const j = await r.json();
-        if (!vivo) return;
-        if (!r.ok) setErro(j.error || "Não foi possível gerar o boleto.");
-        else setDados(j);
-      } catch {
-        if (vivo) setErro("Falha de conexão ao gerar o boleto.");
-      }
-    })();
-    return () => {
-      vivo = false;
-    };
-  }, [token]);
-
-  if (erro) return <Aviso texto={erro} />;
-  if (!dados) return <Carregando texto="Gerando boleto…" />;
-
-  return (
-    <div>
-      <p className="text-xs" style={{ color: INK_SOFT }}>
-        Linha digitável
-      </p>
-      <div
-        className="mt-1 rounded-lg border px-3 py-2.5 text-sm font-mono break-all"
-        style={{ borderColor: BORDER, color: INK }}
-      >
-        {dados.linhaDigitavel || "—"}
-      </div>
-      {dados.linhaDigitavel && (
-        <button
-          type="button"
-          onClick={async () => {
-            await navigator.clipboard.writeText(dados.linhaDigitavel!);
-            setCopiado(true);
-            setTimeout(() => setCopiado(false), 2000);
-          }}
-          className="mt-3 w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold"
-          style={{ border: `1px solid ${TEAL}`, color: TEAL_DARK }}
-        >
-          {copiado ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-          {copiado ? "Copiado!" : "Copiar linha digitável"}
-        </button>
-      )}
-      {dados.bankSlipUrl && (
-        <a
-          href={dados.bankSlipUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-2 w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white"
-          style={{ background: ORANGE }}
-        >
-          <Download className="h-4 w-4" />
-          Baixar boleto (PDF)
-        </a>
-      )}
-    </div>
-  );
-}
-
 // ── Cartão ──────────────────────────────────────────────────────────────────
 function AbaCartao({ token, onPago }: { token: string; onPago: () => void }) {
   const [form, setForm] = useState({
@@ -479,22 +309,3 @@ function Campo({
   );
 }
 
-function Carregando({ texto }: { texto: string }) {
-  return (
-    <div className="flex items-center justify-center gap-2 py-8 text-sm" style={{ color: INK_SOFT }}>
-      <Loader2 className="h-4 w-4 animate-spin" />
-      {texto}
-    </div>
-  );
-}
-
-function Aviso({ texto }: { texto: string }) {
-  return (
-    <div
-      className="rounded-lg px-3 py-2.5 text-sm"
-      style={{ background: "#FDECEC", color: "#B4231F" }}
-    >
-      {texto}
-    </div>
-  );
-}

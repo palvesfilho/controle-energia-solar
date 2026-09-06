@@ -11,27 +11,21 @@
  * terceiros ou dados sensíveis além do necessário pra pagar.
  */
 import { prisma } from "@/lib/prisma";
+import { listSubscriptionPayments } from "@/lib/asaas";
 import {
-  getPayment,
-  getPixQrCode,
-  getIdentificationField,
-  listSubscriptionPayments,
-} from "@/lib/asaas";
+  STATUS_ABERTO,
+  STATUS_PAGO,
+  situacaoDaCobranca,
+  viewBoleto,
+  viewPix,
+  type BoletoView,
+  type PixView,
+} from "@/lib/asaas-cobranca-view";
 import {
   pagarCobrancaComCartao,
   type CartaoInput,
   type TitularInput,
 } from "@/lib/asaas-cartao";
-
-/** Status de cobrança no Asaas que ainda aceitam pagamento. */
-const STATUS_ABERTO = new Set(["PENDING", "OVERDUE", "AWAITING_RISK_ANALYSIS"]);
-/** Status que indicam pagamento concluído. */
-const STATUS_PAGO = new Set([
-  "CONFIRMED",
-  "RECEIVED",
-  "RECEIVED_IN_CASH",
-  "RECEIVED_IN_CASH_UNDONE",
-]);
 
 export interface CobrancaContexto {
   acessoId: string;
@@ -113,16 +107,7 @@ export async function getCobrancaView(token: string): Promise<CobrancaView | nul
     };
   }
 
-  let situacao: CobrancaView["situacao"] = "indisponivel";
-  if (ctx.chargeId) {
-    try {
-      const pay = await getPayment(ctx.chargeId);
-      if (STATUS_PAGO.has(pay.status)) situacao = "pago";
-      else if (STATUS_ABERTO.has(pay.status)) situacao = "aberto";
-    } catch {
-      situacao = "indisponivel";
-    }
-  }
+  const situacao = await situacaoDaCobranca(ctx.chargeId);
 
   return {
     proprietarioNome: ctx.proprietarioNome,
@@ -132,41 +117,22 @@ export async function getCobrancaView(token: string): Promise<CobrancaView | nul
   };
 }
 
-export interface PixView {
-  encodedImage: string | null; // PNG base64 (sem prefixo data:)
-  payload: string | null; // copia-e-cola
-  expirationDate: string | null;
-}
+export type { PixView };
 
 /** PIX da cobrança em aberto: QR (imagem) + copia-e-cola. */
 export async function getPixDaCobranca(token: string): Promise<PixView | null> {
   const ctx = await resolverCobrancaPorToken(token);
   if (!ctx?.chargeId) return null;
-  const qr = await getPixQrCode(ctx.chargeId);
-  return {
-    encodedImage: qr.encodedImage ?? null,
-    payload: qr.payload ?? null,
-    expirationDate: qr.expirationDate ?? null,
-  };
+  return viewPix(ctx.chargeId);
 }
 
-export interface BoletoView {
-  linhaDigitavel: string | null;
-  bankSlipUrl: string | null; // PDF do boleto
-}
+export type { BoletoView };
 
 /** Boleto da cobrança em aberto: linha digitável + link do PDF. */
 export async function getBoletoDaCobranca(token: string): Promise<BoletoView | null> {
   const ctx = await resolverCobrancaPorToken(token);
   if (!ctx?.chargeId) return null;
-  const [ident, pay] = await Promise.all([
-    getIdentificationField(ctx.chargeId).catch(() => null),
-    getPayment(ctx.chargeId).catch(() => null),
-  ]);
-  return {
-    linhaDigitavel: ident?.identificationField ?? null,
-    bankSlipUrl: pay?.bankSlipUrl ?? null,
-  };
+  return viewBoleto(ctx.chargeId);
 }
 
 export interface PagarCartaoView {

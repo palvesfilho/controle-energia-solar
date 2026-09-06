@@ -98,10 +98,10 @@ export function textoWhatsappCobranca(d: DadosCobranca): string {
     `*Valor:* ${moeda(d.valor)}`,
     `*Vencimento:* ${dataBR(d.vencimento)}`,
     "",
-    "Boleto e PIX neste link:",
+    "Pague por PIX ou boleto e veja o demonstrativo completo neste link:",
     d.linkPagamento ?? "",
     "",
-    "O demonstrativo completo, com o detalhamento da sua economia, foi enviado para o seu email.",
+    "O demonstrativo também foi enviado em PDF para o seu email.",
     "",
     nomeRemetente(),
   ];
@@ -123,7 +123,9 @@ export function textoEmailCobranca(d: DadosCobranca): string {
     "",
     `Valor a pagar: ${moeda(d.valor)}`,
     `Vencimento: ${dataBR(d.vencimento)}`,
-    ...(d.linkPagamento ? ["", `Boleto e PIX: ${d.linkPagamento}`] : []),
+    ...(d.linkPagamento
+      ? ["", `Pagar e ver o demonstrativo: ${d.linkPagamento}`]
+      : []),
     "",
     "O demonstrativo completo, com o detalhamento da economia e os códigos de pagamento, está anexado a este email.",
     "",
@@ -136,7 +138,7 @@ export function textoEmailCobranca(d: DadosCobranca): string {
 export function htmlEmailCobranca(d: DadosCobranca): string {
   const mes = mesLabel(d.mes, d.ano);
   const botao = d.linkPagamento
-    ? `<p style="margin:0 0 18px"><a href="${d.linkPagamento}" style="display:inline-block;background:#1B5E54;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 22px;border-radius:6px">Ver boleto e PIX</a></p>`
+    ? `<p style="margin:0 0 18px"><a href="${d.linkPagamento}" style="display:inline-block;background:#1B5E54;color:#fff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 22px;border-radius:6px">Pagar por PIX ou boleto</a></p>`
     : "";
 
   return `<!doctype html>
