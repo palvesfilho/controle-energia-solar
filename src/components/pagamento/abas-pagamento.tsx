@@ -166,6 +166,7 @@ export function AbaBoleto({
   apiBase,
   pdfHref,
   pdfLabel,
+  mostrarCodigoBarras = false,
 }: {
   apiBase: string;
   /**
@@ -178,8 +179,21 @@ export function AbaBoleto({
    */
   pdfHref?: string;
   pdfLabel?: string;
+  /**
+   * Desenha a barra do boleto na tela, quando a rota devolve
+   * `codigoBarrasPng`. Existe para quem paga no caixa ou pelo app que lê a
+   * barra pela câmera — sem isso a única saída era baixar o PDF.
+   *
+   * Fica atrás de uma chave porque o pagamento do portal Brasil Solar
+   * compartilha este componente e a rota dele não devolve a imagem.
+   */
+  mostrarCodigoBarras?: boolean;
 }) {
-  const [dados, setDados] = useState<{ linhaDigitavel: string | null; bankSlipUrl: string | null } | null>(null);
+  const [dados, setDados] = useState<{
+    linhaDigitavel: string | null;
+    bankSlipUrl: string | null;
+    codigoBarrasPng?: string | null;
+  } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [copiado, setCopiado] = useState(false);
 
@@ -206,6 +220,26 @@ export function AbaBoleto({
 
   return (
     <div>
+      {/* A BARRA primeiro: quem paga no caixa ou aponta a câmera resolve aqui
+          e nem lê o resto. Quem digita desce dois centímetros. */}
+      {mostrarCodigoBarras && dados.codigoBarrasPng && (
+        <div
+          className="mb-4 flex flex-col items-center gap-2 rounded-lg border px-3 py-4"
+          style={{ borderColor: BORDER, background: "#FFFFFF" }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={dados.codigoBarrasPng}
+            alt="Código de barras do boleto"
+            className="w-full"
+            style={{ maxWidth: 420, height: "auto", imageRendering: "pixelated" }}
+          />
+          <span className="text-xs" style={{ color: INK_SOFT }}>
+            Aponte a câmera do app do banco para o código acima
+          </span>
+        </div>
+      )}
+
       <p className="text-xs" style={{ color: INK_SOFT }}>
         Linha digitável
       </p>

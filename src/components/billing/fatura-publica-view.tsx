@@ -215,7 +215,15 @@ export default function FaturaPublicaView({
         fontFamily: 'Helvetica, Arial, "Liberation Sans", sans-serif',
       }}
     >
-      <div style={{ maxWidth: 420, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* 📐 600 e não 420.
+          O link chega por WhatsApp, então o celular manda no desenho — e lá
+          este número não muda nada: a tela tem 360–430px e o conteúdo já ocupa
+          tudo. Ele só decide o DESKTOP, onde 420px era uma tira estreita no
+          meio de um monitor.
+          600 também é mais fiel ao que a página imita: uma folha A4 tem 210mm
+          de largura, algo perto de 800px na tela. A coluna de antes era mais
+          estreita que o próprio documento. */}
+      <div style={{ maxWidth: 600, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
         {/* ── A FOLHA ─────────────────────────────────────────────────── */}
         <div
           style={{
@@ -469,6 +477,7 @@ export default function FaturaPublicaView({
                 apiBase={apiBase}
                 pdfHref={`${apiBase}/demonstrativo`}
                 pdfLabel="Baixar demonstrativo com código de barras"
+                mostrarCodigoBarras
               />
             )}
           </div>

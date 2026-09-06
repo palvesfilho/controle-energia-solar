@@ -223,10 +223,41 @@ export async function getPixDaFatura(token: string): Promise<PixView | null> {
   return viewPix(ctx.chargeId);
 }
 
-export async function getBoletoDaFatura(token: string): Promise<BoletoView | null> {
+/** `BoletoView` mais a imagem do código de barras — só a fatura de energia tem. */
+export interface BoletoDaFatura extends BoletoView {
+  /** PNG em data URL, ou null quando não deu para gerar. */
+  codigoBarrasPng: string | null;
+}
+
+/**
+ * Boleto da fatura, COM a imagem do código de barras.
+ *
+ * 🔑 O código desenhado na tela existe para quem paga no caixa ou no app que lê
+ * a barra pela câmera: sem ele, a única saída era baixar o PDF. A linha
+ * digitável continua ao lado para quem digita.
+ *
+ * A geração fica AQUI e não em `asaas-cobranca-view.ts` de propósito: o
+ * pagamento do portal Brasil Solar compartilha aquele módulo e não mostra
+ * barra nenhuma — não deve pagar o custo de renderizar um PNG que não usa.
+ */
+export async function getBoletoDaFatura(token: string): Promise<BoletoDaFatura | null> {
   const ctx = await resolverFaturaPorToken(token);
   if (!ctx?.chargeId || ctx.cancelada) return null;
-  return viewBoleto(ctx.chargeId);
+  const boleto = await viewBoleto(ctx.chargeId);
+
+  let codigoBarrasPng: string | null = null;
+  if (boleto.linhaDigitavel) {
+    try {
+      const { gerarCodigoBarrasPng } = await import("@/lib/barcode");
+      codigoBarrasPng = await gerarCodigoBarrasPng(boleto.linhaDigitavel);
+    } catch (err) {
+      // Sem a barra o cliente ainda paga pela linha digitável — não vale
+      // derrubar a aba inteira por causa da imagem.
+      console.error("[fatura-publica] código de barras não gerado:", err);
+    }
+  }
+
+  return { ...boleto, codigoBarrasPng };
 }
 
 /**
