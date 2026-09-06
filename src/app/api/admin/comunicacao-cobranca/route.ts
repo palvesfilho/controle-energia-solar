@@ -128,12 +128,14 @@ export async function POST(req: NextRequest) {
           `Se você está lendo isto, o SMTP está funcionando.\n\nDisparado em ${quando}.`,
       });
       resultado.email = { ok: true, destino: r.destinatarios.join("; "), id: r.id };
+      // O log é a única prova depois que a tela fecha. "Aceito pelo SMTP" NÃO é
+      // "entregue": o servidor de destino pode recusar depois, e a recusa volta
+      // como bounce para a caixa do remetente, não para cá.
+      console.log(`[teste-envio] email ACEITO pelo SMTP → ${email} (id=${r.id})`);
     } catch (err) {
-      resultado.email = {
-        ok: false,
-        destino: email,
-        erro: err instanceof Error ? err.message : String(err),
-      };
+      const erro = err instanceof Error ? err.message : String(err);
+      console.error(`[teste-envio] email FALHOU → ${email}: ${erro}`);
+      resultado.email = { ok: false, destino: email, erro };
     }
   }
 
@@ -155,12 +157,11 @@ export async function POST(req: NextRequest) {
             `Disparado em ${quando}.\n\n${nomeRemetente()}`,
         );
         resultado.whatsapp = { ok: true, destino: formatarTelefone(n.e164), id: r.id };
+        console.log(`[teste-envio] whatsapp ACEITO → ${n.e164} (id=${r.id})`);
       } catch (err) {
-        resultado.whatsapp = {
-          ok: false,
-          destino: formatarTelefone(n.e164),
-          erro: err instanceof Error ? err.message : String(err),
-        };
+        const erro = err instanceof Error ? err.message : String(err);
+        console.error(`[teste-envio] whatsapp FALHOU → ${n.e164}: ${erro}`);
+        resultado.whatsapp = { ok: false, destino: formatarTelefone(n.e164), erro };
       }
     }
   }
