@@ -33,6 +33,7 @@ import {
   type EstagioCobranca,
   type NomeVariavel,
 } from "@/lib/cobranca-textos";
+import { escapeHtml, paragrafosHtml as paragrafos } from "@/lib/texto-variaveis";
 
 const MES_LABEL = [
   "jan", "fev", "mar", "abr", "mai", "jun",
@@ -192,29 +193,18 @@ function render(
   }
 }
 
-/** Linhas em branco viram parágrafos; uma quebra sozinha vira `<br>`. */
-function paragrafosHtml(texto: string): string {
-  return texto
-    .split(/\n{2,}/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .map(
-      (p) =>
-        `<p style="font-size:14px;line-height:1.55;color:#374151;margin:0 0 14px">${escapeHtml(p).replace(/\n/g, "<br>")}</p>`,
-    )
-    .join("\n    ");
-}
+export const ESTILO_PARAGRAFO_EMAIL =
+  "font-size:14px;line-height:1.55;color:#374151;margin:0 0 14px";
 
 /**
- * 🔒 O corpo é texto do OPERADOR indo para dentro de um HTML. Sem escapar, um
- * `<` digitado na tela quebraria o email — e um `<script>` viajaria junto.
+ * Linhas em branco viram parágrafos; uma quebra sozinha vira `<br>`.
+ *
+ * 🔒 O escape mora em `texto-variaveis.ts`, compartilhado com os comunicados em
+ * massa: o corpo é texto do OPERADOR indo para dentro de um HTML, e ter duas
+ * versões dessa proteção é ter uma que um dia fica para trás.
  */
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+function paragrafosHtml(texto: string): string {
+  return paragrafos(texto, ESTILO_PARAGRAFO_EMAIL);
 }
 
 // ---------------------------------------------------------------- WhatsApp

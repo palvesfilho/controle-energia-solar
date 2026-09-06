@@ -2867,3 +2867,112 @@ model Ativacao {
   @@index([ativa])
   @@map("ativacoes")
 }
+
+// ─────────────────────────────────────────────────────────────── COMUNICADOS
+//
+// A ferramenta de mensagem em MASSA por email e WhatsApp, para dois públicos
+// da Associação: o INVESTIDOR (dono de usina) e o CLIENTE COM DESCONTO na
+// fatura. Nasceu em 06/09/2026 do pedido de avisar reajuste da concessionária
+// para uns e reforma tributária para outros.
+//
+// 🪤 **Não confundir com `Campanha`.** Aquilo é o módulo Mensagens da Rede
+// Brasil Solar: público de proprietário BS, canal push + caixa de avisos no
+// portal. Aqui o público é outro, o canal é outro e não existe portal onde a
+// mensagem fique guardada — sai e acabou. Misturar os dois faria a tabela de
+// envio ter metade das colunas sempre nulas.
+
+/// Uma mensagem escrita para um público, e o registro de para onde ela foi.
+model Comunicado {
+  id String @id @default(cuid())
+
+  /// Nome interno, só o operador vê ("Reajuste RGE — setembro").
+  nome String
+
+  /// INVESTIDOR | CLIENTE_DESCONTO. Decide o público e as variáveis.
+  publico String
+
+  /// Recorte serializado; o shape vive em `comunicados-publico.ts`. Json de
+  /// propósito: filtro novo não pode exigir migração de banco.
+  publicoFiltro Json?   @map("publico_filtro")
+  /// Frase legível congelada no disparo ("Investidores · com usina · RS").
+  publicoResumo String? @map("publico_resumo")
+
+  /// EMAIL, WHATSAPP, ou os dois separados por vírgula.
+  canais String @default("EMAIL")
+
+  /// Assunto do email. O WhatsApp não usa.
+  assunto String
+
+  /// Os dois corpos, com `{{variáveis}}`. Ver `comunicados-textos.ts`.
+  corpoEmail    String @map("corpo_email")
+  corpoWhatsapp String @map("corpo_whatsapp")
+
+  /// RASCUNHO | ENVIANDO | ENVIADO | FALHOU
+  status String @default("RASCUNHO")
+
+  /// Congelados no disparo: a contagem ao vivo mudaria e o relatório deixaria
+  /// de bater com o que de fato aconteceu.
+  totalDestinatarios Int @default(0) @map("total_destinatarios")
+  totalEmail         Int @default(0) @map("total_email")
+  totalWhatsapp      Int @default(0) @map("total_whatsapp")
+
+  /// `true` quando o disparo foi só ensaio — nada saiu para ninguém.
+  simulacao Boolean @default(true)
+
+  criadoPorId   String?   @map("criado_por_id")
+  criadoPorNome String?   @map("criado_por_nome")
+  enviadoEm     DateTime? @map("enviado_em")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  envios ComunicadoEnvio[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("comunicados")
+}
+
+/// O comunicado chegando em UMA pessoa — uma linha por destinatário.
+///
+/// 🔑 **O destinatário é DESNORMALIZADO de propósito.** Nome, email e telefone
+/// ficam copiados aqui, não lidos por chave estrangeira. Um log de envio
+/// responde "para onde isto foi NAQUELE dia"; se ele lesse o cadastro atual, a
+/// resposta mudaria toda vez que alguém corrigisse um telefone, e a prova do
+/// que se mandou se perderia. Pelo mesmo motivo não há FK para `Investor` nem
+/// para `Consumer`: apagar o cadastro não pode apagar o histórico.
+model ComunicadoEnvio {
+  id           String @id @default(cuid())
+  comunicadoId String @map("comunicado_id")
+
+  /// INVESTIDOR | CLIENTE_DESCONTO
+  destinatarioTipo String  @map("destinatario_tipo")
+  destinatarioId   String  @map("destinatario_id")
+  destinatarioNome String  @map("destinatario_nome")
+  /// Todos os endereços de destino, separados por "; " — o primeiro é o
+  /// principal, os demais vão em cópia (mesma regra da cobrança).
+  email            String?
+  /// E.164, como foi mandado ao Uazapi.
+  telefone         String?
+
+  /// PENDENTE | ENVIADO | FALHA | SEM_DESTINO | SIMULADO | NAO_APLICA
+  emailStatus    String    @default("NAO_APLICA") @map("email_status")
+  emailErro      String?   @map("email_erro")
+  emailEnviadoEm DateTime? @map("email_enviado_em")
+
+  whatsappStatus    String    @default("NAO_APLICA") @map("whatsapp_status")
+  whatsappErro      String?   @map("whatsapp_erro")
+  whatsappEnviadoEm DateTime? @map("whatsapp_enviado_em")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  comunicado Comunicado @relation(fields: [comunicadoId], references: [id], onDelete: Cascade)
+
+  /// A regra, não higiene: ninguém recebe o MESMO comunicado duas vezes. Sem
+  /// isto, um clique repetido no botão ou um restart no meio do disparo manda
+  /// tudo de novo — e mensagem em massa repetida é o jeito mais rápido de
+  /// perder a lista.
+  @@unique([comunicadoId, destinatarioTipo, destinatarioId])
+  @@index([comunicadoId])
+  @@map("comunicado_envios")
+}

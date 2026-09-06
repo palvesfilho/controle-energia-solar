@@ -32,6 +32,7 @@ import {
   Zap,
   FileBarChart,
   Inbox,
+  Megaphone,
   KeyboardIcon,
   MessageSquareHeart,
 } from "lucide-react";
@@ -95,6 +96,9 @@ export const adminNavItems: NavEntry[] = [
   // Personalizações — é configuração, não fila de trabalho. Sobrando um item
   // só, grupo vira folha. Ver [[feedback_menu_hub_pattern]].
   { kind: "leaf", module: "assoc", section: "crmIntegracao", title: "Vendas do CRM", href: "/admin/crm/fila", icon: Inbox },
+  // Mensagem em massa para investidores e descontistas. NÃO confundir com
+  // Brasil Solar → Mensagens, que é push no celular do proprietário BS.
+  { kind: "leaf", module: "assoc", section: "comunicados", title: "Comunicados", href: "/admin/comunicados", icon: Megaphone },
   {
     kind: "group",
     module: "assoc",

@@ -41,6 +41,10 @@ import {
   APP_SETTING_KEYS,
   APP_SETTING_DEFAULTS,
 } from "@/lib/app-settings";
+import {
+  renderTextoComVariaveis as renderComVariaveis,
+  variaveisDesconhecidas as desconhecidasNaLista,
+} from "@/lib/texto-variaveis";
 
 export const ESTAGIOS = ["FATURA", "ANTES", "ATRASO", "ATRASO_FIRME"] as const;
 export type EstagioCobranca = (typeof ESTAGIOS)[number];
@@ -99,42 +103,16 @@ export type NomeVariavel = (typeof VARIAVEIS)[number]["chave"];
 
 const NOMES_VALIDOS: ReadonlySet<string> = new Set(VARIAVEIS.map((v) => v.chave));
 
-/** `{{ nome }}` — o espaço interno é tolerado; quem digita não deve ser punido por ele. */
-const PADRAO_VARIAVEL = /\{\{\s*([a-zA-Z]+)\s*\}\}/g;
-
 /**
- * As variáveis desconhecidas de um texto. Vazio = o texto pode ir ao cliente.
- *
- * Usada tanto pela tela (antes de salvar) quanto pelo envio (antes de mandar).
- * O mesmo julgamento nos dois lados: um texto salvo antes de a regra existir
- * não pode escapar por ter entrado pela porta antiga.
+ * O motor de substituição mora em `texto-variaveis.ts`, compartilhado com os
+ * comunicados em massa. Aqui fica só o CONTRATO: quais nomes valem na cobrança.
  */
 export function variaveisDesconhecidas(texto: string): string[] {
-  const achadas = [...texto.matchAll(PADRAO_VARIAVEL)].map((m) => m[1]);
-  return [...new Set(achadas.filter((n) => !NOMES_VALIDOS.has(n)))];
+  return desconhecidasNaLista(texto, NOMES_VALIDOS);
 }
 
-/**
- * Troca `{{var}}` pelos valores. Lança quando há variável que não existe.
- *
- * 🪤 **`?? ""` seria o buraco.** Uma variável declarada em `VARIAVEIS` mas que
- * ninguém preenche cairia no vazio e sumiria da frase — a tela ofereceria
- * `{{mesExtenso}}`, o operador escreveria "vencimento de {{mesExtenso}}" e o
- * cliente leria "vencimento de ". Por isso a ausência da CHAVE é erro, e só
- * string vazia de verdade (o primeiro nome de uma empresa, um link que não
- * existe) passa em silêncio.
- */
 export function renderTexto(texto: string, valores: Record<NomeVariavel, string>): string {
-  const ruins = variaveisDesconhecidas(texto);
-  if (ruins.length > 0) {
-    throw new Error(`variável desconhecida no texto: ${ruins.map((r) => `{{${r}}}`).join(", ")}`);
-  }
-  return texto.replace(PADRAO_VARIAVEL, (_, nome: string) => {
-    if (!(nome in valores)) {
-      throw new Error(`variável {{${nome}}} está declarada mas ninguém a preenche`);
-    }
-    return valores[nome as NomeVariavel];
-  });
+  return renderComVariaveis(texto, valores);
 }
 
 // ─────────────────────────────────────────────────────────────── Os padrões

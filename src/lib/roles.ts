@@ -38,7 +38,8 @@ export type AdminSection =
   | "persFrequenciaMensagens"
   | "persComunicacaoCobranca"
   | "persCadenciaCobrancas"
-  | "persTextosCobranca";
+  | "persTextosCobranca"
+  | "comunicados";
 
 const FULL_ADMIN_TRIO: UserRole[] = ["ADMIN", "GESTOR", "FINANCEIRO"];
 
@@ -89,6 +90,9 @@ export const SECTION_ROLES: Record<AdminSection, UserRole[]> = {
   // Mesma trinca da cadência: quem escreve o texto da cobrança escreve em nome
   // da empresa, para a carteira inteira.
   persTextosCobranca: FULL_ADMIN_TRIO,
+  // Comunicado em massa fala com a carteira inteira de uma vez, em nome da
+  // empresa. Mesma trinca de quem escreve os textos da cobranca.
+  comunicados: FULL_ADMIN_TRIO,
 };
 
 export function canAccessSection(
