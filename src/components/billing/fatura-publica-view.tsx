@@ -2,34 +2,55 @@
 
 /**
  * A fatura de energia como o CLIENTE a vê ao abrir o link do email ou do
- * WhatsApp. Sem login, no domínio da empresa, em vez do checkout hospedado do
- * Asaas.
+ * WhatsApp. Sem login, no domínio da empresa, em vez do checkout do Asaas.
  *
- * Três coisas numa tela só, porque é isso que o cliente quer resolver:
- * quanto é, como pagar, e ver o demonstrativo que explica o valor.
+ * 🎨 **Direção "folha de documento"**, escolhida em 06/09/2026 entre três: a
+ * fatura é uma folha branca só, como o demonstrativo impresso — extrato com o
+ * desconto abatido linha a linha, faixa de economia acumulada e o gráfico de 12
+ * meses. O pagamento vem num segundo bloco, deliberadamente separado: o
+ * documento explica o valor ANTES de cobrá-lo.
+ *
+ * A paleta e a tipografia são as do PDF (`demonstrativo-fatura-pdf.tsx`), não
+ * uma reinterpretação: mesmo teal, mesmo laranja, mesmo pêssego, Helvetica,
+ * rótulos minúsculos em caixa alta com espaçamento. Quem recebeu o PDF por
+ * email reconhece a página.
  *
  * PIX e boleto vêm de `components/pagamento/abas-pagamento.tsx`, compartilhado
  * com o pagamento do portal Brasil Solar. Cartão não entra aqui por decisão de
- * 06/09/2026: dado de cartão passando pela nossa página é responsabilidade que
- * a cobrança recorrente de energia não precisa assumir.
+ * 06/09/2026.
  */
 import { useEffect, useState } from "react";
 import { CheckCircle2, FileText, ShieldCheck } from "lucide-react";
 import {
   AbaBoleto,
-  AbaBotao,
   AbaPix,
   Aviso,
-  CartaoBranco,
   BORDER,
   INK,
   INK_FAINT,
   INK_SOFT,
-  IconeBoleto,
-  IconePix,
   TEAL,
   TEAL_DARK,
 } from "@/components/pagamento/abas-pagamento";
+
+const TEAL_100 = "#D7ECE8";
+const PEACH = "#FCE5D5";
+const PEACH_INK = "#7A3A14";
+const PEACH_LABEL = "#A85427";
+const ORANGE = "#EA6E2C";
+const LINE_SOFT = "#F3F4F6";
+const PAPER_BG = "#E8EDEB";
+
+export interface ResumoFatura {
+  custoSemDesconto: number;
+  economiaMes: number;
+  economiaAcumulada: number;
+  descontoPercentual: number;
+  bandeira: string;
+  consumoKwh: number;
+  creditoRecebidoKwh: number;
+  historico: { m: string; consumo: number }[];
+}
 
 export interface FaturaView {
   clienteNome: string;
@@ -39,6 +60,7 @@ export interface FaturaView {
   vencimento: string | null;
   situacao: "aberto" | "pago" | "indisponivel";
   temDemonstrativo: boolean;
+  resumo: ResumoFatura | null;
 }
 
 function brl(v: number): string {
@@ -51,22 +73,41 @@ function dataBR(iso: string | null): string {
   return `${d}/${m}/${a}`;
 }
 
+/** Rótulo minúsculo em caixa alta — o mesmo do PDF. */
+function Rotulo({ children, cor = INK_SOFT }: { children: React.ReactNode; cor?: string }) {
+  return (
+    <div
+      style={{
+        fontSize: 9,
+        fontWeight: 700,
+        letterSpacing: 1,
+        color: cor,
+        textTransform: "uppercase",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function FaturaPublicaView({
   token,
   inicial,
   empresa,
+  suporte,
 }: {
   token: string;
   inicial: FaturaView;
   empresa: string;
+  suporte: string;
 }) {
   const [view, setView] = useState<FaturaView>(inicial);
   const [aba, setAba] = useState<"pix" | "boleto">("pix");
   const apiBase = `/api/fatura/${token}`;
 
   // PIX e boleto confirmam de forma assíncrona (banco → webhook do Asaas).
-  // Enquanto estiver em aberto, pergunta a cada 6s — assim o cliente vê a tela
-  // virar "pago" sem precisar recarregar, logo depois de pagar no app do banco.
+  // Enquanto estiver em aberto, pergunta a cada 6s — assim a tela vira "pago"
+  // sozinha logo depois do pagamento no app do banco.
   useEffect(() => {
     if (view.situacao !== "aberto") return;
     const id = setInterval(async () => {
@@ -82,82 +123,269 @@ export default function FaturaPublicaView({
     return () => clearInterval(id);
   }, [view.situacao, apiBase]);
 
-  const linkDemonstrativo = `${apiBase}/demonstrativo`;
+  const r = view.resumo;
+  const maxConsumo = Math.max(1, ...(r?.historico ?? []).map((h) => h.consumo));
 
   return (
     <div
-      className="min-h-screen w-full flex flex-col items-center px-4 py-8"
-      style={{ background: "#F6F8F7" }}
+      style={{
+        minHeight: "100vh",
+        background: PAPER_BG,
+        padding: "20px 14px 26px",
+        fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+      }}
     >
-      <div className="w-full max-w-md">
-        <div className="mb-5 text-center">
-          <div className="text-sm font-semibold" style={{ color: TEAL_DARK }}>
-            {empresa}
-          </div>
-          <div className="text-xs" style={{ color: INK_FAINT }}>
-            Fatura de energia · {view.referencia}
-          </div>
-        </div>
+      <div style={{ maxWidth: 420, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* ── A FOLHA ─────────────────────────────────────────────────── */}
+        <div
+          style={{
+            background: "#FFFFFF",
+            borderRadius: 4,
+            boxShadow: "0 1px 3px rgba(17,24,39,0.10)",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              height: 4,
+              background: `linear-gradient(90deg, ${TEAL_DARK} 0%, ${TEAL} 50%, ${ORANGE} 100%)`,
+            }}
+          />
 
-        <CartaoBranco className="mb-4">
-          <div className="text-xs" style={{ color: INK_SOFT }}>
-            Unidade consumidora {view.unidadeConsumidora}
-          </div>
-          <div className="mt-0.5 text-sm font-medium" style={{ color: INK }}>
-            {view.clienteNome}
-          </div>
-
-          <div className="mt-4 flex items-end justify-between">
+          <div
+            style={{
+              padding: "16px 16px 0",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 10,
+            }}
+          >
             <div>
-              <div className="text-xs" style={{ color: INK_SOFT }}>
-                Valor
+              <Rotulo cor={INK_FAINT}>Demonstrativo de cobrança</Rotulo>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: INK,
+                  textTransform: "uppercase",
+                  marginTop: 4,
+                  lineHeight: 1.2,
+                }}
+              >
+                {view.clienteNome}
               </div>
-              <div className="text-2xl font-bold" style={{ color: TEAL_DARK }}>
+              <div style={{ fontSize: 10, color: INK_SOFT, marginTop: 2 }}>
+                UC {view.unidadeConsumidora} · {view.referencia}
+              </div>
+            </div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: TEAL_DARK, lineHeight: 1.25 }}>
+                {empresa}
+              </div>
+              <div style={{ fontSize: 8.5, color: INK_FAINT, marginTop: 2 }}>{suporte}</div>
+            </div>
+          </div>
+
+          {/* O valor como número principal do documento */}
+          <div
+            style={{
+              padding: "18px 16px 16px",
+              marginTop: 12,
+              display: "flex",
+              alignItems: "flex-end",
+              justifyContent: "space-between",
+              gap: 12,
+              borderBottom: `1px solid ${BORDER}`,
+            }}
+          >
+            <div>
+              <Rotulo>Total a pagar</Rotulo>
+              <div style={{ fontSize: 33, fontWeight: 700, color: TEAL_DARK, lineHeight: 1, marginTop: 5 }}>
                 {brl(view.valor)}
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-xs" style={{ color: INK_SOFT }}>
-                Vencimento
-              </div>
-              <div className="text-sm font-semibold" style={{ color: INK }}>
+            <div style={{ textAlign: "right", paddingBottom: 3 }}>
+              <Rotulo>Vencimento</Rotulo>
+              <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginTop: 4 }}>
                 {dataBR(view.vencimento)}
               </div>
             </div>
           </div>
-        </CartaoBranco>
 
-        {view.situacao === "pago" ? (
-          <CartaoBranco className="mb-4">
-            <div className="flex flex-col items-center py-4 text-center">
-              <CheckCircle2 className="h-10 w-10" style={{ color: TEAL }} />
-              <div className="mt-2 text-base font-semibold" style={{ color: TEAL_DARK }}>
-                Pagamento confirmado
+          {/* Extrato: o desconto abatido linha a linha */}
+          {r && (
+            <div style={{ padding: "4px 16px 14px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "10px 0",
+                  borderBottom: `1px solid ${LINE_SOFT}`,
+                }}
+              >
+                <span style={{ fontSize: 12, color: "#374151" }}>Custo sem o desconto</span>
+                <span style={{ fontSize: 12, color: INK_SOFT, textDecoration: "line-through" }}>
+                  {brl(r.custoSemDesconto)}
+                </span>
               </div>
-              <p className="mt-1 text-sm" style={{ color: INK_SOFT }}>
-                Recebemos o pagamento desta fatura. Obrigado!
-              </p>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "10px 0",
+                  borderBottom: `1px solid ${LINE_SOFT}`,
+                }}
+              >
+                <span style={{ fontSize: 12, color: "#374151" }}>
+                  Desconto do contrato{" "}
+                  <span style={{ fontSize: 10, color: INK_FAINT }}>({r.descontoPercentual}%)</span>
+                </span>
+                {/* O "−" é U+2212, não hífen: alinha com os dígitos. */}
+                <span style={{ fontSize: 12, fontWeight: 700, color: ORANGE }}>
+                  − {brl(r.economiaMes)}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "12px 0 2px",
+                }}
+              >
+                <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Você paga</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: TEAL_DARK }}>{brl(view.valor)}</span>
+              </div>
             </div>
-          </CartaoBranco>
-        ) : view.situacao === "indisponivel" ? (
-          <div className="mb-4">
-            <Aviso texto="Esta fatura não está disponível para pagamento no momento. Fale com a gente respondendo o email da cobrança." />
+          )}
+
+          {/* A economia acumulada, em faixa cheia */}
+          {r && r.economiaAcumulada > 0 && (
+            <div
+              style={{
+                background: PEACH,
+                padding: "14px 16px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
+              <div>
+                <Rotulo cor={PEACH_LABEL}>Economia acumulada</Rotulo>
+                <div style={{ fontSize: 21, fontWeight: 700, color: PEACH_INK, marginTop: 3 }}>
+                  {brl(r.economiaAcumulada)}
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <Rotulo cor={PEACH_LABEL}>Este mês</Rotulo>
+                <div style={{ fontSize: 13, fontWeight: 700, color: PEACH_INK, marginTop: 3 }}>
+                  {brl(r.economiaMes)}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Consumo dos 12 meses — o gráfico do PDF */}
+          {r && r.historico.length > 0 && (
+            <div style={{ padding: "14px 16px 16px" }}>
+              <div style={{ paddingBottom: 5, borderBottom: `1px solid ${BORDER}` }}>
+                <Rotulo>Consumo dos últimos 12 meses · kWh</Rotulo>
+              </div>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 62, marginTop: 12 }}>
+                {r.historico.map((h, i) => {
+                  const ultimo = i === r.historico.length - 1;
+                  return (
+                    <div
+                      key={h.m}
+                      title={`${h.m}: ${h.consumo} kWh`}
+                      style={{
+                        flex: 1,
+                        // Piso de 4%: um mês com consumo zero precisa aparecer
+                        // como barra rasa, não sumir e virar um buraco no eixo.
+                        height: `${Math.max(4, (h.consumo / maxConsumo) * 100)}%`,
+                        background: ultimo ? TEAL_DARK : TEAL_100,
+                        borderRadius: "2px 2px 0 0",
+                      }}
+                    />
+                  );
+                })}
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+                <span style={{ fontSize: 9, color: INK_FAINT }}>{r.historico[0]?.m}</span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: TEAL_DARK }}>
+                  {r.historico[r.historico.length - 1]?.m} · {r.consumoKwh} kWh
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── PAGAMENTO, bloco separado ───────────────────────────────── */}
+        {view.situacao === "pago" ? (
+          <div
+            style={{
+              background: "#FFFFFF",
+              borderRadius: 4,
+              boxShadow: "0 1px 3px rgba(17,24,39,0.10)",
+              padding: 20,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <CheckCircle2 style={{ width: 40, height: 40, color: TEAL }} />
+            <div style={{ fontSize: 15, fontWeight: 700, color: TEAL_DARK }}>Pagamento confirmado</div>
+            <p style={{ fontSize: 12.5, color: INK_SOFT, margin: 0, textAlign: "center" }}>
+              Recebemos o pagamento desta fatura. Obrigado!
+            </p>
           </div>
+        ) : view.situacao === "indisponivel" ? (
+          <Aviso texto="Esta fatura não está disponível para pagamento no momento. Fale com a gente respondendo o email da cobrança." />
         ) : (
-          <>
-            <div className="mb-4 grid grid-cols-2 gap-2">
-              <AbaBotao ativo={aba === "pix"} onClick={() => setAba("pix")} icon={IconePix} label="PIX" />
-              <AbaBotao
-                ativo={aba === "boleto"}
-                onClick={() => setAba("boleto")}
-                icon={IconeBoleto}
-                label="Boleto"
-              />
+          <div
+            style={{
+              background: "#FFFFFF",
+              borderRadius: 4,
+              boxShadow: "0 1px 3px rgba(17,24,39,0.10)",
+              padding: 16,
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+            }}
+          >
+            <div style={{ paddingBottom: 5, borderBottom: `1px solid ${BORDER}` }}>
+              <Rotulo>Como pagar</Rotulo>
             </div>
-            <CartaoBranco className="mb-4">
-              {aba === "pix" ? <AbaPix apiBase={apiBase} /> : <AbaBoleto apiBase={apiBase} />}
-            </CartaoBranco>
-          </>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 7 }}>
+              {(["pix", "boleto"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setAba(k)}
+                  style={{
+                    padding: "10px 0",
+                    borderRadius: 4,
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    border: `1px solid ${aba === k ? TEAL_DARK : BORDER}`,
+                    background: aba === k ? TEAL_DARK : "#FFFFFF",
+                    color: aba === k ? "#FFFFFF" : INK_SOFT,
+                  }}
+                >
+                  {k === "pix" ? "PIX" : "Boleto"}
+                </button>
+              ))}
+            </div>
+
+            {aba === "pix" ? <AbaPix apiBase={apiBase} /> : <AbaBoleto apiBase={apiBase} />}
+          </div>
         )}
 
         {/* O demonstrativo aparece SEMPRE, inclusive depois de pago: é o
@@ -165,23 +393,40 @@ export default function FaturaPublicaView({
             alguém volta para conferir a conta. */}
         {view.temDemonstrativo && (
           <a
-            href={linkDemonstrativo}
+            href={`${apiBase}/demonstrativo`}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold"
-            style={{ border: `1px solid ${BORDER}`, background: "#fff", color: TEAL_DARK }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 7,
+              background: "#FFFFFF",
+              border: `1px solid ${BORDER}`,
+              borderRadius: 4,
+              padding: "13px 0",
+              fontSize: 12.5,
+              fontWeight: 700,
+              color: TEAL_DARK,
+              textDecoration: "none",
+            }}
           >
-            <FileText className="h-4 w-4" />
-            Ver demonstrativo da fatura
+            <FileText style={{ width: 15, height: 15 }} />
+            Ver demonstrativo completo
           </a>
         )}
 
         <div
-          className="mt-6 flex items-center justify-center gap-1.5 text-xs"
-          style={{ color: INK_FAINT }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 5,
+            marginTop: 2,
+          }}
         >
-          <ShieldCheck className="h-3.5 w-3.5" />
-          Pagamento processado com segurança
+          <ShieldCheck style={{ width: 12, height: 12, color: INK_FAINT }} />
+          <span style={{ fontSize: 9.5, color: INK_FAINT }}>{empresa} · pagamento seguro</span>
         </div>
       </div>
     </div>

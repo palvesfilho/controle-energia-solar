@@ -11,7 +11,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getFaturaView } from "@/lib/fatura-publica";
-import { nomeRemetente } from "@/lib/identidade-remetente";
+import { emailSuporte, nomeRemetente } from "@/lib/identidade-remetente";
 import FaturaPublicaView from "@/components/billing/fatura-publica-view";
 
 // Cobrança muda de situação a qualquer momento (o cliente pode ter pago há um
@@ -33,5 +33,12 @@ export default async function FaturaPage({
   const view = await getFaturaView(token);
   if (!view) notFound();
 
-  return <FaturaPublicaView token={token} inicial={view} empresa={nomeRemetente()} />;
+  return (
+    <FaturaPublicaView
+      token={token}
+      inicial={view}
+      empresa={nomeRemetente()}
+      suporte={emailSuporte()}
+    />
+  );
 }

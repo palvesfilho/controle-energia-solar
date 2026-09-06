@@ -106,8 +106,25 @@ function gerar12Meses(
   return out;
 }
 
+export interface LoadDemonstrativoOpts {
+  /**
+   * Pula o bloco de boletos — que é a parte CARA: duas chamadas ao Asaas
+   * (`getIdentificationField`, `getPayment`) mais a renderização do código de
+   * barras em PNG.
+   *
+   * 🔑 Existe para a página pública da fatura (`lib/fatura-publica.ts`), que
+   * mostra o mesmo resumo mas busca PIX e boleto pelas próprias rotas, sob
+   * demanda, quando o cliente escolhe a aba. Sem isto, abrir o link do WhatsApp
+   * pagaria duas idas ao Asaas antes de desenhar qualquer coisa na tela — e
+   * duplicar o cálculo do resumo num segundo arquivo seria pior: os dois
+   * envelheceriam separados e um dia mostrariam economias diferentes.
+   */
+  semBoletos?: boolean;
+}
+
 export async function loadDemonstrativoFaturaData(
   billingId: string,
+  opts: LoadDemonstrativoOpts = {},
 ): Promise<DemonstrativoFaturaData | null> {
   const billing = await prisma.consumerUnitBilling.findUnique({
     where: { id: billingId },
@@ -186,63 +203,70 @@ export async function loadDemonstrativoFaturaData(
   // Boletos — sempre tem o da Associação; o RGE só pra PERCENTUAL_SOBRE.
   const boletos: DemonstrativoFaturaBoleto[] = [];
 
-  if (uc.regraRemuneracao === "PERCENTUAL_SOBRE_COMPENSADO" && billMes?.codigoBarras) {
-    const digits = billMes.codigoBarras.replace(/\D/g, "") || null;
-    let png: string | null = null;
-    if (digits) {
-      try {
-        const { gerarCodigoBarrasPng } = await import("./barcode");
-        png = await gerarCodigoBarrasPng(digits);
-      } catch {
-        png = null;
-      }
-    }
-    boletos.push({
-      tipo: "rge",
-      titulo: "Boleto RGE",
-      valor: valorTotalRge,
-      vencimento: fmtDateBR(billMes.vencimento),
-      observacao: "consumo residual",
-      codigoBarras: billMes.codigoBarras,
-      codigoBarrasPng: png,
-    });
-  }
+  // ⚠️ TUDO daqui até o fim do bloco fica atrás do `semBoletos`, inclusive a ida
+  // ao Asaas: é ela a parte cara, não o `boletos.push`. Uma primeira versão
+  // guardou só os pushes e a chamada continuou acontecendo — a página pública
+  // teria pago as duas requisições para depois jogar o resultado fora.
+  if (!opts.semBoletos) {
 
-  // Boleto Associação — pega do Asaas se já emitido; senão placeholder
-  let assocBarras: string | null = null;
-  let assocBarrasPng: string | null = null;
-  let assocPlaceholder: string | undefined;
-  if (billing.asaasChargeId) {
-    try {
-      const idField = await getIdentificationField(billing.asaasChargeId).catch(() => null);
-      if (idField?.identificationField) {
-        assocBarras = idField.identificationField;
+    if (uc.regraRemuneracao === "PERCENTUAL_SOBRE_COMPENSADO" && billMes?.codigoBarras) {
+      const digits = billMes.codigoBarras.replace(/\D/g, "") || null;
+      let png: string | null = null;
+      if (digits) {
         try {
           const { gerarCodigoBarrasPng } = await import("./barcode");
-          assocBarrasPng = await gerarCodigoBarrasPng(assocBarras);
+          png = await gerarCodigoBarrasPng(digits);
         } catch {
-          assocBarrasPng = null;
+          png = null;
         }
       }
-      // Pra confirmar status / fallback do payment se precisar
-      await getPayment(billing.asaasChargeId).catch(() => null);
-    } catch {
-      // Asaas indisponível
+      boletos.push({
+        tipo: "rge",
+        titulo: "Boleto RGE",
+        valor: valorTotalRge,
+        vencimento: fmtDateBR(billMes.vencimento),
+        observacao: "consumo residual",
+        codigoBarras: billMes.codigoBarras,
+        codigoBarrasPng: png,
+      });
     }
-  } else {
-    assocPlaceholder = "Emita a cobrança no Asaas para gerar o código de barras.";
-  }
 
-  boletos.push({
-    tipo: "associacao",
-    titulo: `Associação de Energia Brasil Solar · Aluguel da usina ${mesLabel}`,
-    valor: valorAPagar,
-    vencimento: fmtDateBR(billing.dataVencimento),
-    observacao: "desconto aplicado",
-    codigoBarras: assocBarras,
-    codigoBarrasPng: assocBarrasPng,
-    codigoBarrasPlaceholder: assocPlaceholder,
-  });
+    // Boleto Associação — pega do Asaas se já emitido; senão placeholder
+    let assocBarras: string | null = null;
+    let assocBarrasPng: string | null = null;
+    let assocPlaceholder: string | undefined;
+    if (billing.asaasChargeId) {
+      try {
+        const idField = await getIdentificationField(billing.asaasChargeId).catch(() => null);
+        if (idField?.identificationField) {
+          assocBarras = idField.identificationField;
+          try {
+            const { gerarCodigoBarrasPng } = await import("./barcode");
+            assocBarrasPng = await gerarCodigoBarrasPng(assocBarras);
+          } catch {
+            assocBarrasPng = null;
+          }
+        }
+        // Pra confirmar status / fallback do payment se precisar
+        await getPayment(billing.asaasChargeId).catch(() => null);
+      } catch {
+        // Asaas indisponível
+      }
+    } else {
+      assocPlaceholder = "Emita a cobrança no Asaas para gerar o código de barras.";
+    }
+
+    boletos.push({
+      tipo: "associacao",
+      titulo: `Associação de Energia Brasil Solar · Aluguel da usina ${mesLabel}`,
+      valor: valorAPagar,
+      vencimento: fmtDateBR(billing.dataVencimento),
+      observacao: "desconto aplicado",
+      codigoBarras: assocBarras,
+      codigoBarrasPng: assocBarrasPng,
+      codigoBarrasPlaceholder: assocPlaceholder,
+    });
+  }
 
   // Endereço: monta da UC (logradouro/numero/cidade/cep) ou cai no Consumer
   // como fallback se a UC não tem.

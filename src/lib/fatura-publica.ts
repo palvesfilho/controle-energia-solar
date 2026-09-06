@@ -22,6 +22,7 @@ import { prisma } from "@/lib/prisma";
 import { parseInstallments } from "@/lib/billing-installments";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { isOrigemBrasilSolar } from "@/lib/uc-origem";
+import { loadDemonstrativoFaturaData } from "@/lib/demonstrativo-fatura";
 import {
   situacaoDaCobranca,
   viewBoleto,
@@ -120,6 +121,27 @@ const MES_EXTENSO = [
   "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
 ];
 
+/**
+ * O resumo que a página mostra — os mesmos números do demonstrativo em PDF.
+ *
+ * 🔑 Vem de `loadDemonstrativoFaturaData` com `semBoletos: true`, e não de um
+ * cálculo próprio: economia e custo sem desconto passam por regras que já
+ * moram lá (multiplicador de exibição, crédito compensado, acumulados). Um
+ * segundo cálculo aqui envelheceria à parte, e um dia o PDF e a página diriam
+ * economias diferentes para o mesmo mês — do jeito mais difícil de perceber.
+ */
+export interface ResumoFatura {
+  custoSemDesconto: number;
+  economiaMes: number;
+  economiaAcumulada: number;
+  descontoPercentual: number;
+  bandeira: string;
+  consumoKwh: number;
+  creditoRecebidoKwh: number;
+  /** 12 meses, do mais antigo ao mais recente. */
+  historico: { m: string; consumo: number }[];
+}
+
 export interface FaturaView {
   clienteNome: string;
   /** Código da UC já pontuado, como o cliente lê na conta de energia. */
@@ -130,11 +152,36 @@ export interface FaturaView {
   situacao: SituacaoCobranca;
   /** Só existe quando há PDF a mostrar. */
   temDemonstrativo: boolean;
+  /**
+   * Null quando o resumo não pôde ser montado. A página então mostra só valor,
+   * vencimento e pagamento — degrada, não quebra: quem abriu o link quer pagar,
+   * e um erro de cálculo do resumo não pode impedir isso.
+   */
+  resumo: ResumoFatura | null;
 }
 
 export async function getFaturaView(token: string): Promise<FaturaView | null> {
   const ctx = await resolverFaturaPorToken(token);
   if (!ctx) return null;
+
+  let resumo: ResumoFatura | null = null;
+  try {
+    const d = await loadDemonstrativoFaturaData(ctx.billingId, { semBoletos: true });
+    if (d) {
+      resumo = {
+        custoSemDesconto: d.resumoDoMes.custoTotalSemDesconto.valor,
+        economiaMes: d.resumoDoMes.economiaMensal.valor,
+        economiaAcumulada: d.resumoDoMes.economiaTotalAcumulada.valor,
+        descontoPercentual: d.fatura.descontoTotalPercentual,
+        bandeira: d.fatura.bandeira,
+        consumoKwh: d.energia.consumoTotalDeEnergiaKwh,
+        creditoRecebidoKwh: d.energia.creditoTotalRecebidoKwh,
+        historico: d.historico12Meses,
+      };
+    }
+  } catch (err) {
+    console.error("[fatura-publica] resumo indisponível:", err);
+  }
 
   return {
     clienteNome: ctx.clienteNome,
@@ -146,6 +193,7 @@ export async function getFaturaView(token: string): Promise<FaturaView | null> {
     // cobrança que não existe mais no gateway.
     situacao: ctx.cancelada ? "indisponivel" : await situacaoDaCobranca(ctx.chargeId),
     temDemonstrativo: true,
+    resumo,
   };
 }
 
