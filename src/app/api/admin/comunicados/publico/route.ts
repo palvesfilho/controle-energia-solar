@@ -27,6 +27,8 @@ import {
   textoWhatsappComunicado,
   variaveisDoPublico,
   variaveisDesconhecidas,
+  TIPOS,
+  type TipoComunicado,
 } from "@/lib/comunicados-textos";
 import { autorizado } from "../route";
 
@@ -42,6 +44,7 @@ export async function POST(req: NextRequest) {
     assunto?: string;
     corpoEmail?: string;
     corpoWhatsapp?: string;
+    tipo?: string;
   };
 
   const publico = PUBLICOS.includes(body.publico as PublicoComunicado)
@@ -82,7 +85,7 @@ export async function POST(req: NextRequest) {
       resposta.previa = {
         para: alvo.nome,
         assunto,
-        html: htmlComunicado(assunto, corpoEmail),
+        html: htmlComunicado(assunto, corpoEmail, tipoDaPrevia(body.tipo)),
         whatsapp: body.corpoWhatsapp
           ? textoWhatsappComunicado(renderParaDestinatario(body.corpoWhatsapp, alvo))
           : null,
@@ -91,4 +94,10 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json(resposta);
+}
+
+/** Mesma rede da criação: tipo estranho vira INFORMATIVO. */
+function tipoDaPrevia(v: unknown): TipoComunicado {
+  const t = String(v ?? "").toUpperCase();
+  return (TIPOS as readonly string[]).includes(t) ? (t as TipoComunicado) : "INFORMATIVO";
 }

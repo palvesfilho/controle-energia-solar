@@ -11,7 +11,7 @@ import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { PUBLICOS, descreverPublico, type PublicoComunicado } from "@/lib/comunicados-publico";
-import { variaveisDesconhecidas } from "@/lib/comunicados-textos";
+import { variaveisDesconhecidas, TIPOS, type TipoComunicado } from "@/lib/comunicados-textos";
 import { modoComunicado } from "@/lib/comunicados-envio";
 
 export function autorizado(role: string | undefined): boolean {
@@ -29,7 +29,7 @@ export async function GET() {
     take: 100,
     select: {
       id: true, nome: true, publico: true, publicoResumo: true, canais: true,
-      status: true, simulacao: true, totalDestinatarios: true,
+      status: true, simulacao: true, totalDestinatarios: true, tipo: true,
       enviadoEm: true, createdAt: true, criadoPorNome: true,
       _count: { select: { envios: true } },
     },
@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
       publicoFiltro: filtro as never,
       publicoResumo: descreverPublico(publico, filtro),
       canais: canaisDe(body.canais),
+      tipo: tipoDe(body.tipo),
       assunto: String(body.assunto).trim(),
       corpoEmail: String(body.corpoEmail).trim(),
       corpoWhatsapp: String(body.corpoWhatsapp).trim(),
@@ -68,6 +69,15 @@ export async function POST(req: NextRequest) {
   });
 
   return NextResponse.json({ id: criado.id });
+}
+
+/**
+ * O tipo, com INFORMATIVO como rede. Valor estranho vindo da tela não pode
+ * virar um email sem cor nenhuma nem derrubar a criação.
+ */
+export function tipoDe(v: unknown): TipoComunicado {
+  const t = String(v ?? "").toUpperCase();
+  return (TIPOS as readonly string[]).includes(t) ? (t as TipoComunicado) : "INFORMATIVO";
 }
 
 export function canaisDe(v: unknown): string {

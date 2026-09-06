@@ -60,6 +60,7 @@ export default async function ComunicadoPage({
         inicial={{
           id: c.id,
           nome: c.nome,
+          tipo: c.tipo as "INFORMATIVO" | "ATENCAO" | "URGENTE",
           publico: c.publico as "INVESTIDOR" | "CLIENTE_DESCONTO",
           publicoFiltro: (c.publicoFiltro ?? {}) as Filtro,
           canais: c.canais.split(",").filter(Boolean),

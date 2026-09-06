@@ -2900,6 +2900,14 @@ model Comunicado {
   /// EMAIL, WHATSAPP, ou os dois separados por vírgula.
   canais String @default("EMAIL")
 
+  /// INFORMATIVO | ATENCAO | URGENTE — o peso visual do email.
+  ///
+  /// 🪤 Vale SÓ para o email. O WhatsApp não tem layout: lá a mensagem é texto,
+  /// e a única ênfase possível é o operador escrever `*ATENÇÃO*` na primeira
+  /// linha. Guardar o tipo mesmo assim é útil para o histórico responder "com
+  /// que peso isto foi anunciado".
+  tipo String @default("INFORMATIVO")
+
   /// Assunto do email. O WhatsApp não usa.
   assunto String
 

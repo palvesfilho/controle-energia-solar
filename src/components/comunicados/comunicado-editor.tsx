@@ -33,9 +33,31 @@ export interface Filtro {
   situacao?: "FATURANDO" | "EM_IMPLANTACAO";
 }
 
+export type TipoComunicado = "INFORMATIVO" | "ATENCAO" | "URGENTE";
+
+const TIPO_LABEL: Record<TipoComunicado, string> = {
+  INFORMATIVO: "Informativo",
+  ATENCAO: "Atenção",
+  URGENTE: "Urgente",
+};
+
+const TIPO_QUANDO: Record<TipoComunicado, string> = {
+  INFORMATIVO: "Notícia, novidade, explicação.",
+  ATENCAO: "Algo muda para o cliente: reajuste, nova regra, prazo chegando.",
+  URGENTE: "Exige ação e tem prazo curto.",
+};
+
+/** A cor do botão espelha a do email, para a escolha ser visível na tela. */
+const TIPO_COR: Record<TipoComunicado, string> = {
+  INFORMATIVO: "border-teal-600 bg-teal-50 text-teal-900 dark:bg-teal-950/30 dark:text-teal-200",
+  ATENCAO: "border-amber-500 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200",
+  URGENTE: "border-red-600 bg-red-50 text-red-900 dark:bg-red-950/30 dark:text-red-200",
+};
+
 export interface ComunicadoForm {
   id?: string;
   nome: string;
+  tipo: TipoComunicado;
   publico: Publico;
   publicoFiltro: Filtro;
   canais: string[];
@@ -99,6 +121,7 @@ export default function ComunicadoEditor({
           assunto: f.canais.includes("EMAIL") ? f.assunto : undefined,
           corpoEmail: f.canais.includes("EMAIL") ? f.corpoEmail : undefined,
           corpoWhatsapp: f.canais.includes("WHATSAPP") ? f.corpoWhatsapp : undefined,
+          tipo: f.tipo,
         }),
       });
       if (!r.ok) throw new Error("Falha ao calcular o público");
@@ -108,7 +131,7 @@ export default function ComunicadoEditor({
     } finally {
       setCarregandoPublico(false);
     }
-  }, [f.publico, f.publicoFiltro, f.assunto, f.corpoEmail, f.corpoWhatsapp, f.canais]);
+  }, [f.publico, f.publicoFiltro, f.assunto, f.corpoEmail, f.corpoWhatsapp, f.canais, f.tipo]);
 
   // O recorte recarrega enquanto se digita, mas não a cada tecla: 500 ms de
   // silêncio. Sem isso, escrever o texto dispararia uma consulta por letra.
@@ -353,6 +376,45 @@ export default function ComunicadoEditor({
             onChange={(v) => setF({ ...f, nome: v })}
             ajuda='Ex.: "Reajuste RGE — setembro".'
           />
+
+          {/* ⚠️ O tipo muda SÓ o email. No WhatsApp não existe layout: lá a
+              mensagem é texto puro, e a ênfase possível é o operador escrever
+              *ATENÇÃO* na primeira linha. */}
+          {canalEmail && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Peso da mensagem
+              </label>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {(Object.keys(TIPO_LABEL) as TipoComunicado[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    disabled={!!jaEnviado}
+                    onClick={() => setF({ ...f, tipo: t })}
+                    className={`rounded-lg border p-2.5 text-left text-sm transition-colors disabled:opacity-60 ${
+                      f.tipo === t ? `${TIPO_COR[t]} font-medium` : "hover:bg-muted"
+                    }`}
+                  >
+                    <div>{TIPO_LABEL[t]}</div>
+                    <div className="text-xs font-normal opacity-75">{TIPO_QUANDO[t]}</div>
+                  </button>
+                ))}
+              </div>
+              {f.tipo === "URGENTE" && (
+                <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+                  <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  Vermelho gasta rápido: se todo comunicado for urgente, o cliente para de
+                  distinguir e o destaque perde a função.
+                </p>
+              )}
+              {canalZap && (
+                <p className="text-xs text-muted-foreground">
+                  Vale só para o email — o WhatsApp não tem layout, é texto puro.
+                </p>
+              )}
+            </div>
+          )}
 
           {canalEmail && (
             <>

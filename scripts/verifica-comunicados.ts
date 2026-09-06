@@ -30,6 +30,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { emailUtilizavel } from "../src/lib/comunicados-publico";
 import { modoComunicado } from "../src/lib/comunicados-envio";
+import { TIPOS, htmlComunicado } from "../src/lib/comunicados-textos";
 
 const erros: string[] = [];
 
@@ -203,6 +204,35 @@ if (!existsSync(MIGRACAO)) {
         "  o try/catch do disparo depende dele para funcionar.",
     );
   }
+}
+
+// ── 6. Os três pesos são REALMENTE diferentes, e nenhum quebra ──────────────
+//
+// 🪤 Um seletor de "peso da mensagem" que produz três emails idênticos é pior
+// do que não existir: o operador escolhe, confia, e o cliente recebe sempre a
+// mesma coisa. A guarda compara os HTMLs de verdade.
+const htmls = TIPOS.map((t) => htmlComunicado("Assunto de teste", "Corpo de teste.", t));
+if (new Set(htmls).size !== TIPOS.length) {
+  erros.push(
+    "Os tipos de comunicado produzem HTML IDÊNTICO.\n" +
+      "  O seletor de peso na tela não mudaria nada no email que o cliente abre.",
+  );
+}
+for (const rotulo of ["ATENÇÃO", "URGENTE"]) {
+  const tipo = rotulo === "ATENÇÃO" ? "ATENCAO" : "URGENTE";
+  const html = htmlComunicado("x", "y", tipo as (typeof TIPOS)[number]);
+  if (!html.includes(rotulo)) {
+    erros.push(`O email do tipo ${tipo} não traz o selo "${rotulo}".`);
+  }
+}
+// Tipo estranho (migração antiga, escrita por outra via) cai no informativo em
+// vez de gerar um email sem cor nenhuma — ou lançar no meio de um disparo.
+const comLixo = htmlComunicado("x", "y", "TIPO_QUE_NAO_EXISTE" as (typeof TIPOS)[number]);
+if (comLixo !== htmlComunicado("x", "y", "INFORMATIVO")) {
+  erros.push(
+    "Tipo desconhecido NÃO caiu em INFORMATIVO.\n" +
+      "  Um valor inesperado no banco não pode mudar nem derrubar o email.",
+  );
 }
 
 if (erros.length > 0) {

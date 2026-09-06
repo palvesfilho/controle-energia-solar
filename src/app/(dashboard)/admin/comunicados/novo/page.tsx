@@ -40,6 +40,7 @@ export default async function NovoComunicadoPage() {
         modo={modoComunicado()}
         inicial={{
           nome: "",
+          tipo: "INFORMATIVO",
           publico: "CLIENTE_DESCONTO",
           publicoFiltro: {},
           canais: ["EMAIL"],

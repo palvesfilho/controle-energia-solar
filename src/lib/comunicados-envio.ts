@@ -36,6 +36,7 @@ import {
   renderParaDestinatario,
   textoWhatsappComunicado,
   variaveisDesconhecidas,
+  type TipoComunicado,
 } from "@/lib/comunicados-textos";
 
 export type ModoComunicado = "simulacao" | "real";
@@ -197,7 +198,7 @@ export async function dispararComunicado(comunicadoId: string): Promise<Resultad
 }
 
 async function mandarEmail(
-  c: { assunto: string; corpoEmail: string },
+  c: { assunto: string; corpoEmail: string; tipo: string },
   d: Destinatario,
   envioId: string,
   modo: ModoComunicado,
@@ -223,7 +224,7 @@ async function mandarEmail(
       to: d.emails[0],
       cc: d.emails.slice(1),
       subject: assunto,
-      html: htmlComunicado(assunto, corpo),
+      html: htmlComunicado(assunto, corpo, c.tipo as TipoComunicado),
       text: corpo,
     });
     await prisma.comunicadoEnvio.update({
