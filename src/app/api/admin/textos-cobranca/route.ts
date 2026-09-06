@@ -186,7 +186,9 @@ export async function POST(req: NextRequest) {
   // as datas são redondos de propósito: a prévia é sobre o TEXTO.
   const amostra = {
     clienteNome: "Maria Aparecida da Silva",
-    codigoUc: "3090656984",
+    // 12 dígitos: é o formato real das UCs da RGE, e é o que faz
+    // `formatCodigoUc` pontuar o código na prévia como o cliente vai ler.
+    codigoUc: "155200100190",
     mes: 9,
     ano: 2026,
     valor: 487.32,

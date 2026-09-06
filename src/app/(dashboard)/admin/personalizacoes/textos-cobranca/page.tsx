@@ -227,7 +227,7 @@ export default function TextosCobrancaPage() {
                 <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
                   <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   <span>
-                    Zero significa <strong>não enviar</strong> o encargo ao Asaas — e não
+                    Zero significa <strong>não enviar</strong>{" "}o encargo ao Asaas — e não
                     &quot;cobrar zero&quot;. Se a sua conta do Asaas tiver multa ou juros
                     configurados no painel, eles continuam valendo. Preencher aqui passa a
                     mandar o valor em cada cobrança nova.
@@ -289,6 +289,8 @@ export default function TextosCobrancaPage() {
                   onChange={(v) => editar(estagio, "corpoWhatsapp", v)}
                   ajuda="No WhatsApp nada é acrescentado além da assinatura — o que estiver aqui é a mensagem inteira. *Entre asteriscos* fica em negrito."
                 />
+
+                <AvisoEncargoZerado texto={textos[estagio]} encargos={encargos} />
               </CardContent>
             </Card>
           ))}
@@ -340,6 +342,39 @@ export default function TextosCobrancaPage() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Avisa quando o texto cita `{{multa}}` ou `{{juros}}` com o valor em ZERO.
+ *
+ * 🔑 Nasceu de um defeito visto na prévia em 06/09/2026: o texto de atraso
+ * prolongado dizia "já contempla multa de — e juros de —", porque a variável
+ * de um encargo zerado vira um travessão. A frase ia inteira para o cliente,
+ * sem nada apitar.
+ */
+function AvisoEncargoZerado({
+  texto,
+  encargos,
+}: {
+  texto: TextoEstagio;
+  encargos: Encargos;
+}) {
+  const tudo = `${texto.assunto}\n${texto.corpoEmail}\n${texto.corpoWhatsapp}`;
+  const faltando: string[] = [];
+  if (tudo.includes("{{multa}}") && encargos.multaPercentual === 0) faltando.push("{{multa}}");
+  if (tudo.includes("{{juros}}") && encargos.jurosMensalPercentual === 0) faltando.push("{{juros}}");
+  if (faltando.length === 0) return null;
+
+  return (
+    <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400">
+      <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      <span>
+        Este texto usa {faltando.join(" e ")}, mas o valor está zerado lá em cima. O cliente
+        leria um travessão no lugar do percentual — preencha o encargo ou tire a variável do
+        texto.
+      </span>
+    </p>
   );
 }
 

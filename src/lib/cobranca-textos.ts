@@ -148,8 +148,14 @@ export function renderTexto(texto: string, valores: Record<NomeVariavel, string>
  * dia em que sobe é uma mudança que ninguém pediu.
  *
  * A exceção é `ATRASO_FIRME`, que não tinha equivalente — nasce a partir do
- * texto de atraso, com as consequências ditas em voz baixa e sem ameaça vazia:
- * ele fala do que o sistema de fato faz (encargos), não do que ainda não faz.
+ * texto de atraso, mais direto e sem ameaça vazia.
+ *
+ * 🪤 **Ele NÃO cita `{{multa}}` nem `{{juros}}` por padrão**, e isso foi
+ * descoberto olhando a prévia em produção, em 06/09/2026: com os encargos
+ * zerados (que é como eles nascem), a frase saía "já contempla multa de — e
+ * juros de —". Texto de fábrica tem que fazer sentido na configuração de
+ * fábrica. Quem ligar os encargos acrescenta a frase na tela, e a tela avisa
+ * quando as variáveis são usadas com o valor em zero.
  *
  * 🪧 Um detalhe MUDOU de propósito: o assunto perdeu o sufixo "— {{empresa}}".
  * Ele agora é também o TÍTULO dentro do email, e "Sua fatura set/26 —
@@ -215,7 +221,7 @@ export const TEXTOS_PADRAO: TextosCobranca = {
     corpoEmail: [
       "{{saudacao}}, a fatura da unidade {{uc}} venceu em {{vencimento}} e continua em aberto há {{diasAtraso}} dias.",
       "",
-      "O boleto segue válido e já contempla multa de {{multa}} e juros de {{juros}} sobre o valor original.",
+      "O boleto continua válido e pode ser pago pelo link abaixo.",
       "",
       "Se houver qualquer dificuldade com este pagamento, responda este email — é melhor conversarmos do que deixar a pendência crescer.",
     ].join("\n"),
@@ -225,7 +231,7 @@ export const TEXTOS_PADRAO: TextosCobranca = {
       "*Unidade:* {{uc}}",
       "*Valor:* {{valor}}",
       "",
-      "O boleto segue válido, já com multa de {{multa}} e juros de {{juros}}:",
+      "O boleto continua válido e pode ser pago aqui:",
       "{{link}}",
       "",
       "Se estiver com dificuldade para pagar, responda esta mensagem — a gente encontra uma saída.",

@@ -219,6 +219,40 @@ for (const estagio of ESTAGIOS) {
   }
 }
 
+// ── 7. O texto PADRÃO faz sentido na configuração PADRÃO ────────────────────
+//
+// 🪤 Descoberto olhando a prévia em produção, em 06/09/2026: o texto de atraso
+// prolongado citava `{{multa}}` e `{{juros}}`, que nascem ZERADOS e viram um
+// travessão. A frase que chegaria ao cliente era "já contempla multa de — e
+// juros de —". Texto de fábrica tem que funcionar na configuração de fábrica.
+const SEM_ENCARGO: EncargosCobranca = {
+  multaPercentual: 0,
+  jurosMensalPercentual: 0,
+  atrasoFirmeDias: 15,
+};
+for (const estagio of ESTAGIOS) {
+  for (const campo of ["assunto", "corpoEmail", "corpoWhatsapp"] as const) {
+    const texto = TEXTOS_PADRAO[estagio][campo];
+    if (texto.includes("{{multa}}") || texto.includes("{{juros}}")) {
+      erros.push(
+        `O texto PADRÃO de ${estagio}/${campo} cita {{multa}} ou {{juros}}.\n` +
+          "  Os dois nascem ZERADOS e viram um travessão: o cliente leria\n" +
+          '  "multa de — e juros de —". Quem ligar os encargos acrescenta a frase na tela.',
+      );
+    }
+  }
+}
+const semEncargoNaMensagem = [
+  textoLembreteEmail({ ...LEMBRETE, diasAtraso: 20 }, TEXTOS_PADRAO, SEM_ENCARGO),
+  textoLembreteWhatsapp({ ...LEMBRETE, diasAtraso: 20 }, TEXTOS_PADRAO, SEM_ENCARGO),
+].join("\n");
+if (/\bde —/.test(semEncargoNaMensagem)) {
+  erros.push(
+    'A mensagem padrão saiu com "de —" quando multa e juros estão zerados.\n' +
+      "  É o buraco do encargo não configurado aparecendo no texto do cliente.",
+  );
+}
+
 // A fatura também passa pelos seus próprios construtores, que têm assinatura
 // diferente da dos lembretes e por isso não são cobertos pelos testes acima.
 const saidaFatura = [
