@@ -4,10 +4,16 @@ import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { canAccessSection } from "@/lib/roles";
 import { copiarDocumentosDaAdesao } from "@/lib/crm-copia-documentos";
+import {
+  contatoUtilizavelDaAdesao,
+  preencherContatoDoConsumer,
+  preencherContatoDoInvestidor,
+} from "@/lib/crm-contato-cadastro";
 
 /**
  * Liga uma UC assinada no CRM à ConsumerUnit cadastrada aqui, copia os
- * documentos da adesão para dentro dela e tira a linha da fila.
+ * documentos da adesão para dentro dela, traz o CONTATO do cliente e tira a
+ * linha da fila.
  *
  * Serve os dois caminhos da tela:
  *   "Cadastrar UC"  — o formulário cria a ConsumerUnit e chama isto com o id novo;
@@ -17,6 +23,13 @@ import { copiarDocumentosDaAdesao } from "@/lib/crm-copia-documentos";
  * falhar, o vínculo NÃO é desfeito — a UC segue cadastrada e a resposta diz o
  * que não veio, para dar para reexecutar. Vínculo perdido é pior que anexo
  * faltando, e anexo faltando em silêncio é pior que os dois.
+ *
+ * 🔑 **O contato entra aqui desde 06/09/2026.** Email e telefone chegavam na
+ * linha do CRM, apareciam na fila e paravam ali: o formulário de UC só ESCOLHE
+ * um cliente já cadastrado e nunca escrevia nele. Resultado — 16 clientes sem
+ * contato nenhum, todos com email e telefone parados na adesão, e cobrança
+ * bloqueada pela trava. `lib/crm-contato.ts` só preenche campo VAZIO; contato
+ * que alguém já curou não é sobrescrito. Ver [[project_notificacao_cobranca_email_whatsapp]].
  */
 export async function POST(
   req: NextRequest,
@@ -70,6 +83,28 @@ export async function POST(
     data: { situacao: "CONCLUIDA", consumerUnitId, processadaEm: new Date() },
   });
 
+  // O contato antes dos documentos: é uma escrita curta, não depende do R2 e
+  // não pode ser vítima de uma falha de download lá adiante.
+  const contato = contatoUtilizavelDaAdesao(linha.clienteEmail, linha.clienteTelefone);
+  let contatoGravado = { emailGravado: null as string | null, telefoneGravado: null as string | null };
+  try {
+    if (consumerUnitId) {
+      const uc = await prisma.consumerUnit.findUnique({
+        where: { id: consumerUnitId },
+        select: { consumerId: true },
+      });
+      if (uc?.consumerId) {
+        contatoGravado = await preencherContatoDoConsumer(uc.consumerId, contato);
+      }
+    }
+    if (investorId) {
+      contatoGravado = await preencherContatoDoInvestidor(investorId, contato);
+    }
+  } catch (err) {
+    // Contato é complemento: não desfaz o vínculo nem impede os documentos.
+    console.error("[POST /api/crm/ucs/[id]/vincular] contato:", err);
+  }
+
   let copia;
   try {
     copia = await copiarDocumentosDaAdesao(linha.adesaoIdCrm);
@@ -85,6 +120,7 @@ export async function POST(
     return NextResponse.json({
       ok: true,
       vinculada: true,
+      contato: contatoGravado,
       documentos: { copiados: [], reaproveitados: [], falhas: [msg] },
       aviso: "UC vinculada, mas nenhum documento foi copiado.",
     });
@@ -95,6 +131,7 @@ export async function POST(
     vinculada: true,
     consumerUnitId,
     investorId,
+    contato: contatoGravado,
     documentos: {
       copiados: copia.copiados,
       reaproveitados: copia.reaproveitados,

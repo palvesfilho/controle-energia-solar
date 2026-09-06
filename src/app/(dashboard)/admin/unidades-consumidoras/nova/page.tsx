@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { UCForm, UCFormData } from "@/components/consumer-units/uc-form";
 import { descontoParaInputPercentCobrado } from "@/lib/crm-desconto";
+import { frasePreenchimentoContato } from "@/lib/crm-contato";
 import {
   DocumentosAdesao,
   type FichaDocumento,
@@ -145,6 +146,8 @@ function NovaUCConteudo() {
             const d = dv.documentos ?? {};
             const guardados = (d.copiados?.length ?? 0) + (d.reaproveitados?.length ?? 0);
             toast.success(`UC criada · ${guardados} documento(s) guardados nela.`);
+            const fraseContato = frasePreenchimentoContato(dv.contato);
+            if (fraseContato) toast.success(fraseContato);
             if (d.falhas?.length) toast.warning(`Não copiados: ${d.falhas.join(" · ")}`);
           } catch (err) {
             toast.warning(

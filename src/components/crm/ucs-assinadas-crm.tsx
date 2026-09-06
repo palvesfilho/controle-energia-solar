@@ -48,6 +48,7 @@ import {
 import { matchBusca } from "@/lib/busca";
 import { conferirDesconto } from "@/lib/crm-desconto";
 import { formatCpfCnpjComRotulo } from "@/lib/documento";
+import { frasePreenchimentoContato } from "@/lib/crm-contato";
 
 interface DocumentoCrm {
   id: number;
@@ -278,6 +279,8 @@ export function UcsAssinadasCrm({ search = "" }: { search?: string }) {
       toast.success(
         `${uc.codigoUcBruto || uc.codigoUc} vinculada · ${guardados} documento(s) guardados na UC.`,
       );
+      const fraseContato = frasePreenchimentoContato(dados.contato);
+      if (fraseContato) toast.success(fraseContato);
       // Anexo que não veio precisa aparecer: em silêncio, a UC fica com meia
       // papelada e ninguém descobre até precisar dela.
       if (d.falhas?.length) {
