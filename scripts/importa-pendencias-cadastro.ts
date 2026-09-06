@@ -192,7 +192,15 @@ async function main() {
 
   const backup = ["consumerId;nome;campo;valor_antes;valor_depois"];
   for (const a of alteracoes) backup.push([a.consumerId, a.nome, a.campo, a.de, a.para].join(";"));
-  const nomeBackup = `backup-pendencias-cadastro-${new Date().toISOString().slice(0, 10)}.csv`;
+  // 🚨 Carimbo com HORA e MINUTO, não só a data.
+  //
+  // Em 06/09/2026 a versão com data seca rodou duas vezes no mesmo dia — a
+  // segunda passada (16 documentos) apagou o backup da primeira (22 telefones
+  // e 2 emails). Não se perdeu informação porque os valores anteriores eram
+  // todos vazios, mas o arquivo que existia para desfazer sumiu em silêncio.
+  // Backup que o próprio processo sobrescreve não é backup.
+  const carimbo = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+  const nomeBackup = `backup-pendencias-cadastro-${carimbo}.csv`;
   writeFileSync(nomeBackup, "\uFEFF" + backup.join("\n"), "utf8");
   console.log(`\nBackup: ${nomeBackup}`);
 

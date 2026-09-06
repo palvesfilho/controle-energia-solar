@@ -20,6 +20,7 @@ import { PrismaClient } from "@prisma/client";
 import { SEM_UC_BRASIL_SOLAR } from "../src/lib/uc-origem";
 import { FATURA_COMPENSADA } from "../src/lib/uc-implantacao";
 import { emailsDoConsumer, normalizarTelefoneBR } from "../src/lib/uc-trava-contato";
+import { apenasDigitos as digitosDoc, formatCpfCnpj } from "../src/lib/documento";
 
 const prisma = new PrismaClient();
 const SAIDA = process.argv[2] || "D:/PROJETOS_CLAUDE/GESTOR_CREDITOS/pendencias-cadastro.xlsx";
@@ -67,8 +68,6 @@ async function main() {
     select: {
       id: true,
       codigoUc: true,
-      cpfCnpj: true,
-      docsAdesaoIdCrm: true,
       consumer: {
         select: {
           id: true,
@@ -90,6 +89,28 @@ async function main() {
   });
   const faturavel = new Set(comp.map((c) => c.consumerUnitId).filter(Boolean) as string[]);
 
+  // 🚨 A sugestão de documento vem de `CrmUcImportada.clienteDocumento`, e NÃO
+  // de `ConsumerUnit.cpfCnpj`.
+  //
+  // A primeira versão deste script lia o campo da UC e errou: a UC
+  // `160378300170` foi criada em 10/04, ANTES de a adesão 62 ser ligada a ela, e
+  // seu `cpfCnpj` nunca foi reescrito — guarda até hoje `323.380.400-82`, que é
+  // o CPF da MARIA DO CARMO DI FANTE CAMILLO (a conta de luz está no nome dela).
+  // A adesão assinada diz `342.211.900-00`, do CARLOS ANGELO. Sugerir o campo da
+  // UC teria gravado o documento de uma pessoa no cadastro de outra.
+  //
+  // Pela regra do Paulo, o titular da conta na distribuidora não diz nada sobre
+  // quem se cobra — então a única fonte legítima é o termo que o cliente
+  // assinou. Ver [[feedback_titular_da_fatura_nao_e_o_cliente]].
+  const linhasCrm = await prisma.crmUcImportada.findMany({
+    select: { codigoUc: true, clienteDocumento: true },
+  });
+  const docDaAdesaoPorUc = new Map<string, string>();
+  for (const l of linhasCrm) {
+    const d = digitosDoc(l.clienteDocumento);
+    if (d.length === 11 || d.length === 14) docDaAdesaoPorUc.set(digitosDoc(l.codigoUc), formatCpfCnpj(d));
+  }
+
   interface Grupo {
     consumer: NonNullable<(typeof ucs)[number]["consumer"]>;
     codigos: string[];
@@ -104,9 +125,7 @@ async function main() {
       { consumer: u.consumer, codigos: [], faturaveis: 0, docDaAdesao: null };
     g.codigos.push(u.codigoUc);
     if (faturavel.has(u.id)) g.faturaveis++;
-    // Só vira sugestão o documento que veio da ADESÃO: na UC legada o campo
-    // guarda o titular da distribuidora, que não é quem se cobra.
-    if (!g.docDaAdesao && u.docsAdesaoIdCrm != null && u.cpfCnpj) g.docDaAdesao = u.cpfCnpj;
+    if (!g.docDaAdesao) g.docDaAdesao = docDaAdesaoPorUc.get(digitosDoc(u.codigoUc)) ?? null;
     grupos.set(u.consumer.id, g);
   }
 
