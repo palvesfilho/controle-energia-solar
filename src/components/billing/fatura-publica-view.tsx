@@ -33,6 +33,37 @@ import {
   TEAL_DARK,
 } from "@/components/pagamento/abas-pagamento";
 
+/**
+ * ESCALA TIPOGRÁFICA — seis tamanhos, e nenhum fora dela.
+ *
+ * 🔑 A primeira versão desta página tinha DOZE tamanhos, escolhidos um a um no
+ * olho: meios-passos sem sentido (8,5 · 9,5 · 12,5) e vizinhos que ninguém
+ * distingue (12 e 13, 14 e 15 e 16). Isso não é escala, é decisão repetida —
+ * e o resultado é uma página que parece montada por pedaços.
+ *
+ * Os seis papéis são os mesmos do demonstrativo em PDF, multiplicados por ~1,5:
+ * o PDF é denso e impresso em A4, a página é lida a um palmo do rosto no
+ * celular. A razão entre os degraus é a de lá.
+ *
+ *   PDF 6,5–7  → MICRO      rótulo minúsculo em caixa alta
+ *   PDF 7,5–8  → APOIO      observação, rodapé, eixo do gráfico
+ *   PDF 8,5–10 → CORPO      linhas do extrato, texto corrido
+ *   PDF 10–11  → FORTE      nome do cliente, subtotal, botão
+ *   PDF 13     → DESTAQUE   economia acumulada
+ *   PDF 22     → TOTAL      o valor a pagar
+ *
+ * ⚠️ Peso é só 400 ou 700 — o react-pdf só tem Helvetica e Helvetica-Bold, e
+ * um 600 na página quebraria a correspondência com o documento.
+ */
+const T = {
+  micro: 10,
+  apoio: 12,
+  corpo: 14,
+  forte: 16,
+  destaque: 22,
+  total: 32,
+} as const;
+
 const TEAL_100 = "#D7ECE8";
 const PEACH = "#FCE5D5";
 const PEACH_INK = "#7A3A14";
@@ -80,7 +111,7 @@ function Rotulo({ children, cor = INK_SOFT }: { children: React.ReactNode; cor?:
   return (
     <div
       style={{
-        fontSize: 9,
+        fontSize: T.micro,
         fontWeight: 700,
         letterSpacing: 1,
         color: cor,
@@ -117,10 +148,10 @@ function Linha({
         gap: 12,
       }}
     >
-      <span style={{ fontSize: 12, color: "#374151" }}>{rotulo}</span>
+      <span style={{ fontSize: T.corpo, color: "#374151" }}>{rotulo}</span>
       <span
         style={{
-          fontSize: 12,
+          fontSize: T.corpo,
           color: cor,
           fontWeight: forte ? 700 : 400,
           textDecoration: riscado ? "line-through" : "none",
@@ -214,7 +245,7 @@ export default function FaturaPublicaView({
               <Rotulo cor={INK_FAINT}>Demonstrativo de cobrança</Rotulo>
               <div
                 style={{
-                  fontSize: 14,
+                  fontSize: T.forte,
                   fontWeight: 700,
                   color: INK,
                   textTransform: "uppercase",
@@ -224,15 +255,15 @@ export default function FaturaPublicaView({
               >
                 {view.clienteNome}
               </div>
-              <div style={{ fontSize: 10, color: INK_SOFT, marginTop: 2 }}>
+              <div style={{ fontSize: T.apoio, color: INK_SOFT, marginTop: 2 }}>
                 UC {view.unidadeConsumidora} · {view.referencia}
               </div>
             </div>
             <div style={{ textAlign: "right", flexShrink: 0 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: TEAL_DARK, lineHeight: 1.25 }}>
+              <div style={{ fontSize: T.corpo, fontWeight: 700, color: TEAL_DARK, lineHeight: 1.25 }}>
                 {empresa}
               </div>
-              <div style={{ fontSize: 8.5, color: INK_FAINT, marginTop: 2 }}>{suporte}</div>
+              <div style={{ fontSize: T.micro, color: INK_FAINT, marginTop: 2 }}>{suporte}</div>
             </div>
           </div>
 
@@ -250,13 +281,13 @@ export default function FaturaPublicaView({
           >
             <div>
               <Rotulo>Total a pagar</Rotulo>
-              <div style={{ fontSize: 33, fontWeight: 700, color: TEAL_DARK, lineHeight: 1, marginTop: 5 }}>
+              <div style={{ fontSize: T.total, fontWeight: 700, color: TEAL_DARK, lineHeight: 1, marginTop: 5 }}>
                 {brl(view.valor)}
               </div>
             </div>
             <div style={{ textAlign: "right", paddingBottom: 3 }}>
               <Rotulo>Vencimento</Rotulo>
-              <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginTop: 4 }}>
+              <div style={{ fontSize: T.corpo, fontWeight: 700, color: INK, marginTop: 4 }}>
                 {dataBR(view.vencimento)}
               </div>
             </div>
@@ -280,7 +311,7 @@ export default function FaturaPublicaView({
                 rotulo={
                   <>
                     {r.extratoFecha ? "Desconto do contrato" : "Economia deste mês"}{" "}
-                    <span style={{ fontSize: 10, color: INK_FAINT }}>({r.descontoPercentual}%)</span>
+                    <span style={{ fontSize: T.apoio, color: INK_FAINT }}>({r.descontoPercentual}%)</span>
                   </>
                 }
                 /* O "−" é U+2212, não hífen: alinha com os dígitos. */
@@ -296,10 +327,10 @@ export default function FaturaPublicaView({
                   padding: "12px 0 2px",
                 }}
               >
-                <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>
+                <span style={{ fontSize: T.corpo, fontWeight: 700, color: INK }}>
                   {r.extratoFecha ? "Você paga" : "Valor desta fatura"}
                 </span>
-                <span style={{ fontSize: 16, fontWeight: 700, color: TEAL_DARK }}>
+                <span style={{ fontSize: T.forte, fontWeight: 700, color: TEAL_DARK }}>
                   {brl(view.valor)}
                 </span>
               </div>
@@ -320,13 +351,13 @@ export default function FaturaPublicaView({
             >
               <div>
                 <Rotulo cor={PEACH_LABEL}>Economia acumulada</Rotulo>
-                <div style={{ fontSize: 21, fontWeight: 700, color: PEACH_INK, marginTop: 3 }}>
+                <div style={{ fontSize: T.destaque, fontWeight: 700, color: PEACH_INK, marginTop: 3 }}>
                   {brl(r.economiaAcumulada)}
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>
                 <Rotulo cor={PEACH_LABEL}>Este mês</Rotulo>
-                <div style={{ fontSize: 13, fontWeight: 700, color: PEACH_INK, marginTop: 3 }}>
+                <div style={{ fontSize: T.corpo, fontWeight: 700, color: PEACH_INK, marginTop: 3 }}>
                   {brl(r.economiaMes)}
                 </div>
               </div>
@@ -359,8 +390,8 @@ export default function FaturaPublicaView({
                 })}
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-                <span style={{ fontSize: 9, color: INK_FAINT }}>{r.historico[0]?.m}</span>
-                <span style={{ fontSize: 9, fontWeight: 700, color: TEAL_DARK }}>
+                <span style={{ fontSize: T.micro, color: INK_FAINT }}>{r.historico[0]?.m}</span>
+                <span style={{ fontSize: T.micro, fontWeight: 700, color: TEAL_DARK }}>
                   {r.historico[r.historico.length - 1]?.m} · {r.consumoKwh} kWh
                 </span>
               </div>
@@ -383,8 +414,8 @@ export default function FaturaPublicaView({
             }}
           >
             <CheckCircle2 style={{ width: 40, height: 40, color: TEAL }} />
-            <div style={{ fontSize: 15, fontWeight: 700, color: TEAL_DARK }}>Pagamento confirmado</div>
-            <p style={{ fontSize: 12.5, color: INK_SOFT, margin: 0, textAlign: "center" }}>
+            <div style={{ fontSize: T.forte, fontWeight: 700, color: TEAL_DARK }}>Pagamento confirmado</div>
+            <p style={{ fontSize: T.corpo, color: INK_SOFT, margin: 0, textAlign: "center" }}>
               Recebemos o pagamento desta fatura. Obrigado!
             </p>
           </div>
@@ -415,7 +446,7 @@ export default function FaturaPublicaView({
                   style={{
                     padding: "10px 0",
                     borderRadius: 4,
-                    fontSize: 12.5,
+                    fontSize: T.corpo,
                     fontWeight: 700,
                     cursor: "pointer",
                     border: `1px solid ${aba === k ? TEAL_DARK : BORDER}`,
@@ -453,7 +484,7 @@ export default function FaturaPublicaView({
           }}
         >
           <ShieldCheck style={{ width: 12, height: 12, color: INK_FAINT }} />
-          <span style={{ fontSize: 9.5, color: INK_FAINT }}>{empresa} · pagamento seguro</span>
+          <span style={{ fontSize: T.apoio, color: INK_FAINT }}>{empresa} · pagamento seguro</span>
         </div>
       </div>
     </div>
