@@ -142,6 +142,31 @@ const ALVOS: Alvo[] = [
         motivo:
           "mandar para dezenas de clientes não pode acontecer por um POST solto ou um clique duplo",
       },
+      {
+        trecho: "maxDuration",
+        motivo:
+          "o disparo com WhatsApp espaçado leva minutos; sem o limite estendido ele morre no meio da lista",
+      },
+    ],
+  },
+  {
+    arquivo: "src/components/comunicados/comunicado-editor.tsx",
+    porque: "é onde o operador vê o recorte antes de mandar",
+    exige: [
+      {
+        trecho: "pelaMetade",
+        motivo:
+          "sem distinguir ENVIANDO de ENVIADO, um disparo que morreu no meio fica sem como continuar e metade da lista não recebe, em silêncio",
+      },
+      {
+        trecho: "somenteComWhatsapp",
+        motivo:
+          "o filtro existe no backend; sem ele na tela, o contador promete gente que não tem o canal escolhido",
+      },
+      {
+        trecho: "dados.usinas",
+        motivo: "o recorte por usina geradora existe no backend e ficaria inalcançável",
+      },
     ],
   },
 ];
@@ -309,6 +334,26 @@ for (const d of DESENHOS) {
         "  O operador escolhe o peso, confia, e o cliente recebe sempre a mesma coisa.",
     );
   }
+}
+
+// ── 11. Um disparo pela metade PODE ser continuado ──────────────────────────
+//
+// 🪤 Com o WhatsApp espaçado, 75 pessoas levam uns dez minutos e o limite de
+// execução é de cinco: o disparo morrer no meio não é hipótese remota, é o caso
+// comum. Se `dispararComunicado` recusasse `ENVIANDO`, as pessoas que faltam
+// nunca receberiam — e ninguém veria erro nenhum.
+const motorEnvio = readFileSync("src/lib/comunicados-envio.ts", "utf8");
+if (!motorEnvio.includes('status === "ENVIADO"')) {
+  erros.push(
+    "O disparo não recusa mais o comunicado já ENVIADO.\n" +
+      "  Sem isso, reabrir um comunicado terminado tentaria mandar tudo de novo.",
+  );
+}
+if (/status === "ENVIANDO"[\s\S]{0,120}throw/.test(motorEnvio)) {
+  erros.push(
+    "O disparo passou a RECUSAR um comunicado em ENVIANDO.\n" +
+      "  É justamente o que morreu no meio: sem continuar, metade da lista fica sem a mensagem.",
+  );
 }
 
 if (erros.length > 0) {

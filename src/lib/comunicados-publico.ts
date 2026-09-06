@@ -270,6 +270,26 @@ export async function cidadesDoPublico(publico: PublicoComunicado): Promise<stri
   return [...vistas.values()].sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
+/**
+ * As usinas geradoras que têm cliente com desconto, para a tela oferecer o
+ * filtro. Só faz sentido no público dos descontistas — investidor não recebe
+ * crédito de usina, ele é dono de uma.
+ */
+export async function usinasDoPublico(): Promise<{ id: string; nome: string; ucs: number }[]> {
+  const ucs = await prisma.consumerUnit.findMany({
+    where: { active: true, percentCompensado: { gt: 0 }, plantId: { not: null } },
+    select: { plantId: true, origem: true, plant: { select: { name: true } } },
+  });
+  const porUsina = new Map<string, { id: string; nome: string; ucs: number }>();
+  for (const u of ucs) {
+    if (isOrigemBrasilSolar(u.origem) || !u.plantId) continue;
+    const atual = porUsina.get(u.plantId);
+    if (atual) atual.ucs++;
+    else porUsina.set(u.plantId, { id: u.plantId, nome: u.plant?.name ?? "(sem nome)", ucs: 1 });
+  }
+  return [...porUsina.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+}
+
 /** A frase do recorte, para a tela e para o log dizerem a mesma coisa. */
 export function descreverPublico(publico: PublicoComunicado, f: FiltroComunicado): string {
   const partes: string[] = [PUBLICO_LABEL[publico]];

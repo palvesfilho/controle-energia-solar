@@ -7,7 +7,15 @@
  * bastante para isso acontecer.
  *
  * A idempotência de verdade não está aqui, e sim no índice único de
- * `ComunicadoEnvio` — ver `comunicados-envio.ts`.
+ * `ComunicadoEnvio` — ver `comunicados-envio.ts`. É ela que torna seguro
+ * CHAMAR ESTA ROTA DE NOVO num comunicado que ficou pela metade: quem já
+ * recebeu tem linha gravada e é pulado, e só os que faltam são alcançados.
+ *
+ * 🪤 **Um disparo pode morrer no meio.** Com o WhatsApp espaçado, 75 pessoas
+ * levam uns dez minutos, e o limite de execução é de cinco. Quando isso
+ * acontece o comunicado fica em `ENVIANDO` — nem rascunho, nem terminado — e
+ * sem uma forma de continuar as pessoas que faltam simplesmente não recebem, em
+ * silêncio. Por isso `ENVIANDO` é aceito aqui; só `ENVIADO` é recusado.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth-compat";

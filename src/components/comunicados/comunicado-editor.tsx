@@ -14,7 +14,17 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, Loader2, Mail, MessageSquare, Save, Send, TriangleAlert, Users } from "lucide-react";
+import {
+  Eye,
+  Loader2,
+  Mail,
+  MessageSquare,
+  Save,
+  Send,
+  Trash2,
+  TriangleAlert,
+  Users,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 
@@ -27,6 +37,7 @@ const PUBLICO_LABEL: Record<Publico, string> = {
 
 export interface Filtro {
   cidades?: string[];
+  plantIds?: string[];
   somenteComEmail?: boolean;
   somenteComWhatsapp?: boolean;
   investidorComUsina?: boolean;
@@ -115,6 +126,7 @@ interface RespostaPublico {
   resumo: string;
   cidades: string[];
   variaveis: { chave: string; ajuda: string }[];
+  usinas: { id: string; nome: string; ucs: number }[];
   amostra: { nome: string; email: string | null; telefone: string | null; unidades: number }[];
   erroTexto?: string;
   previa?: { para: string; assunto: string; html: string; whatsapp: string | null };
@@ -136,9 +148,16 @@ export default function ComunicadoEditor({
   const [enviando, setEnviando] = useState(false);
   const [mostrarPrevia, setMostrarPrevia] = useState(false);
   const [confirmacao, setConfirmacao] = useState("");
+  const [apagando, setApagando] = useState(false);
+  const [confirmandoApagar, setConfirmandoApagar] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const jaEnviado = f.status && f.status !== "RASCUNHO";
+  // 🪤 Três estados, não dois. `ENVIANDO` é o disparo que morreu no meio — o
+  // texto já não se edita, mas as pessoas que faltam ainda podem ser
+  // alcançadas. Tratá-lo como "enviado" deixaria metade da lista sem a
+  // mensagem, em silêncio.
+  const jaEnviado = !!f.status && f.status !== "RASCUNHO";
+  const pelaMetade = f.status === "ENVIANDO";
 
   const recarregarPublico = useCallback(async () => {
     setCarregandoPublico(true);
@@ -213,8 +232,30 @@ export default function ComunicadoEditor({
     }
   };
 
+  const apagar = async () => {
+    if (!f.id) return;
+    setApagando(true);
+    try {
+      const r = await fetch(`/api/admin/comunicados/${f.id}`, { method: "DELETE" });
+      const j = await r.json();
+      if (!r.ok) {
+        toast.error(j.error ?? "Não foi possível apagar");
+        return;
+      }
+      toast.success("Rascunho apagado");
+      router.push("/admin/comunicados");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha ao apagar");
+    } finally {
+      setApagando(false);
+      setConfirmandoApagar(false);
+    }
+  };
+
   const disparar = async () => {
-    const id = await salvar();
+    // Retomando um disparo pela metade não há o que salvar: o texto já está
+    // gravado e a rota de edição recusa mexer nele.
+    const id = pelaMetade ? f.id! : await salvar();
     if (!id) return;
     setEnviando(true);
     try {
@@ -336,6 +377,29 @@ export default function ComunicadoEditor({
               </label>
             )}
 
+            {f.publico === "CLIENTE_DESCONTO" && !!dados?.usinas?.length && (
+              <label className="flex items-center gap-2">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Usina
+                </span>
+                <select
+                  disabled={!!jaEnviado}
+                  value={f.publicoFiltro.plantIds?.[0] ?? ""}
+                  onChange={(e) =>
+                    setFiltro({ plantIds: e.target.value ? [e.target.value] : undefined })
+                  }
+                  className="max-w-[220px] rounded-lg border bg-background px-2 py-1 text-sm"
+                >
+                  <option value="">Todas</option>
+                  {dados.usinas.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.nome} ({u.ucs})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             <label className="flex items-center gap-2">
               <span className="text-xs uppercase tracking-wide text-muted-foreground">Cidade</span>
               <select
@@ -375,6 +439,32 @@ export default function ComunicadoEditor({
                 </span>
               )}
             </div>
+            {/* 🔑 Tirar da lista quem não tem o canal é diferente de só não
+                alcançá-lo: com o filtro ligado, o número no botão de disparo
+                passa a ser o número de gente que vai receber de verdade. */}
+            <div className="mt-2 flex flex-wrap gap-4 text-xs">
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  disabled={!!jaEnviado}
+                  checked={!!f.publicoFiltro.somenteComEmail}
+                  onChange={(e) => setFiltro({ somenteComEmail: e.target.checked || undefined })}
+                  className="h-3.5 w-3.5"
+                />
+                Só quem tem email
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  disabled={!!jaEnviado}
+                  checked={!!f.publicoFiltro.somenteComWhatsapp}
+                  onChange={(e) => setFiltro({ somenteComWhatsapp: e.target.checked || undefined })}
+                  className="h-3.5 w-3.5"
+                />
+                Só quem tem WhatsApp
+              </label>
+            </div>
+
             {!!dados?.amostra?.length && (
               <p className="mt-2 text-xs text-muted-foreground">
                 Começa por: {dados.amostra.slice(0, 4).map((a) => a.nome).join(" · ")}
@@ -605,6 +695,31 @@ export default function ComunicadoEditor({
         </CardContent>
       </Card>
 
+      {/* ── DISPARO PELA METADE ────────────────────────────────────── */}
+      {pelaMetade && (
+        <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20">
+          <CardContent className="space-y-3 p-4">
+            <div className="flex items-start gap-2 text-sm">
+              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
+              <span>
+                <strong>Este disparo não terminou.</strong> Pode ter estourado o tempo de
+                execução no meio da lista. Continuar alcança <strong>só quem ainda não
+                recebeu</strong> — quem já recebeu está gravado e é pulado.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => void disparar()}
+              disabled={enviando}
+              className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-amber-700 disabled:opacity-50"
+            >
+              {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {enviando ? "Continuando..." : "Continuar o disparo"}
+            </button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* ── AÇÕES ──────────────────────────────────────────────────── */}
       {!jaEnviado && (
         <Card>
@@ -628,6 +743,39 @@ export default function ComunicadoEditor({
                 <Eye className="h-4 w-4" />
                 Ver como fica
               </button>
+
+              {/* Só existe enquanto é rascunho. Comunicado disparado é o
+                  histórico do que saiu — a rota recusa apagar. */}
+              {f.id && !confirmandoApagar && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmandoApagar(true)}
+                  className="ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Apagar
+                </button>
+              )}
+              {f.id && confirmandoApagar && (
+                <div className="ml-auto flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">Apagar este rascunho?</span>
+                  <button
+                    type="button"
+                    onClick={() => void apagar()}
+                    disabled={apagando}
+                    className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {apagando ? "Apagando..." : "Apagar"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmandoApagar(false)}
+                    className="rounded-lg border px-3 py-1.5 text-sm transition-colors hover:bg-muted"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/20">

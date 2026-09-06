@@ -17,6 +17,7 @@ import {
   contarAlcance,
   descreverPublico,
   resolverPublico,
+  usinasDoPublico,
   PUBLICOS,
   type FiltroComunicado,
   type PublicoComunicado,
@@ -67,6 +68,9 @@ export async function POST(req: NextRequest) {
     alcance: contarAlcance(lista),
     resumo: descreverPublico(publico, filtro),
     cidades: await cidadesDoPublico(publico),
+    // Só o público dos descontistas recebe crédito de usina; o investidor é
+    // dono de uma, então o filtro não faz sentido para ele.
+    usinas: publico === "CLIENTE_DESCONTO" ? await usinasDoPublico() : [],
     variaveis: variaveisDoPublico(publico),
     // Os primeiros nomes, para o operador reconhecer que o recorte é o que ele
     // imaginou — antes de mandar para todo mundo.
