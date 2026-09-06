@@ -35,7 +35,8 @@ export type AdminSection =
   | "persAlertasUsinas"
   | "persRelatorioParametros"
   | "persAcessoPortal"
-  | "persFrequenciaMensagens";
+  | "persFrequenciaMensagens"
+  | "persComunicacaoCobranca";
 
 const FULL_ADMIN_TRIO: UserRole[] = ["ADMIN", "GESTOR", "FINANCEIRO"];
 
@@ -77,6 +78,9 @@ export const SECTION_ROLES: Record<AdminSection, UserRole[]> = {
   // para proteger a base de quem está com pressa de vender — inclusive de quem
   // tem toda a razão de estar com pressa.
   persFrequenciaMensagens: FULL_ADMIN_TRIO,
+  // Quem pode disparar mensagem de teste para celular e caixa de entrada de
+  // gente de verdade e quem ja pode emitir cobranca.
+  persComunicacaoCobranca: FULL_ADMIN_TRIO,
 };
 
 export function canAccessSection(

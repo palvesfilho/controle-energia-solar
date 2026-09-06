@@ -11,6 +11,7 @@ import {
   KeyRound,
   PackageSearch,
   Gauge,
+  MessageCircle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { getServerSession } from "@/lib/auth-compat";
@@ -127,6 +128,16 @@ const items: HubItem[] = [
     // Sem POS_VENDA de propósito: quem é limitado pela trava não deveria ser
     // quem a afrouxa. Ver SECTION_ROLES em src/lib/roles.ts.
     section: "persFrequenciaMensagens",
+  },
+  {
+    title: "Comunicação com o cliente",
+    description:
+      "Email e WhatsApp disparados quando uma cobrança é emitida: estado das credenciais, se a instância do WhatsApp está pareada, e envio de mensagem de teste. É aqui que se confere se o cliente vai receber de fato.",
+    href: "/admin/personalizacoes/comunicacao-cobranca",
+    icon: MessageCircle,
+    group: "Clientes",
+    accent: "from-emerald-500 to-teal-700",
+    section: "persComunicacaoCobranca",
   },
 ];
 
