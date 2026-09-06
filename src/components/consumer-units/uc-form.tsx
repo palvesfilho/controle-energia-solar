@@ -13,6 +13,7 @@ import {
   normalizeConcessionaria,
 } from "@/lib/concessionarias";
 import { exigeCodigoUcAntigo, normalizeCodigoUc } from "@/lib/uc-codigo";
+import { comparaDocumentos, formatCpfCnpjComRotulo } from "@/lib/documento";
 
 export interface UCFormData {
   nome: string;
@@ -87,6 +88,12 @@ export const EMPTY_UC_FORM: UCFormData = {
 interface Option {
   id: string;
   label: string;
+  /**
+   * CPF/CNPJ do cliente, quando o cadastro tem. Vai junto no rótulo da lista:
+   * escolher titular por NOME numa lista de 86 é o que pôs a UC da MAINARDI no
+   * cadastro do RODRIGO. Ver `comparaDocumentos` em lib/documento.ts.
+   */
+  documento?: string | null;
 }
 
 export const METODOS_PAGAMENTO: { value: string; label: string }[] = [
@@ -217,8 +224,14 @@ export function UCForm({
   useEffect(() => {
     fetch("/api/consumers")
       .then((r) => r.json())
-      .then((data: { id: string; name: string }[]) =>
-        setConsumers(data.map((c) => ({ id: c.id, label: c.name })))
+      .then((data: { id: string; name: string; cpfCnpj?: string | null; document?: string | null }[]) =>
+        setConsumers(
+          data.map((c) => ({
+            id: c.id,
+            label: c.name,
+            documento: c.cpfCnpj || c.document || null,
+          })),
+        ),
       );
     fetch("/api/plants")
       .then((r) => r.json())
@@ -244,6 +257,14 @@ export function UCForm({
       createdAt: createdAt ?? new Date(),
       percentCompensado: Number(percentInputToDb(form.percentCompensado)) || null,
     });
+
+  // O titular da UC contra o titular do cadastro apontado. Aviso, não trava:
+  // divergência legítima existe (procurador, espólio, imóvel alugado), e o que
+  // não pode é ela passar despercebida. Ver `comparaDocumentos`.
+  const clienteEscolhido = consumers.find((c) => c.id === form.consumerId);
+  const confrontoDocumento = form.consumerId
+    ? comparaDocumentos(form.cpfCnpj, clienteEscolhido?.documento)
+    : "igual";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -334,10 +355,32 @@ export function UCForm({
               <option value="">— Sem consumidor vinculado —</option>
               {consumers.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.label}
+                  {c.documento
+                    ? `${c.label} — ${formatCpfCnpjComRotulo(c.documento)}`
+                    : `${c.label} — sem CPF/CNPJ`}
                 </option>
               ))}
             </select>
+            {confrontoDocumento === "diverge" ? (
+              <p className="text-xs text-amber-700 dark:text-amber-500">
+                O CPF/CNPJ deste cliente não é o desta UC (
+                {formatCpfCnpjComRotulo(form.cpfCnpj)}). A cobrança sai no
+                documento do CLIENTE, não no da UC — confira se é mesmo ele.
+              </p>
+            ) : confrontoDocumento === "mesma_raiz" ? (
+              <p className="text-xs text-muted-foreground">
+                Filial da mesma empresa (raiz de CNPJ igual à da UC).
+              </p>
+            ) : confrontoDocumento === "sem_dado" ? (
+              <p className="text-xs text-muted-foreground">
+                Sem CPF/CNPJ dos dois lados para conferir — quem recebe a
+                cobrança é este cliente.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                É quem recebe a cobrança: o boleto sai no CPF/CNPJ dele.
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="plantId">Usina Geradora</Label>

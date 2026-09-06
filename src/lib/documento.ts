@@ -119,3 +119,40 @@ export function formatCpfCnpjComRotulo(
   if (d.length === 14) return `CNPJ ${formatCpfCnpj(doc)}`;
   return formatCpfCnpj(doc, fallback);
 }
+
+/**
+ * A UC guarda o titular DUAS vezes: nos campos dela (`nome`/`cpfCnpj`) e no
+ * ponteiro `consumerId` para o cadastro de cliente. Esta função compara os
+ * documentos dos dois lados.
+ *
+ * 🚨 **Por que existe.** Em 06/09/2026 a UC `199346300111` — da MAINARDI E
+ * CARGNELUTTI, CNPJ 24.138.302/0001-99 nos próprios campos — estava apontando
+ * para o cliente RODRIGO TREVISAN SBEGHEN, CPF 911.272.620-68. O seletor
+ * "Consumidor" do formulário mostra só o NOME de 86 clientes em ordem
+ * alfabética; alguém clicou na linha errada e nada, em lugar nenhum, conferiu.
+ *
+ * O erro não é decorativo: `pickCpfCnpj` em `billing-asaas.ts` prefere o
+ * documento do CLIENTE e só usa o da UC como último recurso. O boleto do
+ * consumo da empresa sairia no CPF da pessoa física, com o email dela.
+ *
+ * 📏 **`mesma_raiz` não é erro.** Os 8 primeiros dígitos do CNPJ são a raiz da
+ * empresa; o que muda depois é a filial. As três UCs da PONTELLI JOALHERIA
+ * apontam para a matriz `/0004` e têm `/0001`, `/0005` e `/0006` nos próprios
+ * campos — é a mesma empresa, e gritar nesses casos é o caminho mais curto
+ * para o aviso ser ignorado quando importar.
+ */
+export type ConfrontoDocumento = "sem_dado" | "igual" | "mesma_raiz" | "diverge";
+
+export function comparaDocumentos(
+  docA: string | null | undefined,
+  docB: string | null | undefined,
+): ConfrontoDocumento {
+  const a = repoeZerosAEsquerda(docA);
+  const b = repoeZerosAEsquerda(docB);
+  if (!a || !b) return "sem_dado";
+  if (a === b) return "igual";
+  if (a.length === 14 && b.length === 14 && a.slice(0, 8) === b.slice(0, 8)) {
+    return "mesma_raiz";
+  }
+  return "diverge";
+}
