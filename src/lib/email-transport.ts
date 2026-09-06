@@ -13,7 +13,7 @@
  *
  * Configuração (variáveis de ambiente):
  *   EMAIL_PROVIDER            google (padrão) | resend
- *   GOOGLE_SMTP_USER          conta que autentica (ex.: sac@redebrasilsolar.com.br)
+ *   GOOGLE_SMTP_USER          conta que autentica (ex.: gestao@abrasilsolar.com.br)
  *   GOOGLE_SMTP_APP_PASSWORD  "senha de app" do Google — exige 2FA ligado na conta
  *   GOOGLE_SMTP_FROM          remetente exibido (padrão: o próprio USER)
  *   GOOGLE_SMTP_REPLY_TO      (opcional) endereço de resposta
@@ -26,6 +26,7 @@
  */
 import nodemailer, { type Transporter } from "nodemailer";
 import { Resend } from "resend";
+import { nomeRemetente } from "@/lib/identidade-remetente";
 
 export type ProvedorEmail = "google" | "resend";
 
@@ -86,7 +87,7 @@ export function emailConfigurado(): { ok: boolean; provedor: ProvedorEmail; moti
  * diferentes fazem o cliente achar que um dos dois é golpe.
  */
 export function remetentePadrao(): string {
-  const nome = process.env.NOTIFICACAO_REMETENTE_NOME || "Associação de Energia Brasil Solar";
+  const nome = nomeRemetente();
   if (provedorEmail() === "resend") {
     return process.env.RESEND_FROM || `${nome} <onboarding@resend.dev>`;
   }

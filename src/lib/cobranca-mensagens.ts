@@ -10,19 +10,16 @@
  */
 
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { emailSuporte, nomeRemetente } from "@/lib/identidade-remetente";
 
 const MES_LABEL = [
   "jan", "fev", "mar", "abr", "mai", "jun",
   "jul", "ago", "set", "out", "nov", "dez",
 ];
 
-export function nomeRemetente(): string {
-  return process.env.NOTIFICACAO_REMETENTE_NOME || "Associação de Energia Brasil Solar";
-}
-
-function emailSuporte(): string {
-  return process.env.NOTIFICACAO_EMAIL_SUPORTE || "sac@redebrasilsolar.com.br";
-}
+// Reexportado para quem já importava daqui; a definição mora em
+// `identidade-remetente.ts`, junto com o email de contato e a descrição.
+export { nomeRemetente };
 
 /**
  * Marcas de que o cadastro é uma EMPRESA, não uma pessoa. Metade da carteira é

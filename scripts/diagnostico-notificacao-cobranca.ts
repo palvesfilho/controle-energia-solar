@@ -133,7 +133,7 @@ async function main() {
  * recebe. A única defesa é alguém OLHAR a lista de destinatários antes de virar
  * o modo para `real`.
  */
-const PADRAO_GESTORA = /palves|solvesm|redebrasilsolar/i;
+const PADRAO_GESTORA = /palves|solvesm|redebrasilsolar|abrasilsolar/i;
 
 async function destinatarios(
   avaliadas: { uc: { codigoUc: string; nome: string; consumer: { name: string } | null }; contato: { emails: string[]; telefone: string | null } }[],

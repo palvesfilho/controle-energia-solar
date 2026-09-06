@@ -1,4 +1,5 @@
 import React from "react";
+import { emailSuporte } from "@/lib/identidade-remetente";
 import {
   Document,
   Page,
@@ -320,7 +321,7 @@ export function DemonstrativoPDF({
           <View style={s.headerRight}>
             <Text style={s.brandName}>Rede Brasil Solar</Text>
             <Text style={s.brandInfo}>Aluguel de usinas fotovoltaicas</Text>
-            <Text style={s.brandInfo}>sac@redebrasilsolar.com.br</Text>
+            <Text style={s.brandInfo}>{emailSuporte()}</Text>
           </View>
         </View>
 

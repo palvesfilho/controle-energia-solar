@@ -1,4 +1,5 @@
 import React from "react";
+import { emailSuporte, nomeRemetente } from "@/lib/identidade-remetente";
 import {
   Document,
   Page,
@@ -418,7 +419,7 @@ export function DemonstrativoFaturaPdf({ data }: { data: DemonstrativoFaturaData
           <View style={s.brandWrap}>
             <Text style={s.brandNome}>Associação de Energia Brasil Solar</Text>
             <Text style={s.brandSub}>Aluguel de usinas fotovoltaicas</Text>
-            <Text style={s.brandSub}>sac@redebrasilsolar.com.br</Text>
+            <Text style={s.brandSub}>{emailSuporte()}</Text>
           </View>
         </View>
 
@@ -587,7 +588,7 @@ export function DemonstrativoFaturaPdf({ data }: { data: DemonstrativoFaturaData
 
         {/* FOOTER */}
         <View style={s.footer}>
-          <Text>Associação de Energia Brasil Solar · sac@redebrasilsolar.com.br</Text>
+          <Text>{nomeRemetente()} · {emailSuporte()}</Text>
           <Text>
             Demonstrativo {formatCodigoUc(data.cliente.unidadeConsumidora)} · {data.fatura.mesReferencia} · Emitido{" "}
             {data.fatura.emissao}
