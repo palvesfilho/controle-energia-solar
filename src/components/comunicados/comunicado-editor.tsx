@@ -513,7 +513,12 @@ export default function ComunicadoEditor({
         </CardContent>
       </Card>
 
-      {/* ── A MENSAGEM ─────────────────────────────────────────────── */}
+      {/* ── A MENSAGEM, com a prévia AO LADO ──────────────────────────
+          🔑 A prévia sai de trás de um botão e passa a viver na tela. Escolher
+          desenho e peso é uma decisão visual: julgar pelo nome da opção e
+          depois abrir um modal para conferir separa a escolha do resultado. Ao
+          lado, cada clique mostra o que muda. */}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start">
       <Card>
         <CardContent className="space-y-4 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -733,6 +738,15 @@ export default function ComunicadoEditor({
         </CardContent>
       </Card>
 
+      <PainelVivo
+        dados={dados}
+        carregando={carregandoPublico}
+        canalEmail={canalEmail}
+        canalZap={canalZap}
+        onAmpliar={() => setMostrarPrevia(true)}
+      />
+      </div>
+
       {/* ── DISPARO PELA METADE ────────────────────────────────────── */}
       {pelaMetade && (
         <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20">
@@ -772,16 +786,6 @@ export default function ComunicadoEditor({
                 <Save className="h-4 w-4" />
                 {salvando ? "Salvando..." : "Salvar rascunho"}
               </button>
-              <button
-                type="button"
-                onClick={() => setMostrarPrevia(true)}
-                disabled={!dados?.previa}
-                className="inline-flex items-center gap-2 rounded-lg border px-4 py-1.5 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50"
-              >
-                <Eye className="h-4 w-4" />
-                Ver como fica
-              </button>
-
               {/* Só existe enquanto é rascunho. Comunicado disparado é o
                   histórico do que saiu — a rota recusa apagar. */}
               {f.id && !confirmandoApagar && (
@@ -892,6 +896,114 @@ export default function ComunicadoEditor({
         <Previa dados={dados.previa} onFechar={() => setMostrarPrevia(false)} />
       )}
     </div>
+  );
+}
+
+/**
+ * A prévia AO LADO do formulário, sempre visível e sempre atualizada.
+ *
+ * 🔑 Escolher desenho e peso é uma decisão visual. Julgar pelo nome da opção e
+ * só depois abrir um modal separa a escolha do resultado — aqui cada clique
+ * mostra o que muda, no mesmo olhar.
+ *
+ * ⚠️ **Ela não se aproxima do email, ela É o email**: o HTML vem do servidor,
+ * do mesmo `htmlComunicado` que o disparo usa. Uma prévia que reconstruísse o
+ * layout na tela um dia mentiria — e a primeira vez que mentisse seria numa
+ * mensagem já enviada.
+ *
+ * Fica `sticky` porque o formulário é mais alto que ela: sem isso, escrever o
+ * texto lá embaixo deixaria a prévia fora da tela justamente quando ela serve.
+ */
+function PainelVivo({
+  dados,
+  carregando,
+  canalEmail,
+  canalZap,
+  onAmpliar,
+}: {
+  dados: RespostaPublico | null;
+  carregando: boolean;
+  canalEmail: boolean;
+  canalZap: boolean;
+  onAmpliar: () => void;
+}) {
+  const [aba, setAba] = useState<"EMAIL" | "WHATSAPP">("EMAIL");
+  const previa = dados?.previa;
+
+  // Canal desligado não pode ficar com a aba selecionada — mostraria um painel
+  // vazio sem explicar por quê.
+  const abaAtiva = aba === "WHATSAPP" && canalZap ? "WHATSAPP" : "EMAIL";
+
+  return (
+    <Card className="lg:sticky lg:top-4">
+      <CardContent className="space-y-3 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold">Como o cliente vê</h2>
+            <p className="text-xs text-muted-foreground">
+              {previa
+                ? `Com os dados de ${previa.para}`
+                : "Escreva o assunto e o texto para ver aqui"}
+            </p>
+          </div>
+          {carregando && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+        </div>
+
+        {canalEmail && canalZap && (
+          <div className="flex gap-1 rounded-lg border p-0.5">
+            {(["EMAIL", "WHATSAPP"] as const).map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setAba(c)}
+                className={`flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                  abaAtiva === c ? "bg-muted" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {c === "EMAIL" ? "Email" : "WhatsApp"}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {dados?.erroTexto ? (
+          <p className="flex items-start gap-1.5 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/20 dark:text-red-400">
+            <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            {dados.erroTexto}
+          </p>
+        ) : !previa ? (
+          <div className="flex h-[420px] items-center justify-center rounded-lg border border-dashed text-center text-xs text-muted-foreground">
+            A prévia aparece assim que houver texto.
+          </div>
+        ) : abaAtiva === "EMAIL" ? (
+          <>
+            <div className="rounded-lg border bg-muted/40 px-3 py-2 text-xs">
+              <span className="text-muted-foreground">Assunto:</span> {previa.assunto}
+            </div>
+            <iframe
+              title="Como o cliente vê o email"
+              srcDoc={previa.html}
+              className="h-[420px] w-full rounded-lg border bg-white"
+            />
+          </>
+        ) : (
+          <pre className="h-[460px] overflow-auto whitespace-pre-wrap rounded-lg border bg-[#E7FFDB] p-3 font-sans text-sm text-[#111B21]">
+            {previa.whatsapp ?? "Canal WhatsApp desligado neste comunicado."}
+          </pre>
+        )}
+
+        {previa && (
+          <button
+            type="button"
+            onClick={onAmpliar}
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Eye className="h-3.5 w-3.5" />
+            Ver maior
+          </button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
