@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { dispararComunicado, modoComunicado } from "@/lib/comunicados-envio";
+import { emailUtilizavel } from "@/lib/comunicados-publico";
 import { autorizado } from "../../route";
 
 // O disparo com WhatsApp espaçado leva minutos; o limite padrão mataria no meio
@@ -33,16 +34,32 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { id } = await ctx.params;
-  const body = (await req.json().catch(() => ({}))) as { confirmar?: boolean };
-  if (body.confirmar !== true) {
+  const body = (await req.json().catch(() => ({}))) as {
+    confirmar?: boolean;
+    testePara?: string;
+  };
+
+  const testePara = body.testePara?.trim();
+  if (testePara) {
+    // 🔑 O teste não pede confirmação digitada: ele vai para o endereço de quem
+    // está operando, não para a carteira. Exigir a mesma cerimônia do envio
+    // real ensinaria a digitar ENVIAR no automático — e aí a cerimônia do
+    // disparo de verdade não protegeria mais nada.
+    if (!emailUtilizavel(testePara)) {
+      return NextResponse.json(
+        { error: "Informe um endereço de email válido para o teste." },
+        { status: 400 },
+      );
+    }
+  } else if (body.confirmar !== true) {
     return NextResponse.json({ error: "O disparo precisa de confirmação explícita." }, { status: 400 });
   }
 
   try {
-    const r = await dispararComunicado(id);
+    const r = await dispararComunicado(id, { testePara });
     console.log(
-      `[comunicado] ${id} disparado por ${session.user.name ?? session.user.email ?? "admin"} ` +
-        `em modo ${modoComunicado()}`,
+      `[comunicado] ${id} ${testePara ? `TESTE para ${testePara}` : "disparado"} por ` +
+        `${session.user.name ?? session.user.email ?? "admin"} em modo ${modoComunicado()}`,
     );
     return NextResponse.json(r);
   } catch (e) {

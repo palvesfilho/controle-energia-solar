@@ -74,6 +74,15 @@ export type Desenho =
   | "BOTAO"
   | "AVISO_CURTO";
 
+/**
+ * Para onde vai o envio de teste, por padrão.
+ *
+ * 🔑 É o endereço do operador, não um exemplo: o teste existe para a PRIMEIRA
+ * execução do disparo acontecer contra quem opera, e não contra a carteira. O
+ * campo é editável — quem testar de outra caixa troca aqui.
+ */
+const EMAIL_TESTE_PADRAO = "palvesfilho@gmail.com";
+
 const DESENHO_LABEL: Record<Desenho, string> = {
   PADRAO: "Padrão",
   TIMBRE_LATERAL: "Timbre lateral",
@@ -150,6 +159,8 @@ export default function ComunicadoEditor({
   const [confirmacao, setConfirmacao] = useState("");
   const [apagando, setApagando] = useState(false);
   const [confirmandoApagar, setConfirmandoApagar] = useState(false);
+  const [emailTeste, setEmailTeste] = useState(EMAIL_TESTE_PADRAO);
+  const [testando, setTestando] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 🪤 Três estados, não dois. `ENVIANDO` é o disparo que morreu no meio — o
@@ -249,6 +260,33 @@ export default function ComunicadoEditor({
     } finally {
       setApagando(false);
       setConfirmandoApagar(false);
+    }
+  };
+
+  const testar = async () => {
+    const id = await salvar();
+    if (!id) return;
+    setTestando(true);
+    try {
+      const r = await fetch(`/api/admin/comunicados/${id}/enviar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ testePara: emailTeste.trim() }),
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        toast.error(j.error ?? "Falha no teste");
+        return;
+      }
+      toast.success(
+        j.email.enviados > 0
+          ? `Teste enviado para ${emailTeste.trim()} — confira a caixa de entrada.`
+          : `O teste não saiu: ${j.erros?.[0] ?? "veja o log"}`,
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Falha no teste");
+    } finally {
+      setTestando(false);
     }
   };
 
@@ -775,6 +813,45 @@ export default function ComunicadoEditor({
                     Cancelar
                   </button>
                 </div>
+              )}
+            </div>
+
+            {/* ── TESTE ────────────────────────────────────────────────
+                🔑 Fica ANTES do disparo, e é a caixa calma ao lado da caixa
+                vermelha. O teste passa pelo mesmo caminho do envio real —
+                mesmo público, mesmo render, mesma gravação — mas manda para
+                um endereço só. É como a primeira execução deste código
+                acontece contra quem opera, e não contra a carteira. */}
+            <div className="rounded-lg border bg-muted/30 p-3">
+              <p className="text-sm font-medium">Testar antes</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Manda uma cópia única para o seu email, com os dados de um cliente real do
+                recorte. Não conta como envio: ninguém da lista recebe, o comunicado continua
+                rascunho, e dá para testar quantas vezes quiser.
+              </p>
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <input
+                  type="email"
+                  value={emailTeste}
+                  onChange={(e) => setEmailTeste(e.target.value)}
+                  placeholder="seu@email.com"
+                  className="w-64 rounded-lg border bg-background px-3 py-1.5 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => void testar()}
+                  disabled={testando || !emailTeste.includes("@") || !canalEmail}
+                  className="inline-flex items-center gap-2 rounded-lg border px-4 py-1.5 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50"
+                >
+                  {testando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                  {testando ? "Enviando teste..." : "Enviar teste para mim"}
+                </button>
+              </div>
+              {canalZap && (
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  O teste manda só o email — não há número de teste, e mandar para o WhatsApp
+                  do cliente não seria teste, seria envio.
+                </p>
               )}
             </div>
 

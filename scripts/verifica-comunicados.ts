@@ -167,6 +167,11 @@ const ALVOS: Alvo[] = [
         trecho: "dados.usinas",
         motivo: "o recorte por usina geradora existe no backend e ficaria inalcançável",
       },
+      {
+        trecho: "testePara",
+        motivo:
+          "sem o envio de teste, a primeira execução do disparo acontece contra a carteira inteira",
+      },
     ],
   },
 ];
@@ -353,6 +358,33 @@ if (/status === "ENVIANDO"[\s\S]{0,120}throw/.test(motorEnvio)) {
   erros.push(
     "O disparo passou a RECUSAR um comunicado em ENVIANDO.\n" +
       "  É justamente o que morreu no meio: sem continuar, metade da lista fica sem a mensagem.",
+  );
+}
+
+// ── 12. O TESTE não pode gastar o envio real ────────────────────────────────
+//
+// 🪤 A trava de reenvio é o índice `(comunicado, tipo, destinatário)`. Se o
+// envio de teste gravasse a linha do cliente com o TIPO NORMAL, o disparo de
+// verdade depois pularia essa pessoa — ela ficaria sem a mensagem porque
+// alguém testou, e ninguém veria erro nenhum. Por isso o teste usa um tipo à
+// parte, não mexe no status do comunicado, e apaga a própria linha antes de
+// repetir (senão o segundo teste não manda nada, também em silêncio).
+if (!motorEnvio.includes("TIPO_TESTE")) {
+  erros.push(
+    "O envio de teste não usa um tipo de destinatário PRÓPRIO.\n" +
+      "  Gravando com o tipo normal, ele consome a vaga do cliente e o disparo real o pula.",
+  );
+}
+if (!/deleteMany[\s\S]{0,160}TIPO_TESTE/.test(motorEnvio)) {
+  erros.push(
+    "O teste não apaga a linha do teste anterior.\n" +
+      "  O segundo teste esbarraria no índice único e não mandaria nada, sem avisar.",
+  );
+}
+if (!/if \(!teste\)[\s\S]{0,200}status: "ENVIANDO"/.test(motorEnvio)) {
+  erros.push(
+    "O teste mexe no STATUS do comunicado.\n" +
+      "  Testar trancaria o rascunho e o disparo de verdade — o oposto do que o teste serve.",
   );
 }
 

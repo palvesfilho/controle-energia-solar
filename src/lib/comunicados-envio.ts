@@ -75,11 +75,38 @@ export interface ResultadoComunicado {
 }
 
 /**
+ * O TIPO de destinatário usado no envio de teste.
+ *
+ * 🪤 **É o que impede o teste de gastar o envio real.** A trava de reenvio é o
+ * índice único `(comunicado, tipo, destinatário)`. Se o teste gravasse a linha
+ * do cliente com o tipo normal, o disparo de verdade depois PULARIA essa
+ * pessoa — ela ficaria sem a mensagem porque alguém testou. Com um tipo à
+ * parte, as duas linhas convivem e ninguém é perdido.
+ */
+const TIPO_TESTE = "TESTE";
+
+export interface OpcoesDisparo {
+  /**
+   * Manda para ESTE endereço em vez de para a lista, usando o mesmo caminho do
+   * envio real: mesmo público, mesmo render, mesma gravação. Serve para a
+   * primeira execução do código acontecer contra quem operou, e não contra a
+   * carteira.
+   */
+  testePara?: string;
+}
+
+/**
  * Dispara. Idempotente por destinatário; pode ser chamada de novo com
  * segurança para completar um disparo interrompido.
  */
-export async function dispararComunicado(comunicadoId: string): Promise<ResultadoComunicado> {
-  const modo = modoComunicado();
+export async function dispararComunicado(
+  comunicadoId: string,
+  opcoes: OpcoesDisparo = {},
+): Promise<ResultadoComunicado> {
+  const teste = opcoes.testePara?.trim() || null;
+  // ⚠️ O teste IGNORA o modo: ele vai para o endereço de quem está operando, e
+  // um "teste" que não sai não testa nada. O modo continua mandando na lista.
+  const modo: ModoComunicado = teste ? "real" : modoComunicado();
   const c = await prisma.comunicado.findUnique({ where: { id: comunicadoId } });
   if (!c) throw new Error("Comunicado não encontrado");
   if (c.status === "ENVIADO") throw new Error("Este comunicado já foi enviado");
@@ -104,7 +131,10 @@ export async function dispararComunicado(comunicadoId: string): Promise<Resultad
     }
   }
 
-  const lista = await resolverPublico(publico, filtro);
+  const listaCompleta = await resolverPublico(publico, filtro);
+  // No teste, UMA pessoa real do recorte — os dados dela alimentam as
+  // variáveis, então o email chega igualzinho ao que ela receberia.
+  const lista = teste ? listaCompleta.slice(0, 1) : listaCompleta;
   const resultado: ResultadoComunicado = {
     comunicadoId,
     modo,
@@ -126,7 +156,10 @@ export async function dispararComunicado(comunicadoId: string): Promise<Resultad
   if (querEmail && !emailOk.ok) resultado.erros.push(`Email: ${emailOk.motivo}`);
   if (querWhatsapp && !zapOk.ok) resultado.erros.push(`WhatsApp: ${zapOk.motivo}`);
 
-  await prisma.comunicado.update({
+  // 🔒 O teste NÃO mexe no status: o comunicado continua rascunho, editável, e
+  // o disparo de verdade continua disponível. Um teste que marcasse "enviado"
+  // trancaria o que ele existe para destravar.
+  if (!teste) await prisma.comunicado.update({
     where: { id: comunicadoId },
     data: {
       status: "ENVIANDO",
@@ -137,6 +170,18 @@ export async function dispararComunicado(comunicadoId: string): Promise<Resultad
       totalWhatsapp: lista.filter((d) => !!d.telefone).length,
     },
   });
+
+  // 🪤 **O teste tem de poder rodar de novo.** O índice único vale para o tipo
+  // TESTE também, então a segunda tentativa esbarraria nele e não mandaria
+  // nada — em silêncio, que é o pior jeito de descobrir. Testar é justamente
+  // o ciclo "manda, olha, corrige o texto, manda outra vez"; então a linha do
+  // teste anterior é apagada antes. Isso NÃO toca nas linhas do envio real:
+  // elas têm outro tipo.
+  if (teste) {
+    await prisma.comunicadoEnvio.deleteMany({
+      where: { comunicadoId, destinatarioTipo: TIPO_TESTE },
+    });
+  }
 
   let primeiroZap = true;
   for (const d of lista) {
@@ -149,13 +194,15 @@ export async function dispararComunicado(comunicadoId: string): Promise<Resultad
       envio = await prisma.comunicadoEnvio.create({
         data: {
           comunicadoId,
-          destinatarioTipo: d.tipo,
+          destinatarioTipo: teste ? TIPO_TESTE : d.tipo,
           destinatarioId: d.id,
           destinatarioNome: d.nome,
-          email: d.emails.join("; ") || null,
-          telefone: d.telefone,
-          emailStatus: !querEmail ? "NAO_APLICA" : d.emails.length === 0 ? "SEM_DESTINO" : "PENDENTE",
-          whatsappStatus: !querWhatsapp ? "NAO_APLICA" : !d.telefone ? "SEM_DESTINO" : "PENDENTE",
+          email: teste ? teste : d.emails.join("; ") || null,
+          telefone: teste ? null : d.telefone,
+          emailStatus: !querEmail ? "NAO_APLICA" : teste ? "PENDENTE" : d.emails.length === 0 ? "SEM_DESTINO" : "PENDENTE",
+          // No teste o WhatsApp não sai: não há número de teste, e mandar para
+          // o número do cliente não seria teste, seria envio.
+          whatsappStatus: teste ? "NAO_APLICA" : !querWhatsapp ? "NAO_APLICA" : !d.telefone ? "SEM_DESTINO" : "PENDENTE",
         },
       });
     } catch {
@@ -165,11 +212,11 @@ export async function dispararComunicado(comunicadoId: string): Promise<Resultad
     }
 
     if (querEmail) {
-      if (d.emails.length === 0) resultado.email.semDestino++;
-      else await mandarEmail(c, d, envio.id, modo, emailOk.ok, resultado);
+      if (!teste && d.emails.length === 0) resultado.email.semDestino++;
+      else await mandarEmail(c, d, envio.id, modo, emailOk.ok, resultado, teste);
     }
 
-    if (querWhatsapp) {
+    if (querWhatsapp && !teste) {
       if (!d.telefone) resultado.whatsapp.semDestino++;
       else {
         // Espera ANTES de cada mensagem, menos a primeira: assim o intervalo
@@ -185,10 +232,12 @@ export async function dispararComunicado(comunicadoId: string): Promise<Resultad
     }
   }
 
-  await prisma.comunicado.update({
-    where: { id: comunicadoId },
-    data: { status: "ENVIADO", enviadoEm: new Date() },
-  });
+  if (!teste) {
+    await prisma.comunicado.update({
+      where: { id: comunicadoId },
+      data: { status: "ENVIADO", enviadoEm: new Date() },
+    });
+  }
 
   console.log(
     `[comunicado] ${comunicadoId} (${modo}) — ${resultado.publicoResumo} · ` +
@@ -216,6 +265,8 @@ async function mandarEmail(
   modo: ModoComunicado,
   configurado: boolean,
   r: ResultadoComunicado,
+  /** Quando presente, o email vai para cá em vez de ir para o cliente. */
+  testePara: string | null = null,
 ): Promise<void> {
   try {
     const assunto = renderParaDestinatario(c.assunto, d);
@@ -233,8 +284,9 @@ async function mandarEmail(
     }
 
     await enviarEmail({
-      to: d.emails[0],
-      cc: d.emails.slice(1),
+      to: testePara ?? d.emails[0],
+      // No teste ninguém entra em cópia — o endereço de teste recebe sozinho.
+      cc: testePara ? [] : d.emails.slice(1),
       subject: assunto,
       html: htmlComunicado(assunto, corpo, c.tipo as TipoComunicado, c.desenho as DesenhoComunicado, {
         destaqueRotulo: c.destaqueRotulo,
