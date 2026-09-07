@@ -938,7 +938,14 @@ function PainelVivo({
 
   // Canal desligado não pode ficar com a aba selecionada — mostraria um painel
   // vazio sem explicar por quê.
-  const abaAtiva = aba === "WHATSAPP" && canalZap ? "WHATSAPP" : "EMAIL";
+  /**
+   * 🪤 Com **só o WhatsApp** marcado, a versão anterior caía em "EMAIL" e
+   * mostrava um email em branco — e as abas não aparecem com um canal só, então
+   * não havia como trocar. O operador escreveria a mensagem olhando para um
+   * painel vazio. Sem email ligado, a prévia é a do WhatsApp, ponto.
+   */
+  const abaAtiva: "EMAIL" | "WHATSAPP" =
+    !canalEmail && canalZap ? "WHATSAPP" : aba === "WHATSAPP" && canalZap ? "WHATSAPP" : "EMAIL";
 
   return (
     <Card className="lg:sticky lg:top-4">
