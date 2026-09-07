@@ -518,7 +518,13 @@ export default function ComunicadoEditor({
           desenho e peso é uma decisão visual: julgar pelo nome da opção e
           depois abrir um modal para conferir separa a escolha do resultado. Ao
           lado, cada clique mostra o que muda. */}
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start">
+      {/* 📐 560px é a largura do PRÓPRIO email — o `max-width` que todos os sete
+          desenhos usam. Nessa medida a prévia deixa de ser uma miniatura e passa
+          a mostrar as quebras de linha exatamente onde o cliente vai vê-las.
+          🪤 O passo em `lg` existe porque a coluna não pode comer o formulário:
+          numa tela de 1024px, 560 aqui deixariam o texto do email num campo de
+          200px. Quem tem tela larga (xl) recebe os 560 inteiros. */}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_440px] lg:items-start xl:grid-cols-[minmax(0,1fr)_560px]">
       <Card>
         <CardContent className="space-y-4 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
