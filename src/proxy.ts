@@ -82,6 +82,13 @@ const isPublicApi = createRouteMatcher([
   // middleware devolvia 401 "Não autenticado" ANTES do handler, e o robô nunca
   // conseguiria falar com o Gestor por mais certa que estivesse a chave.
   "/api/integracoes/rge/protocolos-rateio",
+  // Cifra (o sistema financeiro do Paulo, outro projeto/outro banco) lendo os
+  // números fechados das usinas para não digitar duas vezes. Server-to-server:
+  // não tem e nunca terá sessão Clerk. As rotas se autenticam por
+  // `X-API-Key: $CIFRA_API_KEY` (ver lib/integracao-cifra.ts) e respondem 503
+  // enquanto a variável não existir. Mesma história do robô da RGE acima: sem
+  // esta linha o 401 do middleware vem ANTES do handler.
+  "/api/integracoes/cifra/(.*)",
   // Fatura de energia com a nossa marca: o cliente abre o link do email/WhatsApp
   // e paga sem ter conta. A chave é o `tokenPublico` da cobrança (UUID) na URL —
   // a rota valida o token, não a sessão. Ver lib/fatura-publica.ts.
