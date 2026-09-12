@@ -1058,8 +1058,18 @@ async function coletarGrowatt(
             }
             const body = (await res.json()) as GrowattPowerResponse;
             if (body.error_code !== 0) {
-              // 0 devices / sem permissão / sem dado do dia — ruído esperado até o
-              // vínculo no OSS; só registramos erro de servidor, não de negócio.
+              // A COTA vira ruído se for descartada aqui. Medido: duas chamadas
+              // ao mesmo `plant_id` com 1,5s de intervalo devolvem `10012`
+              // (error_frequently_access) e, insistindo, `10011`. Enquanto esse
+              // retorno era jogado fora, cota estourada ficava indistinguível de
+              // usina muda — e a rodada seguinte repetia o mesmo erro calada.
+              // O vínculo no OSS foi feito em 09/08/2026: "0 devices" não é mais
+              // ruído esperado.
+              if (body.error_code === 10012 || body.error_code === 10011) {
+                resumo.erros.push(`${u.nome}: cota Growatt (${body.error_code})`);
+              } else {
+                resumo.erros.push(`${u.nome}: Growatt error_code ${body.error_code}`);
+              }
               continue;
             }
             for (const pt of body.data?.powers ?? []) {

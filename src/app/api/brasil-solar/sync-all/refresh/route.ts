@@ -24,6 +24,7 @@ import {
   getPlantStatusBatch as getGrowattStatusBatch,
 } from "@/lib/growatt";
 import { esperadaDoDiaDaUsina, performanceRatioMesAtual } from "@/lib/geracao-esperada";
+import { diaDoMesUTC } from "@/lib/date-only";
 import { PLATAFORMAS_INTRADIA, type PlataformaIntradia } from "@/lib/plataformas-intradia";
 import { ehDiaSemDado } from "@/lib/dia-sem-dado";
 import { avancoDeLeitura, leituraDoUltimoDiaComGeracao } from "@/lib/ultima-leitura";
@@ -189,7 +190,15 @@ async function processPlatform(
         // (As outras 4 plataformas seguem como antes — mesma armadilha, mas não
         // medida ainda; mexer nelas sem medir é trocar um erro por outro.)
         if (plataforma === "GROWATT" && ehDiaSemDado(day.energyKwh)) continue;
-        const date = new Date(Date.UTC(year, month - 1, day.day, 12, 0, 0));
+        // Dia fora do mes pedido nao vira data: `Date.UTC(2026, 8, 31)` rola
+        // calado pra 01/10 e grava geracao num mes que nem chegou.
+        const date = diaDoMesUTC(year, month, day.day);
+        if (!date) {
+          console.warn(
+            `[sync] dia ${day.day} nao existe em ${month}/${year} — descartado (usina ${client.id})`,
+          );
+          continue;
+        }
         await prisma.monitoringLog.upsert({
           where: { clientId_data: { clientId: client.id, data: date } },
           update: {

@@ -28,6 +28,26 @@ export function dateOnlyUTC(year: number, month: number, day: number): Date {
   return new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
 }
 
+/** Quantos dias tem o mês. `month` é 1-12. */
+export function diasNoMes(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/**
+ * Dia de um mês ESPECÍFICO — `null` quando o dia não pertence ao mês.
+ *
+ * `Date.UTC(2026, 8, 31)` não reclama de "31 de setembro": rola em silêncio
+ * para 1º de outubro. Como o dia vem da API do fabricante, isso virou registro
+ * de geração num mês que nem chegou — aconteceu em 01/09/2026 com uma usina
+ * Huawei, e o seletor de mês do gráfico passou a oferecer "outubro/2026".
+ * Quem monta data com dia vindo de fora usa esta função e descarta o que não
+ * couber, em vez de gravar no mês seguinte.
+ */
+export function diaDoMesUTC(year: number, month: number, day: number): Date | null {
+  if (!Number.isInteger(day) || day < 1 || day > diasNoMes(year, month)) return null;
+  return dateOnlyUTC(year, month, day);
+}
+
 /**
  * Reancora um Date existente em 12:00 UTC preservando o dia-calendário
  * (lido em UTC). Idempotente — usar à vontade em dados já normalizados.

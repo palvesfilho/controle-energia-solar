@@ -20,9 +20,16 @@
  *   npx tsx scripts/fechar-e-podar.ts            # simula, não grava nem apaga
  *   npx tsx scripts/fechar-e-podar.ts --apply
  *   npx tsx scripts/fechar-e-podar.ts --apply --dias=14
+ *   npx tsx scripts/fechar-e-podar.ts --apply --pares=200   # orçamento maior
+ *   npx tsx scripts/fechar-e-podar.ts --apply --sem-recuperar
+ *
+ * ORDEM, e ela importa: RECUPERAR a curva que faltou → FECHAR o kWh do dia →
+ * PODAR. Invertida, a poda apagaria a janela antes de o dia recuperado virar
+ * `MonitoringLog`, e o dia sumiria de vez.
  */
 import { prisma } from "../src/lib/prisma";
 import { podarAmostras } from "../src/lib/intraday-prune";
+import { recuperarDiasFaltantes } from "../src/lib/intraday-gapfill";
 
 function arg(nome: string): string | undefined {
   const flag = `--${nome}=`;
@@ -38,6 +45,35 @@ function agoraBrt(): string {
 async function main() {
   const aplicar = process.argv.includes("--apply");
   console.log(`[manutencao] ${agoraBrt()} (Brasília) · modo ${aplicar ? "APLICAR" : "SIMULAÇÃO"}`);
+
+  // 1. Recupera a curva dos dias que faltaram. Antes disto, nada no sistema
+  //    voltava a pedir dia passado — só o botão manual da tela da usina.
+  if (!process.argv.includes("--sem-recuperar")) {
+    const g = await recuperarDiasFaltantes({
+      dias: arg("dias") ? Number(arg("dias")) : undefined,
+      maxPares: arg("pares") ? Number(arg("pares")) : undefined,
+      aplicar,
+    });
+    console.log(
+      `[manutencao] recuperação da curva: ${g.paresFaltando} dia(s)-usina sem curva · ` +
+        `${g.paresParciais} parcial(is) · ${g.paresPulados} no teto de tentativas · ` +
+        `${g.paresTentados} tentado(s) em ${(g.duracaoMs / 1000).toFixed(1)}s`,
+    );
+    if (g.aplicado) {
+      console.log(
+        `[manutencao] recuperados: ${g.paresRecuperados} · sem dado no portal: ${g.paresVazios} · ` +
+          `${g.slotsGravados} slots · ${g.chamadas} chamadas`,
+      );
+    }
+    for (const p of g.amostra.slice(0, 8)) {
+      console.log(`      ${p.plataforma.padEnd(10)} ${p.dia} ${String(p.slots).padStart(3)} slots · ${p.nome.slice(0, 34)}`);
+    }
+    // Buraco que não para de crescer é sintoma de coleta, não de portal: a
+    // rodada de 15 min não está alcançando essas usinas.
+    if (g.paresFaltando > 300) {
+      console.log(`[manutencao] ⚠️ ${g.paresFaltando} dias-usina sem curva — investigar a janela por plataforma.`);
+    }
+  }
 
   // `podarAmostras` chama `fecharDiasPendentes` internamente, antes de apagar:
   // é essa ordem que garante que o kWh diário está salvo quando a curva se vai.

@@ -5,6 +5,7 @@ import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getDailyGeneration, getPlantStatus } from "@/lib/growatt";
 import { esperadaDoDiaDaUsina, performanceRatioMesAtual } from "@/lib/geracao-esperada";
+import { diaDoMesUTC } from "@/lib/date-only";
 import { avancoDeLeitura, leituraDoLog } from "@/lib/ultima-leitura";
 import { ehDiaSemDado } from "@/lib/dia-sem-dado";
 
@@ -84,7 +85,15 @@ export async function POST(
             continue;
           }
           // Data-calendário: meio-dia UTC, senão o fuso empurra o dia.
-          const date = new Date(Date.UTC(year, month - 1, day.day, 12, 0, 0));
+          // Dia fora do mes pedido nao vira data: `Date.UTC(2026, 8, 31)` rola
+          // calado pra 01/10 e grava geracao num mes que nem chegou.
+          const date = diaDoMesUTC(year, month, day.day);
+          if (!date) {
+            console.warn(
+              `[sync] dia ${day.day} nao existe em ${month}/${year} — descartado (usina ${id})`,
+            );
+            continue;
+          }
 
           await prisma.monitoringLog.upsert({
             where: { clientId_data: { clientId: id, data: date } },

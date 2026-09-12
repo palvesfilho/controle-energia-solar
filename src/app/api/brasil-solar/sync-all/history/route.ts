@@ -16,6 +16,7 @@ import {
   type FonteGeracaoEsperada,
 } from "@/lib/geracao-esperada";
 import { ehDiaSemDado } from "@/lib/dia-sem-dado";
+import { diaDoMesUTC } from "@/lib/date-only";
 
 export const maxDuration = 600;
 
@@ -176,7 +177,15 @@ export async function POST(req: NextRequest) {
           for (const day of dailyData) {
             // Growatt: 0,0 kWh é datalogger mudo, não medição. Ver dia-sem-dado.ts.
             if (plataforma === "GROWATT" && ehDiaSemDado(day.energyKwh)) continue;
-            const date = new Date(Date.UTC(year, month - 1, day.day, 12, 0, 0));
+            // Dia fora do mes pedido nao vira data: `Date.UTC(2026, 8, 31)` rola
+            // calado pra 01/10 e grava geracao num mes que nem chegou.
+            const date = diaDoMesUTC(year, month, day.day);
+            if (!date) {
+              console.warn(
+                `[sync] dia ${day.day} nao existe em ${month}/${year} — descartado`,
+              );
+              continue;
+            }
             await prisma.monitoringLog.upsert({
               where: { clientId_data: { clientId: client.id, data: date } },
               update: {

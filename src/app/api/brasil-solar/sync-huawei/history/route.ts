@@ -11,6 +11,7 @@ import {
   performanceRatioMesAtual,
   type FonteGeracaoEsperada,
 } from "@/lib/geracao-esperada";
+import { diaDoMesUTC } from "@/lib/date-only";
 
 // Aumentar timeout para operacao longa (10 minutos)
 export const maxDuration = 600;
@@ -104,7 +105,15 @@ export async function POST(req: NextRequest) {
           const dailyData = await getDailyGeneration(client.monitoramentoPlantId!, year, month);
 
           for (const day of dailyData) {
-            const date = new Date(Date.UTC(year, month - 1, day.day, 12, 0, 0));
+            // Dia fora do mes pedido nao vira data: `Date.UTC(2026, 8, 31)` rola
+            // calado pra 01/10 e grava geracao num mes que nem chegou.
+            const date = diaDoMesUTC(year, month, day.day);
+            if (!date) {
+              console.warn(
+                `[sync] dia ${day.day} nao existe em ${month}/${year} — descartado`,
+              );
+              continue;
+            }
 
             await prisma.monitoringLog.upsert({
               where: {
