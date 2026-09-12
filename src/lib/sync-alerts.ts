@@ -125,14 +125,18 @@ export async function runAlertSync(
         active: true,
         plataformaMonitoramento: { in: [...PLATAFORMAS_INTRADIA] },
         OR: [{ ultimaLeitura: { lt: corteRelogio } }, { ultimaLeitura: null }],
-        statusMonitoramento: { not: "SEM_DADOS" },
+        // ⛔ `statusMonitoramento: { not: "SEM_DADOS" }` REMOVIDO.
+        //
+        // Era o esconderijo: quem cai em SEM_DADOS some da detecção, e o rótulo
+        // é escrito justamente quando não veio dado. Medido em 12/09/2026: das
+        // 575 usinas sem curva nenhuma nos últimos 7 dias, 489 estavam em
+        // SEM_DADOS e só 74 tinham alerta — 415 paradas e CALADAS. Usina parada
+        // que ninguém vê é pior que alerta demais: o cliente descobre pela
+        // conta de luz.
       },
-      select: { id: true, nome: true, ultimaLeitura: true },
+      select: { id: true, nome: true, ultimaLeitura: true, createdAt: true },
     });
 
-    // `ultimaLeitura: null` = nunca leu nada. Não é usina que parou, é usina
-    // que nunca começou — vira alerta pelo mesmo caminho, mas sem número de
-    // horas inventado.
     const mudas = candidatos.filter(
       (c) =>
         c.ultimaLeitura == null ||
@@ -140,50 +144,93 @@ export async function runAlertSync(
     );
     offlineDetected = mudas.length;
 
-    for (const client of mudas) {
-      const existing = await prisma.monitoringAlert.findFirst({
-        where: {
-          clientId: client.id,
-          tipo: "OFFLINE",
-          status: { in: ["ABERTO", "EM_ANDAMENTO"] },
-        },
-      });
-      if (existing) continue;
+    // Quem JÁ gerou algum dia parou; quem nunca gerou não começou. A diferença
+    // não é semântica: uma é plantão técnico, a outra é pendência de
+    // implantação (cadastro, credencial, vínculo no portal do fabricante) — e
+    // são filas de gente diferente. Misturadas, as centenas que nunca
+    // começaram afogam as poucas que pararam hoje.
+    const idsMudas = mudas.map((c) => c.id);
+    const jaGerou = new Set(
+      idsMudas.length === 0
+        ? []
+        : (
+            await prisma.monitoringLog.groupBy({
+              by: ["clientId"],
+              where: { clientId: { in: idsMudas }, geracaoDiaria: { gt: 0 } },
+            })
+          ).map((l) => l.clientId),
+    );
 
+    // Um SELECT no lugar de um `findFirst` por usina: com o esconderijo aberto
+    // esta lista passa de dezenas para centenas, e o N+1 aqui come a rodada.
+    const jaAlertadas = new Set(
+      idsMudas.length === 0
+        ? []
+        : (
+            await prisma.monitoringAlert.findMany({
+              where: {
+                clientId: { in: idsMudas },
+                tipo: { in: ["OFFLINE", "NUNCA_COMUNICOU"] },
+                status: { in: ["ABERTO", "EM_ANDAMENTO"] },
+              },
+              select: { clientId: true },
+              distinct: ["clientId"],
+            })
+          ).map((a) => a.clientId),
+    );
+
+    for (const client of mudas) {
+      if (jaAlertadas.has(client.id)) continue;
+
+      const parou = jaGerou.has(client.id);
       const horasSol = client.ultimaLeitura
         ? Math.floor(horasSolaresEntre(new Date(client.ultimaLeitura), now))
         : null;
+      const desde = new Intl.DateTimeFormat("pt-BR", {
+        dateStyle: "short",
+        timeZone: "America/Sao_Paulo",
+      }).format(client.createdAt);
 
       await prisma.monitoringAlert.create({
         data: {
           clientId: client.id,
-          tipo: "OFFLINE",
-          severidade: severidadeDaMudez(horasSol, cfg.OFFLINE.severidadeDefault),
-          acaoRequerida: getAcaoRequeridaDefault("OFFLINE"),
-          titulo:
-            horasSol != null
+          tipo: parou ? "OFFLINE" : "NUNCA_COMUNICOU",
+          severidade: parou
+            ? severidadeDaMudez(horasSol, cfg.OFFLINE.severidadeDefault)
+            : "MEDIA",
+          acaoRequerida: getAcaoRequeridaDefault(parou ? "OFFLINE" : "NUNCA_COMUNICOU"),
+          titulo: parou
+            ? horasSol != null
               ? `Inversor sem comunicar há ${horasSol}h de sol`
-              : "Inversor nunca comunicou",
-          descricao: `O inversor de ${client.nome} ${
-            horasSol != null
-              ? `não envia dados há ${horasSol} horas de sol (madrugadas não contam)`
-              : "nunca enviou dados"
-          }. Última leitura: ${
-            client.ultimaLeitura
-              ? new Intl.DateTimeFormat("pt-BR", {
-                  dateStyle: "short",
-                  timeStyle: "short",
-                  timeZone: "America/Sao_Paulo",
-                }).format(new Date(client.ultimaLeitura))
-              : "nunca"
-          }.`,
+              : "Inversor parou de comunicar"
+            : "Usina nunca enviou geração",
+          descricao: parou
+            ? `O inversor de ${client.nome} ${
+                horasSol != null
+                  ? `não envia dados há ${horasSol} horas de sol (madrugadas não contam)`
+                  : "parou de enviar dados"
+              }. Última leitura: ${
+                client.ultimaLeitura
+                  ? new Intl.DateTimeFormat("pt-BR", {
+                      dateStyle: "short",
+                      timeStyle: "short",
+                      timeZone: "America/Sao_Paulo",
+                    }).format(new Date(client.ultimaLeitura))
+                  : "nunca"
+              }.`
+            : `${client.nome} está cadastrada desde ${desde} e nunca entregou geração nenhuma. ` +
+              `Antes de ir a campo: conferir cadastro, credencial e o vínculo da usina no portal do fabricante.`,
         },
       });
 
-      await prisma.brasilSolarClient.update({
-        where: { id: client.id },
-        data: { statusMonitoramento: "OFFLINE" },
-      });
+      // Só a que PAROU vira OFFLINE. A que nunca comunicou continua em
+      // SEM_DADOS, porque é a verdade — e agora o rótulo não a esconde mais.
+      if (parou) {
+        await prisma.brasilSolarClient.update({
+          where: { id: client.id },
+          data: { statusMonitoramento: "OFFLINE" },
+        });
+      }
 
       alertsCreated++;
     }
@@ -630,7 +677,13 @@ export async function runAlertSync(
    * outra fecha, e a tela mente sem dar erro.
    */
   const alertasOfflineAbertos = await prisma.monitoringAlert.findMany({
-    where: { tipo: "OFFLINE", status: { in: ["ABERTO", "EM_ANDAMENTO"] } },
+    where: {
+      // `NUNCA_COMUNICOU` fecha pela mesma prova: a usina passou a comunicar.
+      // Fora daqui, a primeira usina ligada de verdade ficaria com o alerta
+      // aberto para sempre.
+      tipo: { in: ["OFFLINE", "NUNCA_COMUNICOU"] },
+      status: { in: ["ABERTO", "EM_ANDAMENTO"] },
+    },
     select: { id: true, client: { select: { ultimaLeitura: true } } },
   });
   const idsQueVoltaram = alertasOfflineAbertos

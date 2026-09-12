@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 export type TipoAlerta =
   | "BAIXA_GERACAO"
   | "OFFLINE"
+  | "NUNCA_COMUNICOU"
   | "TENSAO_FORA"
   | "TEMPERATURA_INVERSOR"
   | "FREQUENCIA_REDE"
@@ -37,6 +38,9 @@ export const ACAO_REQUERIDA_LABEL: Record<AcaoRequerida, string> = {
 // Operador pode sobrescrever depois pelo card na página de erros.
 const DEFAULT_ACAO_POR_TIPO: Record<string, AcaoRequerida> = {
   OFFLINE: "VERIFICAR_REMOTO",
+  // Usina que nunca gerou raramente é defeito de equipamento: é cadastro,
+  // credencial ou vínculo no portal do fabricante. Começa pelo remoto.
+  NUNCA_COMUNICOU: "VERIFICAR_REMOTO",
   BAIXA_GERACAO: "VERIFICAR_REMOTO",
   ERRO_INVERSOR: "IR_EM_CAMPO",
   TEMPERATURA_INVERSOR: "IR_EM_CAMPO",
@@ -82,6 +86,17 @@ export const DEFAULT_THRESHOLDS: Record<TipoAlerta, ThresholdConfig> = {
     thresholdMedio: null,
     thresholdBaixo: null,
     severidadeDefault: "CRITICA",
+  },
+  // Separado do OFFLINE de propósito: usina que PAROU é plantão técnico, usina
+  // que NUNCA começou é pendência de implantação. Misturadas, as centenas de
+  // "nunca começou" afogam as poucas que pararam hoje.
+  NUNCA_COMUNICOU: {
+    tipo: "NUNCA_COMUNICOU",
+    enabled: true,
+    thresholdCritico: null,
+    thresholdMedio: null,
+    thresholdBaixo: null,
+    severidadeDefault: "MEDIA",
   },
   TENSAO_FORA: {
     tipo: "TENSAO_FORA",
@@ -131,6 +146,7 @@ export const DEFAULT_THRESHOLDS: Record<TipoAlerta, ThresholdConfig> = {
 export const TIPOS_ALERTA: TipoAlerta[] = [
   "BAIXA_GERACAO",
   "OFFLINE",
+  "NUNCA_COMUNICOU",
   "TENSAO_FORA",
   "TEMPERATURA_INVERSOR",
   "FREQUENCIA_REDE",
@@ -148,7 +164,12 @@ const TIPO_META: Record<TipoAlerta, { label: string; descricao: string }> = {
   OFFLINE: {
     label: "Inversor desconectado",
     descricao:
-      "Dispara quando o inversor não envia dados há mais de 48 horas.",
+      "Dispara quando o inversor para de enviar dados por mais horas de SOL que o limiar (madrugada não conta).",
+  },
+  NUNCA_COMUNICOU: {
+    label: "Usina nunca comunicou",
+    descricao:
+      "Dispara para usina cadastrada que nunca entregou geração nenhuma. Normalmente é cadastro, credencial ou vínculo no portal do fabricante — não defeito no telhado.",
   },
   TENSAO_FORA: {
     label: "Tensão da concessionária fora dos parâmetros",
