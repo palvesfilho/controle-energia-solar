@@ -206,10 +206,16 @@ const SITUACOES_DO_ROBO = new Set<SituacaoProtocolo>([
  * desatualizado nunca define regra de negócio. `situacao` só é aceita direto do
  * robô nos casos em que não há texto nenhum a ler.
  *
- * Aceite automático: `VALIDADO` num rateio ainda PENDENTE_ACEITE promove a
- * versão a VIGENTE e marca a anterior como SUBSTITUIDO, na mesma transação,
+ * Aceite automático: `VALIDADO` num rateio ainda PENDENTE_ACEITE promoveria a
+ * versão a VIGENTE e marcaria a anterior como SUBSTITUIDO, na mesma transação,
  * registrando `aceitoPor = "ROBO_RGE"` e gravando a linha de histórico que
  * mostra o que a tela da RGE dizia na hora.
+ *
+ * 🔴 **Desde 12/09/2026 isso está DESLIGADO** — `ACEITE_AUTOMATICO_RGE_LIGADO`
+ * em `lib/rge-protocolo.ts`, com o motivo medido (o badge da RGE muda semanas
+ * antes de o rateio valer na fatura). O caminho todo continua igual: a leitura
+ * é gravada, o histórico também, e `VALIDADO` vira AVISO de conferência na tela
+ * de rateios em vez de escrever no rateio vigente. Religar é trocar a constante.
  */
 export async function POST(req: NextRequest) {
   const auth = autorizado(req);

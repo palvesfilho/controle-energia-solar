@@ -136,15 +136,69 @@ function contemPalavra(texto: string, termo: string): boolean {
 }
 
 /**
- * O aceite automático só dispara aqui, e só para `VALIDADO`.
+ * 🔴 O ACEITE AUTOMÁTICO ESTÁ DESLIGADO desde 12/09/2026 — e o motivo é medido.
  *
- * A lista é uma WHITELIST de propósito: `DESCONHECIDO`, `NAO_ENCONTRADO` e
- * `ERRO` não podem, nem por engano, virar "a concessionária aprovou". Um status
- * mal lido que trocasse o rateio vigente de uma usina é o tipo de erro que só
- * aparece na fatura do cliente, um mês depois.
+ * O desenho de 02/09 era: `VALIDADO` promove o rateio a VIGENTE sozinho. Em
+ * 12/09 isso se mostrou cedo demais. **O badge da RGE muda semanas antes de a
+ * mudança valer na fatura**:
+ *
+ *   - BECKER E BRUM, pedido 2196979342: a RGE marcou "concluído" em 22/08/2026.
+ *   - A NAPO PIZZARIA, que o rateio novo REMOVE, seguiu compensando 1.409 kWh
+ *     na fatura de 08/2026 — o Paulo conferiu fatura por fatura.
+ *   - Aceitar ali teria posto o Gestor à frente da concessionária: crédito
+ *     distribuído aqui por percentuais que a RGE ainda não aplicava lá.
+ *
+ * Enquanto o interruptor está desligado, `VALIDADO` não decide nada — vira
+ * AVISO na tela de rateios, e o aceite é um clique do operador, que confere a
+ * fatura antes. A leitura, o registro e o histórico seguem automáticos: o que
+ * saiu foi só o poder de escrever no rateio vigente.
+ *
+ * 🔓 **Para religar** (decisão do Paulo em 12/09: "quando a RGE estabilizar a
+ * emissão das faturas de energia poderemos avançar para ser automático"):
+ * trocar esta constante para `true`. Sinal de que dá para religar: as faturas
+ * chegando no mês, e um pedido concluído aparecendo aplicado na fatura seguinte
+ * — hoje as três UCs da BECKER param em 06/2026.
+ */
+export const ACEITE_AUTOMATICO_RGE_LIGADO = false;
+
+/**
+ * A situação PODERIA aceitar sozinha, se o interruptor estivesse ligado?
+ *
+ * É uma WHITELIST de propósito: `DESCONHECIDO`, `NAO_ENCONTRADO` e `ERRO` não
+ * podem, nem por engano, virar "a concessionária aprovou". Um status mal lido
+ * que trocasse o rateio vigente de uma usina é o tipo de erro que só aparece na
+ * fatura do cliente, um mês depois.
+ *
+ * Separada de `aceiteAutomaticoPermitido` para que a guarda de build continue
+ * provando a whitelist mesmo com o interruptor desligado — senão, no dia em que
+ * alguém religar, ninguém mais estaria testando QUEM pode.
+ */
+export function situacaoAceitavelPelaRge(situacao: SituacaoProtocolo): boolean {
+  return situacao === "VALIDADO";
+}
+
+/**
+ * O robô pode promover este rateio a VIGENTE sozinho? Hoje: nunca — ver
+ * `ACEITE_AUTOMATICO_RGE_LIGADO`.
  */
 export function aceiteAutomaticoPermitido(situacao: SituacaoProtocolo): boolean {
-  return situacao === "VALIDADO";
+  return ACEITE_AUTOMATICO_RGE_LIGADO && situacaoAceitavelPelaRge(situacao);
+}
+
+/**
+ * O rateio precisa de uma CONFERÊNCIA sua? A RGE disse que concluiu, o rateio
+ * ainda espera aceite, e o robô não vai aceitar por você.
+ *
+ * É este o estado que a tela precisa gritar: sem o aviso, um pedido aprovado
+ * pela concessionária ficaria parado em "pendente" para sempre, e a única
+ * diferença visível seria um selo verde no meio de outros quatro cinzas.
+ */
+export function precisaConferenciaManual(
+  situacao: SituacaoProtocolo | null | undefined,
+  statusDoRateio: string,
+): boolean {
+  if (ACEITE_AUTOMATICO_RGE_LIGADO) return false;
+  return situacao === "VALIDADO" && statusDoRateio === "PENDENTE_ACEITE";
 }
 
 /** Marca de autoria do aceite feito pelo robô (RateioVersion.aceitoPor). */

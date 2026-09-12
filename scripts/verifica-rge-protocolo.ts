@@ -9,19 +9,26 @@
  * `verifica-trava-faturamento.ts`: o efeito de afrouxar a regra é invisível no
  * dia em que se afrouxa.
  *
- * As três coisas que este script não deixa passar:
- *   1. aceite automático fora de VALIDADO;
+ * As coisas que este script não deixa passar:
+ *   1. aceite automático fora de VALIDADO — e, enquanto o interruptor
+ *      `ACEITE_AUTOMATICO_RGE_LIGADO` estiver desligado (12/09/2026), aceite
+ *      automático nenhum;
+ *   1.b um pedido concluído na RGE deixando de pedir conferência na tela: com o
+ *      automático desligado, esse aviso é o ÚNICO caminho até o aceite;
  *   2. status conhecido da CPFL virando DESCONHECIDO (ou pior, VALIDADO);
  *   3. "0" e afins voltando a ser aceitos como protocolo.
  *
  * Rodar:  npx tsx scripts/verifica-rge-protocolo.ts
  */
 import {
+  ACEITE_AUTOMATICO_RGE_LIGADO,
   SituacaoProtocolo,
   aceiteAutomaticoPermitido,
   periodosDaBusca,
+  precisaConferenciaManual,
   protocoloConsultavel,
   protocoloDegenerado,
+  situacaoAceitavelPelaRge,
   situacaoDoStatusRge,
 } from "../src/lib/rge-protocolo";
 
@@ -44,13 +51,42 @@ const TODAS: SituacaoProtocolo[] = [
   "ERRO",
 ];
 for (const s of TODAS) {
-  const esperado = s === "VALIDADO";
+  // A whitelist continua sendo provada mesmo com o interruptor desligado: no
+  // dia em que alguém religar, QUEM pode aceitar já está testado.
+  const naWhitelist = s === "VALIDADO";
   checa(
-    aceiteAutomaticoPermitido(s) === esperado,
-    `aceite automático em "${s}" deveria ser ${esperado}. Só VALIDADO pode ` +
-      `promover um rateio a VIGENTE sozinho.`,
+    situacaoAceitavelPelaRge(s) === naWhitelist,
+    `situacaoAceitavelPelaRge("${s}") deveria ser ${naWhitelist}. Só VALIDADO ` +
+      `pode promover um rateio a VIGENTE sozinho.`,
+  );
+  checa(
+    aceiteAutomaticoPermitido(s) ===
+      (ACEITE_AUTOMATICO_RGE_LIGADO && naWhitelist),
+    `aceite automático em "${s}" não respeita o interruptor ` +
+      `ACEITE_AUTOMATICO_RGE_LIGADO (hoje ${ACEITE_AUTOMATICO_RGE_LIGADO}).`,
   );
 }
+
+// ── 1.b O aviso que substitui o aceite ──────────────────────────────────────
+// Com o interruptor desligado, o pedido concluído na RGE não pode ficar mudo na
+// tela: sem o aviso, ele espera aceite para sempre e ninguém percebe. Se um dia
+// o automático voltar, o aviso some sozinho — não são dois caminhos vivos.
+checa(
+  precisaConferenciaManual("VALIDADO", "PENDENTE_ACEITE") ===
+    !ACEITE_AUTOMATICO_RGE_LIGADO,
+  "rateio PENDENTE_ACEITE com a RGE dizendo VALIDADO precisa pedir conferência " +
+    "enquanto o aceite automático estiver desligado.",
+);
+for (const s of TODAS.filter((x) => x !== "VALIDADO")) {
+  checa(
+    !precisaConferenciaManual(s, "PENDENTE_ACEITE"),
+    `"${s}" não é a RGE aprovando — não pode pedir conferência de aceite.`,
+  );
+}
+checa(
+  !precisaConferenciaManual("VALIDADO", "VIGENTE"),
+  "rateio que já é VIGENTE não tem o que conferir para aceitar.",
+);
 
 // ── 2. Os status que a CPFL realmente devolve ───────────────────────────────
 // Os valores de `StatusFiltro` do AngularJS da CPFL, lidos do ng-class da linha

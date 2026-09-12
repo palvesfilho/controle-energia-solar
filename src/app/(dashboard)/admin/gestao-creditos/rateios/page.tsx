@@ -56,6 +56,7 @@ import {
   ACEITE_ROBO_RGE,
   SITUACAO_LABEL,
   SITUACAO_TOM,
+  precisaConferenciaManual,
   type SituacaoProtocolo,
 } from "@/lib/rge-protocolo";
 
@@ -1064,6 +1065,25 @@ function SeloProtocoloRge({
   const data = quando
     ? new Date(quando).toLocaleDateString("pt-BR")
     : null;
+
+  // 🔔 A RGE concluiu e o robô NÃO aceita sozinho (desde 12/09/2026, ver
+  // ACEITE_AUTOMATICO_RGE_LIGADO). Aqui o selo deixa de ser informação e vira
+  // chamado: o pedido está aprovado lá e o rateio só muda quando alguém
+  // conferir a fatura e clicar em aceitar. Em âmbar, não em verde — verde se lê
+  // como "nada a fazer".
+  if (precisaConferenciaManual(situacao, rateio.status)) {
+    return (
+      <span className={`font-medium ${tons.ambar}`}>
+        ⚠ RGE concluiu o pedido{data ? ` em ${data}` : ""} — confira a fatura e
+        aceite
+        <span className="block font-normal">
+          O robô não aceita sozinho: a RGE já marcou pedido como concluído
+          semanas antes de aplicar o rateio na fatura. Confirme que as UCs que
+          saem pararam de compensar antes de aceitar.
+        </span>
+      </span>
+    );
+  }
 
   // Status não reconhecido: o literal da RGE é o que interessa ver.
   const texto =
