@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getDailyGeneration, getPlantStatus, getStationDetail, getDeviceList } from "@/lib/sungrow";
 import { persistDailySamples } from "@/lib/sungrow-persist";
 import { esperadaDoDiaDaUsina, performanceRatioMesAtual } from "@/lib/geracao-esperada";
+import { avancoDeLeitura, leituraDoLog } from "@/lib/ultima-leitura";
 
 /**
  * POST /api/brasil-solar/[id]/sungrow-sync
@@ -41,6 +42,7 @@ export async function POST(
       plataformaMonitoramento: true,
       geracaoMediaEsperada: true,
       geracaoAnualEsperada: true,
+      ultimaLeitura: true,
       dataInstalacao: true,
     },
   });
@@ -204,7 +206,7 @@ export async function POST(
       prisma.monitoringLog.findMany({
         where: { clientId: id, data: { gte: thirtyDaysAgo } },
         orderBy: { data: "desc" },
-        select: { geracaoDiaria: true, picoMaximo: true },
+        select: { data: true, geracaoDiaria: true, picoMaximo: true },
       }),
     ]);
 
@@ -214,14 +216,23 @@ export async function POST(
 
     const ultimaGeracao = last30Logs.length > 0 ? last30Logs[0].geracaoDiaria : null;
 
+    // Comunicacao se prova com DADO: o carimbo sai do ultimo log COM geracao,
+    // nao do instante do clique. `isOnline` do portal pisca varias vezes ao
+    // dia, e carimbar "agora" por causa dele cega o alerta de mudez, que conta
+    // horas de sol desde este campo. Ver lib/ultima-leitura.
+    const ultimoLogComGeracao = last30Logs.find((l) => l.geracaoDiaria > 0);
+    const leitura = ultimoLogComGeracao ? leituraDoLog(ultimoLogComGeracao.data) : undefined;
+
     await prisma.brasilSolarClient.update({
       where: { id },
       data: {
         geracaoMesAtual: geracaoMes,
         ultimaGeracao: ultimaGeracao,
-        ultimaLeitura: new Date(),
+        ...avancoDeLeitura(client.ultimaLeitura, leitura),
         performanceRatio: pr,
-        statusMonitoramento: isOnline ? "ONLINE" : last30Logs.length > 0 ? "ALERTA" : "SEM_DADOS",
+        // `SEM_DADOS` saiu daqui: e o rotulo que ESCONDE a usina do detector de
+        // mudez, e a falta de log pode ser lacuna nossa, nao usina parada.
+        statusMonitoramento: isOnline ? "ONLINE" : last30Logs.length > 0 ? "ALERTA" : undefined,
       },
     });
 

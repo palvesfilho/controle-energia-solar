@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getPlantStatusBatch } from "@/lib/solaredge";
+import { avancoDeLeitura } from "@/lib/ultima-leitura";
 
 // POST /api/brasil-solar/sync-solaredge/status - Atualizar status de todas as plantas SolarEdge
 export async function POST(req: NextRequest) {
@@ -22,6 +23,7 @@ export async function POST(req: NextRequest) {
       select: {
         id: true,
         monitoramentoPlantId: true,
+        ultimaLeitura: true,
       },
     });
 
@@ -32,6 +34,7 @@ export async function POST(req: NextRequest) {
     const idToClient = new Map(
       clients.map((c) => [Number(c.monitoramentoPlantId!), c.id])
     );
+    const leituraAtual = new Map(clients.map((c) => [c.id, c.ultimaLeitura]));
     const siteIds = clients.map((c) => Number(c.monitoramentoPlantId!));
 
     const statusResults = await getPlantStatusBatch(siteIds);
@@ -59,7 +62,17 @@ export async function POST(req: NextRequest) {
             where: { id: clientId },
             data: {
               statusMonitoramento: newStatus,
-              ultimaLeitura: status.lastUpdate ? new Date(status.lastUpdate) : new Date(),
+              // O `new Date()` de reserva era o defeito: sem `lastUpdate`, a
+              // usina parada saia daqui recem-lida e o alerta de mudez nunca
+              // acendia. Sem prova, nao se escreve. Ver lib/ultima-leitura.
+              ...avancoDeLeitura(
+                leituraAtual.get(clientId),
+                status.lastUpdate
+                  ? new Date(status.lastUpdate)
+                  : status.isOnline
+                    ? new Date()
+                    : undefined,
+              ),
               ultimaGeracao: status.dayEnergyKwh || undefined,
               geracaoMesAtual: status.monthEnergyKwh || undefined,
             },

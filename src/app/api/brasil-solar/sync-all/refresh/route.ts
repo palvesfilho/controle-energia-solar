@@ -26,6 +26,7 @@ import {
 import { esperadaDoDiaDaUsina, performanceRatioMesAtual } from "@/lib/geracao-esperada";
 import { PLATAFORMAS_INTRADIA, type PlataformaIntradia } from "@/lib/plataformas-intradia";
 import { ehDiaSemDado } from "@/lib/dia-sem-dado";
+import { avancoDeLeitura, leituraDoUltimoDiaComGeracao } from "@/lib/ultima-leitura";
 
 export const maxDuration = 600;
 
@@ -39,6 +40,11 @@ interface ClientRow {
   id: string;
   monitoramentoPlantId: string;
   geracaoMediaEsperada: number | null;
+  // O prognostico mora na coluna ANUAL em 1.461 usinas e na mensal em ZERO
+  // delas. Sem este campo aqui, `performanceRatioMesAtual` devolvia null pra
+  // frota inteira e a linha "esperada" do grafico nascia vazia.
+  geracaoAnualEsperada: number | null;
+  ultimaLeitura: Date | null;
 }
 
 interface DailyPoint {
@@ -55,6 +61,8 @@ interface PlatformSummary {
   clientesTotal: number;
   clientesAtualizados: number;
   logsUpsert: number;
+  /** Usinas sobre as quais a plataforma nao disse nada — nada foi gravado. */
+  semResposta: number;
   erro?: string;
 }
 
@@ -159,6 +167,7 @@ async function processPlatform(
     clientesTotal: clients.length,
     clientesAtualizados: 0,
     logsUpsert: 0,
+    semResposta: 0,
   };
 
   if (clients.length === 0) return summary;
@@ -200,26 +209,32 @@ async function processPlatform(
         summary.logsUpsert++;
       }
 
-      const totalMes = daily.reduce((sum, d) => sum + d.energyKwh, 0);
-      const ultimoDia = daily.length > 0 ? daily[daily.length - 1] : null;
-      const pr =
-        performanceRatioMesAtual(client, totalMes, new Date());
-
       const temDados = daily.length > 0;
-      const novoStatus = status?.isOnline
-        ? "ONLINE"
-        : temDados
-          ? "ALERTA"
-          : "SEM_DADOS";
+
+      // A plataforma nao disse NADA sobre esta usina (cota estourada, 407,
+      // token vencido). Escrever assim mesmo zera a geracao do mes e carimba
+      // uma leitura que nao houve: ausencia de resposta nao e ausencia de sol.
+      if (!temDados && status == null) {
+        summary.semResposta++;
+        continue;
+      }
+
+      const totalMes = daily.reduce((sum, d) => sum + d.energyKwh, 0);
+      const ultimoDia = temDados ? daily[daily.length - 1] : null;
+      const pr = performanceRatioMesAtual(client, totalMes, new Date());
+      const leitura = leituraDoUltimoDiaComGeracao(daily, year, month);
 
       await prisma.brasilSolarClient.update({
         where: { id: client.id },
         data: {
-          geracaoMesAtual: totalMes,
+          ...(temDados ? { geracaoMesAtual: totalMes, performanceRatio: pr } : {}),
           ultimaGeracao: ultimoDia?.energyKwh ?? undefined,
-          ultimaLeitura: new Date(),
-          performanceRatio: pr,
-          statusMonitoramento: novoStatus,
+          // Carimbo do DIA lido, nunca "agora": ver lib/ultima-leitura.
+          ...avancoDeLeitura(client.ultimaLeitura, leitura),
+          // `SEM_DADOS` saiu daqui: e o rotulo que ESCONDE a usina do detector
+          // de mudez (`sync-alerts.ts:128`), e rebaixar por causa de uma rodada
+          // sem dado foi o que jogou 249 usinas SolarEdge pra la em 19/08/2026.
+          statusMonitoramento: status?.isOnline ? "ONLINE" : temDados ? "ALERTA" : undefined,
         },
       });
       summary.clientesAtualizados++;
@@ -257,6 +272,7 @@ export async function POST(_req: NextRequest) {
         plataformaMonitoramento: true,
         geracaoMediaEsperada: true,
         geracaoAnualEsperada: true,
+        ultimaLeitura: true,
       },
     });
 
@@ -275,6 +291,8 @@ export async function POST(_req: NextRequest) {
         id: c.id,
         monitoramentoPlantId: c.monitoramentoPlantId!,
         geracaoMediaEsperada: c.geracaoMediaEsperada,
+        geracaoAnualEsperada: c.geracaoAnualEsperada,
+        ultimaLeitura: c.ultimaLeitura,
       });
     }
 
@@ -292,6 +310,9 @@ export async function POST(_req: NextRequest) {
     const totais = {
       clientesAtualizados: resultados.reduce((s, [, r]) => s + r.clientesAtualizados, 0),
       logsUpsert: resultados.reduce((s, [, r]) => s + r.logsUpsert, 0),
+      // Aparece na resposta de proposito: rodada que nao leu nada precisa ser
+      // visivel, senao "0 atualizadas" se confunde com "frota toda parada".
+      semResposta: resultados.reduce((s, [, r]) => s + r.semResposta, 0),
     };
 
     return NextResponse.json({

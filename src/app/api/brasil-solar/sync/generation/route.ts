@@ -5,6 +5,11 @@ import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getDailyGenerationBatch } from "@/lib/fronius";
 import { esperadaDoDiaDaUsina, performanceRatioMesAtual } from "@/lib/geracao-esperada";
+import {
+  avancoDeLeitura,
+  leituraDoUltimoDiaComGeracao,
+  statusPorEvidencia,
+} from "@/lib/ultima-leitura";
 
 // POST /api/brasil-solar/sync/generation - Sincronizar geração diária do mês
 export async function POST(req: NextRequest) {
@@ -31,6 +36,7 @@ export async function POST(req: NextRequest) {
         monitoramentoPlantId: true,
         geracaoMediaEsperada: true,
         geracaoAnualEsperada: true,
+        ultimaLeitura: true,
       },
     });
 
@@ -94,14 +100,20 @@ export async function POST(req: NextRequest) {
 
           const pr = performanceRatioMesAtual(clientInfo, totalMes, new Date());
 
+          // Lote vazio nao ensinou nada: gravar `totalMes = 0` apagaria a
+          // geracao do mes de uma usina que esta bem, e o PR junto.
+          const leitura = leituraDoUltimoDiaComGeracao(dailyData, year, month);
+
           await prisma.brasilSolarClient.update({
             where: { id: clientInfo.id },
             data: {
-              geracaoMesAtual: totalMes,
+              ...(dailyData.length > 0
+                ? { geracaoMesAtual: totalMes, performanceRatio: pr }
+                : {}),
               ultimaGeracao: ultimoDia?.energyKwh ?? undefined,
-              ultimaLeitura: new Date(),
-              performanceRatio: pr,
-              statusMonitoramento: dailyData.length > 0 ? "ONLINE" : undefined,
+              // Carimbo do DIA lido, nunca "agora": ver lib/ultima-leitura.
+              ...avancoDeLeitura(clientInfo.ultimaLeitura, leitura),
+              statusMonitoramento: statusPorEvidencia(leitura),
             },
           });
           clientsUpdated++;

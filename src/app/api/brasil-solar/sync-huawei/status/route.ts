@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { canAccessSection } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { getPlantStatusBatch, getDeviceMetricsBatch } from "@/lib/huawei";
+import { avancoDeLeitura } from "@/lib/ultima-leitura";
 
 // POST /api/brasil-solar/sync-huawei/status - Atualizar status de todas as plantas Huawei
 export async function POST(req: NextRequest) {
@@ -22,6 +23,7 @@ export async function POST(req: NextRequest) {
       select: {
         id: true,
         monitoramentoPlantId: true,
+        ultimaLeitura: true,
       },
     });
 
@@ -32,6 +34,7 @@ export async function POST(req: NextRequest) {
     const codeToClient = new Map(
       clients.map((c) => [c.monitoramentoPlantId!, c.id])
     );
+    const leituraAtual = new Map(clients.map((c) => [c.id, c.ultimaLeitura]));
     const stationCodes = clients.map((c) => c.monitoramentoPlantId!);
 
     // Busca status agregado + métricas instantâneas por inversor em paralelo
@@ -70,7 +73,15 @@ export async function POST(req: NextRequest) {
             where: { id: clientId },
             data: {
               statusMonitoramento: newStatus,
-              ultimaLeitura: new Date(),
+              // So quem esta comunicando AGORA ganha carimbo. O portal
+              // responder SOBRE a usina nao prova que a usina falou — e o
+              // alerta de mudez conta horas de sol desde este campo. Medido em
+              // 31/08/2026: um clique aqui deixou 127 de 129 usinas com leitura
+              // de menos de 2h, 20 delas OFFLINE, e UM alerta aberto.
+              ...avancoDeLeitura(
+                leituraAtual.get(clientId),
+                status.isOnline ? new Date() : undefined,
+              ),
               ultimaGeracao: status.dayPowerKwh || undefined,
               geracaoMesAtual: status.monthPowerKwh || undefined,
               tensaoRede: metrics?.voltageAC ?? undefined,
