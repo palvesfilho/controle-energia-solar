@@ -5,7 +5,7 @@ import { canEditPaidBill, isAdminRole, isFinanceRole } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { saveBufferToStorage } from "@/lib/file-storage";
 
-const BANCOS_VALIDOS = ["BANRISUL", "C6_BANK", "ASAAS"] as const;
+const BANCOS_VALIDOS = ["BANRISUL", "C6_BANK", "ASAAS", "ASSOCIACAO_ASAAS"] as const;
 type BancoValido = (typeof BANCOS_VALIDOS)[number];
 
 export const runtime = "nodejs";
@@ -14,7 +14,7 @@ export const runtime = "nodejs";
  * POST /api/admin/faturas-energia/[id]/pagar
  * Multipart form-data:
  *  - pagoEm: string (ISO date YYYY-MM-DD)
- *  - banco: BANRISUL | C6_BANK | ASAAS
+ *  - banco: BANRISUL | C6_BANK | ASAAS | ASSOCIACAO_ASAAS
  *  - comprovante: File (opcional — quando fornecido, salva em /uploads/comprovantes-fatura/)
  *
  * Registra o pagamento interno (pagoEm + banco + comprovante).

@@ -17,14 +17,16 @@ const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Se
 
 const BANCOS = [
   { value: "C6_BANK", label: "C6 Bank" },
-  { value: "C6_BANK", label: "Banrisul" },
+  { value: "BANRISUL", label: "Banrisul" },
   { value: "ASAAS", label: "Asaas" },
+  { value: "ASSOCIACAO_ASAAS", label: "Associação - Asaas" },
 ] as const;
 
 const BANCO_LABEL: Record<string, string> = {
   C6_BANK: "C6 Bank",
   BANRISUL: "Banrisul",
   ASAAS: "Asaas",
+  ASSOCIACAO_ASAAS: "Associação - Asaas",
 };
 
 const inputClass =

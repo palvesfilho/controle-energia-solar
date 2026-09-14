@@ -23,14 +23,14 @@
  * valorFatura:   número em formato BR (245,67) ou internacional (245.67).
  *                Aceita prefixo "R$ " e separador de milhar (1.289,55).
  * dataPagamento: DD/MM/AAAA ou AAAA-MM-DD.
- * Bancos aceitos: BANRISUL, C6_BANK, ASAAS.
+ * Bancos aceitos: BANRISUL, C6_BANK, ASAAS, ASSOCIACAO_ASAAS.
  */
 import "dotenv/config";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { prisma } from "../src/lib/prisma";
 
-const BANCOS_VALIDOS = new Set(["BANRISUL", "C6_BANK", "ASAAS"]);
+const BANCOS_VALIDOS = new Set(["BANRISUL", "C6_BANK", "ASAAS", "ASSOCIACAO_ASAAS"]);
 
 const APPLY = process.argv.includes("--apply");
 const FORCE = process.argv.includes("--force");
@@ -178,7 +178,7 @@ function parseCsv(content: string): { rows: Row[]; errors: ParseError[] } {
       continue;
     }
     if (!BANCOS_VALIDOS.has(banco)) {
-      errors.push({ lineNum, raw, motivo: `banco inválido (${cols[idx.banco]}) — use BANRISUL, C6_BANK ou ASAAS` });
+      errors.push({ lineNum, raw, motivo: `banco inválido (${cols[idx.banco]}) — use BANRISUL, C6_BANK, ASAAS ou ASSOCIACAO_ASAAS` });
       continue;
     }
 

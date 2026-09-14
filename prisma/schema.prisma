@@ -801,7 +801,7 @@ model ConsumerBill {
   // Pagamento da fatura para a distribuidora (registrado pelo financeiro
   // via tela "Pagar Faturas"). Independe do contaPaga (que vem do parser).
   pagoEm                  DateTime? @map("pago_em")
-  bancoPagamento          String?   @map("banco_pagamento") // BANRISUL | C6_BANK | ASAAS
+  bancoPagamento          String?   @map("banco_pagamento") // BANRISUL | C6_BANK | ASAAS | ASSOCIACAO_ASAAS
   comprovantePagamentoUrl String?   @map("comprovante_pagamento_url")
   comprovantePagamentoAt  DateTime? @map("comprovante_pagamento_at")
   // Origem do registro: "BACKUP LUMI" para importações via CSV;

@@ -186,8 +186,9 @@ interface FaturaParaPagar {
 
 const BANCOS = [
   { value: "C6_BANK", label: "C6 Bank" },
-  { value: "C6_BANK", label: "Banrisul" },
+  { value: "BANRISUL", label: "Banrisul" },
   { value: "ASAAS", label: "Asaas" },
+  { value: "ASSOCIACAO_ASAAS", label: "Associação - Asaas" },
 ] as const;
 
 export default function FaturasEnergiaGestaoFinanceiraPage() {
