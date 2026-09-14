@@ -41,14 +41,31 @@ export class GrowattApiError extends Error {
   }
 }
 
-function getToken(): string {
-  const token = process.env.GROWATT_TOKEN;
-  if (!token) {
+/**
+ * Tokens da OpenAPI, em ordem de prioridade.
+ *
+ * 🔑 UM token enxerga UMA árvore de conta — e só ela. Descoberto em 14/09/2026:
+ * a planta `816770` (Márcio Alexandre, datalogger DXH5BH9016) estava viva,
+ * gerando, com o MESMO Agent Code `BAJXC` da nossa conta, e mesmo assim nunca
+ * apareceu no "Importar Plantas". O motivo não era vínculo faltando no OSS: a
+ * conta dela é um login de **Plant Manager** separado, com token próprio. O
+ * nosso token devolvia `10011 permission_denied` para ela e `plant/list` com
+ * 80 plantas — a usina simplesmente não existia para a API que a gente
+ * consultava. Agent Code é etiqueta comercial, NÃO funde as árvores.
+ *
+ * Por isso `GROWATT_TOKEN` aceita vários tokens separados por vírgula (ou
+ * ponto-e-vírgula / quebra de linha). Com um token só, nada muda: nenhuma
+ * chamada extra é feita e o caminho é idêntico ao de antes.
+ */
+export function getGrowattTokens(): string[] {
+  const bruto = process.env.GROWATT_TOKEN ?? "";
+  const tokens = [...new Set(bruto.split(/[,;\s]+/).map((t) => t.trim()).filter(Boolean))];
+  if (tokens.length === 0) {
     throw new Error(
-      "Credencial Growatt nao configurada. Defina GROWATT_TOKEN no .env (token da OpenAPI, servidor openapi.growatt.com).",
+      "Credencial Growatt nao configurada. Defina GROWATT_TOKEN no .env (token da OpenAPI, servidor openapi.growatt.com). Aceita mais de um, separados por virgula.",
     );
   }
-  return token;
+  return tokens;
 }
 
 /** Growatt devolve números como string com frequência ("12.3", "1,234.5"). */
@@ -78,6 +95,7 @@ interface GrowattEnvelope<T> {
 async function growattFetch<T>(
   path: string,
   params: Record<string, string | number> = {},
+  token?: string,
 ): Promise<T> {
   const qs = new URLSearchParams(
     Object.entries(params).map(([k, v]) => [k, String(v)]),
@@ -86,7 +104,7 @@ async function growattFetch<T>(
 
   const res = await fetch(url, {
     method: "GET",
-    headers: { token: getToken() },
+    headers: { token: token ?? getGrowattTokens()[0] },
     cache: "no-store",
   });
 
@@ -180,14 +198,15 @@ function mapPlant(raw: RawPlantListItem): GrowattPlant {
   };
 }
 
-/** Uma página da lista de plantas do token. */
-export async function getPlantList(page = 1, perpage = 100): Promise<{
+/** Uma página da lista de plantas de UM token. */
+export async function getPlantList(page = 1, perpage = 100, token?: string): Promise<{
   plants: GrowattPlant[];
   count: number;
 }> {
   const data = await growattFetch<{ count?: number; plants?: RawPlantListItem[] }>(
     "/v1/plant/list",
     { page, perpage },
+    token,
   );
   return {
     plants: (data.plants ?? []).map(mapPlant),
@@ -195,19 +214,177 @@ export async function getPlantList(page = 1, perpage = 100): Promise<{
   };
 }
 
-/** Todas as plantas vinculadas ao token (pagina até esgotar). */
-export async function getAllPlants(): Promise<GrowattPlant[]> {
-  const all: GrowattPlant[] = [];
-  let page = 1;
-  const perpage = 100;
-  // Guarda-chuva contra loop: no máx 50 páginas (5.000 plantas).
-  for (let i = 0; i < 50; i++) {
-    const { plants, count } = await getPlantList(page, perpage);
-    all.push(...plants);
-    if (all.length >= count || plants.length === 0) break;
-    page++;
+/**
+ * `perpage` alternativos para escapar do `10012 error_frequently_access`.
+ *
+ * O 10012 é um debounce sobre a requisição IDÊNTICA (mesma interface, mesmos
+ * parâmetros), não uma cota por tempo — medido em 12 e 14/08/2026. Trocar o
+ * `perpage` muda a requisição e passa; repetir a mesma três vezes não.
+ */
+const PERPAGES = [100, 97, 93];
+
+/** Todas as plantas de UM token (pagina até esgotar, com fuga do 10012). */
+async function listarPlantasDoToken(token: string): Promise<GrowattPlant[]> {
+  let ultimoErro: unknown = new Error("Growatt nao respondeu");
+
+  for (const perpage of PERPAGES) {
+    try {
+      const all: GrowattPlant[] = [];
+      let page = 1;
+      // Guarda-chuva contra loop: no máx 50 páginas (5.000 plantas).
+      for (let i = 0; i < 50; i++) {
+        const { plants, count } = await getPlantList(page, perpage, token);
+        all.push(...plants);
+        if (all.length >= count || plants.length === 0) break;
+        page++;
+      }
+      return all;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // Só o 10012 justifica outra tentativa. Token errado ou cluster errado
+      // (10011) repetiria três vezes o mesmo erro à toa.
+      if (!msg.includes("10012")) throw e;
+      ultimoErro = e;
+    }
   }
-  return all;
+
+  throw ultimoErro;
+}
+
+/**
+ * Todas as plantas de TODOS os tokens, deduplicadas por `plantId`.
+ *
+ * ⚠️ Um token que falha NÃO derruba os outros: a lista sai com o que deu para
+ * ler e o erro vai em `tokensComFalha`. Quem importa precisa saber que a volta
+ * está incompleta — senão uma conta fora do ar viraria "planta sumiu da API" e,
+ * pior, candidata a desativação. Ver [[project_import_plantas_rebaixa_status]].
+ */
+export async function getAllPlantsPorToken(): Promise<{
+  plants: GrowattPlant[];
+  tokensLidos: number;
+  tokensComFalha: string[];
+}> {
+  const tokens = getGrowattTokens();
+  const porId = new Map<string, GrowattPlant>();
+  const mapa = new Map<string, string>();
+  const tokensComFalha: string[] = [];
+  let tokensLidos = 0;
+
+  for (const token of tokens) {
+    try {
+      const plantas = await listarPlantasDoToken(token);
+      tokensLidos++;
+      for (const p of plantas) {
+        if (!p.plantId) continue;
+        if (!porId.has(p.plantId)) porId.set(p.plantId, p);
+        if (!mapa.has(p.plantId)) mapa.set(p.plantId, token);
+      }
+    } catch (e) {
+      tokensComFalha.push(`${apelidoToken(token)}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // Aproveita a varredura: o mapa planta→token acabou de ser levantado.
+  if (tokensLidos > 0) gravarMapa(mapa, tokensComFalha.length === 0);
+
+  return { plants: [...porId.values()], tokensLidos, tokensComFalha };
+}
+
+/** Todas as plantas de todos os tokens. Mantido para quem só quer a lista. */
+export async function getAllPlants(): Promise<GrowattPlant[]> {
+  const { plants } = await getAllPlantsPorToken();
+  return plants;
+}
+
+// ============================================================
+// Qual token atende qual planta
+//
+// Cada chamada da Growatt é por planta, e cada planta pertence a UMA árvore de
+// conta. Com um token só isto é inerte (retorna direto, zero chamadas). Com
+// dois ou mais, o mapa planta→token é levantado uma vez e reaproveitado.
+// ============================================================
+
+const MAPA_TTL_MS = 30 * 60 * 1000;
+/** TTL curto quando algum token falhou: o buraco tem que se fechar sozinho. */
+const MAPA_TTL_PARCIAL_MS = 2 * 60 * 1000;
+/** Piso entre releituras forçadas, para planta desconhecida não virar enxurrada. */
+const MAPA_FORCE_MIN_MS = 5 * 60 * 1000;
+
+let mapaPlantaToken: Map<string, string> | null = null;
+let mapaExpiraEm = 0;
+let mapaUltimoForce = 0;
+let mapaEmVoo: Promise<Map<string, string>> | null = null;
+
+function gravarMapa(mapa: Map<string, string>, completo: boolean) {
+  mapaPlantaToken = mapa;
+  mapaExpiraEm = Date.now() + (completo ? MAPA_TTL_MS : MAPA_TTL_PARCIAL_MS);
+}
+
+/** Primeiros 4 caracteres — identifica o token no log sem vazar a credencial. */
+function apelidoToken(token: string): string {
+  return `token ${token.slice(0, 4)}…`;
+}
+
+async function mapaDePlantas(forcar = false): Promise<Map<string, string>> {
+  if (!forcar && mapaPlantaToken && Date.now() < mapaExpiraEm) return mapaPlantaToken;
+  // Uma varredura só, mesmo com o lote inteiro pedindo ao mesmo tempo.
+  if (mapaEmVoo) return mapaEmVoo;
+
+  mapaEmVoo = (async () => {
+    const mapa = new Map<string, string>();
+    let completo = true;
+    for (const token of getGrowattTokens()) {
+      try {
+        for (const p of await listarPlantasDoToken(token)) {
+          if (p.plantId && !mapa.has(p.plantId)) mapa.set(p.plantId, token);
+        }
+      } catch {
+        // Um token fora do ar não pode apagar o mapa dos outros — mas encurta
+        // o TTL, para as plantas dele voltarem sozinhas na próxima rodada.
+        completo = false;
+      }
+    }
+    gravarMapa(mapa, completo);
+    return mapa;
+  })();
+
+  try {
+    return await mapaEmVoo;
+  } finally {
+    mapaEmVoo = null;
+  }
+}
+
+/**
+ * O token que atende esta planta.
+ *
+ * Com UM token configurado devolve na hora, sem tocar na API — o caminho de
+ * hoje continua idêntico. Com vários, consulta o mapa; planta desconhecida
+ * força UMA releitura (respeitando o piso) antes de desistir, porque usina
+ * recém-cadastrada no portal é o caso normal.
+ */
+export async function tokenDaPlanta(plantId: string): Promise<string> {
+  const tokens = getGrowattTokens();
+  if (tokens.length === 1) return tokens[0];
+
+  const id = String(plantId);
+  const mapa = await mapaDePlantas();
+  const achado = mapa.get(id);
+  if (achado) return achado;
+
+  if (Date.now() - mapaUltimoForce > MAPA_FORCE_MIN_MS) {
+    mapaUltimoForce = Date.now();
+    const fresco = await mapaDePlantas(true);
+    const segundo = fresco.get(id);
+    if (segundo) return segundo;
+  }
+
+  throw new GrowattApiError(
+    10011,
+    `Growatt: a planta ${id} nao pertence a nenhum dos ${tokens.length} tokens configurados. ` +
+      "Confira se a conta dela tem token proprio e se ele esta em GROWATT_TOKEN.",
+    "/v1/plant/list",
+  );
 }
 
 /**
@@ -223,17 +400,22 @@ export async function getDailyGeneration(
   year: number,
   month: number,
 ): Promise<DailyGeneration[]> {
+  const token = await tokenDaPlanta(plantId);
   const lastDay = new Date(year, month, 0).getDate(); // último dia do mês
   const out: DailyGeneration[] = [];
 
   for (let d0 = 1; d0 <= lastDay; d0 += 7) {
     const d1 = Math.min(d0 + 6, lastDay); // janela inclusiva de ≤7 dias
-    const data = await growattFetch<{ energys?: RawEnergyItem[] }>("/v1/plant/energy", {
-      plant_id: plantId,
-      start_date: ymd(new Date(year, month - 1, d0)),
-      end_date: ymd(new Date(year, month - 1, d1)),
-      time_unit: "day",
-    });
+    const data = await growattFetch<{ energys?: RawEnergyItem[] }>(
+      "/v1/plant/energy",
+      {
+        plant_id: plantId,
+        start_date: ymd(new Date(year, month - 1, d0)),
+        end_date: ymd(new Date(year, month - 1, d1)),
+        time_unit: "day",
+      },
+      token,
+    );
 
     for (const item of data.energys ?? []) {
       const dateStr = item.date ?? item.time;
@@ -284,12 +466,16 @@ export async function getMonthlyGeneration(
   plantId: string,
   year: number,
 ): Promise<{ month: number; totalKwh: number }[]> {
-  const data = await growattFetch<{ energys?: RawEnergyItem[] }>("/v1/plant/energy", {
-    plant_id: plantId,
-    start_date: `${year}-01-01`,
-    end_date: `${year}-12-31`,
-    time_unit: "month",
-  });
+  const data = await growattFetch<{ energys?: RawEnergyItem[] }>(
+    "/v1/plant/energy",
+    {
+      plant_id: plantId,
+      start_date: `${year}-01-01`,
+      end_date: `${year}-12-31`,
+      time_unit: "month",
+    },
+    await tokenDaPlanta(plantId),
+  );
 
   const out: { month: number; totalKwh: number }[] = [];
   for (const item of data.energys ?? []) {
@@ -378,10 +564,11 @@ export async function getPlantStatusBatch(
  * também for, manter. `getPlantStatus` não está no caminho de cobrança.
  */
 export async function getPlantStatus(plantId: string): Promise<PlantStatus> {
-  const data = await growattFetch<Record<string, unknown>>("/v1/plant/data", {
-    plant_id: plantId,
-    date: ymd(new Date()),
-  });
+  const data = await growattFetch<Record<string, unknown>>(
+    "/v1/plant/data",
+    { plant_id: plantId, date: ymd(new Date()) },
+    await tokenDaPlanta(plantId),
+  );
 
   const currentPowerKw = num(data.current_power);
   return {

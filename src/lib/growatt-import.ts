@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { getPlantList, getDailyGeneration, type GrowattPlant } from "@/lib/growatt";
+import { getAllPlantsPorToken, getDailyGeneration } from "@/lib/growatt";
 import { esperadaDoDiaDaUsina, performanceRatioMesAtual } from "@/lib/geracao-esperada";
 import { ehDiaSemDado } from "@/lib/dia-sem-dado";
 
@@ -53,7 +53,7 @@ export interface ResultadoImportGrowatt {
  *   meses existe o botão da tela de detalhe (`[id]/growatt-sync`).
  */
 export async function importarPlantasGrowatt(meses = 2): Promise<ResultadoImportGrowatt> {
-  const plants = await listarPlantas();
+  const { plants, tokensLidos, tokensComFalha } = await getAllPlantsPorToken();
 
   const existentes = await prisma.brasilSolarClient.findMany({
     where: { plataformaMonitoramento: "GROWATT" },
@@ -146,10 +146,28 @@ export async function importarPlantasGrowatt(meses = 2): Promise<ResultadoImport
   // Cadastro que a conta Growatt não lista mais. NÃO é desativado por conta
   // própria — some da API também quando a planta é movida de sub-conta, e
   // desativar calado apagaria usina viva da tela.
+  //
+  // 🚨 Com token caído a lista de ausentes MENTE: as plantas daquela conta não
+  // vieram porque ninguém perguntou, não porque sumiram. Nesse caso a lista sai
+  // vazia e o aviso diz o porquê — "ausente" é acusação, e acusação com metade
+  // da frota fora do ar derruba usina viva.
   const idsDaApi = new Set(plants.map((p) => String(p.plantId)));
-  const ausentesNaApi = existentes
-    .filter((c) => c.monitoramentoPlantId && !idsDaApi.has(c.monitoramentoPlantId))
-    .map((c) => `${c.nome} (${c.monitoramentoPlantId})`);
+  const ausentesNaApi =
+    tokensComFalha.length > 0
+      ? []
+      : existentes
+          .filter((c) => c.monitoramentoPlantId && !idsDaApi.has(c.monitoramentoPlantId))
+          .map((c) => `${c.nome} (${c.monitoramentoPlantId})`);
+
+  for (const falha of tokensComFalha) {
+    avisos.push(`Token Growatt não respondeu — ${falha}`);
+  }
+  if (tokensComFalha.length > 0) {
+    avisos.push(
+      `Leitura PARCIAL: ${tokensLidos} de ${tokensLidos + tokensComFalha.length} contas Growatt responderam. ` +
+        "A conferência de usina ausente na API foi pulada de propósito.",
+    );
+  }
 
   return {
     total: plants.length,
@@ -163,41 +181,6 @@ export async function importarPlantasGrowatt(meses = 2): Promise<ResultadoImport
   };
 }
 
-/**
- * Lista as plantas contornando o `10012 error_frequently_access`.
- *
- * 🔑 O 10012 da Growatt é debounce sobre a requisição **IDÊNTICA** (mesma
- * interface + mesmos parâmetros), não cota por tempo — medido em 12 e
- * 14/08/2026. Então repetir a MESMA chamada não adianta; mudar o `perpage`
- * muda a requisição e passa. Foi assim que a conta de 80 plantas foi lida em
- * 03/09/2026, depois de um 10012 no `perpage` padrão.
- */
-async function listarPlantas(): Promise<GrowattPlant[]> {
-  let ultimoErro: unknown = new Error("Growatt nao respondeu");
-
-  for (const perpage of [100, 97, 93]) {
-    try {
-      const all: GrowattPlant[] = [];
-      let page = 1;
-      // Guarda-chuva contra loop, como no adapter: no máx 50 páginas.
-      for (let i = 0; i < 50; i++) {
-        const { plants, count } = await getPlantList(page, perpage);
-        all.push(...plants);
-        if (all.length >= count || plants.length === 0) break;
-        page++;
-      }
-      return all;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      // Só o 10012 justifica outra tentativa. Token errado ou cluster errado
-      // (10011) repetiria três vezes o mesmo erro à toa.
-      if (!msg.includes("10012")) throw e;
-      ultimoErro = e;
-    }
-  }
-
-  throw ultimoErro;
-}
 
 /**
  * Geração dos últimos `meses` de uma usina recém-criada, para ela não nascer

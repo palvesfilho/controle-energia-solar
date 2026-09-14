@@ -16,7 +16,7 @@
  */
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
-import { getPlantList } from "../src/lib/growatt";
+import { getAllPlantsPorToken } from "../src/lib/growatt";
 import { importarPlantasGrowatt } from "../src/lib/growatt-import";
 
 const prisma = new PrismaClient();
@@ -31,7 +31,9 @@ async function main() {
 
   if (dryRun) {
     // Mesma leitura da importação, sem escrever: só o diff entre API e cadastro.
-    const { plants, count } = await getPlantList(1, 97);
+    // Percorre TODOS os tokens — um ensaio que lesse só o primeiro esconderia
+    // justamente a conta que motivou o multi-token.
+    const { plants, tokensLidos, tokensComFalha } = await getAllPlantsPorToken();
     const existentes = await prisma.brasilSolarClient.findMany({
       where: { plataformaMonitoramento: "GROWATT" },
       select: { nome: true, monitoramentoPlantId: true },
@@ -41,11 +43,16 @@ async function main() {
     const idsApi = new Set(plants.map((p) => String(p.plantId)));
     const ausentes = existentes.filter((c) => c.monitoramentoPlantId && !idsApi.has(c.monitoramentoPlantId));
 
-    console.log(`API: ${count} plantas · cadastro: ${existentes.length}`);
+    console.log(`API: ${plants.length} plantas em ${tokensLidos} conta(s) · cadastro: ${existentes.length}`);
+    tokensComFalha.forEach((f) => console.log(`  ! token sem resposta — ${f}`));
     console.log(`\nSeriam CRIADAS (${novas.length}):`);
     novas.forEach((p) => console.log(`  ${p.plantId}  ${p.capacityKwp} kWp  ${p.city ?? "-"}  ${p.name}`));
-    console.log(`\nNo cadastro e fora da API (${ausentes.length}) — reportadas, nunca desativadas:`);
-    ausentes.forEach((c) => console.log(`  ${c.monitoramentoPlantId}  ${c.nome}`));
+    if (tokensComFalha.length > 0) {
+      console.log("\nConferência de 'ausente na API' PULADA: leitura parcial acusaria usina viva.");
+    } else {
+      console.log(`\nNo cadastro e fora da API (${ausentes.length}) — reportadas, nunca desativadas:`);
+      ausentes.forEach((c) => console.log(`  ${c.monitoramentoPlantId}  ${c.nome}`));
+    }
     return;
   }
 

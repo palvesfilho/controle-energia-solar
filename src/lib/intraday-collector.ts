@@ -35,6 +35,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { dentroDaJanelaSolar, JANELA_SOLAR_UTC } from "@/lib/janela-solar";
 import { sungrowFetch } from "@/lib/sungrow";
+import { tokenDaPlanta } from "@/lib/growatt";
 
 // A lista mora em `lib/plataformas-intradia` (sem prisma/crypto) pra que a tela
 // também possa consultá-la. Reexportada aqui porque todo o coletor já a importa
@@ -1029,14 +1030,12 @@ async function coletarGrowatt(
 ): Promise<SlotAmostra[]> {
   if (usinas.length === 0) return [];
 
-  const token = process.env.GROWATT_TOKEN;
-  if (!token) {
+  if (!process.env.GROWATT_TOKEN) {
     resumo.erros.push("GROWATT_TOKEN não configurado");
     return [];
   }
 
   const dias = datasBrtDaJanela(janela);
-  const headers = { token };
   const slots: SlotAmostra[] = [];
   const comDado = new Set<string>();
 
@@ -1044,6 +1043,18 @@ async function coletarGrowatt(
     const lote = usinas.slice(i, i + GROWATT_CONCORRENCIA);
     await Promise.all(
       lote.map(async (u) => {
+        // 🔑 O token é POR PLANTA: cada conta Growatt tem o seu, e o nosso não
+        // enxerga a árvore dos outros (ver `tokenDaPlanta` em lib/growatt.ts).
+        // Usina cuja conta não está em GROWATT_TOKEN vira erro VISÍVEL aqui —
+        // calar viraria mais uma usina "muda" sem ninguém saber por quê.
+        let headers: { token: string };
+        try {
+          headers = { token: await tokenDaPlanta(u.plantId) };
+        } catch (e) {
+          resumo.erros.push(`${u.nome}: ${msg(e)}`);
+          return;
+        }
+
         for (const dia of dias) {
           try {
             resumo.chamadas++;
