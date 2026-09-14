@@ -8,7 +8,9 @@ export type FechamentoStatus = "pronta" | "pendente" | "erro" | "paga";
 
 export interface FechamentoMensalRow {
   ucId: string;
-  syncableUcId: string | null; // ID real da UC quando há credencial para sync
+  // ID do dono da credencial quando há sync disponível: ConsumerUnit quando
+  // `origem = "cliente"`, Plant quando `origem = "usina"` (rotas diferentes).
+  syncableId: string | null;
   codigoUc: string;
   nome: string;
   proprietario: string;
@@ -65,6 +67,16 @@ export async function GET(req: NextRequest) {
       include: {
         investors: {
           include: { investor: { include: { user: { select: { name: true } } } } },
+        },
+        cpflCredential: {
+          select: {
+            id: true,
+            active: true,
+            statusSync: true,
+            erroSync: true,
+            ultimaSync: true,
+            ultimaTentativaSync: true,
+          },
         },
       },
       orderBy: [{ active: "desc" }, { name: "asc" }],
@@ -231,7 +243,7 @@ export async function GET(req: NextRequest) {
     rowFromBill(
       {
         ucId: `uc:${uc.id}`,
-        syncableUcId: uc.cpflCredential ? uc.id : null,
+        syncableId: uc.cpflCredential ? uc.id : null,
         codigoUc: uc.codigoUc,
         nome: uc.nome,
         proprietario: uc.consumer?.name ?? uc.plant?.name ?? "-",
@@ -261,7 +273,11 @@ export async function GET(req: NextRequest) {
     rowFromBill(
       {
         ucId: `plant:${p.id}`,
-        syncableUcId: null,
+        // A usina tem credencial própria (CpflCredential.plantId) e sync
+        // próprio (/api/plants/[id]/bills/sync). Devolver null aqui escondia o
+        // botão de sync de TODA linha de usina — e o lote também as pulava,
+        // então nenhuma fatura de usina entrava sozinha.
+        syncableId: p.cpflCredential ? p.id : null,
         codigoUc: p.unidadeConsumidora ?? p.numeroUsina ?? "-",
         nome: p.name,
         proprietario: p.investors[0]?.investor?.user?.name ?? "Sem investidor",
@@ -270,7 +286,15 @@ export async function GET(req: NextRequest) {
         active: p.active,
       },
       usinaBillIndex.get(p.id),
-      null,
+      p.cpflCredential
+        ? {
+            active: p.cpflCredential.active,
+            statusSync: p.cpflCredential.statusSync,
+            erroSync: p.cpflCredential.erroSync,
+            ultimaSync: p.cpflCredential.ultimaSync,
+            ultimaTentativaSync: p.cpflCredential.ultimaTentativaSync,
+          }
+        : null,
       null,
     )
   );

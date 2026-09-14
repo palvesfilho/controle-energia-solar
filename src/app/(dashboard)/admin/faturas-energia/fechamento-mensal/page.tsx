@@ -293,10 +293,20 @@ export default function FechamentoMensalPage() {
     }
   }
 
-  async function handleResync(ucId: string, rowKey: string) {
+  async function handleResync(
+    syncableId: string,
+    rowKey: string,
+    origem: "cliente" | "usina",
+  ) {
     setSyncing((s) => ({ ...s, [rowKey]: true }));
     try {
-      const res = await fetch(`/api/consumer-units/${ucId}/bills/sync`, { method: "POST" });
+      // UC de cliente e UC da usina têm rotas de sync distintas — a da usina
+      // grava plantId com consumerUnitId nulo.
+      const url =
+        origem === "usina"
+          ? `/api/plants/${syncableId}/bills/sync`
+          : `/api/consumer-units/${syncableId}/bills/sync`;
+      const res = await fetch(url, { method: "POST" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       load();
       toast.success("Sincronização concluída");
@@ -551,9 +561,9 @@ export default function FechamentoMensalPage() {
                                 <Download className="h-3.5 w-3.5" />
                               </a>
                             )}
-                            {r.syncableUcId ? (
+                            {r.syncableId ? (
                               <button
-                                onClick={() => handleResync(r.syncableUcId!, r.ucId)}
+                                onClick={() => handleResync(r.syncableId!, r.ucId, r.origem)}
                                 disabled={isSyncing}
                                 title="Re-sincronizar via Infosimples"
                                 className="inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs hover:bg-muted transition-colors disabled:opacity-50"

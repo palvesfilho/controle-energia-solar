@@ -14,8 +14,25 @@ import { enrichBillFromPdfFallback, describeFallback } from "@/lib/infosimples-p
 import { populateBillingFromBill } from "@/lib/billing-populate";
 import { syncInvestorPayablesFromBill } from "@/lib/investor-payables";
 
+/**
+ * O lote cobre DOIS donos de credencial: UC de cliente e a UC da própria
+ * usina. Antes só as de UC entravam (`consumerUnitId: { not: null }`) e as 23
+ * credenciais de usina nunca eram consultadas — nem uma vez, então nem erro
+ * apareciam: ficavam em `statusSync: PENDING` para sempre e as faturas das
+ * usinas só entravam por upload manual, que parou em maio/2026.
+ */
+type SyncAlvo = {
+  tipo: "UC" | "USINA";
+  /** id da ConsumerUnit ou da Plant, conforme `tipo`. */
+  id: string;
+  codigoUc: string;
+  nome: string;
+};
+
 interface SyncResultItem {
-  consumerUnitId: string;
+  tipo: "UC" | "USINA";
+  consumerUnitId: string | null;
+  plantId: string | null;
   codigoUc: string;
   nome: string;
   success: boolean;
@@ -37,7 +54,7 @@ const DIAS_APOS_LEITURA = 2;
 const MAX_FALHAS_CONSECUTIVAS = 5;
 
 async function persistPdf(
-  consumerUnitId: string,
+  alvo: SyncAlvo,
   ano: number,
   mes: number,
   sourceUrl: string | null | undefined,
@@ -48,7 +65,8 @@ async function persistPdf(
     if (!res.ok) return null;
     const buffer = Buffer.from(await res.arrayBuffer());
     const fileName = `${ano}-${String(mes).padStart(2, "0")}.pdf`;
-    const subdir = `bills/${consumerUnitId}`;
+    // Mesmo destino que a sync individual de cada dono já usava.
+    const subdir = alvo.tipo === "UC" ? `bills/${alvo.id}` : `plant-bills/${alvo.id}`;
     await saveBufferToStorage(buffer, subdir, fileName);
     return `/api/files/${subdir}/${fileName}`;
   } catch {
@@ -56,19 +74,22 @@ async function persistPdf(
   }
 }
 
-async function syncOne(
-  consumerUnitId: string,
-  codigoUc: string,
-  nome: string,
-): Promise<SyncResultItem> {
-  const credential = await prisma.cpflCredential.findUnique({
-    where: { consumerUnitId },
-  });
+async function syncOne(alvo: SyncAlvo): Promise<SyncResultItem> {
+  const { tipo, id, codigoUc, nome } = alvo;
+  const credWhere =
+    tipo === "UC" ? { consumerUnitId: id } : { plantId: id };
+  const base = {
+    tipo,
+    consumerUnitId: tipo === "UC" ? id : null,
+    plantId: tipo === "USINA" ? id : null,
+    codigoUc,
+    nome,
+  };
+
+  const credential = await prisma.cpflCredential.findUnique({ where: credWhere });
   if (!credential || !credential.active) {
     return {
-      consumerUnitId,
-      codigoUc,
-      nome,
+      ...base,
       success: false,
       synced: 0,
       error: "Sem credencial ativa",
@@ -79,7 +100,7 @@ async function syncOne(
   // ultimaTentativaSync marca a hora da TENTATIVA. Sem ela o erro aparece na
   // tela com a data do último sucesso e parece que ninguém tentou desde então.
   await prisma.cpflCredential.update({
-    where: { consumerUnitId },
+    where: credWhere,
     data: { statusSync: "PENDING", erroSync: null, ultimaTentativaSync: new Date() },
   });
 
@@ -96,7 +117,7 @@ async function syncOne(
       const billDataRaw = parseBillData(fatura);
       const sourceUrl = fatura.pdf_url || fatura.site_receipts?.[0] || null;
       billDataRaw.pdfUrl = await persistPdf(
-        consumerUnitId,
+        alvo,
         billDataRaw.anoReferencia,
         billDataRaw.mesReferencia,
         sourceUrl,
@@ -116,16 +137,55 @@ async function syncOne(
       }
 
       // ConsumerBill.plantId representa "bill DA usina" (conta da UC da própria
-      // usina) e não "bill de UC que faz rateio com essa usina". Por isso não
-      // copiamos ConsumerUnit.plantId para cá: essa sync é sempre de UC de
-      // cliente (filtro consumerUnitId: { not: null } no POST).
+      // usina) e não "bill de UC que faz rateio com essa usina". Por isso, na
+      // sync de UC de cliente, não copiamos ConsumerUnit.plantId para cá.
       // Preserva pdfUrl existente quando persistPdf devolveu null. Senão,
       // sync flaky da Infosimples zera o vínculo mesmo com PDF no R2.
       const { pdfUrl: nextPdfUrl, ...billDataNoPdf } = billData;
+
+      if (tipo === "USINA") {
+        // Não há unique composto por plantId: casa pelo trio
+        // (plantId, ano, mês) com consumerUnitId nulo, igual à sync individual
+        // da usina. populateBillingFromBill/syncInvestorPayables ficam de fora
+        // de propósito: a conta da usina não vira cobrança de cliente nem
+        // parcela de investidor — quem faz isso é a fatura da UC em rateio.
+        const existente = await prisma.consumerBill.findFirst({
+          where: {
+            plantId: id,
+            consumerUnitId: null,
+            anoReferencia: billData.anoReferencia,
+            mesReferencia: billData.mesReferencia,
+          },
+          select: { id: true },
+        });
+        if (existente) {
+          await prisma.consumerBill.update({
+            where: { id: existente.id },
+            data: {
+              ...billDataNoPdf,
+              ...(nextPdfUrl ? { pdfUrl: nextPdfUrl } : {}),
+              syncedAt: new Date(),
+            },
+          });
+        } else {
+          await prisma.consumerBill.create({
+            data: {
+              plantId: id,
+              consumerUnitId: null,
+              ...billDataNoPdf,
+              pdfUrl: nextPdfUrl ?? null,
+              syncedAt: new Date(),
+            },
+          });
+        }
+        syncedCount++;
+        continue;
+      }
+
       const upserted = await prisma.consumerBill.upsert({
         where: {
           consumerUnitId_anoReferencia_mesReferencia: {
-            consumerUnitId,
+            consumerUnitId: id,
             anoReferencia: billData.anoReferencia,
             mesReferencia: billData.mesReferencia,
           },
@@ -136,7 +196,7 @@ async function syncOne(
           syncedAt: new Date(),
         },
         create: {
-          consumerUnitId,
+          consumerUnitId: id,
           ...billDataNoPdf,
           pdfUrl: nextPdfUrl ?? null,
           syncedAt: new Date(),
@@ -153,7 +213,7 @@ async function syncOne(
     }
 
     await prisma.cpflCredential.update({
-      where: { consumerUnitId },
+      where: credWhere,
       data: {
         statusSync: "SUCCESS",
         ultimaSync: new Date(),
@@ -163,9 +223,7 @@ async function syncOne(
     });
 
     return {
-      consumerUnitId,
-      codigoUc,
-      nome,
+      ...base,
       success: true,
       synced: syncedCount,
       error: null,
@@ -179,13 +237,11 @@ async function syncOne(
           ? error.message
           : "Erro desconhecido";
     await prisma.cpflCredential.update({
-      where: { consumerUnitId },
+      where: credWhere,
       data: { statusSync: "ERROR", erroSync: msg, ultimaTentativaSync: new Date() },
     });
     return {
-      consumerUnitId,
-      codigoUc,
-      nome,
+      ...base,
       success: false,
       synced: 0,
       error: msg,
@@ -201,9 +257,13 @@ export async function POST(req: NextRequest) {
   }
 
   const creds = await prisma.cpflCredential.findMany({
-    where: { active: true, consumerUnitId: { not: null } },
+    where: {
+      active: true,
+      OR: [{ consumerUnitId: { not: null } }, { plantId: { not: null } }],
+    },
     include: {
       consumerUnit: { select: { id: true, codigoUc: true, nome: true } },
+      plant: { select: { id: true, name: true, unidadeConsumidora: true } },
     },
   });
 
@@ -213,15 +273,37 @@ export async function POST(req: NextRequest) {
   // Pré-filtragem: separa elegíveis (precisam consultar Infosimples) de
   // skipped (já têm fatura recente / aguardando próxima leitura). O total
   // mostrado no progresso reflete apenas as elegíveis pra não confundir.
-  const elegiveis: { uc: { id: string; codigoUc: string; nome: string } }[] = [];
+  const elegiveis: SyncAlvo[] = [];
   const skippedAhead: SyncResultItem[] = [];
 
   for (const cred of creds) {
-    const uc = cred.consumerUnit;
-    if (!uc) continue;
+    // A credencial pertence a uma UC de cliente OU à UC da própria usina.
+    // `codigoUc` da usina cai na instalação da credencial quando o cadastro da
+    // usina está sem `unidadeConsumidora` — a tela lista por esse campo.
+    const alvo: SyncAlvo | null = cred.consumerUnit
+      ? {
+          tipo: "UC",
+          id: cred.consumerUnit.id,
+          codigoUc: cred.consumerUnit.codigoUc,
+          nome: cred.consumerUnit.nome,
+        }
+      : cred.plant
+        ? {
+            tipo: "USINA",
+            id: cred.plant.id,
+            codigoUc: cred.plant.unidadeConsumidora ?? cred.instalacao,
+            nome: `${cred.plant.name} (usina)`,
+          }
+        : null;
+    if (!alvo) continue;
 
     const ultimaBill = await prisma.consumerBill.findFirst({
-      where: { consumerUnitId: uc.id, proximaLeitura: { not: null } },
+      where: {
+        ...(alvo.tipo === "UC"
+          ? { consumerUnitId: alvo.id }
+          : { plantId: alvo.id, consumerUnitId: null }),
+        proximaLeitura: { not: null },
+      },
       orderBy: [{ anoReferencia: "desc" }, { mesReferencia: "desc" }],
       select: { proximaLeitura: true },
     });
@@ -232,9 +314,11 @@ export async function POST(req: NextRequest) {
       if (hoje < elegivelEm) {
         const dataStr = elegivelEm.toLocaleDateString("pt-BR");
         skippedAhead.push({
-          consumerUnitId: uc.id,
-          codigoUc: uc.codigoUc,
-          nome: uc.nome,
+          tipo: alvo.tipo,
+          consumerUnitId: alvo.tipo === "UC" ? alvo.id : null,
+          plantId: alvo.tipo === "USINA" ? alvo.id : null,
+          codigoUc: alvo.codigoUc,
+          nome: alvo.nome,
           success: false,
           synced: 0,
           error: null,
@@ -245,7 +329,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    elegiveis.push({ uc });
+    elegiveis.push(alvo);
   }
 
   const stream = new ReadableStream({
@@ -267,14 +351,14 @@ export async function POST(req: NextRequest) {
       let abortadoPor: string | null = null;
 
       try {
-        for (const { uc } of elegiveis) {
+        for (const alvo of elegiveis) {
           // Operador fechou a aba / cancelou: para de queimar saldo.
           if (req.signal.aborted) {
             abortadoPor = "Cancelado pelo operador";
             break;
           }
           index++;
-          const result = await syncOne(uc.id, uc.codigoUc, uc.nome);
+          const result = await syncOne(alvo);
           results.push(result);
           send({
             type: "progress",
