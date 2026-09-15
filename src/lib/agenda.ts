@@ -364,50 +364,63 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
   }
 
   // ─── 5) INFORMAR_LEITURA_RGE ──────────────────────────────────────────
-  // 1 dia antes de ConsumerBill.proximaLeitura (do bill mais recente de cada UC).
-  // Sem status auto-derivável — sempre PENDING ou OVERDUE.
-  const ucsComLeitura = await prisma.consumerUnit.findMany({
-    where: { active: true, origem: "PADRAO" },
+  // Critério de negócio (15/09/2026): a tarefa só existe para UC de **USINA**
+  // com leitura **PLURIMENSAL** e **investidor vinculado** (o investidor é o
+  // proprietário da usina). Nesses casos a distribuidora não lê o medidor todo
+  // mês e é a gestora quem informa a leitura. UC de cliente final NUNCA gera
+  // esta tarefa, mesmo tendo `proximaLeitura` na fatura — era o que a versão
+  // anterior fazia, varrendo toda ConsumerUnit origem=PADRAO.
+  // Data: 1 dia antes de `ConsumerBill.proximaLeitura` da fatura mais recente
+  // da usina. Sem fonte de DONE — sempre PENDING ou OVERDUE.
+  const usinasParaLeitura = await prisma.plant.findMany({
+    where: {
+      active: true,
+      formatoLeitura: "PLURIMENSAL",
+      // Sem investidor vinculado a usina não entra no fluxo da gestora, então
+      // a leitura não é tarefa dela. `usinaDeInvestidor` não serve aqui: está
+      // true em todas as usinas; o vínculo real é a linha em InvestorPlant.
+      investors: { some: {} },
+    },
     select: {
       id: true,
-      nome: true,
-      codigoUc: true,
-      bills: {
+      name: true,
+      unidadeConsumidora: true,
+      consumerBills: {
         where: { proximaLeitura: { not: null } },
         orderBy: { syncedAt: "desc" },
         take: 1,
         select: {
-          id: true,
           proximaLeitura: true,
           mesReferencia: true,
           anoReferencia: true,
+          consumerUnitId: true,
         },
       },
     },
   });
 
-  for (const uc of ucsComLeitura) {
-    const latest = uc.bills[0];
+  for (const usina of usinasParaLeitura) {
+    const latest = usina.consumerBills[0];
     const proximaLeitura = toDateOnly(latest?.proximaLeitura);
     if (!proximaLeitura) continue;
     const scheduled = previousBusinessDay(addDays(proximaLeitura, -1));
     if (!isWithin(scheduled, windowStart, windowEnd)) continue;
     const isOverdue = scheduled < today;
     tasks.push({
-      id: `INFORMAR_LEITURA-${uc.id}-${ymd(proximaLeitura)}`,
+      id: `INFORMAR_LEITURA-${usina.id}-${ymd(proximaLeitura)}`,
       type: "INFORMAR_LEITURA_RGE",
-      title: `Informar leitura — ${uc.nome ?? formatCodigoUc(uc.codigoUc)}`,
+      title: `Informar leitura — ${usina.name}`,
       subtitle: `Leitura prevista ${formatDateOnlyBR(proximaLeitura)}`,
       scheduledFor: scheduled,
       dueDate: proximaLeitura,
       status: isOverdue ? "OVERDUE" : "PENDING",
-      sourceEntityType: "ConsumerUnit",
-      sourceEntityId: uc.id,
-      href: `/admin/unidades-consumidoras`,
+      sourceEntityType: "Plant",
+      sourceEntityId: usina.id,
+      href: `/admin/usinas/${usina.id}`,
       mesReferencia: latest.mesReferencia,
       anoReferencia: latest.anoReferencia,
-      consumerUnitId: uc.id,
-      consumerUnitLabel: `${formatCodigoUc(uc.codigoUc)} — ${uc.nome}`,
+      consumerUnitId: latest.consumerUnitId,
+      consumerUnitLabel: `${formatCodigoUc(usina.unidadeConsumidora) ?? "—"} — ${usina.name} (usina)`,
       valor: null,
       pagaInvestidor: false,
     });
