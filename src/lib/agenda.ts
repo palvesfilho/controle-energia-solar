@@ -34,7 +34,6 @@ export const AGENDA_MIN_DATE: Date | null = dateOnlyUTC(2026, 4, 1);
 export type AgendaTaskType =
   | "PAGAR_FATURA"
   | "EMITIR_RELATORIO_MENSAL"
-  | "COBRAR_CLIENTE_DESCONTO"
   | "PAGAR_INVESTIDOR"
   | "INFORMAR_LEITURA_RGE"
   | "CONFERIR_PAGAMENTO_RGE";
@@ -197,74 +196,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
     });
   }
 
-  // ─── 2) COBRAR_CLIENTE_DESCONTO ────────────────────────────────────────
-  // 3 dias após `syncedAt` (data em que a fatura entrou no sistema).
-  // Source: ConsumerBill onde a UC tem desconto (consumerUnit.consumerId não nulo
-  // e UC linkada a um Plant — ou seja, é cliente compensado, não a própria usina).
-  // DONE se já existe ConsumerUnitBilling daquele mês com asaasChargeId.
-  const billsForCharge = await prisma.consumerBill.findMany({
-    where: {
-      syncedAt: {
-        gte: startOfDayInstant(addDays(windowStart, -3 - SLACK_DIAS)),
-        lte: endOfDayInstant(addDays(windowEnd, -3 + SLACK_DIAS)),
-      },
-      consumerUnitId: { not: null },
-      consumerUnit: { origem: "PADRAO" },
-    },
-    select: {
-      id: true,
-      syncedAt: true,
-      mesReferencia: true,
-      anoReferencia: true,
-      consumerUnitId: true,
-      consumerUnit: {
-        select: {
-          nome: true,
-          codigoUc: true,
-          consumerId: true,
-          plantId: true,
-          billings: {
-            select: { id: true, asaasChargeId: true, ano: true, mes: true, valorCobranca: true },
-          },
-        },
-      },
-    },
-  });
-
-  for (const b of billsForCharge) {
-    if (!b.syncedAt) continue;
-    // Só UC de cliente final com rateio (tem consumer + plant)
-    if (!b.consumerUnit?.consumerId || !b.consumerUnit?.plantId) continue;
-    // syncedAt é instante real (não data-calendário): o dia vale no fuso de
-    // quem opera, então converte para o dia em Brasília antes de somar.
-    const scheduled = previousBusinessDay(addDays(dayInBrasil(b.syncedAt), 3));
-    if (!isWithin(scheduled, windowStart, windowEnd)) continue;
-    const billing = b.consumerUnit.billings.find(
-      (x) => x.ano === b.anoReferencia && x.mes === b.mesReferencia
-    );
-    const isDone = !!billing?.asaasChargeId;
-    const isOverdue = !isDone && scheduled < today;
-    tasks.push({
-      id: `COBRAR_CLIENTE-${b.id}`,
-      type: "COBRAR_CLIENTE_DESCONTO",
-      title: `Cobrar ${b.consumerUnit.nome ?? formatCodigoUc(b.consumerUnit.codigoUc)}`,
-      subtitle: `Ref. ${String(b.mesReferencia).padStart(2, "0")}/${b.anoReferencia}`,
-      scheduledFor: scheduled,
-      dueDate: null,
-      status: isDone ? "DONE" : isOverdue ? "OVERDUE" : "PENDING",
-      sourceEntityType: "ConsumerBill",
-      sourceEntityId: b.id,
-      href: "/admin/faturas-energia/gestao-financeira",
-      mesReferencia: b.mesReferencia,
-      anoReferencia: b.anoReferencia,
-      consumerUnitId: b.consumerUnitId,
-      consumerUnitLabel: `${formatCodigoUc(b.consumerUnit.codigoUc)} — ${b.consumerUnit.nome}`,
-      valor: billing?.valorCobranca ?? null,
-      pagaInvestidor: false,
-    });
-  }
-
-  // ─── 3) PAGAR_INVESTIDOR ──────────────────────────────────────────────
+  // ─── 2) PAGAR_INVESTIDOR ──────────────────────────────────────────────
   // Dia X do mês configurado em Plant.diaPagamentoInvestidor. 1 task por usina/mês.
   // DONE se TODOS os InvestorPayables daquele mês daquela usina estão com status PAGO.
   const plants = await prisma.plant.findMany({
@@ -326,7 +258,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
       });
     }
 
-    // ─── 4) EMITIR_RELATORIO_MENSAL ────────────────────────────────────────
+    // ─── 3) EMITIR_RELATORIO_MENSAL ────────────────────────────────────────
     // 3 dias antes do PAGAR_INVESTIDOR daquela usina. 1 task por usina/mês.
     // DONE se MonthlyReport daquele mês/usina tem publishedAt.
     for (const scheduledPagamento of candidates) {
@@ -365,7 +297,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
     }
   }
 
-  // ─── 5) CONFERIR_PAGAMENTO_RGE ────────────────────────────────────────
+  // ─── 4) CONFERIR_PAGAMENTO_RGE ────────────────────────────────────────
   // 10 dias após pagoEm. Source: ConsumerBill com pagoEm preenchido mas
   // contaPaga ainda false (concessionária não confirmou). Pareia com a
   // dupla checagem da Gestão Financeira (interno × Infosimples).
@@ -431,7 +363,7 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
     });
   }
 
-  // ─── 6) INFORMAR_LEITURA_RGE ──────────────────────────────────────────
+  // ─── 5) INFORMAR_LEITURA_RGE ──────────────────────────────────────────
   // 1 dia antes de ConsumerBill.proximaLeitura (do bill mais recente de cada UC).
   // Sem status auto-derivável — sempre PENDING ou OVERDUE.
   const ucsComLeitura = await prisma.consumerUnit.findMany({
@@ -518,7 +450,6 @@ export function endOfWeekSunday(d: Date): Date {
 export const TASK_TYPE_LABEL: Record<AgendaTaskType, string> = {
   PAGAR_FATURA: "Pagar fatura",
   EMITIR_RELATORIO_MENSAL: "Emitir relatório",
-  COBRAR_CLIENTE_DESCONTO: "Cobrar cliente",
   PAGAR_INVESTIDOR: "Pagar investidor",
   INFORMAR_LEITURA_RGE: "Informar leitura RGE",
   CONFERIR_PAGAMENTO_RGE: "Conferir pagamento RGE",

@@ -8,7 +8,6 @@ import {
   ChevronRight,
   Receipt,
   FileBarChart,
-  Wallet,
   Users,
   Gauge,
   ShieldCheck,
@@ -84,10 +83,6 @@ const TYPE_META: Record<AgendaTaskType, { icon: React.ElementType; tone: string 
   EMITIR_RELATORIO_MENSAL: {
     icon: FileBarChart,
     tone: "border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/30",
-  },
-  COBRAR_CLIENTE_DESCONTO: {
-    icon: Wallet,
-    tone: "border-l-amber-500 bg-amber-50 dark:bg-amber-950/30",
   },
   PAGAR_INVESTIDOR: {
     icon: Users,
@@ -268,17 +263,6 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
         if (t.type !== "PAGAR_FATURA") return acc;
         if (t.status === "DONE") return acc;
         if (t.pagaInvestidor) return acc;
-        return acc + (t.valor ?? 0);
-      }, 0)
-    );
-  }, [tasksByDay]);
-
-  // Soma de valores a receber em aberto (COBRAR_CLIENTE_DESCONTO, status != DONE) por dia.
-  const valorAReceberByDay = useMemo(() => {
-    return tasksByDay.map((dayTasks) =>
-      dayTasks.reduce((acc, t) => {
-        if (t.type !== "COBRAR_CLIENTE_DESCONTO") return acc;
-        if (t.status === "DONE") return acc;
         return acc + (t.valor ?? 0);
       }, 0)
     );
@@ -484,7 +468,6 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
           const isToday = dayKeys[idx] === todayKey;
           const dayTasks = tasksByDay[idx];
           const valorAPagar = valorAPagarByDay[idx];
-          const valorAReceber = valorAReceberByDay[idx];
           return (
             <div
               key={idx}
@@ -527,28 +510,6 @@ export function AgendaWeekGrid({ inicio, fim, userRole, tasks, allUcs }: AgendaW
                     <>
                       {BRL.format(valorAPagar)}{" "}
                       <span className="font-normal text-muted-foreground">a pagar</span>
-                    </>
-                  ) : (
-                    "—"
-                  )}
-                </div>
-                <div
-                  className={cn(
-                    "text-[11px] font-medium",
-                    valorAReceber > 0
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-muted-foreground/40"
-                  )}
-                  title={
-                    valorAReceber > 0
-                      ? "Soma das cobranças aos clientes programadas para este dia"
-                      : "Sem cobranças a receber neste dia"
-                  }
-                >
-                  {valorAReceber > 0 ? (
-                    <>
-                      {BRL.format(valorAReceber)}{" "}
-                      <span className="font-normal text-muted-foreground">a receber</span>
                     </>
                   ) : (
                     "—"
