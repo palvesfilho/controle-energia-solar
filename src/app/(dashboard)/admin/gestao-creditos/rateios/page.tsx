@@ -1,6 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { TodosOsVigentes } from "@/components/rateios/todos-vigentes";
+import { ProtocolosEmAberto } from "@/components/rateios/protocolos-abertos";
 import { AdicionarUc, type UnidadeDisponivel } from "@/components/rateios/adicionar-uc";
 import {
   SugestaoPercentuais,
@@ -459,7 +462,13 @@ const MES_LABELS = [
   "Dezembro",
 ];
 
-export default function RateiosPage() {
+/**
+ * A aba "Por usina" — a tela original, intacta: escolhe usina + período, monta,
+ * edita, envia e aceita o rateio daquela usina. Deixou de ser o default export
+ * quando a tela ganhou abas; quem manda agora é `RateiosPage`, no fim do
+ * arquivo.
+ */
+function RateiosPorUsina({ plantIdInicial }: { plantIdInicial: string | null }) {
   const [plants, setPlants] = useState<PlantOption[]>([]);
   const [loadingPlants, setLoadingPlants] = useState(true);
   const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
@@ -502,11 +511,24 @@ export default function RateiosPage() {
               unidadeConsumidora: p.unidadeConsumidora ?? null,
             })),
           );
+
+          // Pré-seleção por `?plantId=`. A Análise, as Sugestões de Ação e as
+          // duas abas novas já mandavam a usina na URL, e a tela ignorava: quem
+          // clicava caía no seletor vazio e tinha que procurar de novo a usina
+          // que acabara de apontar.
+          //
+          // Só seleciona se o id EXISTE na lista que acabou de chegar. Usina
+          // desativada ou apagada sai de `/api/plants`, e apontar o seletor
+          // para um id que não está lá deixaria a tela pedindo o rateio de uma
+          // usina inexistente.
+          if (plantIdInicial && rows.some((p) => p.id === plantIdInicial)) {
+            setSelectedPlantId(plantIdInicial);
+          }
         },
       )
       .catch(() => {})
       .finally(() => setLoadingPlants(false));
-  }, []);
+  }, [plantIdInicial]);
 
   const loadData = useCallback(
     async (plantId: string, anoVal: number, mesVal: number) => {
@@ -638,14 +660,6 @@ export default function RateiosPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">Rateios</h1>
-        <p className="text-sm text-muted-foreground">
-          Percentual dos créditos gerados por cada usina destinado às unidades
-          consumidoras.
-        </p>
-      </div>
-
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Selecionar usina e período</CardTitle>
@@ -2340,5 +2354,122 @@ function EditRateioDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * As três abas da tela de Rateios.
+ *
+ * Por que abas e não três itens de menu: a convenção do `admin-nav-config.ts` é
+ * que tela com abas é FOLHA ÚNICA no menu. São três recortes do mesmo assunto —
+ * o rateio — e separá-los no menu faria escolher onde clicar antes de saber o
+ * que se procura.
+ *
+ * "Por usina" é o default e continua sendo a tela de trabalho (montar, editar,
+ * aceitar). As outras duas são de LEITURA, e existem porque a pergunta "como
+ * está o parque inteiro" não tinha onde ser feita: para conferir 30 usinas era
+ * preciso trocar o seletor 30 vezes.
+ */
+const ABAS_RATEIO = [
+  {
+    key: "usina",
+    label: "Por usina",
+    hint: "Montar, editar, enviar e aceitar o rateio de uma usina",
+  },
+  {
+    key: "vigentes",
+    label: "Todos os vigentes",
+    hint: "O rateio que vale hoje em todas as usinas, em ordem alfabética",
+  },
+  {
+    key: "protocolos",
+    label: "Protocolos em aberto",
+    hint: "Pedidos na concessionária que ainda não viraram rateio vigente",
+  },
+] as const;
+
+type AbaRateio = (typeof ABAS_RATEIO)[number]["key"];
+
+export default function RateiosPage() {
+  // `useSearchParams` obriga a fronteira de Suspense: sem ela a
+  // pré-renderização desta rota quebra no build de produção.
+  return (
+    <Suspense
+      fallback={
+        <div className="p-8 text-center text-sm text-muted-foreground">
+          Carregando...
+        </div>
+      }
+    >
+      <RateiosAbas />
+    </Suspense>
+  );
+}
+
+function RateiosAbas() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // A aba mora na URL, não em estado local: é o que faz o botão voltar do
+  // navegador funcionar e permite mandar a aba por link.
+  const abaUrl = searchParams.get("aba");
+  const aba: AbaRateio =
+    abaUrl === "vigentes" || abaUrl === "protocolos" ? abaUrl : "usina";
+
+  // Usina apontada por link de fora (Análise, Sugestões de Ação, e o nome da
+  // usina nas duas abas novas). Fica aqui, e não lá dentro, porque a fronteira
+  // de Suspense que o `useSearchParams` exige já é esta.
+  const plantIdInicial = searchParams.get("plantId");
+
+  const irPara = useCallback(
+    (nova: AbaRateio) => {
+      // Parte da query ATUAL, não de uma vazia: a busca e os funis das duas
+      // tabelas também moram na URL (prefixos `vig_` e `prot_`), e trocar de
+      // aba não pode apagá-los.
+      const p = new URLSearchParams(Array.from(searchParams.entries()));
+      if (nova !== "usina") p.set("aba", nova);
+      else p.delete("aba");
+      const qs = p.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [router, pathname, searchParams],
+  );
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-bold">Rateios</h1>
+        <p className="text-sm text-muted-foreground">
+          Percentual dos créditos gerados por cada usina destinado às unidades
+          consumidoras.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1 border-b pb-2">
+        {ABAS_RATEIO.map((t) => {
+          const ativa = aba === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => irPara(t.key)}
+              title={t.hint}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                ativa
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {aba === "usina" && <RateiosPorUsina plantIdInicial={plantIdInicial} />}
+      {aba === "vigentes" && <TodosOsVigentes />}
+      {aba === "protocolos" && <ProtocolosEmAberto />}
+    </div>
   );
 }
