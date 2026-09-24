@@ -6,6 +6,7 @@ import { isAdminRole } from "@/lib/roles";
 import { normalizeCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
 import { SELECT_BILL_FASE, calcularFases } from "@/lib/uc-implantacao";
 import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
+import { VINCULO_VAZIO, vinculosPorRateio } from "@/lib/uc-vinculo-rateio";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -79,9 +80,16 @@ export async function GET(req: NextRequest) {
       })
     : [];
   const fases = calcularFases(units, bills);
+  // Usina de onde a UC compensa, lida dos RATEIOS — `plant` acima é só o campo
+  // do cadastro, que o aceite do rateio não atualiza. Ver lib/uc-vinculo-rateio.
+  const vinculos = await vinculosPorRateio(units.map((u) => u.id));
 
   return NextResponse.json(
-    units.map((u) => ({ ...u, implantacao: fases.get(u.id) ?? null })),
+    units.map((u) => ({
+      ...u,
+      implantacao: fases.get(u.id) ?? null,
+      vinculo: vinculos.get(u.id) ?? VINCULO_VAZIO,
+    })),
   );
 }
 
