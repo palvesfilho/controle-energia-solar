@@ -460,7 +460,10 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
                 <div className="grid gap-3">
                   {daCaixa.map((item) => {
                     const ucs = item.codigosUc ? item.codigosUc.split(",") : [];
-                    const excluida = item.excluidaNoCrmEm != null;
+                    // Vermelho só enquanto ninguém conferiu. Arquivada (IGNORADA), vira um selo
+            // cinza: fica o histórico, sai o alarme.
+            const excluida = item.excluidaNoCrmEm != null && item.situacao !== "IGNORADA";
+            const excluidaArquivada = item.excluidaNoCrmEm != null && !excluida;
                     return (
                       <Card
                         key={item.id}
@@ -498,6 +501,11 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
                                   <Badge className="gap-1 bg-red-600 text-white hover:bg-red-600">
                                     <OctagonAlert className="h-3 w-3" />
                                     EXCLUÍDA NO CRM
+                                  </Badge>
+                                )}
+                                {excluidaArquivada && (
+                                  <Badge variant="outline" className="text-muted-foreground">
+                                    excluída no CRM · arquivada
                                   </Badge>
                                 )}
                                 <Badge variant="secondary">{item.nomeProduto}</Badge>

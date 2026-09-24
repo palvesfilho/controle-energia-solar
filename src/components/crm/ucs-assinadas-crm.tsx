@@ -522,7 +522,10 @@ export function UcsAssinadasCrm({ search = "" }: { search?: string }) {
             // A aba é do CARD, não a selecionada: buscando, a lista mistura as
             // quatro, e os botões precisam ser os do estado daquela UC.
             const abaDoCard = abaDe(u);
-            const excluida = u.excluidaNoCrmEm != null;
+            // Vermelho só enquanto ninguém conferiu. Arquivada (IGNORADA), vira um selo
+            // cinza: fica o histórico, sai o alarme.
+            const excluida = u.excluidaNoCrmEm != null && u.situacao !== "IGNORADA";
+            const excluidaArquivada = u.excluidaNoCrmEm != null && !excluida;
             return (
             <Card
               key={u.id}
@@ -566,6 +569,11 @@ export function UcsAssinadasCrm({ search = "" }: { search?: string }) {
                         <Badge className="gap-1 bg-red-600 text-white hover:bg-red-600">
                           <OctagonAlert className="h-3 w-3" />
                           EXCLUÍDA NO CRM
+                        </Badge>
+                      )}
+                      {excluidaArquivada && (
+                        <Badge variant="outline" className="text-muted-foreground">
+                          excluída no CRM · arquivada
                         </Badge>
                       )}
                       {buscando && (
