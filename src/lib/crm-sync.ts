@@ -111,8 +111,13 @@ export interface ResultadoSync {
   vendasExcluidasNoCrm: number;
   /** Total de UCs marcadas como excluídas no CRM ainda à espera de decisão. */
   ucsExcluidasPendentes: number;
+  /** Linhas sem venda ganha retiradas porque o termo não está assinado. */
+  semAssinaturaRetiradas: number;
   erros: string[];
 }
+
+/** `envelopes_assinatura.status` de quem assinou no ClickSign. */
+const ENVELOPE_ASSINADO = "assinado";
 
 export type MotivoExclusaoCrm = "PROPOSTA_EXCLUIDA" | "ADESAO_EXCLUIDA" | "UC_RETIRADA_DA_ADESAO";
 
@@ -169,6 +174,7 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
     ucsExcluidasNoCrm: 0,
     vendasExcluidasNoCrm: 0,
     ucsExcluidasPendentes: 0,
+    semAssinaturaRetiradas: 0,
     erros: [],
   };
 
@@ -199,10 +205,16 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
   const nomePorUsuarioId = new Map(usuarios.map((u) => [u.id, u.nome?.trim() || null]));
   const deParaPorCodigo = new Map(dePara.map((d) => [d.codigoProduto, d]));
 
+  // Uma adesão pode ter mais de um envelope (cancelou e reenviou): o assinado
+  // vence, senão um cancelado posterior esconderia a assinatura.
   const envelopePorAdesao = new Map<number, EnvelopeAssinaturaCrm>();
   for (const e of envelopes) {
-    if (e.adesao_id != null) envelopePorAdesao.set(e.adesao_id, e);
+    if (e.adesao_id == null) continue;
+    if (envelopePorAdesao.get(e.adesao_id)?.status === ENVELOPE_ASSINADO) continue;
+    envelopePorAdesao.set(e.adesao_id, e);
   }
+  const adesaoAssinada = (a: AdesaoCrm) =>
+    envelopePorAdesao.get(a.id)?.status === ENVELOPE_ASSINADO;
 
   // LISTA por proposta, não uma adesão só. Aqui havia um `Map.set` que
   // sobrescrevia calado: uma proposta pode ter VÁRIAS adesões assinadas (o
@@ -222,8 +234,15 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
 
   // Adesões assinadas cuja proposta NÃO está entre as ganhas: precisam
   // aparecer numa caixa própria em vez de sumir.
+  //
+  // ASSINADA de verdade: envelope com status "assinado" no ClickSign. A linha
+  // em `adesoes` nasce quando o vendedor gera o termo, ANTES da assinatura —
+  // até 23/09/2026 bastava ela existir, e a caixa "Assinadas sem venda ganha"
+  // enchia de negociação comum (VINICIUS BORBA PAZ LEAO sem envelope nenhum,
+  // ROGERIO CHARÃO LEÃO com envelope cancelado).
   const idsGanhas = new Set(ganhas.map((p) => p.id));
   const idsAdesaoSemGanha = adesoes
+    .filter(adesaoAssinada)
     .map((a) => a.proposta_id)
     .filter((id): id is number => id != null && !idsGanhas.has(id));
   const propostasSemGanha = await listarPropostasPorIds(idsAdesaoSemGanha);
@@ -243,7 +262,11 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
     const nomeProduto = produto?.nome ?? "(produto desconhecido no CRM)";
 
     const cliente = proposta.cliente_id != null ? clientePorId.get(proposta.cliente_id) : undefined;
-    const adesoesDaProposta = adesoesPorProposta.get(proposta.id) ?? [];
+    // Sem venda ganha, só a adesão assinada tem motivo de estar aqui: uma
+    // segunda adesão ainda em assinatura na mesma proposta não entra.
+    const adesoesDaProposta = (adesoesPorProposta.get(proposta.id) ?? []).filter(
+      (a) => ehVendaGanha || adesaoAssinada(a),
+    );
     // A mais recente manda nos dados de cabeçalho (é a última versão assinada
     // do cadastro); as UCs, porém, vêm de TODAS elas.
     const adesao = adesoesDaProposta[adesoesDaProposta.length - 1];
@@ -479,6 +502,27 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
     }
   }
 
+  // ANTES de marcar excluídas: senão a linha não assinada, que agora não é
+  // mais lida, viraria "proposta excluída" em vermelho.
+  try {
+    await retirarNaoAssinadas({
+      resultado,
+      adesoes: adesoes.filter((a) => !adesaoAssinada(a)),
+      propostasComAdesaoAssinada: new Set(
+        adesoes
+          .filter(adesaoAssinada)
+          .map((a) => a.proposta_id)
+          .filter((id): id is number => id != null),
+      ),
+      propostasLidas,
+      propostasComErro,
+      ucsLidas,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    resultado.erros.push(`retirada das não assinadas: ${msg}`);
+  }
+
   try {
     await marcarExcluidasNoCrm({
       resultado,
@@ -494,6 +538,70 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
 
   resultado.naoClassificados = [...naoClassificados];
   return resultado;
+}
+
+/**
+ * Tira da fila o que entrou como "assinada sem venda ganha" sem estar assinado.
+ *
+ * Diferente de `marcarExcluidasNoCrm`, aqui APAGA: a adesão continua no CRM,
+ * só não foi assinada — não há nada a avisar em vermelho. A linha era espelho
+ * puro do CRM e volta sozinha no sync em que o envelope for assinado.
+ *
+ * Só apaga o que ninguém tocou (UC PENDENTE e sem cadastro vinculado; venda
+ * não processada e sem obra). O que já tem trabalho do operador fica como
+ * está e entra em `ucsLidas`, para não ser pintado de "excluída".
+ */
+async function retirarNaoAssinadas(ctx: {
+  resultado: ResultadoSync;
+  /** Adesões que existem no CRM e NÃO estão assinadas. */
+  adesoes: AdesaoCrm[];
+  propostasComAdesaoAssinada: Set<number>;
+  propostasLidas: Set<number>;
+  propostasComErro: Set<number>;
+  ucsLidas: Set<string>;
+}): Promise<void> {
+  const { resultado, adesoes, propostasComAdesaoAssinada, propostasLidas, propostasComErro, ucsLidas } =
+    ctx;
+  const idsAdesao = adesoes.map((a) => a.id);
+  if (idsAdesao.length === 0) return;
+
+  const ucs = await prisma.crmUcImportada.findMany({
+    where: { adesaoIdCrm: { in: idsAdesao }, vendaGanha: false, excluidaNoCrmEm: null },
+    select: { id: true, adesaoIdCrm: true, codigoUc: true, propostaIdCrm: true, situacao: true, consumerUnitId: true },
+  });
+  const apagarUcs: string[] = [];
+  for (const u of ucs) {
+    const chave = `${u.adesaoIdCrm}:${u.codigoUc}`;
+    if (ucsLidas.has(chave) || propostasComErro.has(u.propostaIdCrm)) continue;
+    if (u.situacao === "PENDENTE" && u.consumerUnitId == null) apagarUcs.push(u.id);
+    else ucsLidas.add(chave);
+  }
+  if (apagarUcs.length > 0) {
+    const r = await prisma.crmUcImportada.deleteMany({ where: { id: { in: apagarUcs } } });
+    resultado.semAssinaturaRetiradas += r.count;
+  }
+
+  const propostasNaoAssinadas = [
+    ...new Set(
+      adesoes
+        .map((a) => a.proposta_id)
+        .filter(
+          (id): id is number =>
+            id != null && !propostasComAdesaoAssinada.has(id) && !propostasLidas.has(id),
+        ),
+    ),
+  ];
+  if (propostasNaoAssinadas.length === 0) return;
+  const r = await prisma.crmVendaImportada.deleteMany({
+    where: {
+      propostaIdCrm: { in: propostasNaoAssinadas },
+      situacao: "ASSINADA_SEM_VENDA",
+      processadaEm: null,
+      obraId: null,
+      excluidaNoCrmEm: null,
+    },
+  });
+  resultado.semAssinaturaRetiradas += r.count;
 }
 
 /**
