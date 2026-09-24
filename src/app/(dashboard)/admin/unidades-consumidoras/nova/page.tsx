@@ -12,8 +12,11 @@ import {
   DocumentosAdesao,
   type FichaDocumento,
 } from "@/components/consumer-units/documentos-adesao";
+import { AvisoExcluidaNoCrm } from "@/components/crm/aviso-excluida-no-crm";
 
 interface UcDoCrm {
+  excluidaNoCrmEm?: string | null;
+  motivoExclusaoCrm?: string | null;
   id: string;
   adesaoIdCrm: number;
   codigoUc: string;
@@ -235,6 +238,11 @@ function NovaUCConteudo() {
               : "Cadastre uma nova UC no sistema"}
         </p>
       </div>
+
+      <AvisoExcluidaNoCrm
+        excluidaNoCrmEm={ucCrm?.excluidaNoCrmEm}
+        motivoExclusaoCrm={ucCrm?.motivoExclusaoCrm}
+      />
 
       {ucCrm && (
         <div

@@ -105,8 +105,16 @@ export interface ResultadoSync {
   ucsSemMediaConfiavel: number;
   /** UCs cuja proposta não trouxe o desconto combinado — cadastro fica em branco. */
   ucsSemDesconto: number;
+  /** UCs que existiam aqui e sumiram do CRM nesta rodada (marcadas agora). */
+  ucsExcluidasNoCrm: number;
+  /** Vendas cuja proposta/adesão sumiu do CRM nesta rodada (marcadas agora). */
+  vendasExcluidasNoCrm: number;
+  /** Total de UCs marcadas como excluídas no CRM ainda à espera de decisão. */
+  ucsExcluidasPendentes: number;
   erros: string[];
 }
+
+export type MotivoExclusaoCrm = "PROPOSTA_EXCLUIDA" | "ADESAO_EXCLUIDA" | "UC_RETIRADA_DA_ADESAO";
 
 /** Cria as linhas do de-para que ainda não existem. Nunca sobrescreve edição. */
 export async function garantirDeParaPadrao(): Promise<number> {
@@ -158,6 +166,9 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
     ucsAtualizadas: 0,
     ucsSemMediaConfiavel: 0,
     ucsSemDesconto: 0,
+    ucsExcluidasNoCrm: 0,
+    vendasExcluidasNoCrm: 0,
+    ucsExcluidasPendentes: 0,
     erros: [],
   };
 
@@ -220,6 +231,12 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
   const resultado: ResultadoSync = { ...base, rodou: true, vendasGanhas: ganhas.length };
   const naoClassificados = new Set<string>();
 
+  // O que esta rodada ENXERGOU no CRM. Tudo que existe aqui e não está nestes
+  // conjuntos foi excluído lá — ver `marcarExcluidasNoCrm` no fim.
+  const propostasLidas = new Set<number>();
+  const propostasComErro = new Set<number>();
+  const ucsLidas = new Set<string>();
+
   const processar = async (proposta: PropostaCrm, ehVendaGanha: boolean) => {
     const produto = proposta.produto_id != null ? produtoPorId.get(proposta.produto_id) : undefined;
     const codigoProduto = produto?.codigo ?? `produto_id_${proposta.produto_id ?? "desconhecido"}`;
@@ -280,6 +297,9 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
       valorInvestimento: proposta.valor_investimento,
       fechadoEm: primeiraDataValida(proposta.fechado_em, proposta.data_fechamento),
       statusNegocio: proposta.status_negocio ?? "desconhecido",
+      // Voltou a aparecer no CRM: a marca de exclusão cai sozinha.
+      excluidaNoCrmEm: null,
+      motivoExclusaoCrm: null,
       adesaoIdCrm: adesao?.id ?? null,
       concessionaria: adesao?.concessionaria ?? proposta.concessionaria ?? null,
       codigosUc: codigosUc.length > 0 ? codigosUc.join(",") : null,
@@ -370,7 +390,10 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
         assinaturaStatus: envelope?.status ?? null,
         assinadoEm: primeiraDataValida(envelope?.assinado_em),
         envelopeIdCrm: envelope?.id ?? null,
+        excluidaNoCrmEm: null,
+        motivoExclusaoCrm: null,
       };
+      ucsLidas.add(`${a.id}:${u.codigo}`);
 
       // Só a existência importa: `dadosUc` não carrega `situacao`, então uma
       // re-sincronização atualiza os dados do CRM sem nunca devolver a UC para
@@ -435,23 +458,138 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
   };
 
   for (const proposta of ganhas) {
+    propostasLidas.add(proposta.id);
     try {
       await processar(proposta, true);
     } catch (err) {
+      propostasComErro.add(proposta.id);
       const msg = err instanceof Error ? err.message : String(err);
       resultado.erros.push(`proposta ${proposta.id}: ${msg}`);
     }
   }
 
   for (const proposta of propostasSemGanha) {
+    propostasLidas.add(proposta.id);
     try {
       await processar(proposta, false);
     } catch (err) {
+      propostasComErro.add(proposta.id);
       const msg = err instanceof Error ? err.message : String(err);
       resultado.erros.push(`proposta ${proposta.id} (adesão sem venda): ${msg}`);
     }
   }
 
+  try {
+    await marcarExcluidasNoCrm({
+      resultado,
+      adesoes,
+      propostasLidas,
+      propostasComErro,
+      ucsLidas,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    resultado.erros.push(`marcação de excluídas no CRM: ${msg}`);
+  }
+
   resultado.naoClassificados = [...naoClassificados];
   return resultado;
+}
+
+/**
+ * Marca o que existe aqui e SUMIU do CRM.
+ *
+ * O sync só lia o que existe lá. Adesão gerada no gerador e depois excluída
+ * deixava as UCs dela aqui, congeladas, com cara de trabalho pendente — e nada
+ * na tela dizia que a origem tinha ido embora.
+ *
+ * Nunca apaga: o operador pode já ter cadastrado a UC, vinculado a uma usina ou
+ * aprovado a obra. Só marca `excluidaNoCrmEm` + motivo; a tela avisa em
+ * vermelho e a decisão é de gente. Se reaparecer no CRM, `processar` limpa a
+ * marca na rodada seguinte.
+ */
+async function marcarExcluidasNoCrm(ctx: {
+  resultado: ResultadoSync;
+  adesoes: AdesaoCrm[];
+  propostasLidas: Set<number>;
+  propostasComErro: Set<number>;
+  ucsLidas: Set<string>;
+}): Promise<void> {
+  const { resultado, adesoes, propostasLidas, propostasComErro, ucsLidas } = ctx;
+  const agora = new Date();
+
+  // Trava contra CRM que responde 200 com lista vazia (tabela renomeada,
+  // permissão revogada): sem ela, TODAS as UCs daqui virariam "excluídas".
+  const totalAqui = await prisma.crmUcImportada.count();
+  if (adesoes.length === 0 && totalAqui > 0) {
+    resultado.erros.push(
+      "O CRM devolveu zero adesões, mas há UCs importadas aqui — marcação de excluídas suspensa nesta rodada.",
+    );
+    return;
+  }
+
+  const adesoesExistentes = new Set(adesoes.map((a) => a.id));
+
+  // --- UCs -----------------------------------------------------------------
+  const ucsAqui = await prisma.crmUcImportada.findMany({
+    where: { excluidaNoCrmEm: null },
+    select: { id: true, adesaoIdCrm: true, codigoUc: true, propostaIdCrm: true },
+  });
+  const porMotivo = new Map<MotivoExclusaoCrm, string[]>();
+  for (const u of ucsAqui) {
+    if (ucsLidas.has(`${u.adesaoIdCrm}:${u.codigoUc}`)) continue;
+    // Proposta que deu erro nesta rodada não foi lida por inteiro: não dá para
+    // afirmar que a UC sumiu.
+    if (propostasComErro.has(u.propostaIdCrm)) continue;
+
+    const motivo: MotivoExclusaoCrm = !adesoesExistentes.has(u.adesaoIdCrm)
+      ? "ADESAO_EXCLUIDA"
+      : !propostasLidas.has(u.propostaIdCrm)
+        ? "PROPOSTA_EXCLUIDA"
+        : "UC_RETIRADA_DA_ADESAO";
+    const lista = porMotivo.get(motivo) ?? [];
+    lista.push(u.id);
+    porMotivo.set(motivo, lista);
+  }
+  for (const [motivo, ids] of porMotivo) {
+    const r = await prisma.crmUcImportada.updateMany({
+      where: { id: { in: ids } },
+      data: { excluidaNoCrmEm: agora, motivoExclusaoCrm: motivo },
+    });
+    resultado.ucsExcluidasNoCrm += r.count;
+  }
+
+  // --- Vendas --------------------------------------------------------------
+  // Venda não lida nesta rodada pode ser só uma proposta que deixou de estar
+  // "ganha" — isso NÃO é exclusão. Por isso pergunta ao CRM se ela existe.
+  const vendasNaoLidas = await prisma.crmVendaImportada.findMany({
+    where: { excluidaNoCrmEm: null, propostaIdCrm: { notIn: [...propostasLidas] } },
+    select: { id: true, propostaIdCrm: true, situacao: true },
+  });
+  if (vendasNaoLidas.length > 0) {
+    const aindaExistem = new Set(
+      (await listarPropostasPorIds(vendasNaoLidas.map((v) => v.propostaIdCrm))).map((p) => p.id),
+    );
+    const propostasComAdesao = new Set(
+      adesoes.map((a) => a.proposta_id).filter((id): id is number => id != null),
+    );
+    for (const v of vendasNaoLidas) {
+      let motivo: MotivoExclusaoCrm | null = null;
+      if (!aindaExistem.has(v.propostaIdCrm)) motivo = "PROPOSTA_EXCLUIDA";
+      // Só estava aqui por causa da adesão assinada; a adesão sumiu e a venda
+      // não fechou — sobra uma linha sem motivo de existir.
+      else if (v.situacao === "ASSINADA_SEM_VENDA" && !propostasComAdesao.has(v.propostaIdCrm))
+        motivo = "ADESAO_EXCLUIDA";
+      if (!motivo) continue;
+      await prisma.crmVendaImportada.update({
+        where: { id: v.id },
+        data: { excluidaNoCrmEm: agora, motivoExclusaoCrm: motivo },
+      });
+      resultado.vendasExcluidasNoCrm += 1;
+    }
+  }
+
+  resultado.ucsExcluidasPendentes = await prisma.crmUcImportada.count({
+    where: { excluidaNoCrmEm: { not: null }, situacao: { not: "IGNORADA" } },
+  });
 }

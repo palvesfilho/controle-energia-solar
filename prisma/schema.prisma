@@ -2558,6 +2558,15 @@ model CrmVendaImportada {
   processadaEm      DateTime? @map("processada_em")
   processadaPorId   String?   @map("processada_por_id")
 
+  // Sumiu do CRM: a proposta ou a adesão foi excluída lá (ou a UC foi tirada
+  // do termo). O sync só lia o que existe, então o que era apagado no gerador
+  // ficava aqui congelado, com cara de trabalho pendente. Não se apaga nada:
+  // o operador pode já ter cadastrado a UC. Marca, avisa em vermelho, e a
+  // decisão é de gente. Volta a null sozinho se reaparecer no CRM.
+  // Motivo: PROPOSTA_EXCLUIDA | ADESAO_EXCLUIDA | UC_RETIRADA_DA_ADESAO
+  excluidaNoCrmEm   DateTime? @map("excluida_no_crm_em")
+  motivoExclusaoCrm String?   @map("motivo_exclusao_crm")
+
   @@index([situacao])
   @@index([codigoProduto])
   @@map("crm_venda_importada")
@@ -2669,6 +2678,15 @@ model CrmUcImportada {
 
   // Preenchido quando a UC vira cadastro aqui. É o elo com a usina.
   consumerUnitId String? @map("consumer_unit_id")
+
+  // Sumiu do CRM: a proposta ou a adesão foi excluída lá (ou a UC foi tirada
+  // do termo). O sync só lia o que existe, então o que era apagado no gerador
+  // ficava aqui congelado, com cara de trabalho pendente. Não se apaga nada:
+  // o operador pode já ter cadastrado a UC. Marca, avisa em vermelho, e a
+  // decisão é de gente. Volta a null sozinho se reaparecer no CRM.
+  // Motivo: PROPOSTA_EXCLUIDA | ADESAO_EXCLUIDA | UC_RETIRADA_DA_ADESAO
+  excluidaNoCrmEm   DateTime? @map("excluida_no_crm_em")
+  motivoExclusaoCrm String?   @map("motivo_exclusao_crm")
 
   primeiraLeituraEm DateTime  @default(now()) @map("primeira_leitura_em")
   ultimaLeituraEm   DateTime  @updatedAt @map("ultima_leitura_em")

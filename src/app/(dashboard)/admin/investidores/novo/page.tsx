@@ -15,6 +15,7 @@ import { isValidPhone } from "@/lib/phone";
 import { AdditionalEmailsInput } from "@/components/investors/additional-emails-input";
 import { CidadeInput } from "@/components/ui/cidade-input";
 import { PasswordInput } from "@/components/ui/password-input";
+import { AvisoExcluidaNoCrm } from "@/components/crm/aviso-excluida-no-crm";
 
 function FormField({
   label,
@@ -68,6 +69,8 @@ function FormField({
 
 /** Dados da adesao do CRM usados para pre-preencher o cadastro. */
 interface UcDoCrm {
+  excluidaNoCrmEm?: string | null;
+  motivoExclusaoCrm?: string | null;
   adesaoIdCrm: number;
   envelopeIdCrm: string | null;
   /** Envelope assinado a partir de 21/08/2026 leva também a autorização de acesso. */
@@ -239,6 +242,11 @@ function NovoInvestidorConteudo() {
             : "Cadastre um novo investidor no sistema"}
         </p>
       </div>
+
+      <AvisoExcluidaNoCrm
+        excluidaNoCrmEm={crm?.excluidaNoCrmEm}
+        motivoExclusaoCrm={crm?.motivoExclusaoCrm}
+      />
 
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Documentos ao lado dos dados pessoais: sao esses os campos que se

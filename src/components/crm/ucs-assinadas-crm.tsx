@@ -44,6 +44,8 @@ import {
   Factory,
   Clock,
   BadgeCheck,
+  OctagonAlert,
+  Archive,
 } from "lucide-react";
 import { matchBusca } from "@/lib/busca";
 import { conferirDesconto } from "@/lib/crm-desconto";
@@ -98,17 +100,32 @@ interface UcAssinada {
   situacao: string;
   vendaGanha: boolean;
   statusNegocio: string | null;
+  /** Sumiu do CRM (adesão/proposta excluída lá). Null = existe no CRM. */
+  excluidaNoCrmEm: string | null;
+  motivoExclusaoCrm: string | null;
   documentos: DocumentoCrm[];
   /** `percentCompensado` é a fração COBRADA no cadastro daqui (0,85 = 15% off). */
   jaCadastrada: { id: string; codigoUc: string; nome: string; percentCompensado: number | null } | null;
 }
 
-/** Em qual aba a UC cai, dados os dois eixos. */
-function abaDe(situacao: string, vendaGanha: boolean): Aba {
+/**
+ * Em qual aba a UC cai. Excluída no CRM vence tudo, até "Cadastradas": se a UC
+ * já virou cadastro aqui e a adesão sumiu lá, é justamente o caso mais grave.
+ * Só sai da aba vermelha quando alguém a arquiva (IGNORADA).
+ */
+function abaDe(u: Pick<UcAssinada, "situacao" | "vendaGanha" | "excluidaNoCrmEm">): Aba {
+  const { situacao, vendaGanha } = u;
+  if (u.excluidaNoCrmEm && situacao !== "IGNORADA") return "EXCLUIDA";
   if (situacao === "CONCLUIDA") return "CONCLUIDA";
   if (situacao === "IGNORADA") return "IGNORADA";
   return vendaGanha ? "PENDENTE" : "SEM_VENDA";
 }
+
+const MOTIVO_EXCLUSAO: Record<string, string> = {
+  ADESAO_EXCLUIDA: "A adesão foi excluída no gerador de propostas",
+  PROPOSTA_EXCLUIDA: "A proposta foi excluída no gerador de propostas",
+  UC_RETIRADA_DA_ADESAO: "Esta UC foi retirada do termo de adesão no gerador de propostas",
+};
 
 const ROTULO_CATEGORIA: Record<string, string> = {
   identidade: "Identidade",
@@ -136,6 +153,10 @@ const ABAS = [
   },
   { chave: "CONCLUIDA", rotulo: "Cadastradas", situacao: "CONCLUIDA", vendaGanha: "" },
   { chave: "IGNORADA", rotulo: "Ignoradas", situacao: "IGNORADA", vendaGanha: "" },
+  // Existe aqui, mas sumiu do CRM. Fica fora de "A cadastrar" para ninguém
+  // cadastrar um negócio que foi desfeito, e fora de "Cadastradas" para não
+  // passar batido.
+  { chave: "EXCLUIDA", rotulo: "Excluídas no CRM", situacao: "", vendaGanha: "" },
 ] as const;
 
 type Aba = (typeof ABAS)[number]["chave"];
@@ -234,7 +255,7 @@ export function UcsAssinadasCrm({ search = "" }: { search?: string }) {
         // Muda a situação em vez de tirar da lista: a linha continua carregada
         // e some só da aba de origem. Removê-la faria a UC desaparecer também
         // da aba de destino até o próximo F5 — e da busca.
-        const para = abaDe(situacao, uc.vendaGanha);
+        const para = abaDe({ ...uc, situacao });
         setUcs((prev) => prev.map((x) => (x.id === uc.id ? { ...x, situacao } : x)));
 
         if (avisar) {
@@ -319,17 +340,22 @@ export function UcsAssinadasCrm({ search = "" }: { search?: string }) {
   // mostra a aba a que pertence, então não se perde de vista o estado dele.
   const filtradas = buscando
     ? achadas
-    : achadas.filter((u) => abaDe(u.situacao, u.vendaGanha) === aba);
+    : achadas.filter((u) => abaDe(u) === aba);
 
   // Contagem sempre sobre a lista inteira — a aba mostra quantas existem, não
   // quantas sobraram do filtro.
   const contagens = ABAS.reduce(
     (acc, a) => {
-      acc[a.chave] = ucs.filter((u) => abaDe(u.situacao, u.vendaGanha) === a.chave).length;
+      acc[a.chave] = ucs.filter((u) => abaDe(u) === a.chave).length;
       return acc;
     },
     {} as Record<Aba, number>,
   );
+
+  const excluidasPendentes = ucs.filter((u) => abaDe(u) === "EXCLUIDA");
+  const excluidasJaCadastradas = excluidasPendentes.filter(
+    (u) => u.situacao === "CONCLUIDA" || u.jaCadastrada,
+  ).length;
 
   const totalKwh = filtradas.reduce((s, u) => s + (u.mediaMensalKwh ?? 0), 0);
   const semKwh = filtradas.filter((u) => u.mediaMensalKwh == null).length;
@@ -358,6 +384,47 @@ export function UcsAssinadasCrm({ search = "" }: { search?: string }) {
         </div>
       </div>
 
+      {/* Aviso GRITANTE: UC que sumiu do CRM não pode passar batida. Some sozinho
+          quando todas forem arquivadas (ou reaparecerem no CRM). */}
+      {excluidasPendentes.length > 0 && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-3 rounded-lg border-2 border-red-600 bg-red-600 p-4 text-white shadow-lg shadow-red-600/30"
+        >
+          <OctagonAlert className="h-8 w-8 shrink-0 animate-pulse" />
+          <div className="min-w-0 flex-1">
+            <div className="text-base font-bold uppercase tracking-wide">
+              {excluidasPendentes.length === 1
+                ? "1 UC foi EXCLUÍDA no CRM"
+                : `${excluidasPendentes.length} UCs foram EXCLUÍDAS no CRM`}
+            </div>
+            <div className="text-sm text-red-50">
+              A adesão (ou a proposta) foi apagada no gerador de propostas, mas a UC
+              continua aqui. Não cadastre.
+              {excluidasJaCadastradas > 0 && (
+                <strong className="font-bold text-white">
+                  {" "}
+                  {excluidasJaCadastradas} já{" "}
+                  {excluidasJaCadastradas === 1 ? "está cadastrada" : "estão cadastradas"} no
+                  Gestor: confira se o cadastro deve ser desativado.
+                </strong>
+              )}{" "}
+              Depois de conferir, arquive.
+            </div>
+          </div>
+          {!(aba === "EXCLUIDA" && !buscando) && (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="bg-white font-semibold text-red-700 hover:bg-red-50"
+              onClick={() => setAba("EXCLUIDA")}
+            >
+              Ver as excluídas
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Buscando, as abas param de recortar a lista — ficam desbotadas para
           deixar isso explícito, em vez de a aba marcada mentir sobre o que
           está na tela. */}
@@ -372,12 +439,26 @@ export function UcsAssinadasCrm({ search = "" }: { search?: string }) {
               aba === a.chave && !buscando
                 ? "border-primary font-medium text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground",
+              a.chave === "EXCLUIDA" &&
+                contagens.EXCLUIDA > 0 &&
+                "font-semibold text-red-600 dark:text-red-400",
+              a.chave === "EXCLUIDA" && aba === "EXCLUIDA" && !buscando && "border-red-600",
             )}
           >
+            {a.chave === "EXCLUIDA" && contagens.EXCLUIDA > 0 && (
+              <OctagonAlert className="mr-1 inline h-4 w-4 -translate-y-px" />
+            )}
             {a.rotulo}
-            <span className="ml-1.5 text-xs text-muted-foreground">
+            <span
+              className={cn(
+                "ml-1.5 text-xs text-muted-foreground",
+                a.chave === "EXCLUIDA" &&
+                  contagens.EXCLUIDA > 0 &&
+                  "rounded-full bg-red-600 px-1.5 py-0.5 font-bold text-white",
+              )}
+            >
               {buscando
-                ? achadas.filter((u) => abaDe(u.situacao, u.vendaGanha) === a.chave).length
+                ? achadas.filter((u) => abaDe(u) === a.chave).length
                 : contagens[a.chave]}
             </span>
           </button>
@@ -430,7 +511,9 @@ export function UcsAssinadasCrm({ search = "" }: { search?: string }) {
                   ? "Nenhuma adesão assinada com a venda em aberto."
                   : aba === "CONCLUIDA"
                     ? "Nenhuma UC cadastrada a partir do CRM ainda."
-                    : "Nenhuma UC ignorada."}
+                    : aba === "EXCLUIDA"
+                      ? "Nenhuma UC excluída no CRM esperando conferência."
+                      : "Nenhuma UC ignorada."}
           </CardContent>
         </Card>
       ) : (
@@ -438,16 +521,53 @@ export function UcsAssinadasCrm({ search = "" }: { search?: string }) {
           {filtradas.map((u) => {
             // A aba é do CARD, não a selecionada: buscando, a lista mistura as
             // quatro, e os botões precisam ser os do estado daquela UC.
-            const abaDoCard = abaDe(u.situacao, u.vendaGanha);
+            const abaDoCard = abaDe(u);
+            const excluida = u.excluidaNoCrmEm != null;
             return (
-            <Card key={u.id}>
+            <Card
+              key={u.id}
+              className={cn(excluida && "border-2 border-red-600 bg-red-50/60 dark:bg-red-950/30")}
+            >
               <CardContent className="space-y-3 p-4">
+                {excluida && (
+                  <div className="flex items-start gap-2 rounded-md bg-red-600 px-3 py-2 text-sm text-white">
+                    <OctagonAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div>
+                      <div className="font-bold uppercase tracking-wide">
+                        Excluída no CRM em {formatarData(u.excluidaNoCrmEm)}
+                      </div>
+                      <div className="text-red-50">
+                        {MOTIVO_EXCLUSAO[u.motivoExclusaoCrm ?? ""] ??
+                          "Não existe mais no gerador de propostas"}
+                        . Os dados abaixo são a última versão lida.
+                        {(u.situacao === "CONCLUIDA" || u.jaCadastrada) && (
+                          <strong className="font-bold text-white">
+                            {" "}
+                            Esta UC JÁ ESTÁ cadastrada no Gestor — confira se deve ser
+                            desativada.
+                          </strong>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0 flex-1 space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-base font-semibold">
+                      <span
+                        className={cn(
+                          "font-mono text-base font-semibold",
+                          excluida && "text-red-700 line-through decoration-2 dark:text-red-400",
+                        )}
+                      >
                         {u.codigoUcBruto || u.codigoUc}
                       </span>
+                      {excluida && (
+                        <Badge className="gap-1 bg-red-600 text-white hover:bg-red-600">
+                          <OctagonAlert className="h-3 w-3" />
+                          EXCLUÍDA NO CRM
+                        </Badge>
+                      )}
                       {buscando && (
                         <Badge variant="outline">
                           {ABAS.find((a) => a.chave === abaDoCard)?.rotulo}
@@ -544,7 +664,18 @@ export function UcsAssinadasCrm({ search = "" }: { search?: string }) {
                     {/* Sem venda fechada não é trabalho, é espera: só dá para
                         ignorar. Cadastrar aqui seria cadastrar um negócio que
                         ainda pode não acontecer. */}
-                    {abaDoCard === "SEM_VENDA" ? (
+                    {abaDoCard === "EXCLUIDA" ? (
+                      <Button
+                        size="sm"
+                        className="bg-red-600 text-white hover:bg-red-700"
+                        disabled={acting === u.id}
+                        onClick={() => void mover(u, "IGNORADA")}
+                        title="Já conferi: tirar do aviso vermelho. A UC fica em Ignoradas, ainda marcada como excluída."
+                      >
+                        <Archive className="mr-1 h-4 w-4" />
+                        Conferi, arquivar
+                      </Button>
+                    ) : abaDoCard === "SEM_VENDA" ? (
                       <Button
                         size="sm"
                         variant="outline"

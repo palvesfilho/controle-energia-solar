@@ -38,6 +38,7 @@ import {
   HelpCircle,
   HardHat,
   CheckCheck,
+  OctagonAlert,
   Undo2,
 } from "lucide-react";
 import { matchBusca } from "@/lib/busca";
@@ -67,7 +68,15 @@ interface ItemFila {
   mediaMensalKwh: number | null;
   situacao: string;
   obraId: string | null;
+  /** Proposta/adesão sumiu do CRM. Null = existe lá. */
+  excluidaNoCrmEm: string | null;
+  motivoExclusaoCrm: string | null;
 }
+
+const MOTIVO_EXCLUSAO_VENDA: Record<string, string> = {
+  PROPOSTA_EXCLUIDA: "a proposta foi excluída no gerador de propostas",
+  ADESAO_EXCLUIDA: "a adesão foi excluída no gerador de propostas",
+};
 
 const TEXTOS: Record<
   ModuloCrm,
@@ -213,6 +222,13 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
       if (Array.isArray(dados.naoClassificados) && dados.naoClassificados.length > 0) {
         toast.warning(`${dados.naoClassificados.length} produto(s) sem de-para definido.`);
       }
+      const excluidasAgora = (dados.ucsExcluidasNoCrm ?? 0) + (dados.vendasExcluidasNoCrm ?? 0);
+      if (excluidasAgora > 0) {
+        toast.error(
+          `${excluidasAgora} item(ns) sumiram do CRM nesta rodada (adesão ou proposta excluída) — marcados em vermelho.`,
+          { duration: 15000 },
+        );
+      }
       if (dados.ucsSemMediaConfiavel > 0) {
         toast.warning(
           `${dados.ucsSemMediaConfiavel} UC(s) sem consumo confiável — ficaram em branco.`,
@@ -284,6 +300,16 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
     (i) => i.situacao === "CONCLUIDA" || i.situacao === "IGNORADA",
   );
 
+  // Vendas que sumiram do CRM e ninguém arquivou ainda. Na Associação o aviso
+  // principal é o da lista de UCs; aqui é o da VENDA (e da obra que ela criou).
+  // Só na Brasil Solar: na Associação a caixa "A cadastrar" é a lista de UCs,
+  // e o aviso vermelho de lá já cobre a adesão excluída.
+  const vendasExcluidas =
+    modulo === "bs"
+      ? itens.filter((i) => i.excluidaNoCrmEm && i.situacao !== "IGNORADA")
+      : [];
+  const comObra = vendasExcluidas.filter((i) => i.obraId).length;
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -304,6 +330,34 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
           <AvisoAgenda agenda={agenda} />
         </div>
       </div>
+
+      {vendasExcluidas.length > 0 && (
+        <div
+          role="alert"
+          className="flex items-center gap-3 rounded-lg border-2 border-red-600 bg-red-600 p-4 text-white shadow-lg shadow-red-600/30"
+        >
+          <OctagonAlert className="h-8 w-8 shrink-0 animate-pulse" />
+          <div className="min-w-0 flex-1">
+            <div className="text-base font-bold uppercase tracking-wide">
+              {vendasExcluidas.length === 1
+                ? "1 venda foi EXCLUÍDA no CRM"
+                : `${vendasExcluidas.length} vendas foram EXCLUÍDAS no CRM`}
+            </div>
+            <div className="text-sm text-red-50">
+              A proposta ou a adesão foi apagada no gerador de propostas, mas a venda
+              continua aqui. Estão marcadas em vermelho abaixo.
+              {comObra > 0 && (
+                <strong className="font-bold text-white">
+                  {" "}
+                  {comObra} já {comObra === 1 ? "gerou obra" : "geraram obra"}: confira na
+                  Aprovação de Obras.
+                </strong>
+              )}{" "}
+              Depois de conferir, clique em Ignorar.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* A autorização de acesso é documento da ADESÃO, que só existe no mundo
           Associação. Na Brasil Solar o card não faria sentido. */}
@@ -406,13 +460,46 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
                 <div className="grid gap-3">
                   {daCaixa.map((item) => {
                     const ucs = item.codigosUc ? item.codigosUc.split(",") : [];
+                    const excluida = item.excluidaNoCrmEm != null;
                     return (
-                      <Card key={item.id}>
+                      <Card
+                        key={item.id}
+                        className={cn(
+                          excluida && "border-2 border-red-600 bg-red-50/60 dark:bg-red-950/30",
+                        )}
+                      >
                         <CardContent className="p-4">
+                          {excluida && (
+                            <div className="mb-3 flex items-start gap-2 rounded-md bg-red-600 px-3 py-2 text-sm text-white">
+                              <OctagonAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                              <span>
+                                <strong className="font-bold uppercase tracking-wide">
+                                  Excluída no CRM em {formatarData(item.excluidaNoCrmEm)}
+                                </strong>
+                                {" — "}
+                                {MOTIVO_EXCLUSAO_VENDA[item.motivoExclusaoCrm ?? ""] ??
+                                  "não existe mais no gerador de propostas"}
+                                .{item.obraId && " Esta venda já gerou uma obra."}
+                              </span>
+                            </div>
+                          )}
                           <div className="flex flex-wrap items-start justify-between gap-4">
                             <div className="min-w-0 flex-1 space-y-1">
                               <div className="flex flex-wrap items-center gap-2">
-                                <h3 className="truncate font-semibold">{item.clienteNome}</h3>
+                                <h3
+                                  className={cn(
+                                    "truncate font-semibold",
+                                    excluida && "text-red-700 line-through decoration-2 dark:text-red-400",
+                                  )}
+                                >
+                                  {item.clienteNome}
+                                </h3>
+                                {excluida && (
+                                  <Badge className="gap-1 bg-red-600 text-white hover:bg-red-600">
+                                    <OctagonAlert className="h-3 w-3" />
+                                    EXCLUÍDA NO CRM
+                                  </Badge>
+                                )}
                                 <Badge variant="secondary">{item.nomeProduto}</Badge>
                                 {caixa.chave === "RESOLVIDAS" && (
                                   <Badge variant="outline">
