@@ -6,6 +6,11 @@ import { TodosOsVigentes } from "@/components/rateios/todos-vigentes";
 import { ProtocolosEmAberto } from "@/components/rateios/protocolos-abertos";
 import { AdicionarUc, type UnidadeDisponivel } from "@/components/rateios/adicionar-uc";
 import {
+  avisosTemplateRge,
+  baixarCsvTemplateRge,
+  type LinhaTemplateRge,
+} from "@/lib/rateio-template-rge";
+import {
   SugestaoPercentuais,
   type ModoSugestao,
 } from "@/components/rateios/sugestao-percentuais";
@@ -19,6 +24,7 @@ import {
   Check,
   Clock,
   Copy,
+  Download,
   History,
   Loader2,
   Mail,
@@ -1631,6 +1637,21 @@ function CreateRateioDialog({
     }
   }
 
+  // Template do portal da RGE com as MESMAS linhas que o rateio vai gravar.
+  // Só se monta com a janela do protocolo aberta — é ali que o botão mora.
+  const linhasTemplate: LinhaTemplateRge[] = protocoloOpen
+    ? montarItems().map((it) => {
+        const u = linhas.find((l) => l.id === it.consumerUnitId);
+        return {
+          codigoUc: u?.codigoUc ?? null,
+          cpfCnpj: u?.cpfCnpj ?? null,
+          percentual: it.percentual,
+          ancora: ancoras.has(it.consumerUnitId),
+        };
+      })
+    : [];
+  const avisosTemplate = avisosTemplateRge(linhasTemplate);
+
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1900,6 +1921,30 @@ function CreateRateioDialog({
             Informe o número de protocolo gerado pela companhia de energia ao
             registrar este rateio. Ele fica gravado junto do rateio.
           </p>
+
+          {/* O arquivo que o portal da RGE pede para registrar o rateio, já
+              com as UCs e os percentuais desta tela. */}
+          <div className="space-y-1.5 rounded-md border bg-muted/40 p-2.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => baixarCsvTemplateRge(linhasTemplate, plantName)}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Baixar Template
+            </Button>
+            <p className="text-[11px] text-muted-foreground">
+              Planilha &ldquo;Informar Rateio&rdquo; da RGE preenchida com as{" "}
+              {linhasTemplate.length} UC{linhasTemplate.length === 1 ? "" : "s"} deste rateio.
+            </p>
+            {avisosTemplate.length > 0 && (
+              <p className="text-[11px] font-medium text-amber-700">
+                Confira antes de subir: {avisosTemplate.join("; ")}.
+              </p>
+            )}
+          </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="protocolo-novo">Número do protocolo</Label>
