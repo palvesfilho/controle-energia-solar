@@ -123,6 +123,20 @@ export default clerkMiddleware(async (auth, req) => {
 
   const { userId, sessionClaims } = await auth();
   if (!userId) {
+    // Link de convite emitido antes de 25/09/2026 aponta para a home do role
+    // (rota protegida) com `__clerk_ticket` na URL. Redirecionar sem a query
+    // jogava o ticket fora e a pessoa caía no login com "usuário não existe".
+    // Leva o ticket junto para a tela certa: cadastro se a conta ainda não
+    // existe, login se já existe.
+    if (req.nextUrl.searchParams.has("__clerk_ticket")) {
+      const destino =
+        req.nextUrl.searchParams.get("__clerk_status") === "sign_in"
+          ? "/login-clerk"
+          : "/cadastro-clerk";
+      const url = new URL(destino, req.url);
+      url.search = req.nextUrl.search;
+      return NextResponse.redirect(url);
+    }
     return NextResponse.redirect(new URL("/login-clerk", req.url));
   }
 

@@ -10,7 +10,6 @@
  * uma ação explícita do admin, nunca automaticamente.
  */
 import { clerkClient } from "@clerk/nextjs/server";
-import { getHomeRoute } from "@/lib/roles";
 import type { UserRole } from "@/types/next-auth";
 
 function baseUrl(): string {
@@ -45,7 +44,7 @@ export async function enviarConviteCadastroCliente(
       role: "CLIENTE_BS",
       proprietarioId: input.proprietarioId,
     },
-    redirectUrl: `${baseUrl()}/portal-cliente`,
+    redirectUrl: `${baseUrl()}/cadastro-clerk`,
     ignoreExisting: true,
   });
   return { invitationId: invitation.id, email: input.email };
@@ -76,7 +75,7 @@ export async function enviarConviteAcessoUsuario(
   const invitation = await client.invitations.createInvitation({
     emailAddress: input.email,
     publicMetadata: { role: input.role },
-    redirectUrl: `${baseUrl()}${getHomeRoute(input.role)}`,
+    redirectUrl: `${baseUrl()}/cadastro-clerk`,
     ignoreExisting: true,
   });
   return { invitationId: invitation.id, email: input.email };
