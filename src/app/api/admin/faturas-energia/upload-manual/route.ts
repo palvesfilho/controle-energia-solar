@@ -24,7 +24,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const formData = await req.formData();
+  // Corpo acima de 10MB chega TRUNCADO (teto do Next) e o parse do FormData
+  // estoura. Sem este catch a resposta era um 500 vazio, e a tela mostrava
+  // "Unexpected end of JSON input" em vez do motivo.
+  let formData: FormData;
+  try {
+    formData = await req.formData();
+  } catch (err) {
+    console.error("[upload-manual] corpo ilegível:", err);
+    return NextResponse.json(
+      { error: "Envio grande demais ou corrompido (limite de 10 MB por envio). Envie menos arquivos por vez." },
+      { status: 413 },
+    );
+  }
   const files = formData.getAll("files");
   if (files.length === 0) {
     return NextResponse.json({ error: "Nenhum arquivo enviado" }, { status: 400 });

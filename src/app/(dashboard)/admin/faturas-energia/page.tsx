@@ -139,34 +139,49 @@ export default function FaturasEnergiaVisaoGeralPage() {
     if (files.length === 0) return;
     setUploading(true);
     setUploadResults(null);
+    const falha = (file: string, error: string): UploadResultItem => ({
+      file,
+      success: false,
+      error,
+      warning: null,
+      codigoInstalacao: null, ucNome: null, mesRef: null, anoRef: null, valorTotal: null,
+    });
+    // UM arquivo por request. O lote inteiro num POST só estourava o teto de
+    // 10MB do corpo: o Next truncava, o FormData não fechava e o servidor
+    // devolvia 500 VAZIO ("Unexpected end of JSON input"). Mesmo desenho do
+    // UploadFaturasButton.
+    const acumulado: UploadResultItem[] = [];
     try {
-      const fd = new FormData();
-      for (const f of Array.from(files)) fd.append("files", f);
-      const res = await fetch("/api/admin/faturas-energia/upload-manual", {
-        method: "POST",
-        body: fd,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setUploadResults([{
-          file: "erro geral",
-          success: false,
-          error: data.error ?? "Falha no upload",
-          warning: null,
-          codigoInstalacao: null, ucNome: null, mesRef: null, anoRef: null, valorTotal: null,
-        }]);
-      } else {
-        setUploadResults(data.items ?? []);
-        if ((data.ok ?? 0) > 0) loadRows();
+      for (const f of Array.from(files)) {
+        try {
+          const fd = new FormData();
+          fd.append("files", f);
+          const res = await fetch("/api/admin/faturas-energia/upload-manual", {
+            method: "POST",
+            body: fd,
+          });
+          const text = await res.text();
+          let data: { items?: UploadResultItem[]; error?: string } = {};
+          try {
+            data = text ? JSON.parse(text) : {};
+          } catch {
+            data = {};
+          }
+          if (res.ok && data.items?.length) acumulado.push(...data.items);
+          else
+            acumulado.push(
+              falha(
+                f.name,
+                data.error ??
+                  `Falha no servidor (HTTP ${res.status}${!text ? " — resposta vazia" : ""})`,
+              ),
+            );
+        } catch (e) {
+          acumulado.push(falha(f.name, e instanceof Error ? e.message : String(e)));
+        }
+        setUploadResults([...acumulado]);
       }
-    } catch (e) {
-      setUploadResults([{
-        file: "erro",
-        success: false,
-        error: e instanceof Error ? e.message : String(e),
-        warning: null,
-        codigoInstalacao: null, ucNome: null, mesRef: null, anoRef: null, valorTotal: null,
-      }]);
+      if (acumulado.some((r) => r.success)) loadRows();
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
