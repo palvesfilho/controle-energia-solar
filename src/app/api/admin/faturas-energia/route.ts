@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const ano = Number(searchParams.get("ano")) || new Date().getFullYear();
 
-  const [ucs, plants, bills, existingKeys, naoEmitidas, mesesPorUc, mesesPorUsina, ucsTodas] = await Promise.all([
+  const [ucs, plants, bills, keysUc, naoEmitidas, mesesPorUc, mesesPorUsina, ucsTodas, keysUsina] = await Promise.all([
     prisma.consumerUnit.findMany({
       // Tela da Gestora de Energia (Associação): UCs do módulo Brasil Solar
       // ficam de fora — o sync de fatura delas se acompanha em
@@ -112,7 +112,14 @@ export async function GET(req: NextRequest) {
     prisma.consumerUnit.findMany({
       select: { id: true, codigoUc: true, codigoUcAntigo: true },
     }),
+    // O sync grava PDF de usina em "plant-bills/<id>", não em "bills/". Listando
+    // só "bills", 12 faturas de usina com o arquivo no lugar apareciam como
+    // "Arquivo perdido" (08/10/2026).
+    listExistingKeys("plant-bills"),
   ]);
+  const existingKeys = new Set([...keysUc, ...keysUsina]);
+  const arquivoExiste = (b: { pdfUrl: string | null }) =>
+    !!b.pdfUrl && existingKeys.has(relativePathToKey(b.pdfUrl));
 
   const ucsPorCodigo = indexarUcsPorCodigo(ucsTodas);
   const gemeasDaUsina = new Map(
@@ -165,7 +172,11 @@ export async function GET(req: NextRequest) {
     ucBillIndex.set(`${b.consumerUnitId}:${b.mesReferencia}`, b);
     if (b.plantId) {
       const key = `${b.plantId}:${b.mesReferencia}`;
-      if (!usinaBillIndex.has(key)) usinaBillIndex.set(key, b);
+      // Mais de uma fatura da usina no mesmo mês (a ANTUNES tem, de 10/2025 a
+      // 03/2026, uma órfã "_pending" sem arquivo e outra na UC gêmea com o PDF):
+      // vale a que tem o arquivo, senão a grade acusa perdido com o PDF no lugar.
+      const atual = usinaBillIndex.get(key);
+      if (!atual || (!arquivoExiste(atual) && arquivoExiste(b))) usinaBillIndex.set(key, b);
     }
   }
 
@@ -181,9 +192,7 @@ export async function GET(req: NextRequest) {
       pagoEm: bill.pagoEm?.toISOString() ?? null,
     };
     if (!bill.pdfUrl) return { ...base, status: "no_pdf", pdfUrl: null };
-    const key = relativePathToKey(bill.pdfUrl);
-    const fileExists = existingKeys.has(key);
-    return fileExists
+    return arquivoExiste(bill)
       ? { ...base, status: "ok", pdfUrl: bill.pdfUrl }
       : { ...base, status: "error", pdfUrl: null };
   }
