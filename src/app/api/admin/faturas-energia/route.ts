@@ -108,6 +108,7 @@ export async function GET(req: NextRequest) {
     }),
     // TODAS as UCs, inclusive Brasil Solar: é entre elas que mora a gêmea da
     // usina (ver lib/fatura-usina.ts). Não vira linha da grade.
+    // origem-ok: só resolve a UC gêmea de cada usina pelo código; nenhuma UC daqui é listada
     prisma.consumerUnit.findMany({
       select: { id: true, codigoUc: true, codigoUcAntigo: true },
     }),
