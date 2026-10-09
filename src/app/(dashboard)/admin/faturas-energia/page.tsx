@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Ban, Download, Loader2, Minus, X, Receipt, Upload, CheckCircle2, AlertCircle } from "lucide-react";
+import { Ban, Dot, Download, FileMinus, Loader2, Minus, X, Receipt, Upload, CheckCircle2, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import type { FaturasEnergiaRow, FaturaCell } from "@/app/api/admin/faturas-energia/route";
 import { formatCodigoUc } from "@/lib/uc-codigo";
@@ -14,7 +14,15 @@ const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Se
 const selectClass =
   "text-sm border rounded-lg px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all";
 
-function CellIcon({ cell, onClickVazio }: { cell: FaturaCell; onClickVazio: () => void }) {
+function CellIcon({
+  cell,
+  entrada,
+  onClickVazio,
+}: {
+  cell: FaturaCell;
+  entrada: FaturasEnergiaRow["entrada"];
+  onClickVazio: () => void;
+}) {
   if (cell.status === "ok" && cell.pdfUrl) {
     return (
       <a
@@ -42,9 +50,21 @@ function CellIcon({ cell, onClickVazio }: { cell: FaturaCell; onClickVazio: () =
     return (
       <span
         title="Fatura registrada sem PDF anexado (backup histórico ou sync incompleto)"
-        className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground"
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300"
       >
-        <Minus className="h-3.5 w-3.5" />
+        <FileMinus className="h-3.5 w-3.5" />
+      </span>
+    );
+  }
+  // Mês anterior à entrada da UC: não há fatura a esperar. Sem caixa e sem
+  // clique de propósito — tem de parecer "nada aqui", não "falta algo aqui".
+  if (cell.antesDaEntrada && !cell.naoEmitida) {
+    return (
+      <span
+        title={`Antes da entrada da UC${entrada ? ` (entrou em ${MESES_LABEL[entrada.mes - 1]}/${entrada.ano})` : ""}`}
+        className="inline-flex h-7 w-7 items-center justify-center text-muted-foreground/40"
+      >
+        <Dot className="h-4 w-4" />
       </span>
     );
   }
@@ -82,6 +102,7 @@ function rotuloStatus(cell: FaturaCell | undefined): string {
   if (cell.status === "error") return "Arquivo perdido";
   if (cell.status === "no_pdf") return "Sem PDF";
   if (cell.naoEmitida) return "Não emitida pela concessionária";
+  if (cell.antesDaEntrada) return "Antes da entrada";
   return "Não sincronizado";
 }
 
@@ -235,7 +256,7 @@ export default function FaturasEnergiaVisaoGeralPage() {
   const filtered = filtro.filtrados;
 
   const totals = useMemo(() => {
-    let ok = 0, err = 0, noPdf = 0, miss = 0, naoEmit = 0;
+    let ok = 0, err = 0, noPdf = 0, miss = 0, naoEmit = 0, antes = 0;
     for (const r of filtered) {
       for (let m = 1; m <= 12; m++) {
         const c = r.meses[m];
@@ -244,10 +265,11 @@ export default function FaturasEnergiaVisaoGeralPage() {
         else if (c.status === "error") err++;
         else if (c.status === "no_pdf") noPdf++;
         else if (c.naoEmitida) naoEmit++;
+        else if (c.antesDaEntrada) antes++;
         else miss++;
       }
     }
-    return { ok, err, noPdf, miss, naoEmit };
+    return { ok, err, noPdf, miss, naoEmit, antes };
   }, [filtered]);
 
   return (
@@ -354,7 +376,7 @@ export default function FaturasEnergiaVisaoGeralPage() {
               Arquivo perdido ({totals.err})
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="inline-block h-3 w-3 rounded-sm bg-muted-foreground/40" />
+              <span className="inline-block h-3 w-3 rounded-sm bg-sky-500" />
               Sem PDF ({totals.noPdf})
             </div>
             <div className="flex items-center gap-1.5">
@@ -364,6 +386,10 @@ export default function FaturasEnergiaVisaoGeralPage() {
             <div className="flex items-center gap-1.5">
               <span className="inline-block h-3 w-3 rounded-sm bg-violet-500" />
               Não emitida pela concessionária ({totals.naoEmit})
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Dot className="h-4 w-4 text-muted-foreground/60" />
+              Antes da entrada da UC ({totals.antes})
             </div>
             <div className="ml-auto">{filtered.length} UC(s)</div>
           </div>
@@ -420,7 +446,7 @@ export default function FaturasEnergiaVisaoGeralPage() {
                           // receberia doze colunas em branco.
                           data-export-valor={rotuloStatus(r.meses[m])}
                         >
-                          <CellIcon cell={r.meses[m]} onClickVazio={() => setVazio({ row: r, mes: m })} />
+                          <CellIcon cell={r.meses[m]} entrada={r.entrada} onClickVazio={() => setVazio({ row: r, mes: m })} />
                         </td>
                       ))}
                     </tr>

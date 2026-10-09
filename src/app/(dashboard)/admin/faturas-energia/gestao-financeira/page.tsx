@@ -8,6 +8,7 @@ import {
   ClipboardCopy,
   Clock4,
   CreditCard,
+  Dot,
   Download,
   Loader2,
   Minus,
@@ -43,11 +44,15 @@ const selectClass =
 //  - aberta     → nem nós pagamos, nem RGE confirmou (🔴)
 //  - missing    → fatura não sincronizada (⬜)
 //  - nao-emitida → o operador marcou que a concessionária não emitiu (🟪)
-type Pagamento = "conferida" | "so-interno" | "so-rge" | "aberta" | "missing" | "nao-emitida";
+//  - antes-entrada → mês anterior à entrada da UC, não há fatura a esperar (·)
+type Pagamento = "conferida" | "so-interno" | "so-rge" | "aberta" | "missing" | "nao-emitida" | "antes-entrada";
 
 function getPagamento(cell: FaturaCell | undefined): Pagamento {
   if (!cell) return "missing";
-  if (cell.status === "missing") return cell.naoEmitida ? "nao-emitida" : "missing";
+  if (cell.status === "missing") {
+    if (cell.naoEmitida) return "nao-emitida";
+    return cell.antesDaEntrada ? "antes-entrada" : "missing";
+  }
   const interno = !!cell.pagoEm;
   const rge = cell.contaPaga;
   if (interno && rge) return "conferida";
@@ -64,6 +69,7 @@ const ROTULO_PAGAMENTO: Record<Pagamento, string> = {
   aberta: "Em aberto",
   missing: "Sem fatura",
   "nao-emitida": "Não emitida pela concessionária",
+  "antes-entrada": "Antes da entrada",
 };
 
 /** Fora do componente para a identidade do array não mudar a cada render. */
@@ -157,6 +163,13 @@ function CellIcon({ cell }: { cell: FaturaCell | undefined }) {
         className={`${wrap} bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300`}
       >
         <Ban className="h-3.5 w-3.5" />
+      </span>
+    );
+  }
+  if (pag === "antes-entrada") {
+    return (
+      <span title="Antes da entrada da UC" className={`${wrap} text-muted-foreground/40`}>
+        <Dot className="h-4 w-4" />
       </span>
     );
   }
@@ -565,6 +578,10 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
                   <Ban className="h-3 w-3" />
                 </span>
                 Não emitida pela concessionária
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Dot className="h-4 w-4 text-muted-foreground/60" />
+                Antes da entrada da UC
               </span>
             </div>
             <div className="overflow-x-auto">

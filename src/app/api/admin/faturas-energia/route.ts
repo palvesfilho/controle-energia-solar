@@ -22,6 +22,9 @@ export interface FaturaCell {
   // fatura neste mês. Fatura que chega depois ganha — a célula deixa de ser
   // "missing" e isto vem null.
   naoEmitida: { motivo: string | null; por: string; em: string } | null;
+  // Só em célula "missing": o mês é ANTERIOR à entrada da UC (ver `entrada` na
+  // linha). Não é fatura faltando — a UC ainda não estava aqui.
+  antesDaEntrada: boolean;
 }
 
 export interface FaturasEnergiaRow {
@@ -36,13 +39,19 @@ export interface FaturasEnergiaRow {
   // true quando origem=usina e Plant.pagadorFaturaEnergia=INVESTIDORES:
   // gestora não paga a fatura, a linha aparece só pra controle.
   pagaInvestidor: boolean;
+  // Mês em que a UC "entrou": o mais antigo entre a 1ª fatura que o sistema tem
+  // (em qualquer ano) e o início do contrato, quando cadastrado. null = sem
+  // fatura nenhuma e sem contrato — não dá para saber, nada é tratado como
+  // "antes da entrada". O `createdAt` não serve: 87 UCs nasceram no mesmo
+  // import de abr/2026.
+  entrada: { ano: number; mes: number } | null;
 }
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const ano = Number(searchParams.get("ano")) || new Date().getFullYear();
 
-  const [ucs, plants, bills, existingKeys, naoEmitidas] = await Promise.all([
+  const [ucs, plants, bills, existingKeys, naoEmitidas, mesesPorUc, mesesPorUsina] = await Promise.all([
     prisma.consumerUnit.findMany({
       // Tela da Gestora de Energia (Associação): UCs do módulo Brasil Solar
       // ficam de fora — o sync de fatura delas se acompanha em
@@ -85,7 +94,44 @@ export async function GET(req: NextRequest) {
     }),
     listExistingKeys("bills"),
     prisma.faturaNaoEmitida.findMany({ where: { anoReferencia: ano } }),
+    // 1ª fatura de cada UC / usina em QUALQUER ano — é o que diz quando entrou.
+    prisma.consumerBill.groupBy({
+      by: ["consumerUnitId", "anoReferencia"],
+      where: { consumerUnitId: { not: null } },
+      _min: { mesReferencia: true },
+    }),
+    prisma.consumerBill.groupBy({
+      by: ["plantId", "anoReferencia"],
+      where: { plantId: { not: null } },
+      _min: { mesReferencia: true },
+    }),
   ]);
+
+  // Mês como número corrido (ano*12 + mês-1), pra comparar sem data.
+  const idxMes = (a: number, m: number) => a * 12 + (m - 1);
+  function primeiraFatura(grupos: { dono: string | null; ano: number; mes: number | null }[]) {
+    const mapa = new Map<string, number>();
+    for (const g of grupos) {
+      if (!g.dono || g.mes == null) continue;
+      const i = idxMes(g.ano, g.mes);
+      if (i < (mapa.get(g.dono) ?? Infinity)) mapa.set(g.dono, i);
+    }
+    return mapa;
+  }
+  const primeiraPorUc = primeiraFatura(
+    mesesPorUc.map((g) => ({ dono: g.consumerUnitId, ano: g.anoReferencia, mes: g._min.mesReferencia })),
+  );
+  const primeiraPorUsina = primeiraFatura(
+    mesesPorUsina.map((g) => ({ dono: g.plantId, ano: g.anoReferencia, mes: g._min.mesReferencia })),
+  );
+
+  function entradaDe(primeira: number | undefined, contrato: Date | null): number | null {
+    const c = contrato ? idxMes(contrato.getUTCFullYear(), contrato.getUTCMonth() + 1) : undefined;
+    if (primeira == null && c == null) return null;
+    return Math.min(primeira ?? Infinity, c ?? Infinity);
+  }
+  const rotuloEntrada = (i: number | null) =>
+    i == null ? null : { ano: Math.floor(i / 12), mes: (i % 12) + 1 };
 
   // Mesma chave da linha da grade: "uc:<id>:<mes>" ou "plant:<id>:<mes>".
   const naoEmitidaIndex = new Map<string, FaturaCell["naoEmitida"]>();
@@ -108,10 +154,11 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  function toCell(bill: typeof bills[number] | undefined, chave: string): FaturaCell {
-    if (!bill) return { status: "missing", pdfUrl: null, billId: null, valorTotal: null, vencimento: null, contaPaga: false, pagoEm: null, naoEmitida: naoEmitidaIndex.get(chave) ?? null };
+  function toCell(bill: typeof bills[number] | undefined, chave: string, antesDaEntrada: boolean): FaturaCell {
+    if (!bill) return { status: "missing", pdfUrl: null, billId: null, valorTotal: null, vencimento: null, contaPaga: false, pagoEm: null, naoEmitida: naoEmitidaIndex.get(chave) ?? null, antesDaEntrada };
     const base = {
       naoEmitida: null,
+      antesDaEntrada: false,
       billId: bill.id,
       valorTotal: bill.valorTotal ?? null,
       vencimento: bill.vencimento?.toISOString() ?? null,
@@ -126,13 +173,23 @@ export async function GET(req: NextRequest) {
       : { ...base, status: "error", pdfUrl: null };
   }
 
-  function buildMeses(dono: string, lookup: (mes: number) => typeof bills[number] | undefined): Record<number, FaturaCell> {
+  function buildMeses(dono: string, entrada: number | null, lookup: (mes: number) => typeof bills[number] | undefined): Record<number, FaturaCell> {
     const meses: Record<number, FaturaCell> = {};
-    for (let mes = 1; mes <= 12; mes++) meses[mes] = toCell(lookup(mes), `${dono}:${mes}`);
+    for (let mes = 1; mes <= 12; mes++) {
+      meses[mes] = toCell(lookup(mes), `${dono}:${mes}`, entrada != null && idxMes(ano, mes) < entrada);
+    }
     return meses;
   }
 
+  const entradaUc = new Map(
+    ucs.map((uc) => [uc.id, entradaDe(primeiraPorUc.get(uc.id), uc.dataInicioContrato)]),
+  );
+  const entradaUsina = new Map(
+    plants.map((p) => [p.id, entradaDe(primeiraPorUsina.get(p.id), p.dataAssinaturaContrato)]),
+  );
+
   const rowsClientes: FaturasEnergiaRow[] = ucs.map((uc) => ({
+    entrada: rotuloEntrada(entradaUc.get(uc.id) ?? null),
     ucId: `uc:${uc.id}`,
     codigoUc: uc.codigoUc,
     nome: uc.nome,
@@ -140,11 +197,12 @@ export async function GET(req: NextRequest) {
     origem: "cliente",
     proprietario: uc.consumer?.name ?? uc.plant?.name ?? "-",
     active: uc.active,
-    meses: buildMeses(`uc:${uc.id}`, (m) => ucBillIndex.get(`${uc.id}:${m}`)),
+    meses: buildMeses(`uc:${uc.id}`, entradaUc.get(uc.id) ?? null, (m) => ucBillIndex.get(`${uc.id}:${m}`)),
     pagaInvestidor: false,
   }));
 
   const rowsUsinas: FaturasEnergiaRow[] = plants.map((p) => ({
+    entrada: rotuloEntrada(entradaUsina.get(p.id) ?? null),
     ucId: `plant:${p.id}`,
     codigoUc: p.unidadeConsumidora ?? p.numeroUsina ?? "-",
     nome: p.name,
@@ -152,7 +210,7 @@ export async function GET(req: NextRequest) {
     origem: "usina",
     proprietario: p.investors[0]?.investor?.user?.name ?? "Sem investidor",
     active: p.active,
-    meses: buildMeses(`plant:${p.id}`, (m) => usinaBillIndex.get(`${p.id}:${m}`)),
+    meses: buildMeses(`plant:${p.id}`, entradaUsina.get(p.id) ?? null, (m) => usinaBillIndex.get(`${p.id}:${m}`)),
     pagaInvestidor: p.pagadorFaturaEnergia === "INVESTIDORES",
   }));
 
