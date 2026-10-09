@@ -3,6 +3,7 @@ import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
+import { whereUcsGemeasDaUsina } from "@/lib/fatura-usina";
 
 /**
  * POST   /api/admin/faturas-energia/nao-emitida → marca "a concessionária não emitiu"
@@ -45,16 +46,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "UC, ano ou mês inválido" }, { status: 400 });
   }
 
+  const usina =
+    alvo.tipo === "plant"
+      ? await prisma.plant.findUnique({
+          where: { id: alvo.id },
+          select: {
+            numeroUsina: true,
+            unidadeConsumidora: true,
+            unidadeConsumidoraAntiga: true,
+            codigoCliente: true,
+          },
+        })
+      : null;
   const existe =
     alvo.tipo === "uc"
       ? await prisma.consumerUnit.findUnique({ where: { id: alvo.id }, select: { id: true } })
-      : await prisma.plant.findUnique({ where: { id: alvo.id }, select: { id: true } });
+      : usina;
   if (!existe) {
     return NextResponse.json({ error: "UC não encontrada" }, { status: 404 });
   }
 
+  // Usina: a fatura do mês pode estar na UC gêmea, sem plantId.
+  const gemeas = usina ? whereUcsGemeasDaUsina(usina) : null;
   const fatura = await prisma.consumerBill.findFirst({
-    where: { ...alvo.chave, anoReferencia: alvo.ano, mesReferencia: alvo.mes },
+    where: {
+      anoReferencia: alvo.ano,
+      mesReferencia: alvo.mes,
+      OR: [alvo.chave, ...(gemeas ? [{ consumerUnit: gemeas }] : [])],
+    },
     select: { id: true },
   });
   if (fatura) {

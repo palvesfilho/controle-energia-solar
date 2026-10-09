@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { listExistingKeys } from "@/lib/file-storage";
 import { relativePathToKey } from "@/lib/r2-storage";
 import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
+import { codigosDaUsina, indexarUcsPorCodigo } from "@/lib/fatura-usina";
 
 // "ok": bill com pdfUrl e arquivo presente no storage → ícone verde
 // "error": bill com pdfUrl mas arquivo NÃO encontrado → ícone vermelho (anomalia real)
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const ano = Number(searchParams.get("ano")) || new Date().getFullYear();
 
-  const [ucs, plants, bills, existingKeys, naoEmitidas, mesesPorUc, mesesPorUsina] = await Promise.all([
+  const [ucs, plants, bills, existingKeys, naoEmitidas, mesesPorUc, mesesPorUsina, ucsTodas] = await Promise.all([
     prisma.consumerUnit.findMany({
       // Tela da Gestora de Energia (Associação): UCs do módulo Brasil Solar
       // ficam de fora — o sync de fatura delas se acompanha em
@@ -105,7 +106,20 @@ export async function GET(req: NextRequest) {
       where: { plantId: { not: null } },
       _min: { mesReferencia: true },
     }),
+    // TODAS as UCs, inclusive Brasil Solar: é entre elas que mora a gêmea da
+    // usina (ver lib/fatura-usina.ts). Não vira linha da grade.
+    prisma.consumerUnit.findMany({
+      select: { id: true, codigoUc: true, codigoUcAntigo: true },
+    }),
   ]);
+
+  const ucsPorCodigo = indexarUcsPorCodigo(ucsTodas);
+  const gemeasDaUsina = new Map(
+    plants.map((p) => [
+      p.id,
+      [...new Set(codigosDaUsina(p).flatMap((c) => ucsPorCodigo.get(c) ?? []))],
+    ]),
+  );
 
   // Mês como número corrido (ano*12 + mês-1), pra comparar sem data.
   const idxMes = (a: number, m: number) => a * 12 + (m - 1);
@@ -185,8 +199,28 @@ export async function GET(req: NextRequest) {
     ucs.map((uc) => [uc.id, entradaDe(primeiraPorUc.get(uc.id), uc.dataInicioContrato)]),
   );
   const entradaUsina = new Map(
-    plants.map((p) => [p.id, entradaDe(primeiraPorUsina.get(p.id), p.dataAssinaturaContrato)]),
+    plants.map((p) => {
+      const primeiras = [
+        primeiraPorUsina.get(p.id),
+        ...(gemeasDaUsina.get(p.id) ?? []).map((id) => primeiraPorUc.get(id)),
+      ].filter((i): i is number => i != null);
+      return [
+        p.id,
+        entradaDe(primeiras.length ? Math.min(...primeiras) : undefined, p.dataAssinaturaContrato),
+      ];
+    }),
   );
+
+  // Fatura da usina: a que tem plantId; na falta, a da UC gêmea no mesmo mês.
+  function billDaUsina(plantId: string, mes: number) {
+    const direta = usinaBillIndex.get(`${plantId}:${mes}`);
+    if (direta) return direta;
+    for (const ucId of gemeasDaUsina.get(plantId) ?? []) {
+      const daGemea = ucBillIndex.get(`${ucId}:${mes}`);
+      if (daGemea) return daGemea;
+    }
+    return undefined;
+  }
 
   const rowsClientes: FaturasEnergiaRow[] = ucs.map((uc) => ({
     entrada: rotuloEntrada(entradaUc.get(uc.id) ?? null),
@@ -210,7 +244,7 @@ export async function GET(req: NextRequest) {
     origem: "usina",
     proprietario: p.investors[0]?.investor?.user?.name ?? "Sem investidor",
     active: p.active,
-    meses: buildMeses(`plant:${p.id}`, entradaUsina.get(p.id) ?? null, (m) => usinaBillIndex.get(`${p.id}:${m}`)),
+    meses: buildMeses(`plant:${p.id}`, entradaUsina.get(p.id) ?? null, (m) => billDaUsina(p.id, m)),
     pagaInvestidor: p.pagadorFaturaEnergia === "INVESTIDORES",
   }));
 
