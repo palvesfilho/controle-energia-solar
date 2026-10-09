@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  Ban,
   Building2,
   CheckCheck,
   ClipboardCopy,
@@ -41,10 +42,12 @@ const selectClass =
 //  - so-rge     → RGE diz pago, sem registro interno (🟩 — anomalia, investigar)
 //  - aberta     → nem nós pagamos, nem RGE confirmou (🔴)
 //  - missing    → fatura não sincronizada (⬜)
-type Pagamento = "conferida" | "so-interno" | "so-rge" | "aberta" | "missing";
+//  - nao-emitida → o operador marcou que a concessionária não emitiu (🟪)
+type Pagamento = "conferida" | "so-interno" | "so-rge" | "aberta" | "missing" | "nao-emitida";
 
 function getPagamento(cell: FaturaCell | undefined): Pagamento {
-  if (!cell || cell.status === "missing") return "missing";
+  if (!cell) return "missing";
+  if (cell.status === "missing") return cell.naoEmitida ? "nao-emitida" : "missing";
   const interno = !!cell.pagoEm;
   const rge = cell.contaPaga;
   if (interno && rge) return "conferida";
@@ -60,6 +63,7 @@ const ROTULO_PAGAMENTO: Record<Pagamento, string> = {
   "so-rge": "Concessionária diz paga (sem registro interno)",
   aberta: "Em aberto",
   missing: "Sem fatura",
+  "nao-emitida": "Não emitida pela concessionária",
 };
 
 /** Fora do componente para a identidade do array não mudar a cada render. */
@@ -142,6 +146,17 @@ function CellIcon({ cell }: { cell: FaturaCell | undefined }) {
     return (
       <span title={tooltip} className={`${wrap} bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300`}>
         <X className="h-3.5 w-3.5" />
+      </span>
+    );
+  }
+  if (pag === "nao-emitida") {
+    const motivo = cell?.naoEmitida?.motivo;
+    return (
+      <span
+        title={`Não emitida pela concessionária${motivo ? ` — ${motivo}` : ""}`}
+        className={`${wrap} bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300`}
+      >
+        <Ban className="h-3.5 w-3.5" />
       </span>
     );
   }
@@ -355,7 +370,7 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
         } else if (p === "aberta") {
           aberta++;
           valorAberta += c?.valorTotal ?? 0;
-        } else miss++;
+        } else if (p === "missing") miss++;
       }
     }
     return {
@@ -544,6 +559,12 @@ export default function FaturasEnergiaGestaoFinanceiraPage() {
                   <Minus className="h-3 w-3" />
                 </span>
                 Sem fatura
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                  <Ban className="h-3 w-3" />
+                </span>
+                Não emitida pela concessionária
               </span>
             </div>
             <div className="overflow-x-auto">

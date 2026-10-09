@@ -176,8 +176,39 @@ model Plant {
   investorPayables  InvestorPayable[]
   acoesRecomendadas AcaoRecomendada[]
   statusChanges     PlantStatusChange[]
+  faturasNaoEmitidas FaturaNaoEmitida[]
 
   @@map("plants")
+}
+
+// "A concessionária NÃO emitiu fatura neste mês." Marcação feita pelo operador
+// na Visão Geral das faturas. Sem ela, mês que a RGE pulou e mês que ninguém
+// subiu ainda são a mesma célula vazia — e o sistema cobra upload de uma fatura
+// que não existe.
+//
+// A linha vale para UMA UC de cliente (consumerUnitId) OU para UMA usina
+// (plantId), nunca os dois: é o mesmo par de chaves da grade da Visão Geral.
+//
+// Fatura que chega depois GANHA da marcação: quem lê confere a fatura primeiro
+// (ver lib/fatura-nao-emitida.ts). Nenhum caminho de gravação de fatura precisa
+// saber que esta tabela existe.
+model FaturaNaoEmitida {
+  id             String  @id @default(cuid())
+  consumerUnitId String? @map("consumer_unit_id")
+  plantId        String? @map("plant_id")
+  mesReferencia  Int     @map("mes_referencia")
+  anoReferencia  Int     @map("ano_referencia")
+  motivo         String?
+  // Cópia do nome, não relação com User — mesmo motivo de PlantStatusChange.
+  marcadoPor     String   @map("marcado_por")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  consumerUnit ConsumerUnit? @relation(fields: [consumerUnitId], references: [id], onDelete: Cascade)
+  plant        Plant?        @relation(fields: [plantId], references: [id], onDelete: Cascade)
+
+  @@unique([consumerUnitId, anoReferencia, mesReferencia])
+  @@unique([plantId, anoReferencia, mesReferencia])
+  @@map("faturas_nao_emitidas")
 }
 
 // Trilha de auditoria do liga/desliga da usina: uma linha por desativação E por
@@ -610,6 +641,7 @@ model ConsumerUnit {
   consumoBaselines         ConsumoBaseline[]
   brasilSolarBeneficiarias BrasilSolarBeneficiaria[]
   statusChanges            ConsumerUnitStatusChange[]
+  faturasNaoEmitidas       FaturaNaoEmitida[]
 
   @@index([consumerId])
   @@index([plantId])

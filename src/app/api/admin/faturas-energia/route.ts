@@ -18,6 +18,10 @@ export interface FaturaCell {
   vencimento: string | null; // ISO date
   contaPaga: boolean; // espelha o status na concessionária (vem do sync Infosimples)
   pagoEm: string | null; // ISO date — registro interno de pagamento
+  // Só em célula "missing": o operador marcou que a concessionária NÃO emitiu
+  // fatura neste mês. Fatura que chega depois ganha — a célula deixa de ser
+  // "missing" e isto vem null.
+  naoEmitida: { motivo: string | null; por: string; em: string } | null;
 }
 
 export interface FaturasEnergiaRow {
@@ -38,7 +42,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const ano = Number(searchParams.get("ano")) || new Date().getFullYear();
 
-  const [ucs, plants, bills, existingKeys] = await Promise.all([
+  const [ucs, plants, bills, existingKeys, naoEmitidas] = await Promise.all([
     prisma.consumerUnit.findMany({
       // Tela da Gestora de Energia (Associação): UCs do módulo Brasil Solar
       // ficam de fora — o sync de fatura delas se acompanha em
@@ -80,7 +84,19 @@ export async function GET(req: NextRequest) {
       },
     }),
     listExistingKeys("bills"),
+    prisma.faturaNaoEmitida.findMany({ where: { anoReferencia: ano } }),
   ]);
+
+  // Mesma chave da linha da grade: "uc:<id>:<mes>" ou "plant:<id>:<mes>".
+  const naoEmitidaIndex = new Map<string, FaturaCell["naoEmitida"]>();
+  for (const n of naoEmitidas) {
+    const dono = n.consumerUnitId ? `uc:${n.consumerUnitId}` : `plant:${n.plantId}`;
+    naoEmitidaIndex.set(`${dono}:${n.mesReferencia}`, {
+      motivo: n.motivo,
+      por: n.marcadoPor,
+      em: n.createdAt.toISOString(),
+    });
+  }
 
   const ucBillIndex = new Map<string, typeof bills[number]>();
   const usinaBillIndex = new Map<string, typeof bills[number]>();
@@ -92,9 +108,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  function toCell(bill: typeof bills[number] | undefined): FaturaCell {
-    if (!bill) return { status: "missing", pdfUrl: null, billId: null, valorTotal: null, vencimento: null, contaPaga: false, pagoEm: null };
+  function toCell(bill: typeof bills[number] | undefined, chave: string): FaturaCell {
+    if (!bill) return { status: "missing", pdfUrl: null, billId: null, valorTotal: null, vencimento: null, contaPaga: false, pagoEm: null, naoEmitida: naoEmitidaIndex.get(chave) ?? null };
     const base = {
+      naoEmitida: null,
       billId: bill.id,
       valorTotal: bill.valorTotal ?? null,
       vencimento: bill.vencimento?.toISOString() ?? null,
@@ -109,9 +126,9 @@ export async function GET(req: NextRequest) {
       : { ...base, status: "error", pdfUrl: null };
   }
 
-  function buildMeses(lookup: (mes: number) => typeof bills[number] | undefined): Record<number, FaturaCell> {
+  function buildMeses(dono: string, lookup: (mes: number) => typeof bills[number] | undefined): Record<number, FaturaCell> {
     const meses: Record<number, FaturaCell> = {};
-    for (let mes = 1; mes <= 12; mes++) meses[mes] = toCell(lookup(mes));
+    for (let mes = 1; mes <= 12; mes++) meses[mes] = toCell(lookup(mes), `${dono}:${mes}`);
     return meses;
   }
 
@@ -123,7 +140,7 @@ export async function GET(req: NextRequest) {
     origem: "cliente",
     proprietario: uc.consumer?.name ?? uc.plant?.name ?? "-",
     active: uc.active,
-    meses: buildMeses((m) => ucBillIndex.get(`${uc.id}:${m}`)),
+    meses: buildMeses(`uc:${uc.id}`, (m) => ucBillIndex.get(`${uc.id}:${m}`)),
     pagaInvestidor: false,
   }));
 
@@ -135,7 +152,7 @@ export async function GET(req: NextRequest) {
     origem: "usina",
     proprietario: p.investors[0]?.investor?.user?.name ?? "Sem investidor",
     active: p.active,
-    meses: buildMeses((m) => usinaBillIndex.get(`${p.id}:${m}`)),
+    meses: buildMeses(`plant:${p.id}`, (m) => usinaBillIndex.get(`${p.id}:${m}`)),
     pagaInvestidor: p.pagadorFaturaEnergia === "INVESTIDORES",
   }));
 

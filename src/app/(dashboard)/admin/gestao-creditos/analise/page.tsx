@@ -1557,6 +1557,8 @@ function BannerCompletude({
               }`}
             >
               {completude.ucsComFatura}/{completude.ucsEsperadas} UCs com fatura ({pct}%)
+              {completude.ucsNaoEmitidas > 0 &&
+                ` · ${completude.ucsNaoEmitidas} não emitida(s) pela concessionária`}
               {!completo && " · análise rodando com dados parciais"}
             </div>
           </div>

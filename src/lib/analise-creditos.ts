@@ -109,6 +109,10 @@ export interface CompletudeFaturas {
   ano: number;
   ucsEsperadas: number;
   ucsComFatura: number;
+  // UCs sem fatura no mês porque a concessionária NÃO emitiu (marcado pelo
+  // operador na Visão Geral das faturas). Saem de ucsEsperadas e de
+  // ucsFaltantes; ficam aqui à vista pra o "100%" não esconder quantas são.
+  ucsNaoEmitidas: number;
   ucsFaltantes: UcFaltante[];
   percentual: number; // 0..1
   completo: boolean;
@@ -390,10 +394,27 @@ export async function computeAnaliseCreditos(
     if (b.mes === mes && b.ano === ano) billPorUcDoMes.set(b.consumerUnitId, b);
   }
 
-  // Completude
+  // Completude. Mês que a concessionária não emitiu não é fatura faltando:
+  // não há o que subir. A fatura, se existir, ganha da marcação.
+  const marcadasNaoEmitidas = ucIds.length
+    ? await prisma.faturaNaoEmitida.findMany({
+        where: {
+          consumerUnitId: { in: ucIds },
+          mesReferencia: mes,
+          anoReferencia: ano,
+        },
+        select: { consumerUnitId: true },
+      })
+    : [];
+  const naoEmitidaNoMes = new Set(marcadasNaoEmitidas.map((n) => n.consumerUnitId));
+  let ucsNaoEmitidas = 0;
   const ucsFaltantes: UcFaltante[] = [];
   for (const uc of ucs) {
     if (billPorUcDoMes.has(uc.id)) continue;
+    if (naoEmitidaNoMes.has(uc.id)) {
+      ucsNaoEmitidas++;
+      continue;
+    }
     const plant = uc.plantId ? plantById.get(uc.plantId) : null;
     ucsFaltantes.push({
       consumerUnitId: uc.id,
@@ -408,16 +429,18 @@ export async function computeAnaliseCreditos(
       (a.plantName ?? "").localeCompare(b.plantName ?? "") ||
       a.nome.localeCompare(b.nome),
   );
-  const ucsComFatura = ucs.length - ucsFaltantes.length;
-  const percentual = ucs.length === 0 ? 1 : ucsComFatura / ucs.length;
+  const ucsEsperadas = ucs.length - ucsNaoEmitidas;
+  const ucsComFatura = ucsEsperadas - ucsFaltantes.length;
+  const percentual = ucsEsperadas === 0 ? 1 : ucsComFatura / ucsEsperadas;
   const completude: CompletudeFaturas = {
     mes,
     ano,
-    ucsEsperadas: ucs.length,
+    ucsEsperadas,
     ucsComFatura,
+    ucsNaoEmitidas,
     ucsFaltantes,
     percentual,
-    completo: ucs.length === 0 || ucsFaltantes.length === 0,
+    completo: ucsEsperadas === 0 || ucsFaltantes.length === 0,
   };
 
   // 5) Cards saldo + vencendo agregados por plant (pra top contribuidores)

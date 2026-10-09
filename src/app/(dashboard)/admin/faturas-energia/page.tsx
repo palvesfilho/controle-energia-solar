@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, Loader2, Minus, X, Receipt, Upload, CheckCircle2, AlertCircle } from "lucide-react";
+import { Ban, Download, Loader2, Minus, X, Receipt, Upload, CheckCircle2, AlertCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import type { FaturasEnergiaRow, FaturaCell } from "@/app/api/admin/faturas-energia/route";
 import { formatCodigoUc } from "@/lib/uc-codigo";
@@ -14,7 +14,7 @@ const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Se
 const selectClass =
   "text-sm border rounded-lg px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all";
 
-function CellIcon({ cell }: { cell: FaturaCell }) {
+function CellIcon({ cell, onClickVazio }: { cell: FaturaCell; onClickVazio: () => void }) {
   if (cell.status === "ok" && cell.pdfUrl) {
     return (
       <a
@@ -38,17 +38,40 @@ function CellIcon({ cell }: { cell: FaturaCell }) {
       </span>
     );
   }
-  const tooltip =
-    cell.status === "no_pdf"
-      ? "Fatura registrada sem PDF anexado (backup histórico ou sync incompleto)"
-      : "Não sincronizado";
+  if (cell.status === "no_pdf") {
+    return (
+      <span
+        title="Fatura registrada sem PDF anexado (backup histórico ou sync incompleto)"
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground"
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </span>
+    );
+  }
+  // Mês sem fatura: a célula é um botão. É aqui que o operador diz "a
+  // concessionária não emitiu" — sem isso, mês pulado pela RGE e mês que
+  // ninguém subiu ainda são o mesmo tracinho cinza.
+  if (cell.naoEmitida) {
+    return (
+      <button
+        type="button"
+        onClick={onClickVazio}
+        title={`Não emitida pela concessionária${cell.naoEmitida.motivo ? ` — ${cell.naoEmitida.motivo}` : ""} (marcado por ${cell.naoEmitida.por})`}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-violet-100 text-violet-700 transition hover:bg-violet-200 dark:bg-violet-900/40 dark:text-violet-300 dark:hover:bg-violet-900/60"
+      >
+        <Ban className="h-3.5 w-3.5" />
+      </button>
+    );
+  }
   return (
-    <span
-      title={tooltip}
-      className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground"
+    <button
+      type="button"
+      onClick={onClickVazio}
+      title="Não sincronizado — clique se a concessionária não emitiu fatura neste mês"
+      className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-muted text-muted-foreground transition hover:bg-muted-foreground/20"
     >
       <Minus className="h-3.5 w-3.5" />
-    </span>
+    </button>
   );
 }
 
@@ -58,6 +81,7 @@ function rotuloStatus(cell: FaturaCell | undefined): string {
   if (cell.status === "ok") return cell.pdfUrl ? "Disponível" : "Sem PDF";
   if (cell.status === "error") return "Arquivo perdido";
   if (cell.status === "no_pdf") return "Sem PDF";
+  if (cell.naoEmitida) return "Não emitida pela concessionária";
   return "Não sincronizado";
 }
 
@@ -119,6 +143,9 @@ export default function FaturasEnergiaVisaoGeralPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadResults, setUploadResults] = useState<UploadResultItem[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Célula vazia clicada: abre o diálogo de "não emitida pela concessionária".
+  const [vazio, setVazio] = useState<{ row: FaturasEnergiaRow; mes: number } | null>(null);
 
   const loadRows = () => {
     setLoading(true);
@@ -208,7 +235,7 @@ export default function FaturasEnergiaVisaoGeralPage() {
   const filtered = filtro.filtrados;
 
   const totals = useMemo(() => {
-    let ok = 0, err = 0, noPdf = 0, miss = 0;
+    let ok = 0, err = 0, noPdf = 0, miss = 0, naoEmit = 0;
     for (const r of filtered) {
       for (let m = 1; m <= 12; m++) {
         const c = r.meses[m];
@@ -216,10 +243,11 @@ export default function FaturasEnergiaVisaoGeralPage() {
         if (c.status === "ok") ok++;
         else if (c.status === "error") err++;
         else if (c.status === "no_pdf") noPdf++;
+        else if (c.naoEmitida) naoEmit++;
         else miss++;
       }
     }
-    return { ok, err, noPdf, miss };
+    return { ok, err, noPdf, miss, naoEmit };
   }, [filtered]);
 
   return (
@@ -251,6 +279,16 @@ export default function FaturasEnergiaVisaoGeralPage() {
           fileInputRef={fileInputRef}
           onClose={() => { setUploadOpen(false); setUploadResults(null); }}
           onSubmit={handleUpload}
+        />
+      )}
+
+      {vazio && (
+        <NaoEmitidaDialog
+          row={vazio.row}
+          mes={vazio.mes}
+          ano={ano}
+          onClose={() => setVazio(null)}
+          onSalvo={() => { setVazio(null); loadRows(); }}
         />
       )}
 
@@ -323,6 +361,10 @@ export default function FaturasEnergiaVisaoGeralPage() {
               <span className="inline-block h-3 w-3 rounded-sm bg-muted-foreground/20" />
               Não sincronizado ({totals.miss})
             </div>
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block h-3 w-3 rounded-sm bg-violet-500" />
+              Não emitida pela concessionária ({totals.naoEmit})
+            </div>
             <div className="ml-auto">{filtered.length} UC(s)</div>
           </div>
 
@@ -378,7 +420,7 @@ export default function FaturasEnergiaVisaoGeralPage() {
                           // receberia doze colunas em branco.
                           data-export-valor={rotuloStatus(r.meses[m])}
                         >
-                          <CellIcon cell={r.meses[m]} />
+                          <CellIcon cell={r.meses[m]} onClickVazio={() => setVazio({ row: r, mes: m })} />
                         </td>
                       ))}
                     </tr>
@@ -396,6 +438,141 @@ export default function FaturasEnergiaVisaoGeralPage() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * Diálogo da célula vazia: marca (ou desmarca) "a concessionária não emitiu
+ * fatura neste mês". Não apaga nem cria fatura — só troca o tracinho cinza por
+ * um aviso de que não há o que subir.
+ */
+function NaoEmitidaDialog({
+  row,
+  mes,
+  ano,
+  onClose,
+  onSalvo,
+}: {
+  row: FaturasEnergiaRow;
+  mes: number;
+  ano: number;
+  onClose: () => void;
+  onSalvo: () => void;
+}) {
+  const marcada = row.meses[mes]?.naoEmitida ?? null;
+  const [motivo, setMotivo] = useState(marcada?.motivo ?? "");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function enviar(method: "POST" | "DELETE") {
+    setSalvando(true);
+    setErro(null);
+    try {
+      const res = await fetch("/api/admin/faturas-energia/nao-emitida", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ucId: row.ucId, ano, mes, motivo }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `Falha no servidor (HTTP ${res.status})`);
+      }
+      onSalvo();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={salvando ? undefined : onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-lg bg-background p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-bold">
+              {MESES_LABEL[mes - 1]}/{ano} — sem fatura
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {row.nome} <span className="font-mono">({formatCodigoUc(row.codigoUc)})</span>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={salvando}
+            className="rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {marcada ? (
+          <p className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-3 text-sm text-violet-800 dark:border-violet-900 dark:bg-violet-950 dark:text-violet-200">
+            Marcado como <strong>não emitida pela concessionária</strong> por {marcada.por} em{" "}
+            {new Date(marcada.em).toLocaleDateString("pt-BR")}.
+          </p>
+        ) : (
+          <p className="mt-4 text-sm">
+            A concessionária não emitiu fatura para esta UC neste mês? Ao marcar, o mês deixa
+            de aparecer como fatura pendente.
+          </p>
+        )}
+
+        <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Motivo (opcional)
+        </label>
+        <textarea
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          rows={2}
+          maxLength={500}
+          placeholder="Ex.: RGE acumulou na fatura do mês seguinte"
+          className="mt-1.5 w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+        />
+
+        {erro && (
+          <p className="mt-3 rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+            {erro}
+          </p>
+        )}
+
+        <div className="mt-5 flex justify-end gap-2">
+          {marcada && (
+            <button
+              type="button"
+              onClick={() => enviar("DELETE")}
+              disabled={salvando}
+              className="mr-auto rounded-lg border px-3 py-2 text-sm text-red-700 transition hover:bg-red-50 disabled:opacity-50 dark:text-red-300 dark:hover:bg-red-950"
+            >
+              Desfazer marcação
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={salvando}
+            className="rounded-lg border px-3 py-2 text-sm transition hover:bg-muted disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => enviar("POST")}
+            disabled={salvando}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+          >
+            {salvando && <Loader2 className="h-4 w-4 animate-spin" />}
+            {marcada ? "Salvar motivo" : "Marcar como não emitida"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
