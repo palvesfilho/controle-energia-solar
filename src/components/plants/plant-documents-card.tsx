@@ -13,7 +13,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-type DocType = "CNH_RG" | "PROCURACAO" | "CONTRATO_SOCIAL" | "CARTAO_CNPJ";
+type DocType = "CNH_RG" | "PROCURACAO" | "CONTRATO_SOCIAL" | "CARTAO_CNPJ" | "TERMO_ADESAO";
 
 interface PlantDocument {
   id: string;
@@ -45,6 +45,11 @@ const DOC_TYPES: { type: DocType; label: string; description: string }[] = [
     label: "Cartão CNPJ",
     description: "Cartão CNPJ atualizado da Receita Federal.",
   },
+  {
+    type: "TERMO_ADESAO",
+    label: "Termo de Adesão",
+    description: "Termo de adesão do titular da usina à associação. Vai no pacote do rateio da RGE.",
+  },
 ];
 
 function formatBytes(b: number | null): string {
@@ -74,6 +79,7 @@ export function PlantDocumentsCard({
     PROCURACAO: null,
     CONTRATO_SOCIAL: null,
     CARTAO_CNPJ: null,
+    TERMO_ADESAO: null,
   });
 
   const load = useCallback(async () => {

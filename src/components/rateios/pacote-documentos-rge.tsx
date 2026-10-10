@@ -77,6 +77,11 @@ export function PacoteDocumentosRge({ plantId, consumerUnitIds, aparencia = "bot
   const [enviando, setEnviando] = useState<ChaveDocFixo | null>(null);
   const inputArquivo = useRef<HTMLInputElement>(null);
   const chaveEscolhida = useRef<ChaveDocFixo | null>(null);
+  // Envio dos documentos do titular da usina — grava no mesmo cadastro do
+  // cartão "Documentos" da página da usina.
+  const [enviandoUsina, setEnviandoUsina] = useState<string | null>(null);
+  const inputUsina = useRef<HTMLInputElement>(null);
+  const tipoUsinaEscolhido = useRef<string | null>(null);
 
   // A lista vira texto para o efeito não refazer a conferência a cada render do
   // pai, que monta um array novo toda vez.
@@ -153,6 +158,42 @@ export function PacoteDocumentosRge({ plantId, consumerUnitIds, aparencia = "bot
     }
   }
 
+  async function enviarDaUsina(arquivo: File) {
+    const tipo = tipoUsinaEscolhido.current;
+    if (!tipo) return;
+    setEnviandoUsina(tipo);
+    try {
+      const form = new FormData();
+      form.append("type", tipo);
+      form.append("file", arquivo);
+      const res = await fetch(`/api/plants/${plantId}/documents`, { method: "POST", body: form });
+      const dados = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(dados.error ?? `HTTP ${res.status}`);
+      toast.success("Documento da usina guardado.");
+      await conferir();
+    } catch (err) {
+      toast.error(`Falha ao enviar: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setEnviandoUsina(null);
+    }
+  }
+
+  const du = conf?.documentosUsina;
+  const linhasUsina: { tipo: string; rotulo: string; estado: EstadoDoc }[] = du
+    ? [
+        { tipo: "CNH_RG", rotulo: "Identidade (CNH / RG)", estado: du.identidade },
+        ...(du.cartaoCnpj
+          ? [{ tipo: "CARTAO_CNPJ", rotulo: "Cartão CNPJ", estado: du.cartaoCnpj }]
+          : []),
+        ...(du.contratoSocial
+          ? [{ tipo: "CONTRATO_SOCIAL", rotulo: "Contrato social", estado: du.contratoSocial }]
+          : []),
+        { tipo: "PROCURACAO", rotulo: "Procuração", estado: du.procuracao },
+        { tipo: "TERMO_ADESAO", rotulo: "Termo de adesão", estado: du.termo },
+      ]
+    : [];
+  const usinaFaltando = linhasUsina.filter((l) => l.estado !== "ok").length;
+
   const semAntigo = conf?.associados.filter((a) => !a.codigoAntigo) ?? [];
   const citaNovo = conf?.associados.filter((a) => a.procuracaoCita === "novo") ?? [];
   const semDocumento =
@@ -199,8 +240,8 @@ export function PacoteDocumentosRge({ plantId, consumerUnitIds, aparencia = "bot
             <DialogTitle>Documentos para a RGE{conf ? ` — ${conf.usina}` : ""}</DialogTitle>
             <DialogDescription>
               Um ZIP com a identificação (identidade, procuração e, nas empresas, cartão CNPJ
-              e contrato social) e os termos de adesão dos associados deste rateio, mais os
-              três documentos da associação. Confira o que falta antes de subir no
+              e contrato social) e os termos de adesão do titular da usina e dos associados
+              deste rateio, mais os três documentos da associação. Confira o que falta antes de subir no
               portal.
             </DialogDescription>
           </DialogHeader>
@@ -257,6 +298,93 @@ export function PacoteDocumentosRge({ plantId, consumerUnitIds, aparencia = "bot
                 </div>
               )}
 
+              {/* O lado que GERA: os documentos do titular da usina abrem os dois PDFs. */}
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium">
+                  Usina — titular{" "}
+                  <span className="font-normal text-muted-foreground">
+                    {du?.cpfCnpj ? `(${du.cpfCnpj}) ` : ""}— entram antes dos associados nos dois
+                    PDFs.{" "}
+                    <a
+                      href={`/admin/usinas/${plantId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-2 hover:text-foreground"
+                    >
+                      Abrir a usina
+                    </a>
+                  </span>
+                </p>
+                <input
+                  ref={inputUsina}
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (f) void enviarDaUsina(f);
+                  }}
+                />
+                <div className="grid gap-1.5 sm:grid-cols-2">
+                  {linhasUsina.map((l) => (
+                    <div
+                      key={l.tipo}
+                      className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs"
+                    >
+                      {l.estado === "ok" ? (
+                        <CircleCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+                      ) : (
+                        <CircleX className="h-4 w-4 shrink-0 text-red-600" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <span className="font-medium">{l.rotulo}</span>
+                        {l.estado !== "ok" && (
+                          <span className="block text-[11px] text-muted-foreground">
+                            {l.estado === "falta" ? "ainda não enviado" : "não abriu — envie de novo"}
+                          </span>
+                        )}
+                        {l.tipo === "CARTAO_CNPJ" && du?.cartaoCnpjValidade && (
+                          <TextoValidadeCartaoCnpj
+                            validade={du.cartaoCnpjValidade}
+                            curto
+                            className="block text-[11px]"
+                          />
+                        )}
+                        {l.tipo === "CARTAO_CNPJ" &&
+                          du?.cartaoCnpjValidade &&
+                          du.cartaoCnpjValidade.situacao !== "ok" && (
+                            <AtalhoCartaoCnpj cnpj={du.cpfCnpj} className="mt-1" />
+                          )}
+                      </div>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        disabled={enviandoUsina !== null}
+                        onClick={() => {
+                          tipoUsinaEscolhido.current = l.tipo;
+                          inputUsina.current?.click();
+                        }}
+                      >
+                        {enviandoUsina === l.tipo ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Upload className="h-3 w-3" />
+                        )}
+                        {l.estado === "ok" ? "Trocar" : "Enviar"}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-xs font-medium">
+                Associados{" "}
+                <span className="font-normal text-muted-foreground">
+                  — as unidades consumidoras que recebem os créditos
+                </span>
+              </p>
               <div className="overflow-x-auto rounded-md border">
                 <table className="w-full text-xs">
                   <thead className="bg-muted/50 text-left text-muted-foreground">
@@ -452,7 +580,7 @@ export function PacoteDocumentosRge({ plantId, consumerUnitIds, aparencia = "bot
               ) : (
                 <>
                   <Download className="h-3.5 w-3.5" />
-                  {semDocumento.length > 0 || fixosFaltando.length > 0
+                  {semDocumento.length > 0 || fixosFaltando.length > 0 || usinaFaltando > 0
                     ? "Baixar ZIP incompleto"
                     : "Baixar ZIP"}
                 </>

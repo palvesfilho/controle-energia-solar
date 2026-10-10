@@ -5,7 +5,15 @@ import { isAdminRole } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { saveUploadedFile, deleteUploadedFile } from "@/lib/file-storage";
 
-const VALID_TYPES = ["CNH_RG", "PROCURACAO", "CONTRATO_SOCIAL", "CARTAO_CNPJ"] as const;
+// TERMO_ADESAO entrou em 10/10/2026: o pacote de documentos que a RGE pede no
+// rateio leva o termo do titular da usina junto com os dos associados.
+const VALID_TYPES = [
+  "CNH_RG",
+  "PROCURACAO",
+  "CONTRATO_SOCIAL",
+  "CARTAO_CNPJ",
+  "TERMO_ADESAO",
+] as const;
 type DocType = (typeof VALID_TYPES)[number];
 
 function isValidType(v: string): v is DocType {

@@ -12,7 +12,10 @@
  *   5 - Constituição associação.pdf
  *
  * Os dois primeiros saem dos documentos da ADESÃO guardados em cada UC (colunas
- * `doc_*`, ver [[crm-copia-documentos]]). Os três últimos são da associação e
+ * `doc_*`, ver [[crm-copia-documentos]]) — e, ANTES deles, dos documentos do
+ * titular da USINA: a RGE quer os dois lados do rateio, quem gera e quem recebe.
+ * Os da usina moram em `PlantDocument` (cartão "Documentos" da página da usina);
+ * quando a usina entrou por uma venda do CRM, valem os do investidor dela. Os três últimos são da associação e
  * valem para qualquer rateio: ficam em `AppSetting`, enviados uma vez.
  *
  * 🚨 **A RGE só aceita esses documentos com o código ANTIGO da UC.** Este módulo
@@ -127,8 +130,22 @@ export interface AssociadoConferencia {
   procuracaoCita: CitaUc | null;
 }
 
+/** Os documentos do titular da usina — o lado que GERA os créditos. */
+export interface UsinaConferencia {
+  plantId: string;
+  cpfCnpj: string | null;
+  identidade: EstadoDoc;
+  /** Só para empresa. Null = pessoa física, o documento não se aplica. */
+  cartaoCnpj: EstadoDoc | null;
+  cartaoCnpjValidade: ValidadeCartaoCnpj | null;
+  contratoSocial: EstadoDoc | null;
+  procuracao: EstadoDoc;
+  termo: EstadoDoc;
+}
+
 export interface ConferenciaPacoteRge {
   usina: string;
+  documentosUsina: UsinaConferencia;
   associados: AssociadoConferencia[];
   fixos: {
     chave: ChaveDocFixo;
@@ -237,7 +254,24 @@ export async function montarPacoteRge(
 ): Promise<PacoteRge | null> {
   const plant = await prisma.plant.findUnique({
     where: { id: plantId },
-    select: { name: true },
+    select: {
+      name: true,
+      cpfCnpj: true,
+      documents: { select: { type: true, url: true } },
+      investors: {
+        select: {
+          investor: {
+            select: {
+              docIdentidade: true,
+              docCartaoCnpj: true,
+              docContratoSocial: true,
+              docProcuracao: true,
+              docTermoAdesao: true,
+            },
+          },
+        },
+      },
+    },
   });
   if (!plant) return null;
 
@@ -326,6 +360,56 @@ export async function montarPacoteRge(
       textos.set(path, t);
     }
     return t;
+  };
+
+  // ── A usina primeiro: é quem gera, e abre os dois PDFs. ──
+  // O arquivo enviado na página da usina manda; sem ele, vale o do investidor
+  // (usina que entrou por venda do CRM traz a papelada da adesão dele).
+  type CampoDoc =
+    | "docIdentidade"
+    | "docCartaoCnpj"
+    | "docContratoSocial"
+    | "docProcuracao"
+    | "docTermoAdesao";
+  const docDaUsina = (tipo: string, campo: CampoDoc): string | null =>
+    plant.documents.find((d) => d.type === tipo)?.url ??
+    plant.investors.map((i) => i.investor[campo]).find((v): v is string => Boolean(v)) ??
+    null;
+  const pathsUsina = {
+    identidade: docDaUsina("CNH_RG", "docIdentidade"),
+    cartaoCnpj: docDaUsina("CARTAO_CNPJ", "docCartaoCnpj"),
+    contratoSocial: docDaUsina("CONTRATO_SOCIAL", "docContratoSocial"),
+    procuracao: docDaUsina("PROCURACAO", "docProcuracao"),
+    termo: docDaUsina("TERMO_ADESAO", "docTermoAdesao"),
+  };
+  const usinaEhEmpresa = ucEhEmpresa({
+    cpfCnpj: plant.cpfCnpj,
+    docCartaoCnpj: pathsUsina.cartaoCnpj,
+    docContratoSocial: pathsUsina.contratoSocial,
+  });
+  const usinaIdentidade = await anexar(identificacao, jaEntrou.identificacao, pathsUsina.identidade);
+  const usinaCartao = usinaEhEmpresa
+    ? await anexar(identificacao, jaEntrou.identificacao, pathsUsina.cartaoCnpj)
+    : null;
+  const usinaContrato = usinaEhEmpresa
+    ? await anexar(identificacao, jaEntrou.identificacao, pathsUsina.contratoSocial)
+    : null;
+  const usinaProcuracao = await anexar(identificacao, jaEntrou.identificacao, pathsUsina.procuracao);
+  const usinaTermo = await anexar(termos, jaEntrou.termos, pathsUsina.termo);
+  const bytesCartaoUsina = usinaCartao === "ok" ? await ler(pathsUsina.cartaoCnpj!) : null;
+  const documentosUsina: UsinaConferencia = {
+    plantId,
+    cpfCnpj: plant.cpfCnpj,
+    identidade: usinaIdentidade,
+    cartaoCnpj: usinaCartao,
+    cartaoCnpjValidade: bytesCartaoUsina
+      ? validadeCartaoCnpj(
+          dataEmissaoCartaoCnpj(await textoDe(pathsUsina.cartaoCnpj!, bytesCartaoUsina)),
+        )
+      : null,
+    contratoSocial: usinaContrato,
+    procuracao: usinaProcuracao,
+    termo: usinaTermo,
   };
 
   const associados: AssociadoConferencia[] = [];
@@ -441,7 +525,15 @@ export async function montarPacoteRge(
         (cartaoPedeAtencao(a.cartaoCnpjValidade) ? 1 : 0),
       0,
     ) +
-    fixos.filter((f) => f.estado !== "ok" || cartaoPedeAtencao(f.validade)).length;
+    fixos.filter((f) => f.estado !== "ok" || cartaoPedeAtencao(f.validade)).length +
+    [
+      documentosUsina.identidade,
+      documentosUsina.cartaoCnpj,
+      documentosUsina.contratoSocial,
+      documentosUsina.procuracao,
+      documentosUsina.termo,
+    ].filter((e) => e !== null && e !== "ok").length +
+    (cartaoPedeAtencao(documentosUsina.cartaoCnpjValidade) ? 1 : 0);
 
   let zip: Buffer | null = null;
   if (opcoes.gerarZip) {
@@ -454,7 +546,7 @@ export async function montarPacoteRge(
   }
 
   return {
-    conferencia: { usina: plant.name, associados, fixos, arquivos, pendencias },
+    conferencia: { usina: plant.name, documentosUsina, associados, fixos, arquivos, pendencias },
     nomeZip: `Documentos RGE - Usina ${usina}.zip`,
     zip,
   };
