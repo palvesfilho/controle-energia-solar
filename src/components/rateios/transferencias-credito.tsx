@@ -222,6 +222,7 @@ export function TransferenciasCredito() {
                       <th className="p-2 text-right">Transferido</th>
                       <th className="p-2 text-right">Compensado</th>
                       <th className="p-2 text-right">Saldo</th>
+                      <th className="p-2" title="Previsão pela média dos últimos 3 meses de cada destino">Acaba em</th>
                       <th className="p-2">Situação</th>
                       <th className="p-2">Aceite RGE</th>
                       <th className="p-2" />
@@ -262,6 +263,15 @@ export function TransferenciasCredito() {
                             <td className="p-2 text-right tabular-nums">{kwh(t.kwhTotal)}</td>
                             <td className="p-2 text-right tabular-nums">{t.status === "ACEITA" ? kwh(t.usadoKwh) : "—"}</td>
                             <td className="p-2 text-right font-medium tabular-nums">{t.status === "ACEITA" ? kwh(t.restanteKwh) : "—"}</td>
+                            <td className="p-2 tabular-nums">
+                              {t.status === "ACEITA"
+                                ? t.destinos.map((d) => (
+                                    <div key={d.itemId}>
+                                      <AcabaEm a={d.acompanhamento} />
+                                    </div>
+                                  ))
+                                : "—"}
+                            </td>
                             <td className="p-2">
                               <span className={`rounded px-2 py-0.5 text-xs font-medium ${TOM_STATUS[t.status]}`}>
                                 {STATUS_TRANSFERENCIA_LABEL[t.status]}
@@ -289,7 +299,7 @@ export function TransferenciasCredito() {
                           {aberta && (
                             <tr className="border-t bg-muted/20">
                               <td />
-                              <td colSpan={8} className="space-y-4 p-3">
+                              <td colSpan={9} className="space-y-4 p-3">
                                 <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
                                   <span>Email à RGE: <b>{data(t.enviadoEm)}</b></span>
                                   <span>Aceite: <b>{data(t.aceitoEm)}</b></span>
@@ -325,6 +335,24 @@ export function TransferenciasCredito() {
         />
       )}
     </div>
+  );
+}
+
+/** Previsão de esgotar; em vermelho quando o crédito vence antes de ser todo usado. */
+function AcabaEm({ a }: { a: Acompanhamento }) {
+  if (a.situacao === "ESGOTADA") return <span className="text-muted-foreground">Esgotada</span>;
+  if (!a.previsaoEsgotar) return <span className="text-muted-foreground">—</span>;
+  const n = (m: AnoMes) => m.ano * 12 + m.mes;
+  const venceAntes = a.venceEm != null && n(a.venceEm) < n(a.previsaoEsgotar);
+  return venceAntes ? (
+    <span
+      className="inline-flex items-center gap-1 font-medium text-red-700 dark:text-red-400"
+      title={`O crédito vence em ${mesAno(a.venceEm)}, antes de ser todo compensado`}
+    >
+      <AlertTriangle className="h-3.5 w-3.5" /> {mesAno(a.previsaoEsgotar)}
+    </span>
+  ) : (
+    <span>{mesAno(a.previsaoEsgotar)}</span>
   );
 }
 
