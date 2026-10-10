@@ -4,6 +4,8 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { TodosOsVigentes } from "@/components/rateios/todos-vigentes";
 import { ProtocolosEmAberto } from "@/components/rateios/protocolos-abertos";
+import { PacoteDocumentosRge } from "@/components/rateios/pacote-documentos-rge";
+import { AvisoDocumentosFaltando } from "@/components/rateios/aviso-documentos-faltando";
 import { AdicionarUc, type UnidadeDisponivel } from "@/components/rateios/adicionar-uc";
 import {
   avisosTemplateRge,
@@ -831,6 +833,7 @@ function RateiosPorUsina({ plantIdInicial }: { plantIdInicial: string | null }) 
               <CardContent>
                 <RateioTable
                   rateio={data.pendente}
+                  plantId={data.plant.id}
                   allUnits={data.consumerUnits}
                   variant="pendente"
                   temCredencialRge={data.plant.temCredencialRge}
@@ -884,6 +887,7 @@ function RateiosPorUsina({ plantIdInicial }: { plantIdInicial: string | null }) 
               ) : data.vigente ? (
                 <RateioTable
                   rateio={data.vigente}
+                  plantId={data.plant.id}
                   allUnits={data.consumerUnits}
                   variant="vigente"
                   temCredencialRge={data.plant.temCredencialRge}
@@ -1124,6 +1128,7 @@ function SeloProtocoloRge({
 
 function RateioTable({
   rateio,
+  plantId,
   allUnits,
   variant,
   mostrarCompensados,
@@ -1133,6 +1138,8 @@ function RateioTable({
   deleting,
 }: {
   rateio: Rateio;
+  /** Com a usina informada, a barra de ações ganha o ZIP de documentos da RGE. */
+  plantId?: string;
   allUnits: ConsumerUnitLite[];
   variant: "vigente" | "pendente" | "substituido" | "rejeitado";
   mostrarCompensados?: boolean;
@@ -1258,6 +1265,13 @@ function RateioTable({
             variant="ghost"
             size="xs"
           />
+          {plantId && (
+            <PacoteDocumentosRge
+              plantId={plantId}
+              consumerUnitIds={rateio.items.map((i) => i.consumerUnit.id)}
+              aparencia="linha"
+            />
+          )}
           {onEdit && (
             <button
               type="button"
@@ -1863,6 +1877,14 @@ function CreateRateioDialog({
             </p>
           </div>
 
+          {/* Só as UCs que ENTRAM no rateio (percentual acima de zero): linha em
+              branco na tela e geradora em 0% não vão para a RGE. */}
+          <AvisoDocumentosFaltando
+            linhas={linhas.filter(
+              (u) => parseFloat((percents[u.id] ?? "").replace(",", ".")) > 0,
+            )}
+          />
+
           <div className="space-y-1.5">
             <Label htmlFor="observacao">Observação (opcional)</Label>
             <Textarea
@@ -1944,6 +1966,20 @@ function CreateRateioDialog({
                 Confira antes de subir: {avisosTemplate.join("; ")}.
               </p>
             )}
+          </div>
+
+          {/* Os anexos que o portal pede junto da planilha. Mora aqui porque
+              sobem ANTES de a RGE devolver o protocolo — depois de criado o
+              rateio, o mesmo botão fica na barra de ações dele. */}
+          <div className="space-y-1.5 rounded-md border bg-muted/40 p-2.5">
+            <PacoteDocumentosRge
+              plantId={plantId}
+              consumerUnitIds={protocoloOpen ? montarItems().map((it) => it.consumerUnitId) : []}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Identificação e termos de adesão dos associados, mais os documentos da
+              associação.
+            </p>
           </div>
 
           <div className="space-y-1.5">
@@ -2363,6 +2399,14 @@ function EditRateioDialog({
               </p>
             )}
           </div>
+
+          {/* Só as UCs que ENTRAM no rateio (percentual acima de zero): linha em
+              branco na tela e geradora em 0% não vão para a RGE. */}
+          <AvisoDocumentosFaltando
+            linhas={linhas.filter(
+              (u) => parseFloat((percents[u.id] ?? "").replace(",", ".")) > 0,
+            )}
+          />
 
           <div className="space-y-1.5">
             <Label htmlFor="observacao-edit">Observação (opcional)</Label>

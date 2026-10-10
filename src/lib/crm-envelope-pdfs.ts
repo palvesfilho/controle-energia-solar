@@ -25,6 +25,14 @@
 
 /** Primeira página em texto corrido, para reconhecer o cabeçalho. */
 async function textoDaPrimeiraPagina(buffer: Buffer): Promise<string> {
+  return textoDoPdf(buffer, 1);
+}
+
+/**
+ * Texto corrido das primeiras `maxPaginas` páginas. PDF escaneado (só imagem)
+ * devolve string vazia — quem chama decide o que isso significa.
+ */
+export async function textoDoPdf(buffer: Buffer, maxPaginas = 30): Promise<string> {
   const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
   if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
@@ -43,13 +51,15 @@ async function textoDaPrimeiraPagina(buffer: Buffer): Promise<string> {
     disableFontFace: true,
   }).promise;
 
-  const page = await doc.getPage(1);
-  const content = await page.getTextContent();
-  return (content.items as Array<{ str?: string }>)
-    .map((i) => i.str ?? "")
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const partes: string[] = [];
+  for (let n = 1; n <= Math.min(doc.numPages, maxPaginas); n++) {
+    const page = await doc.getPage(n);
+    const content = await page.getTextContent();
+    partes.push(
+      (content.items as Array<{ str?: string }>).map((i) => i.str ?? "").join(" "),
+    );
+  }
+  return partes.join(" ").replace(/\s+/g, " ").trim();
 }
 
 export type TipoDocumentoAssinado = "termo" | "procuracao" | "autorizacao";

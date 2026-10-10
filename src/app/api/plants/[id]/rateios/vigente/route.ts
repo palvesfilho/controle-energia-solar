@@ -5,6 +5,7 @@ import { isAdminRole } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
 import { concessionariaDaUsina } from "@/lib/concessionarias";
+import { documentosFaltandoDaUc } from "@/lib/rateio-documentos-uc";
 
 /**
  * GET /api/plants/[id]/rateios/vigente — retorna a versão VIGENTE do rateio
@@ -302,6 +303,13 @@ export async function GET(
         distribuidora: true,
         // kWh/mês do cadastro — peso de cada UC na sugestão de percentuais.
         consumoMedio: true,
+        // Os documentos que a RGE pede no registro do rateio: a tela avisa o
+        // que falta antes de o operador chegar no portal.
+        docIdentidade: true,
+        docCartaoCnpj: true,
+        docContratoSocial: true,
+        docProcuracao: true,
+        docTermoAdesao: true,
         plantId: true,
         plant: { select: { id: true, name: true } },
       },
@@ -368,6 +376,8 @@ export async function GET(
     /** Quantas faturas sustentam a média — 1 e 12 não valem o mesmo. */
     consumoRealMeses: consumoRealPorUc.get(u.id)?.meses ?? 0,
     isGeradora: !!u.codigoUc && codigosGeradora.has(u.codigoUc),
+    /** Documentos do pacote da RGE que esta UC não tem guardados. */
+    docsFaltando: documentosFaltandoDaUc(u),
     /** Já está vinculada a ESTA usina no cadastro. */
     daUsina: u.plantId === plantId,
     /** A usina do cadastro, quando é outra — só para exibir. */

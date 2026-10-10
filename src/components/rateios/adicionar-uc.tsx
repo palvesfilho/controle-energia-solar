@@ -42,6 +42,8 @@ export interface UnidadeDisponivel {
   /** Quantas faturas entraram na média do consumo real. */
   consumoRealMeses?: number;
   isGeradora?: boolean;
+  /** Documentos do pacote da RGE que a UC não tem guardados. Vazio = completa. */
+  docsFaltando?: string[];
   /** Já vinculada a esta usina no cadastro. */
   daUsina?: boolean;
   /** A usina do cadastro, quando é outra. */
