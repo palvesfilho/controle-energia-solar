@@ -38,10 +38,27 @@ export interface VinculoPendente extends VinculoRateioUsina {
   protocoloSituacao: string | null;
 }
 
+/**
+ * Transferência de créditos que a UC recebeu (lib/transferencia-creditos.ts).
+ * Não é rateio — é estoque entregue uma vez —, mas é de onde a UC compensa
+ * quando não está em rateio nenhum (ex.: SUBWAY Fernando Ferrari).
+ */
+export interface VinculoTransferencia {
+  transferId: string;
+  plantId: string | null;
+  plantName: string | null;
+  ucOrigemCodigo: string;
+  kwh: number;
+  /** ENVIADA | ACEITA (rejeitada não entra). */
+  status: string;
+  aceitoEm: string | null;
+}
+
 export interface VinculoUc {
   vigentes: (VinculoRateioUsina & { desde: string | null })[];
   pendentes: VinculoPendente[];
   rejeitado: { plantId: string; plantName: string; em: string | null; protocolo: string | null } | null;
+  transferencias: VinculoTransferencia[];
 }
 
 export async function vinculosPorRateio(ucIds: string[]): Promise<Map<string, VinculoUc>> {
@@ -131,9 +148,33 @@ export async function vinculosPorRateio(ucIds: string[]): Promise<Map<string, Vi
       }
     }
 
-    out.set(ucId, { vigentes, pendentes, rejeitado });
+    out.set(ucId, { vigentes, pendentes, rejeitado, transferencias: [] });
+  }
+
+  const transf = await prisma.creditTransferItem.findMany({
+    where: { consumerUnitId: { in: ucIds }, transfer: { status: { in: ["ENVIADA", "ACEITA"] } } },
+    select: {
+      consumerUnitId: true,
+      kwh: true,
+      transfer: {
+        select: { id: true, plantId: true, ucOrigemCodigo: true, status: true, aceitoEm: true, plant: { select: { name: true } } },
+      },
+    },
+  });
+  for (const t of transf) {
+    const v = out.get(t.consumerUnitId) ?? { ...VINCULO_VAZIO, transferencias: [] };
+    v.transferencias.push({
+      transferId: t.transfer.id,
+      plantId: t.transfer.plantId,
+      plantName: t.transfer.plant?.name ?? null,
+      ucOrigemCodigo: t.transfer.ucOrigemCodigo,
+      kwh: t.kwh,
+      status: t.transfer.status,
+      aceitoEm: t.transfer.aceitoEm?.toISOString() ?? null,
+    });
+    out.set(t.consumerUnitId, v);
   }
   return out;
 }
 
-export const VINCULO_VAZIO: VinculoUc = { vigentes: [], pendentes: [], rejeitado: null };
+export const VINCULO_VAZIO: VinculoUc = { vigentes: [], pendentes: [], rejeitado: null, transferencias: [] };

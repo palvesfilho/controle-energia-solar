@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft } from "lucide-react";
+import { formatCodigoUc } from "@/lib/uc-codigo";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { VinculoUc } from "@/lib/uc-vinculo-rateio";
 
@@ -15,6 +16,8 @@ import type { VinculoUc } from "@/lib/uc-vinculo-rateio";
  * - Vigente em A + pendente em B (transferência): mostra **A** + ⚠️ âmbar.
  *   Quem compensa até a RGE aprovar é A; mostrar B seria antecipar um efeito
  *   que o protocolo ainda não produziu.
+ * - Só transferência de créditos (sem rateio): "Transferência · usina" com
+ *   ⇄ — a UC compensa um estoque que veio de uma vez, não um rateio.
  * - Sem nada: "sem usina" em vermelho, com o motivo quando há (rateio
  *   rejeitado, ou o cadastro aponta uma usina sem rateio nenhum).
  *
@@ -41,8 +44,15 @@ function pct(n: number): string {
 
 /** Nome para busca, filtro e exportação: o que a célula mostra como usina. */
 export function usinaExibida(v: VinculoUc | undefined): string | undefined {
-  return v?.vigentes[0]?.plantName ?? v?.pendentes[0]?.plantName;
+  const t = v?.transferencias?.[0];
+  return (
+    v?.vigentes[0]?.plantName ??
+    v?.pendentes[0]?.plantName ??
+    (t ? `Transferência · ${t.plantName ?? `UC ${t.ucOrigemCodigo}`}` : undefined)
+  );
 }
+
+const TRANSFERENCIAS_HREF = "/admin/gestao-creditos/rateios?aba=transferencias";
 
 function Aviso({
   href,
@@ -163,6 +173,37 @@ export function UsinaDaUc({
           ))}
         </Aviso>
       </div>
+    );
+  }
+
+  const transferencias = vinculo?.transferencias ?? [];
+  if (transferencias.length) {
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Link
+              href={TRANSFERENCIAS_HREF}
+              className="inline-flex items-center gap-1.5 hover:text-primary hover:underline underline-offset-2 transition-colors"
+            />
+          }
+        >
+          <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-sky-600" />
+          <span>Transferência · {transferencias[0].plantName ?? `UC ${formatCodigoUc(transferencias[0].ucOrigemCodigo)}`}</span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-sm whitespace-normal p-3 text-[12px] leading-relaxed">
+          <div className="space-y-1">
+            <div className="font-semibold">Recebe créditos por transferência, não por rateio</div>
+            {transferencias.map((t) => (
+              <div key={t.transferId}>
+                {t.plantName ?? "Usina não identificada"} (UC {formatCodigoUc(t.ucOrigemCodigo)}) ·{" "}
+                {t.kwh.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} kWh ·{" "}
+                {t.status === "ACEITA" ? `aceita em ${data(t.aceitoEm)}` : "aguardando aceite da RGE"}
+              </div>
+            ))}
+          </div>
+        </TooltipContent>
+      </Tooltip>
     );
   }
 

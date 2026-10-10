@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { TodosOsVigentes } from "@/components/rateios/todos-vigentes";
 import { ProtocolosEmAberto } from "@/components/rateios/protocolos-abertos";
+import { TransferenciasCredito } from "@/components/rateios/transferencias-credito";
 import { PacoteDocumentosRge } from "@/components/rateios/pacote-documentos-rge";
 import { AvisoDocumentosFaltando } from "@/components/rateios/aviso-documentos-faltando";
 import { AdicionarUc, type UnidadeDisponivel } from "@/components/rateios/adicionar-uc";
@@ -2475,6 +2476,13 @@ const ABAS_RATEIO = [
     label: "Protocolos em aberto",
     hint: "Pedidos na concessionária que ainda não viraram rateio vigente",
   },
+  {
+    // Não é rateio (é estoque em kWh, entregue uma vez), mas é o mesmo assunto:
+    // para onde vai o crédito da usina. Ver lib/transferencia-creditos.ts.
+    key: "transferencias",
+    label: "Transferências",
+    hint: "Créditos presos na geradora enviados de uma vez a outras UCs (troca de titularidade)",
+  },
 ] as const;
 
 type AbaRateio = (typeof ABAS_RATEIO)[number]["key"];
@@ -2504,7 +2512,7 @@ function RateiosAbas() {
   // navegador funcionar e permite mandar a aba por link.
   const abaUrl = searchParams.get("aba");
   const aba: AbaRateio =
-    abaUrl === "vigentes" || abaUrl === "protocolos" ? abaUrl : "usina";
+    abaUrl === "vigentes" || abaUrl === "protocolos" || abaUrl === "transferencias" ? abaUrl : "usina";
 
   // Usina apontada por link de fora (Análise, Sugestões de Ação, e o nome da
   // usina nas duas abas novas). Fica aqui, e não lá dentro, porque a fronteira
@@ -2559,6 +2567,7 @@ function RateiosAbas() {
       {aba === "usina" && <RateiosPorUsina plantIdInicial={plantIdInicial} />}
       {aba === "vigentes" && <TodosOsVigentes />}
       {aba === "protocolos" && <ProtocolosEmAberto />}
+      {aba === "transferencias" && <TransferenciasCredito />}
     </div>
   );
 }

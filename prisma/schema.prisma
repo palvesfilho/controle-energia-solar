@@ -159,24 +159,25 @@ model Plant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  investors         InvestorPlant[]
-  consumers         ConsumerPlant[]
-  reports           MonthlyReport[]
-  monthlyData       PlantMonthly[]
-  consumerData      ConsumerMonthly[]
-  consumerBills     ConsumerBill[]
-  consumerUnits     ConsumerUnit[]
-  billings          PlantBilling[]
-  cpflCredential    CpflCredential?
+  investors          InvestorPlant[]
+  consumers          ConsumerPlant[]
+  reports            MonthlyReport[]
+  monthlyData        PlantMonthly[]
+  consumerData       ConsumerMonthly[]
+  consumerBills      ConsumerBill[]
+  consumerUnits      ConsumerUnit[]
+  billings           PlantBilling[]
+  cpflCredential     CpflCredential?
   // 1:N — uma Plant pode ter várias usinas monitoradas (inversores) injetando
   // na mesma fatura da concessionária.
-  monitoringClients BrasilSolarClient[] @relation("PlantMonitoring")
-  rateioVersions    RateioVersion[]
-  documents         PlantDocument[]
-  investorPayables  InvestorPayable[]
-  acoesRecomendadas AcaoRecomendada[]
-  statusChanges     PlantStatusChange[]
+  monitoringClients  BrasilSolarClient[] @relation("PlantMonitoring")
+  rateioVersions     RateioVersion[]
+  documents          PlantDocument[]
+  investorPayables   InvestorPayable[]
+  acoesRecomendadas  AcaoRecomendada[]
+  statusChanges      PlantStatusChange[]
   faturasNaoEmitidas FaturaNaoEmitida[]
+  creditTransfers    CreditTransfer[]
 
   @@map("plants")
 }
@@ -193,11 +194,11 @@ model Plant {
 // (ver lib/fatura-nao-emitida.ts). Nenhum caminho de gravação de fatura precisa
 // saber que esta tabela existe.
 model FaturaNaoEmitida {
-  id             String  @id @default(cuid())
-  consumerUnitId String? @map("consumer_unit_id")
-  plantId        String? @map("plant_id")
-  mesReferencia  Int     @map("mes_referencia")
-  anoReferencia  Int     @map("ano_referencia")
+  id             String   @id @default(cuid())
+  consumerUnitId String?  @map("consumer_unit_id")
+  plantId        String?  @map("plant_id")
+  mesReferencia  Int      @map("mes_referencia")
+  anoReferencia  Int      @map("ano_referencia")
   motivo         String?
   // Cópia do nome, não relação com User — mesmo motivo de PlantStatusChange.
   marcadoPor     String   @map("marcado_por")
@@ -602,6 +603,7 @@ model ConsumerUnit {
   bills                    ConsumerBill[]
   cpflCredential           CpflCredential?
   rateioItems              RateioItem[]
+  creditTransferItems      CreditTransferItem[]
   investorPayables         InvestorPayable[]
   acoesRecomendadas        AcaoRecomendada[]
   // Documentos da adesão, alojados AQUI e não apontando para o CRM.
@@ -2072,6 +2074,58 @@ model RateioVersion {
 
   @@index([plantId, status])
   @@map("rateio_versions")
+}
+
+// Transferência de créditos: o saldo PRESO numa geradora vai, de uma vez só,
+// para outras UCs. Não é rateio — rateio é % da geração de TODO mês; isto é um
+// ESTOQUE em kWh, entregue uma vez. Só acontece depois que o contrato da
+// geradora com a RGE é encerrado (troca de titularidade) e o pedido vai à RGE
+// por EMAIL, com o documento "transferência de créditos".
+//
+// O aceite da RGE é o marco: na fatura do destino, o crédito transferido chega
+// com um mês de origem ANTERIOR ao aceite (ex.: SUBWAY, aceite 30/01/2026, linha
+// "JUL/25"), enquanto rateio e geração própria vêm com o mês corrente. É por aí
+// que o acompanhamento separa o que é desta transferência (lib/transferencia-creditos.ts).
+model CreditTransfer {
+  id              String    @id @default(cuid())
+  // Usina dona do crédito. Nulo enquanto não se sabe de qual usina ele veio —
+  // o código da UC de origem já basta para registrar o pedido.
+  plantId         String?   @map("plant_id")
+  // Código da UC que CEDEU o crédito, como está no documento (novo ou antigo).
+  ucOrigemCodigo  String    @map("uc_origem_codigo")
+  kwhTotal        Float     @map("kwh_total")
+  // ENVIADA | ACEITA | REJEITADA. "Esgotada" não é status: é conta (usado = total).
+  status          String    @default("ENVIADA")
+  enviadoEm       DateTime? @map("enviado_em") // email à RGE
+  aceitoEm        DateTime? @map("aceito_em") // aceite da RGE
+  observacao      String?
+  // O documento "transferência de créditos" enviado à RGE (PDF).
+  documentoUrl    String?   @map("documento_url")
+  documentoNome   String?   @map("documento_nome")
+  criadoPorUserId String?   @map("criado_por_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  plant Plant?               @relation(fields: [plantId], references: [id], onDelete: SetNull)
+  items CreditTransferItem[]
+
+  @@index([plantId])
+  @@map("credit_transfers")
+}
+
+// Uma UC de destino da transferência e quantos kWh ela recebeu.
+model CreditTransferItem {
+  id             String @id @default(cuid())
+  transferId     String @map("transfer_id")
+  consumerUnitId String @map("consumer_unit_id")
+  kwh            Float
+
+  transfer     CreditTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  consumerUnit ConsumerUnit   @relation(fields: [consumerUnitId], references: [id], onDelete: Cascade)
+
+  @@unique([transferId, consumerUnitId])
+  @@index([consumerUnitId])
+  @@map("credit_transfer_items")
 }
 
 // Histórico de cada ida à concessionária atrás do protocolo. Existe por causa do
