@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { TextoValidadeCartaoCnpj } from "@/components/rateios/validade-cartao-cnpj";
 import type {
   ChaveDocFixo,
   ConferenciaPacoteRge,
@@ -158,6 +159,10 @@ export function PacoteDocumentosRge({ plantId, consumerUnitIds, aparencia = "bot
       ),
     ) ?? [];
   const fixosFaltando = conf?.fixos.filter((f) => f.estado !== "ok") ?? [];
+  const foraDoPrazo = (s?: string) => s === "vencido" || s === "vencendo";
+  const cartoesForaDoPrazo =
+    (conf?.associados.filter((a) => foraDoPrazo(a.cartaoCnpjValidade?.situacao)).length ?? 0) +
+    (conf?.fixos.filter((f) => foraDoPrazo(f.validade?.situacao)).length ?? 0);
   const nadaParaBaixar = !conf || conf.arquivos.length === 0;
 
   return (
@@ -234,6 +239,21 @@ export function PacoteDocumentosRge({ plantId, consumerUnitIds, aparencia = "bot
                 </div>
               )}
 
+              {cartoesForaDoPrazo > 0 && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                  <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>
+                    <span className="font-semibold">
+                      A RGE não aceita cartão CNPJ emitido há mais de 6 meses.
+                    </span>{" "}
+                    {cartoesForaDoPrazo === 1
+                      ? "1 cartão deste pacote já passou de 5 meses"
+                      : `${cartoesForaDoPrazo} cartões deste pacote já passaram de 5 meses`}{" "}
+                    — veja a data ao lado de cada um.
+                  </p>
+                </div>
+              )}
+
               <div className="overflow-x-auto rounded-md border">
                 <table className="w-full text-xs">
                   <thead className="bg-muted/50 text-left text-muted-foreground">
@@ -271,6 +291,13 @@ export function PacoteDocumentosRge({ plantId, consumerUnitIds, aparencia = "bot
                         {/* Traço = pessoa física: o documento não se aplica. */}
                         <td className="px-2 py-1.5 text-center">
                           {a.cartaoCnpj ? <Marca estado={a.cartaoCnpj} /> : "—"}
+                          {a.cartaoCnpjValidade && (
+                            <TextoValidadeCartaoCnpj
+                              validade={a.cartaoCnpjValidade}
+                              curto
+                              className="block text-[11px]"
+                            />
+                          )}
                         </td>
                         <td className="px-2 py-1.5 text-center">
                           {a.contratoSocial ? <Marca estado={a.contratoSocial} /> : "—"}
@@ -347,6 +374,9 @@ export function PacoteDocumentosRge({ plantId, consumerUnitIds, aparencia = "bot
                     )}
                     <div className="min-w-0 flex-1">
                       <span className="font-medium">{f.rotulo}</span>
+                      {f.validade && f.estado === "ok" && (
+                        <TextoValidadeCartaoCnpj validade={f.validade} className="block text-[11px]" />
+                      )}
                       <span className="block truncate text-[11px] text-muted-foreground">
                         {f.estado === "falta"
                           ? "ainda não enviado"

@@ -24,6 +24,9 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { TextoValidadeCartaoCnpj } from "@/components/rateios/validade-cartao-cnpj";
+import type { ValidadeCartaoCnpj } from "@/lib/cartao-cnpj";
 
 interface DocFixo {
   chave: string;
@@ -31,6 +34,8 @@ interface DocFixo {
   nome: string | null;
   enviadoEm: string | null;
   href: string | null;
+  /** Só no cartão CNPJ: a RGE recusa o emitido há mais de 6 meses. */
+  validade: ValidadeCartaoCnpj | null;
 }
 
 const API = "/api/rateios/documentos-fixos";
@@ -76,6 +81,32 @@ export default function DocumentosAssociacaoPage() {
       toast.error(`Falha ao enviar: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setEnviando(null);
+    }
+  }
+
+  // Cartão escaneado ou fotografado não tem a data em texto: o operador lê no
+  // papel e informa, para o aviso dos 5 meses continuar funcionando.
+  const [dataManual, setDataManual] = useState("");
+  const [salvandoData, setSalvandoData] = useState(false);
+
+  async function salvarData() {
+    if (!dataManual) return;
+    setSalvandoData(true);
+    try {
+      const res = await fetch(API, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emitidoEm: dataManual }),
+      });
+      const dados = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(dados.error ?? `HTTP ${res.status}`);
+      toast.success("Data de emissão guardada.");
+      setDataManual("");
+      await carregar();
+    } catch (err) {
+      toast.error(`Falha ao salvar: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSalvandoData(false);
     }
   }
 
@@ -143,6 +174,25 @@ export default function DocumentosAssociacaoPage() {
                         }`
                       : "Ainda não enviado — o ZIP do rateio sai sem ele."}
                   </div>
+                  {d.href && d.validade && (
+                    <TextoValidadeCartaoCnpj validade={d.validade} className="mt-0.5 block text-xs" />
+                  )}
+                  {d.href && d.validade?.situacao === "sem_data" && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        Informe a data que está no rodapé do cartão:
+                      </span>
+                      <Input
+                        type="date"
+                        value={dataManual}
+                        onChange={(e) => setDataManual(e.target.value)}
+                        className="h-8 w-40"
+                      />
+                      <Button size="sm" disabled={!dataManual || salvandoData} onClick={salvarData}>
+                        Salvar data
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 {d.href && (
                   <a
@@ -183,7 +233,8 @@ export default function DocumentosAssociacaoPage() {
             ? "Os três estão guardados."
             : `${faltando === 1 ? "Falta 1 documento" : `Faltam ${faltando} documentos`}.`}{" "}
           Formatos aceitos: PDF, JPG ou PNG, até 20 MB. Foto vira página de PDF na hora de
-          montar o pacote.
+          montar o pacote. A RGE não aceita cartão CNPJ emitido há mais de 6 meses: a data é
+          lida do próprio arquivo e o aviso começa aos 5 meses.
         </p>
       )}
     </div>

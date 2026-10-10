@@ -8,6 +8,7 @@
  */
 
 import { TriangleAlert } from "lucide-react";
+import { AvisoCartaoCnpjAssociacao } from "@/components/rateios/validade-cartao-cnpj";
 
 export interface LinhaComDocumentos {
   id: string;
@@ -18,8 +19,18 @@ export interface LinhaComDocumentos {
 
 export function AvisoDocumentosFaltando({ linhas }: { linhas: LinhaComDocumentos[] }) {
   const pendentes = linhas.filter((l) => l.docsFaltando && l.docsFaltando.length > 0);
-  if (pendentes.length === 0) return null;
 
+  return (
+    <>
+      {/* O cartão CNPJ da associação vale para todo rateio: o aviso dele não
+          depende das UCs escolhidas, então aparece mesmo com tudo em dia aqui. */}
+      <AvisoCartaoCnpjAssociacao />
+      {pendentes.length > 0 && <AvisoUcs pendentes={pendentes} />}
+    </>
+  );
+}
+
+function AvisoUcs({ pendentes }: { pendentes: LinhaComDocumentos[] }) {
   return (
     <div
       role="alert"

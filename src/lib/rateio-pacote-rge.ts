@@ -38,6 +38,11 @@ import { readFromStorage } from "@/lib/file-storage";
 import { textoDoPdf } from "@/lib/crm-envelope-pdfs";
 import { isCodigoUcNovo } from "@/lib/uc-codigo";
 import { ucEhEmpresa } from "@/lib/rateio-documentos-uc";
+import {
+  dataEmissaoCartaoCnpj,
+  validadeCartaoCnpj,
+  type ValidadeCartaoCnpj,
+} from "@/lib/cartao-cnpj";
 
 /** Documentos da associação, iguais em todo rateio. */
 export const DOCS_FIXOS = [
@@ -61,6 +66,11 @@ export interface DocFixoGravado {
   path: string;
   nome: string;
   enviadoEm: string;
+  /**
+   * Só no cartão CNPJ: data de emissão (AAAA-MM-DD) lida do arquivo ou informada
+   * à mão. `null` = já se tentou ler e não deu; `undefined` = nunca se tentou.
+   */
+  emitidoEm?: string | null;
 }
 
 export function lerDocFixo(value: string | null | undefined): DocFixoGravado | null {
@@ -68,7 +78,7 @@ export function lerDocFixo(value: string | null | undefined): DocFixoGravado | n
   try {
     const v = JSON.parse(value) as Partial<DocFixoGravado>;
     return typeof v.path === "string" && v.path
-      ? { path: v.path, nome: v.nome ?? "", enviadoEm: v.enviadoEm ?? "" }
+      ? { path: v.path, nome: v.nome ?? "", enviadoEm: v.enviadoEm ?? "", emitidoEm: v.emitidoEm }
       : null;
   } catch {
     return null;
@@ -101,6 +111,11 @@ export interface AssociadoConferencia {
   identidade: EstadoDoc;
   /** Só para empresa. Null = pessoa física, o documento não se aplica. */
   cartaoCnpj: EstadoDoc | null;
+  /**
+   * A RGE recusa cartão CNPJ emitido há mais de 6 meses — vale para o do
+   * associado também. Null quando não há cartão para conferir.
+   */
+  cartaoCnpjValidade: ValidadeCartaoCnpj | null;
   contratoSocial: EstadoDoc | null;
   procuracao: EstadoDoc;
   termo: EstadoDoc;
@@ -110,7 +125,15 @@ export interface AssociadoConferencia {
 export interface ConferenciaPacoteRge {
   usina: string;
   associados: AssociadoConferencia[];
-  fixos: { chave: ChaveDocFixo; rotulo: string; estado: EstadoDoc; nome: string | null; enviadoEm: string | null }[];
+  fixos: {
+    chave: ChaveDocFixo;
+    rotulo: string;
+    estado: EstadoDoc;
+    nome: string | null;
+    enviadoEm: string | null;
+    /** Só no cartão CNPJ da associação. */
+    validade: ValidadeCartaoCnpj | null;
+  }[];
   /** Os arquivos que entram no ZIP. */
   arquivos: string[];
   /** Quantas coisas pedem atenção antes de subir na RGE. */
@@ -156,6 +179,15 @@ async function comoPdf(bytes: Buffer): Promise<PDFDocument | null> {
   return null;
 }
 
+/**
+ * Data de emissão do cartão CNPJ lida do próprio arquivo. Null quando é foto,
+ * PDF escaneado, ou um PDF que não é o comprovante da Receita.
+ */
+export async function emissaoCartaoCnpjDoArquivo(bytes: Buffer): Promise<string | null> {
+  if (tipoDoArquivo(bytes) !== "pdf") return null;
+  return dataEmissaoCartaoCnpj(await textoDoPdf(bytes).catch(() => ""));
+}
+
 function soCodigo(s: string | null | undefined): string {
   return (s ?? "").replace(/\D/g, "");
 }
@@ -171,6 +203,10 @@ function qualCodigoCita(texto: string, codigos: string[]): CitaUc {
   const citados = codigos.filter((c) => c && limpo.includes(c));
   if (citados.length === 0) return "nenhum";
   return citados.some((c) => !isCodigoUcNovo(c)) ? "antigo" : "novo";
+}
+
+function cartaoPedeAtencao(v: ValidadeCartaoCnpj | null): boolean {
+  return v?.situacao === "vencido" || v?.situacao === "vencendo";
 }
 
 export interface PacoteRge {
@@ -298,6 +334,7 @@ export async function montarPacoteRge(
     const termo = await anexar(termos, jaEntrou.termos, u.docTermoAdesao);
 
     const bytesProcuracao = procuracao === "ok" ? await ler(u.docProcuracao!) : null;
+    const bytesCartao = cartaoCnpj === "ok" ? await ler(u.docCartaoCnpj!) : null;
 
     associados.push({
       consumerUnitId: u.id,
@@ -306,6 +343,9 @@ export async function montarPacoteRge(
       codigoAntigo: u.codigoUcAntigo || (novo && !isCodigoUcNovo(novo) ? u.codigoUc : null),
       identidade,
       cartaoCnpj,
+      cartaoCnpjValidade: bytesCartao
+        ? validadeCartaoCnpj(dataEmissaoCartaoCnpj(await textoDe(u.docCartaoCnpj!, bytesCartao)))
+        : null,
       contratoSocial,
       procuracao,
       termo,
@@ -324,17 +364,26 @@ export async function montarPacoteRge(
   for (const d of DOCS_FIXOS) {
     const g = lerDocFixo(gravados.find((s) => s.key === settingDoDocFixo(d.chave))?.value);
     if (!g) {
-      fixos.push({ chave: d.chave, rotulo: d.rotulo, estado: "falta", nome: null, enviadoEm: null });
+      fixos.push({ chave: d.chave, rotulo: d.rotulo, estado: "falta", nome: null, enviadoEm: null, validade: null });
       continue;
     }
     const bytes = await ler(g.path);
     const tipo = bytes ? tipoDoArquivo(bytes) : null;
+    // A data gravada no cadastro manda (pode ter sido informada à mão para um
+    // cartão escaneado); sem ela, lê do arquivo.
+    const validade =
+      d.chave === "cartao_cnpj"
+        ? validadeCartaoCnpj(
+            g.emitidoEm ?? (bytes ? await emissaoCartaoCnpjDoArquivo(bytes) : null),
+          )
+        : null;
     fixos.push({
       chave: d.chave,
       rotulo: d.rotulo,
       estado: tipo ? "ok" : "ilegivel",
       nome: g.nome || null,
       enviadoEm: g.enviadoEm || null,
+      validade,
     });
     if (bytes && tipo) {
       // PDF segue byte a byte como foi enviado; só a foto é que precisa virar PDF.
@@ -372,9 +421,11 @@ export async function montarPacoteRge(
           (e) => e !== null && e !== "ok",
         ).length +
         (a.codigoAntigo ? 0 : 1) +
-        (a.procuracaoCita === "novo" ? 1 : 0),
+        (a.procuracaoCita === "novo" ? 1 : 0) +
+        (cartaoPedeAtencao(a.cartaoCnpjValidade) ? 1 : 0),
       0,
-    ) + fixos.filter((f) => f.estado !== "ok").length;
+    ) +
+    fixos.filter((f) => f.estado !== "ok" || cartaoPedeAtencao(f.validade)).length;
 
   let zip: Buffer | null = null;
   if (opcoes.gerarZip) {
