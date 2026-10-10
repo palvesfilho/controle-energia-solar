@@ -9,6 +9,11 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Loader2, Plus, Trash2, Users, Check } from "lucide-react";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import {
+  BotaoBuscarCodigoAntigo,
+  MensagemBuscaCodigoAntigo,
+  useBuscaCodigoAntigo,
+} from "@/components/consumer-units/buscar-codigo-antigo";
 
 interface Beneficiaria {
   id: string;
@@ -50,6 +55,51 @@ function fmtPercent(n: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+/**
+ * Coluna do código antigo de UMA linha, com o "Buscar código". É componente à
+ * parte porque cada linha tem a sua própria consulta em andamento. Se a linha
+ * for removida no meio da busca, a de baixo sobe para este índice com outro
+ * código novo — e o hook descarta a resposta, que era da linha que saiu.
+ */
+function CampoCodigoAntigo({
+  idx,
+  codigoUc,
+  valor,
+  onChange,
+}: {
+  idx: number;
+  codigoUc: string;
+  valor: string;
+  onChange: (valor: string) => void;
+}) {
+  const busca = useBuscaCodigoAntigo(codigoUc, onChange);
+  return (
+    <>
+      <div className="col-span-12 sm:col-span-3 space-y-1.5">
+        <div className="flex flex-wrap items-center justify-between gap-x-2">
+          <Label htmlFor={`uc-antigo-${idx}`} className="text-xs">
+            Código instal. (antigo)
+          </Label>
+          <BotaoBuscarCodigoAntigo busca={busca} />
+        </div>
+        <Input
+          id={`uc-antigo-${idx}`}
+          value={valor}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Pré-migração RGE"
+          className="font-mono"
+        />
+      </div>
+      {/* Em linha própria, no fim: dentro da coluna desalinharia os campos. */}
+      {busca.estado !== "parado" && (
+        <div className="order-last col-span-12">
+          <MensagemBuscaCodigoAntigo busca={busca} />
+        </div>
+      )}
+    </>
+  );
 }
 
 export function BeneficiariasCard({ proprietarioId }: { proprietarioId: string }) {
@@ -271,20 +321,12 @@ export function BeneficiariasCard({ proprietarioId }: { proprietarioId: string }
                       className="font-mono"
                     />
                   </div>
-                  <div className="col-span-12 sm:col-span-3 space-y-1.5">
-                    <Label htmlFor={`uc-antigo-${idx}`} className="text-xs">
-                      Código instal. (antigo)
-                    </Label>
-                    <Input
-                      id={`uc-antigo-${idx}`}
-                      value={d.codigoUcAntigo}
-                      onChange={(e) =>
-                        updateDraft(idx, { codigoUcAntigo: e.target.value })
-                      }
-                      placeholder="Pré-migração RGE"
-                      className="font-mono"
-                    />
-                  </div>
+                  <CampoCodigoAntigo
+                    idx={idx}
+                    codigoUc={d.codigoUc}
+                    valor={d.codigoUcAntigo}
+                    onChange={(v) => updateDraft(idx, { codigoUcAntigo: v })}
+                  />
                   <div className="col-span-12 sm:col-span-3 space-y-1.5">
                     <Label htmlFor={`nome-${idx}`} className="text-xs">
                       Nome (opcional)
