@@ -33,6 +33,7 @@ interface UcDoCrm {
   clienteNome: string;
   clienteDocumento: string | null;
   clienteEmail: string | null;
+  clienteTelefone?: string | null;
   cep: string | null;
   logradouro: string | null;
   numero: string | null;
@@ -311,6 +312,11 @@ function NovaUCConteudo() {
         // documento de quem assinou conosco. Só aí faz sentido confrontá-lo
         // com o do cliente escolhido no seletor.
         documentoVeioDaAdesao={Boolean(crmUcId)}
+        // A UC não guarda email/telefone, mas a adesão traz: vão para a janela
+        // "Cadastrar novo consumidor" já abrir preenchida.
+        contatoSugerido={
+          ucCrm ? { email: ucCrm.clienteEmail, phone: ucCrm.clienteTelefone } : undefined
+        }
         painelLateral={
           ucCrm ? (
             <DocumentosAdesao

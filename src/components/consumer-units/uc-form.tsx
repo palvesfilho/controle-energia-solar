@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
-import { Save } from "lucide-react";
+import { Save, UserPlus } from "lucide-react";
+import { NovoConsumidorDialog } from "@/components/consumers/novo-consumidor-dialog";
 import {
   CONCESSIONARIAS,
   isConcessionariaValida,
@@ -201,6 +202,12 @@ interface Props {
    * ficaram com o campo em branco na base.
    */
   regraRemuneracaoObrigatoria?: boolean;
+  /**
+   * Email e telefone do cliente, quando a tela de origem os conhece (a adesão
+   * do CRM traz). A UC não tem esses campos; servem só para a janela
+   * "Cadastrar novo consumidor" já abrir preenchida.
+   */
+  contatoSugerido?: { email?: string | null; phone?: string | null };
 }
 
 export function UCForm({
@@ -214,7 +221,9 @@ export function UCForm({
   createdAt,
   regraRemuneracaoObrigatoria = false,
   documentoVeioDaAdesao = false,
+  contatoSugerido,
 }: Props) {
+  const [novoConsumidorAberto, setNovoConsumidorAberto] = useState(false);
   const [form, setForm] = useState<UCFormData>(() => {
     const base = { ...EMPTY_UC_FORM, ...initialData };
     // O campo era texto livre e virou lista fechada. Sem normalizar, cadastro
@@ -380,6 +389,43 @@ export function UCForm({
                 </option>
               ))}
             </select>
+            {/* O cliente da adesão quase nunca existe aqui ainda: cadastra na
+                janela e ele já volta escolhido, sem largar a UC pela metade. */}
+            <button
+              type="button"
+              onClick={() => setNovoConsumidorAberto(true)}
+              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              Não está na lista? Cadastrar novo consumidor
+            </button>
+            <NovoConsumidorDialog
+              open={novoConsumidorAberto}
+              onOpenChange={setNovoConsumidorAberto}
+              sugestao={{
+                name: form.nome,
+                document: form.cpfCnpj,
+                email: contatoSugerido?.email ?? "",
+                phone: contatoSugerido?.phone ?? "",
+                endereco: [
+                  [form.logradouro, form.numero, form.complemento].filter(Boolean).join(", "),
+                  form.cidade,
+                ]
+                  .filter(Boolean)
+                  .join(" - "),
+              }}
+              existentes={consumers}
+              onCriado={(c) => {
+                setConsumers((lista) =>
+                  [
+                    ...lista,
+                    { id: c.id, label: c.name, documento: c.cpfCnpj || c.document || null },
+                  ].sort((a, b) => a.label.localeCompare(b.label)),
+                );
+                update("consumerId", c.id);
+              }}
+              onUsarExistente={(id) => update("consumerId", id)}
+            />
             {confrontoDocumento === "diverge" ? (
               <p className="text-xs text-amber-700 dark:text-amber-500">
                 O CPF/CNPJ deste cliente não é o desta UC (
