@@ -1,19 +1,24 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Save, Search, UserPlus } from "lucide-react";
+import { Save, UserPlus } from "lucide-react";
+import {
+  BotaoBuscarCodigoAntigo,
+  MensagemBuscaCodigoAntigo,
+  useBuscaCodigoAntigo,
+} from "@/components/consumer-units/buscar-codigo-antigo";
 import { NovoConsumidorDialog } from "@/components/consumers/novo-consumidor-dialog";
 import {
   CONCESSIONARIAS,
   isConcessionariaValida,
   normalizeConcessionaria,
 } from "@/lib/concessionarias";
-import { exigeCodigoUcAntigo, isCodigoUcNovo, normalizeCodigoUc } from "@/lib/uc-codigo";
+import { exigeCodigoUcAntigo, normalizeCodigoUc } from "@/lib/uc-codigo";
 import { comparaDocumentos, formatCpfCnpjComRotulo } from "@/lib/documento";
 
 export interface UCFormData {
@@ -85,11 +90,6 @@ export const EMPTY_UC_FORM: UCFormData = {
   senhaDistribuidora: "",
   temGeracaoPropria: false,
 };
-
-interface BuscaCodigo {
-  estado: "parado" | "buscando" | "achou" | "falhou";
-  texto: string;
-}
 
 interface Option {
   id: string;
@@ -239,7 +239,6 @@ export function UCForm({
       distribuidora: normalizeConcessionaria(base.distribuidora) ?? base.distribuidora,
     };
   });
-  const [buscaCodigo, setBuscaCodigo] = useState<BuscaCodigo>({ estado: "parado", texto: "" });
   const [consumers, setConsumers] = useState<Option[]>([]);
   const [plants, setPlants] = useState<Option[]>([]);
 
@@ -265,49 +264,9 @@ export function UCForm({
   const update = <K extends keyof UCFormData>(key: K, value: UCFormData[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  // "Buscar código": pega o código antigo no site da CPFL/RGE a partir do novo.
-  // A consulta pode levar um minuto (a CPFL limita rajadas e o servidor
-  // enfileira), então NÃO é cancelada quando o operador troca de aba, abre a
-  // janela de novo consumidor ou segue preenchendo: a resposta grava no campo
-  // quando chegar. Só é descartada se o Código da UC mudou no meio do caminho —
-  // aí o antigo que voltou é de outra UC.
-  const codigoUcDigitos = form.codigoUc.replace(/\D/g, "");
-  const podeBuscarCodigo = isCodigoUcNovo(codigoUcDigitos);
-  const codigoUcAtual = useRef(codigoUcDigitos);
-  useEffect(() => {
-    codigoUcAtual.current = codigoUcDigitos;
-  }, [codigoUcDigitos]);
-
-  const buscarCodigoAntigo = async () => {
-    const pedido = codigoUcDigitos;
-    setBuscaCodigo({ estado: "buscando", texto: "" });
-    let proximo: BuscaCodigo;
-    try {
-      const res = await fetch(`/api/consumer-units/buscar-codigo-cpfl?codigo=${pedido}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        proximo = { estado: "falhou", texto: data.error || "Não consegui consultar a CPFL." };
-      } else if (!data.encontrado) {
-        proximo = {
-          estado: "falhou",
-          texto: "A CPFL/RGE não encontrou esse Código da UC. Confira o número.",
-        };
-      } else {
-        if (codigoUcAtual.current !== pedido) {
-          setBuscaCodigo({ estado: "parado", texto: "" });
-          return;
-        }
-        setForm((f) => ({ ...f, codigoUcAntigo: data.antigo }));
-        proximo = {
-          estado: "achou",
-          texto: [data.status, data.endereco].filter(Boolean).join(" · "),
-        };
-      }
-    } catch {
-      proximo = { estado: "falhou", texto: "Não consegui consultar a CPFL. Tente de novo." };
-    }
-    setBuscaCodigo(codigoUcAtual.current === pedido ? proximo : { estado: "parado", texto: "" });
-  };
+  const buscaCodigo = useBuscaCodigoAntigo(form.codigoUc, (antigo) =>
+    setForm((f) => ({ ...f, codigoUcAntigo: antigo })),
+  );
 
   // Avisa só quando o campo é OBRIGATÓRIO e está vazio. A regra dispensa o
   // código antigo de quem entrou a partir de 01/08/2026 no modelo de desconto:
@@ -399,41 +358,15 @@ export function UCForm({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <Label htmlFor="codigoUcAntigo">Código da instalação (antigo)</Label>
-              <button
-                type="button"
-                onClick={buscarCodigoAntigo}
-                disabled={!podeBuscarCodigo || buscaCodigo.estado === "buscando"}
-                title={
-                  podeBuscarCodigo
-                    ? "Consulta o código antigo no site da CPFL/RGE"
-                    : "Preencha antes o Código da UC (número novo)"
-                }
-                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline"
-              >
-                {buscaCodigo.estado === "buscando" ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Search className="h-3.5 w-3.5" />
-                )}
-                {buscaCodigo.estado === "buscando" ? "Buscando…" : "Buscar código"}
-              </button>
+              <BotaoBuscarCodigoAntigo busca={buscaCodigo} />
             </div>
             <Input
               id="codigoUcAntigo"
               value={form.codigoUcAntigo}
               onChange={(e) => update("codigoUcAntigo", e.target.value)}
             />
-            {buscaCodigo.estado === "buscando" ? (
-              <p className="text-xs text-muted-foreground">
-                Consultando a CPFL/RGE — pode levar até um minuto. Pode seguir
-                preenchendo ou trocar de janela: o campo se preenche sozinho.
-              </p>
-            ) : buscaCodigo.estado === "achou" ? (
-              <p className="text-xs text-emerald-700 dark:text-emerald-500">
-                Preenchido pela CPFL/RGE — {buscaCodigo.texto}. Confira o endereço.
-              </p>
-            ) : buscaCodigo.estado === "falhou" ? (
-              <p className="text-xs text-red-700 dark:text-red-500">{buscaCodigo.texto}</p>
+            {buscaCodigo.estado !== "parado" ? (
+              <MensagemBuscaCodigoAntigo busca={buscaCodigo} />
             ) : avisoCodigoAntigo ? (
               <p className="text-xs text-amber-700 dark:text-amber-500">
                 Sem ele, as faturas anteriores a jun/2026 não encontram esta UC e

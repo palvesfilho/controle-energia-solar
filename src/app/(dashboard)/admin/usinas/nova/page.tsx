@@ -9,6 +9,11 @@ import Link from "next/link";
 import { CONCESSIONARIAS } from "@/lib/concessionarias";
 import { CidadeInput } from "@/components/ui/cidade-input";
 import {
+  BotaoBuscarCodigoAntigo,
+  MensagemBuscaCodigoAntigo,
+  useBuscaCodigoAntigo,
+} from "@/components/consumer-units/buscar-codigo-antigo";
+import {
   isInvestidorDommo,
   CNPJ_DOMMO_SOLUCOES_FORMATADO,
   NOME_REGIME_DOMMO,
@@ -179,6 +184,9 @@ export default function NovaUsinaPage() {
   const [selectedModelo, setSelectedModelo] = useState("");
   const [selectedPlataforma, setSelectedPlataforma] = useState("");
   const [showSenha, setShowSenha] = useState(false);
+  const [ucNova, setUcNova] = useState("");
+  const [ucAntiga, setUcAntiga] = useState("");
+  const buscaCodigo = useBuscaCodigoAntigo(ucNova, setUcAntiga);
 
   useEffect(() => {
     fetch("/api/investors")
@@ -272,8 +280,37 @@ export default function NovaUsinaPage() {
                       <option value="GD2">GD2</option>
                     </select>
                   </div>
-                  <FormField label="Unidade Consumidora (novo)" name="unidadeConsumidora" />
-                  <FormField label="UC instalação (antigo)" name="unidadeConsumidoraAntiga" />
+                  {/* Os dois códigos são controlados (o resto do form não é) porque
+                      o "Buscar código" lê o novo e grava o antigo. Seguem indo
+                      no FormData pelo `name`. */}
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">
+                      Unidade Consumidora (novo)
+                    </label>
+                    <input
+                      type="text"
+                      name="unidadeConsumidora"
+                      value={ucNova}
+                      onChange={(e) => setUcNova(e.target.value)}
+                      className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        UC instalação (antigo)
+                      </label>
+                      <BotaoBuscarCodigoAntigo busca={buscaCodigo} />
+                    </div>
+                    <input
+                      type="text"
+                      name="unidadeConsumidoraAntiga"
+                      value={ucAntiga}
+                      onChange={(e) => setUcAntiga(e.target.value)}
+                      className="w-full mt-1 mb-1 text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                    />
+                    <MensagemBuscaCodigoAntigo busca={buscaCodigo} />
+                  </div>
                   <div>
                     <label className="text-xs font-medium text-muted-foreground">
                       Concessionária

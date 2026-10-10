@@ -1,6 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
+import {
+  BotaoBuscarCodigoAntigo,
+  MensagemBuscaCodigoAntigo,
+  useBuscaCodigoAntigo,
+} from "@/components/consumer-units/buscar-codigo-antigo";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Save, Loader2, FileUp, Eye, EyeOff, KeyRound } from "lucide-react";
@@ -96,6 +101,9 @@ export default function NovoProprietarioPage() {
     dataPagamento: "", prazoContratoDias: "",
   });
   const [showPortalPassword, setShowPortalPassword] = useState(false);
+  const buscaCodigo = useBuscaCodigoAntigo(form.codigoUc, (antigo) =>
+    setForm((f) => ({ ...f, codigoUcAntigo: antigo })),
+  );
   const [empresaDialogAberto, setEmpresaDialogAberto] = useState(false);
   const modeloEscolhido = modeloDaConcessionaria(form.concessionaria);
 
@@ -515,16 +523,20 @@ export default function NovoProprietarioPage() {
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-muted-foreground">
-                  Código instalação (antigo)
-                </label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Código instalação (antigo)
+                  </label>
+                  <BotaoBuscarCodigoAntigo busca={buscaCodigo} />
+                </div>
                 <input
                   type="text"
                   value={form.codigoUcAntigo}
                   onChange={(e) => set("codigoUcAntigo", e.target.value)}
                   placeholder="Anterior à migração RGE"
-                  className="w-full mt-1 text-sm border rounded-md px-3 py-1.5 bg-background font-mono focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                  className="w-full mt-1 mb-1 text-sm border rounded-md px-3 py-1.5 bg-background font-mono focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
                 />
+                <MensagemBuscaCodigoAntigo busca={buscaCodigo} />
               </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground">

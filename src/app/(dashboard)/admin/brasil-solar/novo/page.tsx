@@ -11,6 +11,11 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { isValidPhone } from "@/lib/phone";
 import { CONCESSIONARIAS } from "@/lib/concessionarias";
+import {
+  BotaoBuscarCodigoAntigo,
+  MensagemBuscaCodigoAntigo,
+  useBuscaCodigoAntigo,
+} from "@/components/consumer-units/buscar-codigo-antigo";
 
 const PLATAFORMAS = [
   "GROWATT", "SOLIS", "FRONIUS", "CANADIAN", "ABB", "DEYE",
@@ -116,6 +121,9 @@ export default function NovoClienteBrasilSolarPage() {
   const [form, setForm] = useState<FormData>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [proprietarioId, setProprietarioId] = useState<string | null>(null);
+  const buscaCodigo = useBuscaCodigoAntigo(form.codigoUc, (antigo) =>
+    setForm((f) => ({ ...f, codigoUcAntigo: antigo })),
+  );
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -284,8 +292,24 @@ export default function NovoClienteBrasilSolarPage() {
                   ))}
                 </select>
               </div>
-              <FormField label="Codigo UC (novo)" name="codigoUc" value={form.codigoUc} onChange={handleChange} placeholder="3.562.981.001-26" />
-              <FormField label="Codigo instalacao (antigo)" name="codigoUcAntigo" value={form.codigoUcAntigo} onChange={handleChange} placeholder="Anterior a migracao RGE" />
+              <FormField label="Código UC (novo)" name="codigoUc" value={form.codigoUc} onChange={handleChange} placeholder="3.562.981.001-26" />
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-xs font-medium text-muted-foreground">
+                    Código instalação (antigo)
+                  </label>
+                  <BotaoBuscarCodigoAntigo busca={buscaCodigo} />
+                </div>
+                <input
+                  type="text"
+                  name="codigoUcAntigo"
+                  value={form.codigoUcAntigo}
+                  onChange={handleChange}
+                  placeholder="Anterior à migração RGE"
+                  className="w-full mt-1 mb-1 text-sm border rounded-md px-3 py-1.5 bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                />
+                <MensagemBuscaCodigoAntigo busca={buscaCodigo} />
+              </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground">Status Contrato</label>
                 <select
