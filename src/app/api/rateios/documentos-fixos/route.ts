@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth-options";
 import { isAdminRole } from "@/lib/roles";
 import { prisma } from "@/lib/prisma";
 import { deleteUploadedFile, saveUploadedFile } from "@/lib/file-storage";
+import { hrefDoArquivo } from "@/lib/documentos-adesao";
 import {
   DOCS_FIXOS,
   lerDocFixo,
@@ -16,12 +17,41 @@ import {
 const TAMANHO_MAXIMO = 20 * 1024 * 1024;
 
 /**
+ * GET /api/rateios/documentos-fixos — os três documentos e o que está guardado
+ * de cada um. Sempre os três: o que falta aparece como falta.
+ */
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user || !isAdminRole(session.user.role)) {
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  }
+
+  const gravados = await prisma.appSetting.findMany({
+    where: { key: { in: DOCS_FIXOS.map((d) => settingDoDocFixo(d.chave)) } },
+  });
+  return NextResponse.json(
+    DOCS_FIXOS.map((d) => {
+      const g = lerDocFixo(gravados.find((s) => s.key === settingDoDocFixo(d.chave))?.value);
+      return {
+        chave: d.chave,
+        rotulo: d.rotulo,
+        nome: g?.nome || null,
+        enviadoEm: g?.enviadoEm || null,
+        href: g ? hrefDoArquivo(g.path) : null,
+      };
+    }),
+  );
+}
+
+/**
  * POST /api/rateios/documentos-fixos — envia (ou troca) um dos três documentos
  * da associação que acompanham todo rateio: CNH do Paulo, cartão CNPJ e
- * constituição da associação. Ficam em `AppSetting`, um por chave; não há GET
- * porque a conferência do pacote já devolve o estado dos três.
+ * constituição da associação. Ficam em `AppSetting`, um por chave.
  *
  * multipart: chave (cnh | cartao_cnpj | constituicao) + arquivo (PDF, JPG ou PNG)
+ *
+ * O cadastro mora em Personalizações → Documentos da associação; a janela do
+ * ZIP do rateio usa esta mesma rota para o envio rápido.
  */
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);

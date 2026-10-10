@@ -14,6 +14,7 @@ import {
   MessageCircle,
   Bell,
   MessageSquareText,
+  FolderLock,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { getServerSession } from "@/lib/auth-compat";
@@ -85,6 +86,18 @@ const items: HubItem[] = [
     icon: Mail,
     group: "Concessionárias",
     accent: "from-indigo-500 to-indigo-700",
+    section: "persDistribuidoraEmails",
+  },
+  {
+    title: "Documentos da associação",
+    description:
+      "CNH do representante, cartão CNPJ e constituição da associação. Enviados uma vez, entram sozinhos no pacote de documentos que a RGE pede em todo rateio.",
+    href: "/admin/personalizacoes/documentos-associacao",
+    icon: FolderLock,
+    group: "Concessionárias",
+    accent: "from-teal-500 to-emerald-600",
+    // Mesma section dos emails das concessionárias: é o mesmo assunto (o que
+    // se manda à distribuidora) e o mesmo público.
     section: "persDistribuidoraEmails",
   },
   {

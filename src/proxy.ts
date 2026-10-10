@@ -24,6 +24,7 @@ const PATH_SECTIONS: Array<[string, AdminSection]> = [
   ["/admin/personalizacoes/equipes", "persEquipes"],
   ["/admin/personalizacoes/codigos-erro-inversor", "persCodigosErroView"],
   ["/admin/personalizacoes/distribuidora-emails", "persDistribuidoraEmails"],
+  ["/admin/personalizacoes/documentos-associacao", "persDistribuidoraEmails"],
   ["/admin/personalizacoes/alertas-usinas", "persAlertasUsinas"],
   ["/admin/personalizacoes/relatorio-parametros", "persRelatorioParametros"],
   // Precisa estar ANTES do fallback do hub: `personalizacoesHub` inclui

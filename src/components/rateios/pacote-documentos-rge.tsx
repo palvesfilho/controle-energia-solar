@@ -313,7 +313,15 @@ export function PacoteDocumentosRge({ plantId, consumerUnitIds, aparencia = "bot
                 <p className="text-xs font-medium">
                   Documentos da associação{" "}
                   <span className="font-normal text-muted-foreground">
-                    — enviados uma vez, valem para todo rateio
+                    — enviados uma vez, valem para todo rateio.{" "}
+                    <a
+                      href="/admin/personalizacoes/documentos-associacao"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-2 hover:text-foreground"
+                    >
+                      Ver o cadastro
+                    </a>
                   </span>
                 </p>
                 <input
