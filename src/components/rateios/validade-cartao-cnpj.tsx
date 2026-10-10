@@ -6,10 +6,117 @@
  * no cadastro, na janela do ZIP e no aviso do rateio.
  */
 
-import { useEffect, useState } from "react";
-import { TriangleAlert } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { ExternalLink, Loader2, TriangleAlert, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { dataBr, type ValidadeCartaoCnpj } from "@/lib/cartao-cnpj";
+import { dataBr, urlReceitaCartaoCnpj, type ValidadeCartaoCnpj } from "@/lib/cartao-cnpj";
+
+const BOTAO_ATALHO =
+  "inline-flex items-center gap-1 rounded border border-current/30 bg-background/60 px-1.5 py-0.5 text-[11px] font-medium text-foreground hover:bg-background disabled:opacity-50";
+
+/**
+ * Os dois passos de trocar um cartão CNPJ vencido, lado a lado:
+ *
+ *   "Emitir na Receita" — abre a página do comprovante já com o CNPJ preenchido
+ *     (e copiado, caso o site não aproveite). A emissão pede captcha, então o
+ *     operador resolve e baixa o PDF; não há como buscar sozinho.
+ *   "Enviar novo"       — sobe o PDF baixado para a UC. Só aparece quando a UC
+ *     é informada; o cartão da associação é trocado no cadastro dela.
+ */
+export function AtalhoCartaoCnpj({
+  cnpj,
+  consumerUnitId,
+  onTrocado,
+  className,
+}: {
+  cnpj?: string | null;
+  consumerUnitId?: string;
+  onTrocado?: () => void;
+  className?: string;
+}) {
+  const [enviando, setEnviando] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const digitos = (cnpj ?? "").replace(/\D/g, "");
+  const temCnpj = digitos.length === 14;
+
+  async function abrirReceita() {
+    // A aba abre ANTES de copiar: depois de um `await` o navegador já não trata
+    // o clique como gesto do usuário e bloqueia a janela como pop-up.
+    window.open(urlReceitaCartaoCnpj(digitos), "_blank", "noopener,noreferrer");
+    if (temCnpj) {
+      try {
+        await navigator.clipboard.writeText(digitos);
+        toast.success("CNPJ copiado. Se o site não vier preenchido, é só colar.");
+      } catch {
+        // Sem permissão de área de transferência: o link já leva o CNPJ.
+      }
+    }
+  }
+
+  async function enviar(arquivo: File) {
+    if (!consumerUnitId) return;
+    setEnviando(true);
+    try {
+      const form = new FormData();
+      form.append("arquivo", arquivo);
+      const res = await fetch(`/api/consumer-units/${consumerUnitId}/cartao-cnpj`, {
+        method: "POST",
+        body: form,
+      });
+      const dados = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(dados.error ?? `HTTP ${res.status}`);
+      const v = dados.validade as ValidadeCartaoCnpj | undefined;
+      toast.success(
+        `Cartão CNPJ trocado${dados.ucsAtualizadas > 1 ? ` em ${dados.ucsAtualizadas} UCs do mesmo titular` : ""}.` +
+          (v?.emitidoEm ? ` Emitido em ${dataBr(v.emitidoEm)}.` : ""),
+      );
+      if (v?.situacao === "sem_data") {
+        toast.warning("Não consegui ler a data de emissão neste arquivo — confira se é o PDF baixado da Receita.");
+      } else if (v?.situacao === "vencido" || v?.situacao === "vencendo") {
+        toast.warning("O arquivo enviado também já tem mais de 5 meses.");
+      }
+      onTrocado?.();
+    } catch (err) {
+      toast.error(`Falha ao enviar: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <span className={cn("inline-flex flex-wrap items-center gap-1", className)}>
+      <button type="button" onClick={abrirReceita} className={BOTAO_ATALHO}>
+        <ExternalLink className="h-3 w-3" />
+        Emitir na Receita
+      </button>
+      {consumerUnitId && (
+        <>
+          <input
+            ref={input}
+            type="file"
+            accept="application/pdf,image/jpeg,image/png"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) void enviar(f);
+            }}
+          />
+          <button
+            type="button"
+            disabled={enviando}
+            onClick={() => input.current?.click()}
+            className={BOTAO_ATALHO}
+          >
+            {enviando ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+            Enviar novo
+          </button>
+        </>
+      )}
+    </span>
+  );
+}
 
 /** Uma linha de texto com a situação. `curto` = para célula de tabela. */
 export function TextoValidadeCartaoCnpj({
@@ -55,14 +162,17 @@ export function TextoValidadeCartaoCnpj({
  */
 export function AvisoCartaoCnpjAssociacao() {
   const [validade, setValidade] = useState<ValidadeCartaoCnpj | null>(null);
+  const [cnpj, setCnpj] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelado = false;
     fetch("/api/rateios/documentos-fixos")
       .then((r) => (r.ok ? r.json() : []))
-      .then((lista: { chave: string; validade: ValidadeCartaoCnpj | null }[]) => {
+      .then((lista: { chave: string; validade: ValidadeCartaoCnpj | null; cnpj?: string | null }[]) => {
         if (cancelado || !Array.isArray(lista)) return;
-        setValidade(lista.find((d) => d.chave === "cartao_cnpj")?.validade ?? null);
+        const cartao = lista.find((d) => d.chave === "cartao_cnpj");
+        setValidade(cartao?.validade ?? null);
+        setCnpj(cartao?.cnpj ?? null);
       })
       // Aviso é complemento: se a consulta falhar, a tela do rateio segue.
       .catch(() => {});
@@ -105,6 +215,7 @@ export function AvisoCartaoCnpjAssociacao() {
           </a>
           .
         </p>
+        <AtalhoCartaoCnpj cnpj={cnpj} />
       </div>
     </div>
   );

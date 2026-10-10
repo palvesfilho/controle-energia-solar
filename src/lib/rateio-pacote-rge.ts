@@ -39,6 +39,7 @@ import { textoDoPdf } from "@/lib/crm-envelope-pdfs";
 import { isCodigoUcNovo } from "@/lib/uc-codigo";
 import { ucEhEmpresa } from "@/lib/rateio-documentos-uc";
 import {
+  cnpjDoCartao,
   dataEmissaoCartaoCnpj,
   validadeCartaoCnpj,
   type ValidadeCartaoCnpj,
@@ -71,6 +72,8 @@ export interface DocFixoGravado {
    * à mão. `null` = já se tentou ler e não deu; `undefined` = nunca se tentou.
    */
   emitidoEm?: string | null;
+  /** Só no cartão CNPJ: o CNPJ impresso nele, para o atalho da Receita. */
+  cnpj?: string | null;
 }
 
 export function lerDocFixo(value: string | null | undefined): DocFixoGravado | null {
@@ -78,7 +81,7 @@ export function lerDocFixo(value: string | null | undefined): DocFixoGravado | n
   try {
     const v = JSON.parse(value) as Partial<DocFixoGravado>;
     return typeof v.path === "string" && v.path
-      ? { path: v.path, nome: v.nome ?? "", enviadoEm: v.enviadoEm ?? "", emitidoEm: v.emitidoEm }
+      ? { path: v.path, nome: v.nome ?? "", enviadoEm: v.enviadoEm ?? "", emitidoEm: v.emitidoEm, cnpj: v.cnpj }
       : null;
   } catch {
     return null;
@@ -102,6 +105,8 @@ export type CitaUc = "antigo" | "novo" | "nenhum" | "sem_texto";
 export interface AssociadoConferencia {
   consumerUnitId: string;
   nome: string;
+  /** CPF/CNPJ do cadastro da UC — alimenta o atalho da Receita no cartão vencido. */
+  cpfCnpj: string | null;
   codigoUc: string | null;
   /**
    * O código que a RGE quer ver: `codigoUcAntigo`, ou o próprio `codigoUc`
@@ -133,6 +138,7 @@ export interface ConferenciaPacoteRge {
     enviadoEm: string | null;
     /** Só no cartão CNPJ da associação. */
     validade: ValidadeCartaoCnpj | null;
+    cnpj: string | null;
   }[];
   /** Os arquivos que entram no ZIP. */
   arquivos: string[];
@@ -184,8 +190,16 @@ async function comoPdf(bytes: Buffer): Promise<PDFDocument | null> {
  * PDF escaneado, ou um PDF que não é o comprovante da Receita.
  */
 export async function emissaoCartaoCnpjDoArquivo(bytes: Buffer): Promise<string | null> {
-  if (tipoDoArquivo(bytes) !== "pdf") return null;
-  return dataEmissaoCartaoCnpj(await textoDoPdf(bytes).catch(() => ""));
+  return (await lerCartaoCnpjDoArquivo(bytes)).emitidoEm;
+}
+
+/** Data de emissão e CNPJ impressos no cartão. Os dois null em arquivo sem texto. */
+export async function lerCartaoCnpjDoArquivo(
+  bytes: Buffer,
+): Promise<{ emitidoEm: string | null; cnpj: string | null }> {
+  if (tipoDoArquivo(bytes) !== "pdf") return { emitidoEm: null, cnpj: null };
+  const texto = await textoDoPdf(bytes).catch(() => "");
+  return { emitidoEm: dataEmissaoCartaoCnpj(texto), cnpj: cnpjDoCartao(texto) };
 }
 
 function soCodigo(s: string | null | undefined): string {
@@ -339,6 +353,7 @@ export async function montarPacoteRge(
     associados.push({
       consumerUnitId: u.id,
       nome: u.nome,
+      cpfCnpj: u.cpfCnpj,
       codigoUc: u.codigoUc,
       codigoAntigo: u.codigoUcAntigo || (novo && !isCodigoUcNovo(novo) ? u.codigoUc : null),
       identidade,
@@ -364,7 +379,7 @@ export async function montarPacoteRge(
   for (const d of DOCS_FIXOS) {
     const g = lerDocFixo(gravados.find((s) => s.key === settingDoDocFixo(d.chave))?.value);
     if (!g) {
-      fixos.push({ chave: d.chave, rotulo: d.rotulo, estado: "falta", nome: null, enviadoEm: null, validade: null });
+      fixos.push({ chave: d.chave, rotulo: d.rotulo, estado: "falta", nome: null, enviadoEm: null, validade: null, cnpj: null });
       continue;
     }
     const bytes = await ler(g.path);
@@ -384,6 +399,7 @@ export async function montarPacoteRge(
       nome: g.nome || null,
       enviadoEm: g.enviadoEm || null,
       validade,
+      cnpj: g.cnpj ?? null,
     });
     if (bytes && tipo) {
       // PDF segue byte a byte como foi enviado; só a foto é que precisa virar PDF.

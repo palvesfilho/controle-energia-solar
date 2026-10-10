@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   // origem-ok: busca por id das UCs que a tela do rateio já escolheu.
   const ucs = await prisma.consumerUnit.findMany({
     where: { id: { in: ids }, docCartaoCnpj: { not: null } },
-    select: { id: true, nome: true, docCartaoCnpj: true },
+    select: { id: true, nome: true, cpfCnpj: true, docCartaoCnpj: true },
   });
 
   // Um titular com várias UCs aponta para o mesmo arquivo: lê uma vez só.
@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
       ucs.map(async (u) => ({
         id: u.id,
         nome: u.nome,
+        cpfCnpj: u.cpfCnpj,
         validade: validadeCartaoCnpj(await emissaoDe(u.docCartaoCnpj!)),
       })),
     ),

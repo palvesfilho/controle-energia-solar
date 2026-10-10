@@ -11,7 +11,10 @@ import { useEffect, useState } from "react";
 import { TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dataBr, type ValidadeCartaoCnpj } from "@/lib/cartao-cnpj";
-import { AvisoCartaoCnpjAssociacao } from "@/components/rateios/validade-cartao-cnpj";
+import {
+  AtalhoCartaoCnpj,
+  AvisoCartaoCnpjAssociacao,
+} from "@/components/rateios/validade-cartao-cnpj";
 
 export interface LinhaComDocumentos {
   id: string;
@@ -37,6 +40,7 @@ export function AvisoDocumentosFaltando({ linhas }: { linhas: LinhaComDocumentos
 interface CartaoDoAssociado {
   id: string;
   nome: string;
+  cpfCnpj?: string | null;
   validade: ValidadeCartaoCnpj;
 }
 
@@ -51,6 +55,8 @@ interface CartaoDoAssociado {
  */
 function AvisoCartaoCnpjAssociados({ ids }: { ids: string[] }) {
   const [cartoes, setCartoes] = useState<CartaoDoAssociado[]>([]);
+  // Sobe a cada cartão trocado, para a consulta refazer e o aviso sumir sozinho.
+  const [versao, setVersao] = useState(0);
   const chave = [...ids].sort().join(",");
 
   useEffect(() => {
@@ -75,7 +81,7 @@ function AvisoCartaoCnpjAssociados({ ids }: { ids: string[] }) {
       cancelado = true;
       clearTimeout(espera);
     };
-  }, [chave]);
+  }, [chave, versao]);
 
   const naTela = new Set(ids);
   const atuais = cartoes.filter((c) => naTela.has(c.id));
@@ -115,17 +121,38 @@ function AvisoCartaoCnpjAssociados({ ids }: { ids: string[] }) {
                   {c.validade.situacao === "vencido"
                     ? `vencido desde ${dataBr(c.validade.aceitoAte)}`
                     : `aceito só até ${dataBr(c.validade.aceitoAte)}`}
+                  <AtalhoCartaoCnpj
+                    cnpj={c.cpfCnpj}
+                    consumerUnitId={c.id}
+                    onTrocado={() => setVersao((v) => v + 1)}
+                    className="ml-2 align-middle"
+                  />
                 </li>
               ))}
             </ul>
           </>
         )}
         {semData.length > 0 && (
-          <p>
-            <span className="font-medium">Confira à mão</span> a data do cartão CNPJ de{" "}
-            {semData.map((c) => c.nome).join(", ")}: o arquivo é escaneado e a data de emissão
-            não pôde ser lida.
-          </p>
+          <>
+            <p>
+              <span className="font-medium">Confira à mão</span> a data do cartão CNPJ destas
+              UCs: o arquivo é escaneado e a data de emissão não pôde ser lida. Na dúvida, emita
+              outro.
+            </p>
+            <ul className="space-y-0.5">
+              {semData.map((c) => (
+                <li key={c.id}>
+                  <span className="font-medium">{c.nome}</span>
+                  <AtalhoCartaoCnpj
+                    cnpj={c.cpfCnpj}
+                    consumerUnitId={c.id}
+                    onTrocado={() => setVersao((v) => v + 1)}
+                    className="ml-2 align-middle"
+                  />
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </div>
     </div>

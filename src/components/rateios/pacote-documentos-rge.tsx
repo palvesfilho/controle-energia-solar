@@ -33,7 +33,10 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { formatCodigoUc } from "@/lib/uc-codigo";
-import { TextoValidadeCartaoCnpj } from "@/components/rateios/validade-cartao-cnpj";
+import {
+  AtalhoCartaoCnpj,
+  TextoValidadeCartaoCnpj,
+} from "@/components/rateios/validade-cartao-cnpj";
 import type {
   ChaveDocFixo,
   ConferenciaPacoteRge,
@@ -298,6 +301,14 @@ export function PacoteDocumentosRge({ plantId, consumerUnitIds, aparencia = "bot
                               className="block text-[11px]"
                             />
                           )}
+                          {a.cartaoCnpjValidade && a.cartaoCnpjValidade.situacao !== "ok" && (
+                            <AtalhoCartaoCnpj
+                              cnpj={a.cpfCnpj}
+                              consumerUnitId={a.consumerUnitId}
+                              onTrocado={() => void conferir()}
+                              className="mt-1 justify-center"
+                            />
+                          )}
                         </td>
                         <td className="px-2 py-1.5 text-center">
                           {a.contratoSocial ? <Marca estado={a.contratoSocial} /> : "—"}
@@ -376,6 +387,9 @@ export function PacoteDocumentosRge({ plantId, consumerUnitIds, aparencia = "bot
                       <span className="font-medium">{f.rotulo}</span>
                       {f.validade && f.estado === "ok" && (
                         <TextoValidadeCartaoCnpj validade={f.validade} className="block text-[11px]" />
+                      )}
+                      {f.validade && f.validade.situacao !== "ok" && f.estado === "ok" && (
+                        <AtalhoCartaoCnpj cnpj={f.cnpj} className="mt-1" />
                       )}
                       <span className="block truncate text-[11px] text-muted-foreground">
                         {f.estado === "falta"

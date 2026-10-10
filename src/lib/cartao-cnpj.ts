@@ -35,6 +35,26 @@ export function dataEmissaoCartaoCnpj(texto: string): string | null {
   return `${a}-${mes}-${d}`;
 }
 
+/**
+ * CNPJ impresso no comprovante (14 dígitos). É o primeiro do texto: o campo
+ * "NÚMERO DE INSCRIÇÃO" abre o documento. Null em cartão escaneado.
+ */
+export function cnpjDoCartao(texto: string): string | null {
+  const m = /\b(\d{2})\.?(\d{3})\.?(\d{3})\/(\d{4})-?(\d{2})\b/.exec(texto);
+  return m ? m.slice(1).join("") : null;
+}
+
+/**
+ * Página da Receita que emite o comprovante, já com o CNPJ preenchido quando
+ * ele é conhecido. A emissão pede captcha — por isso é um atalho para o
+ * operador, e não uma busca automática.
+ */
+export function urlReceitaCartaoCnpj(cnpj?: string | null): string {
+  const base = "https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp";
+  const d = (cnpj ?? "").replace(/\D/g, "");
+  return d.length === 14 ? `${base}?cnpj=${d}` : base;
+}
+
 /** Soma meses a uma data AAAA-MM-DD, sem escorregar de mês (31/08 + 6 = 28/02). */
 export function somaMeses(iso: string, meses: number): string {
   const [a, m, d] = iso.split("-").map(Number);

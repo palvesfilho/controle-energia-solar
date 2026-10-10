@@ -8,7 +8,7 @@ import { validadeCartaoCnpj } from "@/lib/cartao-cnpj";
 import { hrefDoArquivo } from "@/lib/documentos-adesao";
 import {
   DOCS_FIXOS,
-  emissaoCartaoCnpjDoArquivo,
+  lerCartaoCnpjDoArquivo,
   lerDocFixo,
   settingDoDocFixo,
   tipoDoArquivo,
@@ -39,9 +39,12 @@ export async function GET() {
     // Cartão enviado antes de a data de emissão existir no cadastro: lê uma vez
     // e guarda (inclusive o "não deu para ler"), para não reabrir o PDF a cada
     // visita à tela.
-    if (g && d.chave === "cartao_cnpj" && g.emitidoEm === undefined) {
-      const lido = await readFromStorage(g.path).catch(() => null);
-      g.emitidoEm = lido ? await emissaoCartaoCnpjDoArquivo(lido.data) : null;
+    if (g && d.chave === "cartao_cnpj" && (g.emitidoEm === undefined || g.cnpj === undefined)) {
+      const arq = await readFromStorage(g.path).catch(() => null);
+      const lido = arq ? await lerCartaoCnpjDoArquivo(arq.data) : { emitidoEm: null, cnpj: null };
+      // A data informada à mão (cartão escaneado) não é sobrescrita pela leitura.
+      if (g.emitidoEm === undefined) g.emitidoEm = lido.emitidoEm;
+      g.cnpj = lido.cnpj;
       await prisma.appSetting.update({ where: { key }, data: { value: JSON.stringify(g) } });
     }
 
@@ -52,6 +55,7 @@ export async function GET() {
       enviadoEm: g?.enviadoEm || null,
       href: g ? hrefDoArquivo(g.path) : null,
       validade: g && d.chave === "cartao_cnpj" ? validadeCartaoCnpj(g.emitidoEm) : null,
+      cnpj: g?.cnpj ?? null,
     });
   }
   return NextResponse.json(lista);
@@ -139,7 +143,9 @@ export async function POST(req: NextRequest) {
   // A RGE recusa cartão CNPJ com mais de 6 meses: a data de emissão é lida do
   // próprio arquivo, na hora do envio. Null = não deu para ler (foto/escaneado).
   if (doc.chave === "cartao_cnpj") {
-    gravado.emitidoEm = await emissaoCartaoCnpjDoArquivo(conteudo);
+    const lido = await lerCartaoCnpjDoArquivo(conteudo);
+    gravado.emitidoEm = lido.emitidoEm;
+    gravado.cnpj = lido.cnpj;
   }
   await prisma.appSetting.upsert({
     where: { key },

@@ -25,7 +25,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
-import { TextoValidadeCartaoCnpj } from "@/components/rateios/validade-cartao-cnpj";
+import {
+  AtalhoCartaoCnpj,
+  TextoValidadeCartaoCnpj,
+} from "@/components/rateios/validade-cartao-cnpj";
 import type { ValidadeCartaoCnpj } from "@/lib/cartao-cnpj";
 
 interface DocFixo {
@@ -36,6 +39,8 @@ interface DocFixo {
   href: string | null;
   /** Só no cartão CNPJ: a RGE recusa o emitido há mais de 6 meses. */
   validade: ValidadeCartaoCnpj | null;
+  /** CNPJ impresso no cartão, para o atalho da Receita. */
+  cnpj?: string | null;
 }
 
 const API = "/api/rateios/documentos-fixos";
@@ -176,6 +181,11 @@ export default function DocumentosAssociacaoPage() {
                   </div>
                   {d.href && d.validade && (
                     <TextoValidadeCartaoCnpj validade={d.validade} className="mt-0.5 block text-xs" />
+                  )}
+                  {/* Sempre à mão no cartão CNPJ: emitir o novo começa por aqui,
+                      e o PDF baixado entra pelo "Trocar" ao lado. */}
+                  {d.chave === "cartao_cnpj" && (
+                    <AtalhoCartaoCnpj cnpj={d.cnpj} className="mt-1.5" />
                   )}
                   {d.href && d.validade?.situacao === "sem_data" && (
                     <div className="mt-2 flex flex-wrap items-center gap-2">
