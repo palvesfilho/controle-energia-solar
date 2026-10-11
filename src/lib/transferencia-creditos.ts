@@ -9,6 +9,10 @@
  * "transferência de créditos". O saldo vai de UMA VEZ para as UCs de destino.
  * Rateio é % da geração de todo mês; isto é um ESTOQUE em kWh.
  *
+ * O documento da RGE ("Solicitação de Transferência de Saldo") divide o saldo
+ * em PERCENTUAL por UC favorecida, sem dizer kWh — por isso o cadastro guarda o
+ * % e o total em kWh pode chegar depois (saldo da geradora ou 1ª fatura).
+ *
  * ## Como a fatura do destino separa a transferência do resto
  *
  * A fatura da RGE discrimina cada kWh compensado pelo MÊS DE ORIGEM
@@ -63,6 +67,21 @@ export const SITUACAO_DESTINO_LABEL: Record<SituacaoDestino, string> = {
 /** Créditos de energia vencem 60 meses depois do mês em que foram gerados. */
 export const MESES_VALIDADE_CREDITO = 60;
 
+/** Prazo de atendimento que o próprio formulário da RGE declara. */
+export const PRAZO_ANALISE_RGE_DIAS = 30;
+
+/**
+ * Dias corridos desde o email à RGE. Nulo sem a data de envio. As datas são
+ * gravadas ao meio-dia UTC, então a diferença em dias inteiros não escorrega
+ * com o fuso.
+ */
+export function diasDesdeEnvio(enviadoEm: Date | string | null, hoje: Date = new Date()): number | null {
+  if (!enviadoEm) return null;
+  const d = new Date(enviadoEm);
+  if (Number.isNaN(d.getTime())) return null;
+  return Math.max(0, Math.floor((hoje.getTime() - d.getTime()) / 86_400_000));
+}
+
 /** Abaixo disto o saldo é arredondamento, não crédito. */
 const KWH_DESPREZIVEL = 0.5;
 
@@ -111,7 +130,8 @@ export interface TransferenciaDaUc {
   itemId: string;
   status: string;
   aceitoEm: Date | null;
-  kwh: number;
+  /** Nulo = total ainda desconhecido: a transferência consome sem teto. */
+  kwh: number | null;
 }
 
 export interface MesAcompanhamento extends AnoMes {
@@ -121,8 +141,8 @@ export interface MesAcompanhamento extends AnoMes {
   kwhTransferencia: number;
   /** Meses de origem que contaram como transferência ("JUL/25"). */
   origens: string[];
-  /** Quanto da transferência sobra DEPOIS desta fatura. */
-  restanteKwh: number;
+  /** Quanto da transferência sobra DEPOIS desta fatura. Nulo sem o total em kWh. */
+  restanteKwh: number | null;
   /** Saldo de créditos que a fatura imprime — inclui o que não é transferência. */
   saldoFaturaKwh: number | null;
 }
@@ -130,7 +150,14 @@ export interface MesAcompanhamento extends AnoMes {
 export interface Acompanhamento {
   situacao: SituacaoDestino;
   usadoKwh: number;
-  restanteKwh: number;
+  /** Nulo enquanto o total em kWh não foi informado. */
+  restanteKwh: number | null;
+  /**
+   * Só quando falta o total: o que a 1ª fatura com a transferência indica
+   * (compensado + saldo impresso). É PISTA para o operador conferir, nunca é
+   * gravado sozinho — o saldo da fatura inclui crédito de outras fontes.
+   */
+  sugestaoKwh: number | null;
   meses: MesAcompanhamento[];
   /** Primeira fatura em que a transferência apareceu compensando. */
   primeiraFatura: AnoMes | null;
@@ -146,11 +173,12 @@ export interface Acompanhamento {
   previsaoEsgotar: AnoMes | null;
 }
 
-export function vazio(situacao: SituacaoDestino, kwh: number): Acompanhamento {
+export function vazio(situacao: SituacaoDestino, kwh: number | null): Acompanhamento {
   return {
     situacao,
     usadoKwh: 0,
     restanteKwh: kwh,
+    sugestaoKwh: null,
     meses: [],
     primeiraFatura: null,
     ultimaFatura: null,
@@ -187,7 +215,9 @@ export function acompanharUc(
   const ordenadas = [...faturas].sort((a, b) => chave(a) - chave(b));
   const estado = ativas.map((t) => ({
     t,
-    restante: t.kwh,
+    // Sem o total, não há teto: tudo que tem origem antes do aceite conta.
+    restante: t.kwh ?? Infinity,
+    usado: 0,
     meses: [] as MesAcompanhamento[],
     origens: new Set<number>(),
   }));
@@ -207,6 +237,7 @@ export function acompanharUc(
       const leva = Math.max(0, Math.min(e.restante, pool - jaAlocado));
       jaAlocado += leva;
       e.restante -= leva;
+      e.usado += leva;
       if (leva > 0) for (const d of antigos) e.origens.add(chave(d));
       e.meses.push({
         ano: f.ano,
@@ -215,14 +246,15 @@ export function acompanharUc(
         compensadoKwh: f.energiaCompensada,
         kwhTransferencia: leva,
         origens: leva > 0 ? antigos.map((d) => rotuloMesOrigem(d)) : [],
-        restanteKwh: e.restante,
+        restanteKwh: e.t.kwh == null ? null : e.restante,
         saldoFaturaKwh: f.saldoKwh,
       });
     }
   }
 
   for (const e of estado) {
-    const usado = e.t.kwh - e.restante;
+    const usado = e.usado;
+    const semTotal = e.t.kwh == null;
     const comConsumo = e.meses.filter((m) => m.kwhTransferencia > 0);
     const ultimos = comConsumo.slice(-3);
     const media = ultimos.length
@@ -230,10 +262,11 @@ export function acompanharUc(
       : null;
     const ultima = e.meses.at(-1) ?? null;
     const origensOrd = [...e.origens].sort((a, b) => a - b);
-    const restante = e.restante <= KWH_DESPREZIVEL ? 0 : e.restante;
+    const restante = semTotal ? null : e.restante <= KWH_DESPREZIVEL ? 0 : e.restante;
+    const primeira = comConsumo[0];
 
     let previsao: AnoMes | null = null;
-    if (media && media > 0 && restante > 0 && ultima) {
+    if (media && media > 0 && restante != null && restante > 0 && ultima) {
       previsao = deChave(chave(ultima) + Math.ceil(restante / media));
     }
 
@@ -241,6 +274,10 @@ export function acompanharUc(
       situacao: restante === 0 ? "ESGOTADA" : usado > 0 ? "EM_CONSUMO" : "AGUARDANDO_FATURA",
       usadoKwh: usado,
       restanteKwh: restante,
+      sugestaoKwh:
+        semTotal && primeira && primeira.saldoFaturaKwh != null
+          ? primeira.kwhTransferencia + primeira.saldoFaturaKwh
+          : null,
       meses: e.meses,
       primeiraFatura: comConsumo[0] ? { ano: comConsumo[0].ano, mes: comConsumo[0].mes } : null,
       ultimaFatura: ultima ? { ano: ultima.ano, mes: ultima.mes } : null,
@@ -256,18 +293,24 @@ export function acompanharUc(
 
 // ─────────────────────────── validação da entrada ───────────────────────────
 
-/** Folga na soma dos destinos contra o total — arredondamento de kWh. */
+/** Folga de arredondamento entre o saldo calculado e o impresso na fatura. */
 export const TOLERANCIA_SOMA_KWH = 1;
+
+/** O formulário da RGE aceita no máximo 2 casas e a soma tem de dar 100,00%. */
+export const TOLERANCIA_SOMA_PCT = 0.005;
 
 export interface EntradaTransferencia {
   plantId: string | null;
   ucOrigemCodigo: string;
-  kwhTotal: number;
+  /** Nulo enquanto não se conhece — o documento só traz percentuais. */
+  kwhTotal: number | null;
   status: StatusTransferencia;
   enviadoEm: Date | null;
   aceitoEm: Date | null;
   observacao: string | null;
-  itens: { consumerUnitId: string; kwh: number }[];
+  titularNome: string | null;
+  titularEmail: string | null;
+  itens: { consumerUnitId: string; percentual: number; kwh: number | null }[];
 }
 
 /** "2026-01-30" → meio-dia UTC (ver `mesDoAceite`). Vazio → null. */
@@ -278,6 +321,10 @@ function dataDoForm(v: unknown): Date | null | "invalida" {
   return Number.isNaN(d.getTime()) ? "invalida" : d;
 }
 
+function texto(v: unknown): string | null {
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
 /** Valida o corpo do POST/PATCH. Devolve a entrada limpa ou a lista de erros. */
 export function validarEntrada(body: unknown): { ok: true; valor: EntradaTransferencia } | { ok: false; erros: string[] } {
   const b = (body ?? {}) as Record<string, unknown>;
@@ -286,8 +333,12 @@ export function validarEntrada(body: unknown): { ok: true; valor: EntradaTransfe
   const ucOrigemCodigo = typeof b.ucOrigemCodigo === "string" ? b.ucOrigemCodigo.trim() : "";
   if (!ucOrigemCodigo) erros.push("Informe o código da UC de origem.");
 
-  const kwhTotal = Number(b.kwhTotal);
-  if (!Number.isFinite(kwhTotal) || kwhTotal <= 0) erros.push("Informe o total de kWh transferido.");
+  // O total é opcional: no dia do envio só existem os percentuais.
+  const semTotal = b.kwhTotal == null || b.kwhTotal === "";
+  const kwhTotal = semTotal ? null : Number(b.kwhTotal);
+  if (kwhTotal != null && (!Number.isFinite(kwhTotal) || kwhTotal <= 0)) {
+    erros.push("O total em kWh, quando informado, tem de ser maior que zero.");
+  }
 
   const status = String(b.status ?? "ENVIADA") as StatusTransferencia;
   if (!STATUS_TRANSFERENCIA.includes(status)) erros.push("Situação inválida.");
@@ -300,27 +351,33 @@ export function validarEntrada(body: unknown): { ok: true; valor: EntradaTransfe
   if (status === "ACEITA" && !aceitoEm) erros.push("Transferência aceita precisa da data do aceite da RGE.");
 
   const itensBrutos = Array.isArray(b.itens) ? b.itens : [];
-  const itens: { consumerUnitId: string; kwh: number }[] = [];
+  const itens: EntradaTransferencia["itens"] = [];
   const vistos = new Set<string>();
   for (const it of itensBrutos as Record<string, unknown>[]) {
     const id = typeof it?.consumerUnitId === "string" ? it.consumerUnitId : "";
-    const kwh = Number(it?.kwh);
+    const pct = Number(it?.percentual);
     if (!id) continue;
     if (vistos.has(id)) {
       erros.push("A mesma UC aparece duas vezes nos destinos.");
       continue;
     }
     vistos.add(id);
-    if (!Number.isFinite(kwh) || kwh <= 0) erros.push("Todo destino precisa de kWh maior que zero.");
-    itens.push({ consumerUnitId: id, kwh });
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
+      erros.push("Todo destino precisa de um percentual entre 0 e 100.");
+    } else if (Math.abs(pct * 100 - Math.round(pct * 100)) > 1e-6) {
+      erros.push("A RGE aceita no máximo 2 casas decimais nos percentuais.");
+    }
+    itens.push({
+      consumerUnitId: id,
+      percentual: pct,
+      kwh: kwhTotal != null && Number.isFinite(kwhTotal) && Number.isFinite(pct) ? (kwhTotal * pct) / 100 : null,
+    });
   }
   if (itens.length === 0) erros.push("Inclua pelo menos uma UC de destino.");
 
-  const soma = itens.reduce((s, i) => s + (Number.isFinite(i.kwh) ? i.kwh : 0), 0);
-  if (itens.length && Number.isFinite(kwhTotal) && Math.abs(soma - kwhTotal) > TOLERANCIA_SOMA_KWH) {
-    erros.push(
-      `A soma dos destinos (${soma.toLocaleString("pt-BR")} kWh) não fecha com o total (${kwhTotal.toLocaleString("pt-BR")} kWh).`,
-    );
+  const soma = itens.reduce((s, i) => s + (Number.isFinite(i.percentual) ? i.percentual : 0), 0);
+  if (itens.length && Math.abs(soma - 100) > TOLERANCIA_SOMA_PCT) {
+    erros.push(`A soma dos percentuais (${soma.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%) tem de dar 100%.`);
   }
 
   if (erros.length) return { ok: false, erros: [...new Set(erros)] };
@@ -333,8 +390,70 @@ export function validarEntrada(body: unknown): { ok: true; valor: EntradaTransfe
       status,
       enviadoEm: enviadoEm as Date | null,
       aceitoEm: aceitoEm as Date | null,
-      observacao: typeof b.observacao === "string" && b.observacao.trim() ? b.observacao.trim() : null,
+      observacao: texto(b.observacao),
+      titularNome: texto(b.titularNome),
+      titularEmail: texto(b.titularEmail),
       itens,
     },
   };
+}
+
+// ─────────────────────────── documento da RGE ───────────────────────────
+
+/**
+ * O formulário "Solicitação de Transferência de Saldo" vai com o código ANTIGO
+ * (10 dígitos) da doadora e das favorecidas — a RGE não aceita o novo.
+ * Devolve o antigo, ou nulo quando o cadastro só tem o código novo.
+ */
+export function codigoAntigoParaRge(antigo: string | null | undefined, codigo: string | null | undefined): string | null {
+  const a = (antigo ?? "").replace(/\D/g, "");
+  if (a) return a;
+  const c = (codigo ?? "").replace(/\D/g, "");
+  // 11 ou 12 dígitos é o formato novo; até 10, a UC ainda está no código antigo.
+  return c && c.length <= 10 ? c : null;
+}
+
+/** 100 → "100%", 33.33 → "33,33%" — no máximo 2 casas, como o formulário pede. */
+export function percentualRge(p: number): string {
+  return `${p.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
+}
+
+export interface DocumentoRge {
+  doadora: string;
+  favorecidas: { codigo: string; percentual: string }[];
+  titularNome: string;
+  titularEmail: string;
+}
+
+/** Monta os dados do formulário, ou diz o que falta no cadastro para emitir. */
+export function montarDocumentoRge(t: {
+  ucOrigemCodigo: string;
+  usinaCodigoAntigo: string | null;
+  usinaCodigo: string | null;
+  titularNome: string | null;
+  titularEmail: string | null;
+  destinos: { nome: string; codigoUc: string; codigoUcAntigo: string | null; percentual: number }[];
+}): { ok: true; valor: DocumentoRge } | { ok: false; erros: string[] } {
+  const erros: string[] = [];
+
+  const doadora =
+    codigoAntigoParaRge(t.usinaCodigoAntigo, t.ucOrigemCodigo) ?? codigoAntigoParaRge(null, t.usinaCodigo);
+  if (!doadora) erros.push("Falta o código ANTIGO da UC doadora (cadastro da usina ou UC de origem).");
+
+  const favorecidas: DocumentoRge["favorecidas"] = [];
+  for (const d of t.destinos) {
+    const codigo = codigoAntigoParaRge(d.codigoUcAntigo, d.codigoUc);
+    if (!codigo) erros.push(`Falta o código ANTIGO da UC ${d.nome}.`);
+    else favorecidas.push({ codigo, percentual: percentualRge(d.percentual) });
+  }
+  if (t.destinos.length === 0) erros.push("A transferência não tem UC de destino.");
+
+  const soma = t.destinos.reduce((s, d) => s + d.percentual, 0);
+  if (t.destinos.length && Math.abs(soma - 100) > TOLERANCIA_SOMA_PCT) erros.push("Os percentuais não somam 100%.");
+
+  if (!t.titularNome) erros.push("Informe o nome do titular que assina o pedido.");
+  if (!t.titularEmail) erros.push("Informe o email do titular.");
+
+  if (erros.length || !doadora) return { ok: false, erros };
+  return { ok: true, valor: { doadora, favorecidas, titularNome: t.titularNome!, titularEmail: t.titularEmail! } };
 }

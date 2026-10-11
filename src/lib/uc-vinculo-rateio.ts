@@ -48,7 +48,8 @@ export interface VinculoTransferencia {
   plantId: string | null;
   plantName: string | null;
   ucOrigemCodigo: string;
-  kwh: number;
+  /** Nulo enquanto o total da transferência não foi informado. */
+  kwh: number | null;
   /** ENVIADA | ACEITA (rejeitada não entra). */
   status: string;
   aceitoEm: string | null;

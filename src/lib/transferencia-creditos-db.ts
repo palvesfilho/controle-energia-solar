@@ -8,7 +8,8 @@ import { acompanharUc, vazio, type Acompanhamento } from "@/lib/transferencia-cr
 
 export interface DestinoTransferencia {
   itemId: string;
-  kwh: number;
+  percentual: number;
+  kwh: number | null;
   uc: {
     id: string;
     nome: string;
@@ -23,17 +24,20 @@ export interface TransferenciaComAcompanhamento {
   id: string;
   plant: { id: string; name: string } | null;
   ucOrigemCodigo: string;
-  kwhTotal: number;
+  kwhTotal: number | null;
   status: string;
   enviadoEm: Date | null;
   aceitoEm: Date | null;
   observacao: string | null;
   documentoUrl: string | null;
   documentoNome: string | null;
+  titularNome: string | null;
+  titularEmail: string | null;
   createdAt: Date;
   destinos: DestinoTransferencia[];
   usadoKwh: number;
-  restanteKwh: number;
+  /** Nulo enquanto o total em kWh não foi informado. */
+  restanteKwh: number | null;
 }
 
 /** Todas as transferências (ou uma), já com o acompanhamento das faturas. */
@@ -104,11 +108,12 @@ export async function carregarTransferencias(
     const destinos: DestinoTransferencia[] = t.items
       .map((i) => ({
         itemId: i.id,
+        percentual: i.percentual,
         kwh: i.kwh,
         uc: i.consumerUnit,
         acompanhamento: acomp.get(i.id) ?? vazio("AGUARDANDO_ACEITE", i.kwh),
       }))
-      .sort((a, b) => b.kwh - a.kwh);
+      .sort((a, b) => b.percentual - a.percentual);
     const usado = destinos.reduce((s, d) => s + d.acompanhamento.usadoKwh, 0);
     return {
       id: t.id,
@@ -121,10 +126,13 @@ export async function carregarTransferencias(
       observacao: t.observacao,
       documentoUrl: t.documentoUrl,
       documentoNome: t.documentoNome,
+      titularNome: t.titularNome,
+      titularEmail: t.titularEmail,
       createdAt: t.createdAt,
       destinos,
       usadoKwh: usado,
-      restanteKwh: destinos.reduce((s, d) => s + d.acompanhamento.restanteKwh, 0),
+      restanteKwh:
+        t.kwhTotal == null ? null : destinos.reduce((s, d) => s + (d.acompanhamento.restanteKwh ?? 0), 0),
     };
   });
 }

@@ -197,7 +197,7 @@ export function UsinaDaUc({
             {transferencias.map((t) => (
               <div key={t.transferId}>
                 {t.plantName ?? "Usina não identificada"} (UC {formatCodigoUc(t.ucOrigemCodigo)}) ·{" "}
-                {t.kwh.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} kWh ·{" "}
+                {t.kwh != null ? `${t.kwh.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} kWh · ` : ""}
                 {t.status === "ACEITA" ? `aceita em ${data(t.aceitoEm)}` : "aguardando aceite da RGE"}
               </div>
             ))}

@@ -9,7 +9,13 @@
  *
  * Rodar:  npx tsx scripts/verifica-transferencia-creditos.ts
  */
-import { acompanharUc, validarEntrada, type FaturaDestino } from "../src/lib/transferencia-creditos";
+import {
+  acompanharUc,
+  diasDesdeEnvio,
+  montarDocumentoRge,
+  validarEntrada,
+  type FaturaDestino,
+} from "../src/lib/transferencia-creditos";
 
 const erros: string[] = [];
 function checa(condicao: boolean, mensagem: string) {
@@ -97,15 +103,65 @@ const meioDia = (s: string) => new Date(`${s}T12:00:00.000Z`);
   checa(r.usadoKwh === 0, "aceite em 01/02 (00h UTC) não pode consumir a fatura de 01/2026");
 }
 
-// 7. Validação da entrada.
+// 7. Validação da entrada — destinos em %, como no documento da RGE.
 {
-  const base = { ucOrigemCodigo: "4003820948", kwhTotal: 63800, status: "ACEITA", aceitoEm: "2026-01-30", itens: [{ consumerUnitId: "a", kwh: 63800 }] };
-  checa(validarEntrada(base).ok, "entrada válida do SUBWAY foi recusada");
-  checa(!validarEntrada({ ...base, aceitoEm: "" }).ok, "ACEITA sem data do aceite tem de ser recusada");
-  checa(!validarEntrada({ ...base, itens: [{ consumerUnitId: "a", kwh: 60000 }] }).ok, "soma dos destinos ≠ total tem de ser recusada");
-  checa(!validarEntrada({ ...base, itens: [] }).ok, "sem destino tem de ser recusada");
+  const base = { ucOrigemCodigo: "4003820948", kwhTotal: 63800, status: "ACEITA", aceitoEm: "2026-01-30", itens: [{ consumerUnitId: "a", percentual: 100 }] };
   const v = validarEntrada(base);
+  checa(v.ok, "entrada válida do SUBWAY foi recusada");
+  checa(v.ok && v.valor.itens[0].kwh === 63800, "100% de 63.800 tem de gravar 63.800 kWh no destino");
   checa(v.ok && v.valor.aceitoEm?.toISOString() === "2026-01-30T12:00:00.000Z", "data do aceite deve ser gravada ao meio-dia UTC");
+  checa(!validarEntrada({ ...base, aceitoEm: "" }).ok, "ACEITA sem data do aceite tem de ser recusada");
+  checa(!validarEntrada({ ...base, itens: [{ consumerUnitId: "a", percentual: 90 }] }).ok, "percentuais que não somam 100% têm de ser recusados");
+  checa(!validarEntrada({ ...base, itens: [] }).ok, "sem destino tem de ser recusada");
+  checa(
+    !validarEntrada({ ...base, itens: [{ consumerUnitId: "a", percentual: 33.333 }, { consumerUnitId: "b", percentual: 66.667 }] }).ok,
+    "mais de 2 casas decimais no percentual tem de ser recusado (regra do formulário da RGE)",
+  );
+
+  // No dia do envio só se conhece o %: o total em kWh é opcional.
+  const semTotal = validarEntrada({ ...base, kwhTotal: null, status: "ENVIADA", aceitoEm: "", enviadoEm: "2026-01-09", itens: [{ consumerUnitId: "a", percentual: 60 }, { consumerUnitId: "b", percentual: 40 }] });
+  checa(semTotal.ok, "transferência sem total em kWh (só %) tem de ser aceita");
+  checa(semTotal.ok && semTotal.valor.kwhTotal === null && semTotal.valor.itens.every((x) => x.kwh === null), "sem total, o kWh de cada destino fica nulo");
+  const dividido = validarEntrada({ ...base, kwhTotal: 1000, itens: [{ consumerUnitId: "a", percentual: 60 }, { consumerUnitId: "b", percentual: 40 }] });
+  checa(dividido.ok && dividido.valor.itens[0].kwh === 600 && dividido.valor.itens[1].kwh === 400, "60/40 de 1.000 kWh → 600 e 400");
+}
+
+// 8. Sem o total em kWh: acompanha o consumo, não inventa saldo, e mostra a pista da 1ª fatura.
+{
+  const r = acompanharUc(
+    [fat(2026, 2, 5885, 58809, det(["FEV/26", 894], ["JUL/25", 4991])), fat(2026, 3, 4996, 54482, det(["MAR/26", 669], ["JUL/25", 4327]))],
+    [{ itemId: "s", status: "ACEITA", aceitoEm: meioDia("2026-01-30"), kwh: null }],
+  ).get("s")!;
+  checa(r.usadoKwh === 9318, `sem total: usado deveria ser 9.318, veio ${r.usadoKwh}`);
+  checa(r.restanteKwh === null && r.previsaoEsgotar === null, "sem total: saldo e previsão têm de ficar nulos, nunca um número inventado");
+  checa(r.sugestaoKwh === 63800, `sem total: a pista da 1ª fatura (4.991 + 58.809) deveria ser 63.800, veio ${r.sugestaoKwh}`);
+  checa(r.situacao === "EM_CONSUMO", "sem total: continua EM_CONSUMO, não ESGOTADA");
+}
+
+// 9. Prazo de 30 dias da RGE.
+{
+  checa(diasDesdeEnvio("2026-01-09T12:00:00.000Z", meioDia("2026-01-30")) === 21, "09/01 → 30/01 são 21 dias");
+  checa(diasDesdeEnvio(null) === null, "sem data de envio não há contagem");
+}
+
+// 10. Documento da RGE — sempre no código ANTIGO; o caso real do SUBWAY.
+{
+  const base = {
+    ucOrigemCodigo: "361531700123",
+    usinaCodigoAntigo: "4003820948",
+    usinaCodigo: "361531700123",
+    titularNome: "PAULO FERNANDO ALVES FILHO",
+    titularEmail: "contratos@dommosolucoes.com.br",
+    destinos: [{ nome: "SUBWAY", codigoUc: "158223400110", codigoUcAntigo: "3090657500", percentual: 100 }],
+  };
+  const d = montarDocumentoRge(base);
+  checa(d.ok && d.valor.doadora === "4003820948", "documento: a doadora vai no código antigo (4003820948)");
+  checa(d.ok && d.valor.favorecidas[0].codigo === "3090657500" && d.valor.favorecidas[0].percentual === "100%", "documento: favorecida 3090657500 — 100%");
+  checa(!montarDocumentoRge({ ...base, destinos: [{ ...base.destinos[0], codigoUcAntigo: null }] }).ok, "documento: UC favorecida só com código novo tem de barrar a emissão");
+  checa(!montarDocumentoRge({ ...base, usinaCodigoAntigo: null }).ok, "documento: doadora só com código novo tem de barrar a emissão");
+  checa(!montarDocumentoRge({ ...base, titularNome: null }).ok, "documento: sem titular não emite");
+  const dois = montarDocumentoRge({ ...base, destinos: [{ ...base.destinos[0], percentual: 33.33 }, { nome: "B", codigoUc: "3090000001", codigoUcAntigo: null, percentual: 66.67 }] });
+  checa(dois.ok && dois.valor.favorecidas[0].percentual === "33,33%" && dois.valor.favorecidas[1].codigo === "3090000001", "documento: percentual com vírgula; UC que ainda está no código antigo usa o próprio código");
 }
 
 if (erros.length) {
@@ -114,4 +170,4 @@ if (erros.length) {
   console.error("\nOs casos 1 e 2 são faturas reais (SUBWAY e ELTERONICA, 10/10/2026). Confira na fatura antes de mexer no script.\n");
   process.exit(1);
 }
-console.log("✓ verifica-transferencia-creditos: SUBWAY e ELTERONICA fecham kWh por kWh; teto, ordem de consumo e validação conferidos.");
+console.log("✓ verifica-transferencia-creditos: SUBWAY e ELTERONICA fecham kWh por kWh; teto, ordem de consumo, percentuais, prazo e documento da RGE conferidos.");

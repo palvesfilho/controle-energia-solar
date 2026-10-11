@@ -2093,7 +2093,9 @@ model CreditTransfer {
   plantId         String?   @map("plant_id")
   // Código da UC que CEDEU o crédito, como está no documento (novo ou antigo).
   ucOrigemCodigo  String    @map("uc_origem_codigo")
-  kwhTotal        Float     @map("kwh_total")
+  // Nulo enquanto não se conhece: o documento da RGE divide o saldo em %, e o
+  // kWh só aparece depois (saldo da geradora ou 1ª fatura do destino).
+  kwhTotal        Float?    @map("kwh_total")
   // ENVIADA | ACEITA | REJEITADA. "Esgotada" não é status: é conta (usado = total).
   status          String    @default("ENVIADA")
   enviadoEm       DateTime? @map("enviado_em") // email à RGE
@@ -2102,6 +2104,9 @@ model CreditTransfer {
   // O documento "transferência de créditos" enviado à RGE (PDF).
   documentoUrl    String?   @map("documento_url")
   documentoNome   String?   @map("documento_nome")
+  // Quem assina o pedido (titular da geradora depois da troca de titularidade).
+  titularNome     String?   @map("titular_nome")
+  titularEmail    String?   @map("titular_email")
   criadoPorUserId String?   @map("criado_por_user_id")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
@@ -2118,7 +2123,10 @@ model CreditTransferItem {
   id             String @id @default(cuid())
   transferId     String @map("transfer_id")
   consumerUnitId String @map("consumer_unit_id")
-  kwh            Float
+  // Fatia do saldo que vai para esta UC, como no documento da RGE (soma 100).
+  percentual     Float
+  // percentual × kwhTotal, gravado pela API. Nulo enquanto o total é desconhecido.
+  kwh            Float?
 
   transfer     CreditTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
   consumerUnit ConsumerUnit   @relation(fields: [consumerUnitId], references: [id], onDelete: Cascade)

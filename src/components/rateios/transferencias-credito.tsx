@@ -16,6 +16,7 @@ import {
   ArrowRightLeft,
   ChevronDown,
   ChevronRight,
+  FileDown,
   FileText,
   Loader2,
   Pencil,
@@ -37,10 +38,13 @@ import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { AdicionarUc, type UnidadeDisponivel } from "@/components/rateios/adicionar-uc";
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import {
+  PRAZO_ANALISE_RGE_DIAS,
   SITUACAO_DESTINO_LABEL,
   STATUS_TRANSFERENCIA,
   STATUS_TRANSFERENCIA_LABEL,
   TOLERANCIA_SOMA_KWH,
+  TOLERANCIA_SOMA_PCT,
+  diasDesdeEnvio,
   type Acompanhamento,
   type AnoMes,
   type SituacaoDestino,
@@ -51,7 +55,8 @@ import {
 
 interface Destino {
   itemId: string;
-  kwh: number;
+  percentual: number;
+  kwh: number | null;
   uc: { id: string; nome: string; codigoUc: string; codigoUcAntigo: string | null; temGeracaoPropria: boolean };
   acompanhamento: Acompanhamento;
 }
@@ -60,16 +65,18 @@ interface Transferencia {
   id: string;
   plant: { id: string; name: string } | null;
   ucOrigemCodigo: string;
-  kwhTotal: number;
+  kwhTotal: number | null;
   status: StatusTransferencia;
   enviadoEm: string | null;
   aceitoEm: string | null;
   observacao: string | null;
   documentoUrl: string | null;
   documentoNome: string | null;
+  titularNome: string | null;
+  titularEmail: string | null;
   destinos: Destino[];
   usadoKwh: number;
-  restanteKwh: number;
+  restanteKwh: number | null;
 }
 
 interface UsinaOpcao {
@@ -89,6 +96,8 @@ interface Resposta {
 
 const kwhFmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
 const kwh = (v: number | null | undefined) => (v == null ? "—" : `${kwhFmt.format(v)} kWh`);
+const pctFmt = (v: number) => `${v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
+const num = (v: string) => Number(v.replace(",", ".")) || 0;
 const mesAno = (m: AnoMes | null) => (m ? `${String(m.mes).padStart(2, "0")}/${m.ano}` : "—");
 /** Datas vêm ao meio-dia UTC: lidas em UTC para não virar o dia anterior. */
 const data = (s: string | null) => (s ? new Date(s).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "—");
@@ -150,10 +159,12 @@ export function TransferenciasCredito() {
     const aceitas = lista.filter((t) => t.status === "ACEITA");
     return {
       total: lista.length,
-      transferido: aceitas.reduce((s, t) => s + t.kwhTotal, 0),
+      transferido: aceitas.reduce((s, t) => s + (t.kwhTotal ?? 0), 0),
       usado: aceitas.reduce((s, t) => s + t.usadoKwh, 0),
-      restante: aceitas.reduce((s, t) => s + t.restanteKwh, 0),
+      restante: aceitas.reduce((s, t) => s + (t.restanteKwh ?? 0), 0),
       aguardando: lista.filter((t) => t.status === "ENVIADA").length,
+      foraDoPrazo: lista.filter((t) => t.status === "ENVIADA" && (diasDesdeEnvio(t.enviadoEm) ?? 0) > PRAZO_ANALISE_RGE_DIAS).length,
+      semTotal: aceitas.filter((t) => t.kwhTotal == null).length,
     };
   }, [lista]);
 
@@ -176,6 +187,18 @@ export function TransferenciasCredito() {
     carregar();
   };
 
+  const gerarDocumento = async (t: Transferencia) => {
+    const r = await fetch(`/api/transferencias-credito/${t.id}/pdf`);
+    if (!r.ok) {
+      const j = await r.json().catch(() => null);
+      toast.error(j?.error ?? "Não foi possível gerar o documento.");
+      return;
+    }
+    const url = URL.createObjectURL(await r.blob());
+    window.open(url, "_blank", "noopener");
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -191,8 +214,16 @@ export function TransferenciasCredito() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Kpi titulo="Transferências" valor={String(resumo.total)} sub={resumo.aguardando ? `${resumo.aguardando} aguardando aceite` : "registradas"} />
-        <Kpi titulo="Transferido (aceitas)" valor={kwh(resumo.transferido)} />
+        <Kpi titulo="Transferências" valor={String(resumo.total)} sub={
+            resumo.foraDoPrazo
+              ? `${resumo.foraDoPrazo} sem resposta há mais de ${PRAZO_ANALISE_RGE_DIAS} dias`
+              : resumo.aguardando
+                ? `${resumo.aguardando} aguardando aceite`
+                : "registradas"
+          }
+          alerta={resumo.foraDoPrazo > 0}
+        />
+        <Kpi titulo="Transferido (aceitas)" valor={kwh(resumo.transferido)} sub={resumo.semTotal ? `${resumo.semTotal} sem o total em kWh` : undefined} />
         <Kpi titulo="Já compensado" valor={kwh(resumo.usado)} sub={resumo.transferido ? `${Math.round((resumo.usado / resumo.transferido) * 100)}% do transferido` : undefined} />
         <Kpi titulo="Saldo a consumir" valor={kwh(resumo.restante)} />
       </div>
@@ -257,10 +288,19 @@ export function TransferenciasCredito() {
                               {t.destinos.map((d) => (
                                 <div key={d.itemId} className="truncate">
                                   {d.uc.nome}
+                                  {t.destinos.length > 1 && <span className="text-xs text-muted-foreground"> · {pctFmt(d.percentual)}</span>}
                                 </div>
                               ))}
                             </td>
-                            <td className="p-2 text-right tabular-nums">{kwh(t.kwhTotal)}</td>
+                            <td className="p-2 text-right tabular-nums">
+                              {t.kwhTotal == null ? (
+                                <span className="text-amber-700 dark:text-amber-400" title="O documento da RGE só traz percentuais. Informe o total quando souber.">
+                                  a informar
+                                </span>
+                              ) : (
+                                kwh(t.kwhTotal)
+                              )}
+                            </td>
                             <td className="p-2 text-right tabular-nums">{t.status === "ACEITA" ? kwh(t.usadoKwh) : "—"}</td>
                             <td className="p-2 text-right font-medium tabular-nums">{t.status === "ACEITA" ? kwh(t.restanteKwh) : "—"}</td>
                             <td className="p-2 tabular-nums">
@@ -276,6 +316,7 @@ export function TransferenciasCredito() {
                               <span className={`rounded px-2 py-0.5 text-xs font-medium ${TOM_STATUS[t.status]}`}>
                                 {STATUS_TRANSFERENCIA_LABEL[t.status]}
                               </span>
+                              {t.status === "ENVIADA" && <PrazoRge enviadoEm={t.enviadoEm} />}
                             </td>
                             <td className="p-2 tabular-nums">{data(t.aceitoEm)}</td>
                             <td className="p-2 text-right" onClick={(e) => e.stopPropagation()}>
@@ -287,6 +328,15 @@ export function TransferenciasCredito() {
                                     </Button>
                                   </a>
                                 )}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7"
+                                  title="Gerar o documento da RGE (para assinar e enviar)"
+                                  onClick={() => gerarDocumento(t)}
+                                >
+                                  <FileDown className="h-4 w-4" />
+                                </Button>
                                 <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" onClick={() => setEditando(t)}>
                                   <Pencil className="h-4 w-4" />
                                 </Button>
@@ -303,6 +353,7 @@ export function TransferenciasCredito() {
                                 <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
                                   <span>Email à RGE: <b>{data(t.enviadoEm)}</b></span>
                                   <span>Aceite: <b>{data(t.aceitoEm)}</b></span>
+                                  {t.titularNome && <span>Titular: <b>{t.titularNome}</b></span>}
                                   {t.observacao && <span>Obs.: {t.observacao}</span>}
                                   {!t.documentoUrl && <span className="text-amber-700 dark:text-amber-400">Sem documento anexado</span>}
                                 </div>
@@ -338,6 +389,24 @@ export function TransferenciasCredito() {
   );
 }
 
+/** Há quantos dias a RGE está com o pedido — vermelho depois do prazo de 30 dias. */
+function PrazoRge({ enviadoEm }: { enviadoEm: string | null }) {
+  const dias = diasDesdeEnvio(enviadoEm);
+  if (dias == null) return <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">sem data de envio</div>;
+  const estourou = dias > PRAZO_ANALISE_RGE_DIAS;
+  return (
+    <div
+      className={`mt-1 flex items-center gap-1 text-xs ${estourou ? "font-medium text-red-700 dark:text-red-400" : "text-muted-foreground"}`}
+      title={`Prazo de atendimento da RGE: ${PRAZO_ANALISE_RGE_DIAS} dias`}
+    >
+      {estourou && <AlertTriangle className="h-3.5 w-3.5" />}
+      {estourou
+        ? `há ${dias} dias — prazo de ${PRAZO_ANALISE_RGE_DIAS} vencido, cobrar a RGE`
+        : `há ${dias} ${dias === 1 ? "dia" : "dias"} de ${PRAZO_ANALISE_RGE_DIAS}`}
+    </div>
+  );
+}
+
 /** Previsão de esgotar; em vermelho quando o crédito vence antes de ser todo usado. */
 function AcabaEm({ a }: { a: Acompanhamento }) {
   if (a.situacao === "ESGOTADA") return <span className="text-muted-foreground">Esgotada</span>;
@@ -356,13 +425,13 @@ function AcabaEm({ a }: { a: Acompanhamento }) {
   );
 }
 
-function Kpi({ titulo, valor, sub }: { titulo: string; valor: string; sub?: string }) {
+function Kpi({ titulo, valor, sub, alerta }: { titulo: string; valor: string; sub?: string; alerta?: boolean }) {
   return (
     <Card>
       <CardContent className="p-3">
         <div className="text-xs text-muted-foreground">{titulo}</div>
         <div className="text-lg font-semibold tabular-nums">{valor}</div>
-        {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
+        {sub && <div className={`text-xs ${alerta ? "font-medium text-red-700 dark:text-red-400" : "text-muted-foreground"}`}>{sub}</div>}
       </CardContent>
     </Card>
   );
@@ -372,7 +441,7 @@ function Kpi({ titulo, valor, sub }: { titulo: string; valor: string; sub?: stri
 
 function DetalheDestino({ d }: { d: Destino }) {
   const a = d.acompanhamento;
-  const pct = d.kwh > 0 ? Math.min(100, (a.usadoKwh / d.kwh) * 100) : 0;
+  const pct = d.kwh != null && d.kwh > 0 ? Math.min(100, (a.usadoKwh / d.kwh) * 100) : 0;
   const atrasada = faturaAtrasada(a.ultimaFatura);
 
   return (
@@ -391,7 +460,7 @@ function DetalheDestino({ d }: { d: Destino }) {
       </div>
 
       <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-xs sm:grid-cols-3 lg:grid-cols-6">
-        <Info rotulo="Recebeu" valor={kwh(d.kwh)} />
+        <Info rotulo="Recebeu" valor={d.kwh == null ? `${pctFmt(d.percentual)} do saldo` : `${kwh(d.kwh)} (${pctFmt(d.percentual)})`} />
         <Info rotulo="Compensado" valor={kwh(a.usadoKwh)} />
         <Info rotulo="Saldo" valor={kwh(a.restanteKwh)} forte />
         <Info rotulo="Média/mês" valor={a.mediaMensalKwh ? kwh(a.mediaMensalKwh) : "—"} />
@@ -405,6 +474,22 @@ function DetalheDestino({ d }: { d: Destino }) {
       <div className="mt-2 h-1.5 overflow-hidden rounded bg-muted">
         <div className="h-full bg-emerald-500" style={{ width: `${pct}%` }} />
       </div>
+
+      {d.kwh == null && (
+        <p className="mt-2 flex items-start gap-1 text-xs text-amber-700 dark:text-amber-400">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            Falta o total transferido em kWh — sem ele não há saldo nem previsão.
+            {a.sugestaoKwh != null && (
+              <>
+                {" "}
+                Pela 1ª fatura (compensado + saldo impresso), esta UC recebeu cerca de <b>{kwh(a.sugestaoKwh)}</b>. Confira com
+                o saldo da geradora antes de gravar: o saldo da fatura inclui crédito de outras fontes.
+              </>
+            )}
+          </span>
+        </p>
+      )}
 
       {atrasada && (
         <p className="mt-2 flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
@@ -431,7 +516,8 @@ function DetalheDestino({ d }: { d: Destino }) {
             </thead>
             <tbody>
               {a.meses.map((m) => {
-                const difere = m.saldoFaturaKwh != null && Math.abs(m.saldoFaturaKwh - m.restanteKwh) > TOLERANCIA_SOMA_KWH;
+                const difere =
+                  m.saldoFaturaKwh != null && m.restanteKwh != null && Math.abs(m.saldoFaturaKwh - m.restanteKwh) > TOLERANCIA_SOMA_KWH;
                 return (
                   <tr key={`${m.ano}-${m.mes}`} className="border-t">
                     <td className="py-1 pr-3 tabular-nums">{mesAno(m)}</td>
@@ -470,7 +556,8 @@ function Info({ rotulo, valor, forte }: { rotulo: string; valor: string; forte?:
 
 interface LinhaDestino {
   uc: UnidadeDisponivel;
-  kwh: string;
+  /** Como no documento da RGE: % do saldo, até 2 casas. */
+  percentual: string;
 }
 
 const SEM_USINA = "__sem_usina__";
@@ -490,7 +577,9 @@ function FormularioTransferencia({
 
   const [plantId, setPlantId] = useState(inicial?.plant?.id ?? SEM_USINA);
   const [ucOrigem, setUcOrigem] = useState(inicial?.ucOrigemCodigo ?? "");
-  const [kwhTotal, setKwhTotal] = useState(inicial ? String(inicial.kwhTotal) : "");
+  const [kwhTotal, setKwhTotal] = useState(inicial?.kwhTotal != null ? String(inicial.kwhTotal) : "");
+  const [titularNome, setTitularNome] = useState(inicial?.titularNome ?? "");
+  const [titularEmail, setTitularEmail] = useState(inicial?.titularEmail ?? "");
   const [status, setStatus] = useState<StatusTransferencia>(inicial?.status ?? "ENVIADA");
   const [enviadoEm, setEnviadoEm] = useState(paraInput(inicial?.enviadoEm ?? null));
   const [aceitoEm, setAceitoEm] = useState(paraInput(inicial?.aceitoEm ?? null));
@@ -500,7 +589,7 @@ function FormularioTransferencia({
       inicial?.destinos.map((d) => ({
         // UC desativada depois do cadastro não vem nas opções: monta com o que a transferência tem.
         uc: ucPorId.get(d.uc.id) ?? { id: d.uc.id, nome: d.uc.nome, codigoUc: d.uc.codigoUc, codigoUcAntigo: d.uc.codigoUcAntigo, cidade: null, distribuidora: null },
-        kwh: String(d.kwh),
+        percentual: String(d.percentual).replace(".", ","),
       })) ?? [],
   );
   const [arquivo, setArquivo] = useState<File | null>(null);
@@ -508,9 +597,9 @@ function FormularioTransferencia({
   const [salvando, setSalvando] = useState(false);
   const inputArquivo = useRef<HTMLInputElement>(null);
 
-  const total = Number(kwhTotal.replace(",", ".")) || 0;
-  const soma = destinos.reduce((s, d) => s + (Number(d.kwh.replace(",", ".")) || 0), 0);
-  const fecha = destinos.length > 0 && Math.abs(soma - total) <= TOLERANCIA_SOMA_KWH;
+  const total = num(kwhTotal);
+  const soma = destinos.reduce((s, d) => s + num(d.percentual), 0);
+  const fecha = destinos.length > 0 && Math.abs(soma - 100) <= TOLERANCIA_SOMA_PCT;
 
   const escolherUsina = (id: string) => {
     setPlantId(id);
@@ -522,8 +611,9 @@ function FormularioTransferencia({
 
   const adicionar = (uc: UnidadeDisponivel) =>
     setDestinos((prev) => {
-      const restante = Math.max(0, total - prev.reduce((s, d) => s + (Number(d.kwh.replace(",", ".")) || 0), 0));
-      return [...prev, { uc, kwh: restante ? String(restante) : "" }];
+      // A nova UC entra com o que falta para fechar 100%.
+      const falta = Math.max(0, Math.round((100 - prev.reduce((s, d) => s + num(d.percentual), 0)) * 100) / 100);
+      return [...prev, { uc, percentual: falta ? String(falta).replace(".", ",") : "" }];
     });
 
   const salvar = async () => {
@@ -532,12 +622,14 @@ function FormularioTransferencia({
       const corpo = {
         plantId: plantId === SEM_USINA ? null : plantId,
         ucOrigemCodigo: ucOrigem,
-        kwhTotal: total,
+        kwhTotal: total > 0 ? total : null,
         status,
         enviadoEm: enviadoEm || null,
         aceitoEm: aceitoEm || null,
         observacao,
-        itens: destinos.map((d) => ({ consumerUnitId: d.uc.id, kwh: Number(d.kwh.replace(",", ".")) })),
+        titularNome,
+        titularEmail,
+        itens: destinos.map((d) => ({ consumerUnitId: d.uc.id, percentual: num(d.percentual) })),
       };
       const r = await fetch(inicial ? `/api/transferencias-credito/${inicial.id}` : "/api/transferencias-credito", {
         method: inicial ? "PATCH" : "POST",
@@ -605,6 +697,9 @@ function FormularioTransferencia({
             <div className="space-y-1">
               <Label>Total transferido (kWh)</Label>
               <Input inputMode="decimal" value={kwhTotal} onChange={(e) => setKwhTotal(e.target.value)} placeholder="Ex.: 63800" />
+              <p className="text-xs text-muted-foreground">
+                Pode ficar em branco no envio: o documento só leva percentuais. Preencha com o saldo da geradora quando souber.
+              </p>
             </div>
             <div className="space-y-1">
               <Label>Situação</Label>
@@ -630,11 +725,20 @@ function FormularioTransferencia({
               <Input type="date" value={aceitoEm} onChange={(e) => setAceitoEm(e.target.value)} />
               <p className="text-xs text-muted-foreground">É o marco: nas faturas a partir deste mês, o crédito de origem anterior conta como transferência.</p>
             </div>
+            <div className="space-y-1">
+              <Label>Titular que assina o pedido</Label>
+              <Input value={titularNome} onChange={(e) => setTitularNome(e.target.value)} placeholder="Nome do titular da geradora" />
+            </div>
+            <div className="space-y-1">
+              <Label>Email do titular</Label>
+              <Input type="email" value={titularEmail} onChange={(e) => setTitularEmail(e.target.value)} placeholder="email@exemplo.com.br" />
+              <p className="text-xs text-muted-foreground">Nome e email vão no documento gerado para a RGE.</p>
+            </div>
           </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>UCs de destino</Label>
+              <Label>UCs de destino (% do saldo, como no documento)</Label>
               <AdicionarUc unidades={opcoes.ucs} jaSelecionadas={new Set(destinos.map((d) => d.uc.id))} onAdicionar={adicionar} />
             </div>
             {destinos.length === 0 ? (
@@ -645,22 +749,30 @@ function FormularioTransferencia({
                   <div key={d.uc.id} className="flex items-center gap-2 rounded border p-2">
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium">{d.uc.nome}</div>
-                      <div className="text-xs text-muted-foreground">UC {formatCodigoUc(d.uc.codigoUc)}</div>
+                      <div className="text-xs text-muted-foreground">
+                        UC {formatCodigoUc(d.uc.codigoUc)}
+                        {d.uc.codigoUcAntigo ? (
+                          ` · antigo ${d.uc.codigoUcAntigo}`
+                        ) : (
+                          <span className="text-amber-700 dark:text-amber-400"> · sem código antigo (a RGE exige no documento)</span>
+                        )}
+                      </div>
                     </div>
+                    {total > 0 && <span className="text-xs tabular-nums text-muted-foreground">{kwh((total * num(d.percentual)) / 100)}</span>}
                     <Input
-                      className="w-32 text-right"
+                      className="w-24 text-right"
                       inputMode="decimal"
-                      value={d.kwh}
-                      onChange={(e) => setDestinos((prev) => prev.map((x, j) => (j === i ? { ...x, kwh: e.target.value } : x)))}
+                      value={d.percentual}
+                      onChange={(e) => setDestinos((prev) => prev.map((x, j) => (j === i ? { ...x, percentual: e.target.value } : x)))}
                     />
-                    <span className="text-xs text-muted-foreground">kWh</span>
+                    <span className="text-xs text-muted-foreground">%</span>
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDestinos((prev) => prev.filter((_, j) => j !== i))}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
                 ))}
                 <p className={`text-right text-xs ${fecha ? "text-muted-foreground" : "text-red-600"}`}>
-                  Soma dos destinos: {kwh(soma)} de {kwh(total)} {fecha ? "✓" : "— precisa fechar com o total"}
+                  Soma dos percentuais: {pctFmt(soma)} {fecha ? "✓" : "— precisa dar 100%"}
                 </p>
               </div>
             )}
