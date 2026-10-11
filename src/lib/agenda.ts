@@ -36,7 +36,8 @@ export type AgendaTaskType =
   | "EMITIR_RELATORIO_MENSAL"
   | "PAGAR_INVESTIDOR"
   | "INFORMAR_LEITURA_RGE"
-  | "CONFERIR_PAGAMENTO_RGE";
+  | "CONFERIR_PAGAMENTO_RGE"
+  | "CADASTRAR_ACESSO_CONCESSIONARIA";
 
 /**
  * Dias após o pagamento interno (pagoEm) sem confirmação da concessionária
@@ -426,6 +427,44 @@ export async function getTasksForWeek(start: Date, end: Date): Promise<AgendaTas
     });
   }
 
+  // ─── 6) CADASTRAR_ACESSO_CONCESSIONARIA ───────────────────────────────
+  // UC marcada com prazo para receber o acesso do portal (`acessoPrazoEm`, ver
+  // lib/uc-acesso-prazo.ts). A tarefa cai no DIA DO PRAZO. DONE quando a UC tem
+  // credencial. Vencida e sem credencial, ela se repete em TODA semana seguinte
+  // (no primeiro dia da janela) — obrigação não pode sumir da agenda só porque
+  // a semana virou.
+  // origem-ok: o prazo é marcado UC a UC; vale para qualquer origem
+  const ucsComPrazo = await prisma.consumerUnit.findMany({
+    where: { active: true, acessoPrazoEm: { not: null, lte: endOfDayInstant(windowEnd) } },
+    select: { id: true, nome: true, codigoUc: true, acessoPrazoEm: true, cpflCredential: { select: { id: true } } },
+  });
+  for (const uc of ucsComPrazo) {
+    const prazo = toDateOnly(uc.acessoPrazoEm)!;
+    const isDone = !!uc.cpflCredential;
+    const naJanela = isWithin(prazo, windowStart, windowEnd);
+    // Fora da janela só entra a pendência vencida, e só da semana atual em diante.
+    if (!naJanela && (isDone || windowEnd < today)) continue;
+    const scheduled = naJanela ? prazo : windowStart;
+    tasks.push({
+      id: `ACESSO-${uc.id}-${ymd(scheduled)}`,
+      type: "CADASTRAR_ACESSO_CONCESSIONARIA",
+      title: `Cadastrar acesso à concessionária — ${uc.nome}`,
+      subtitle: `Obrigatório até ${formatDateOnlyBR(prazo)}`,
+      scheduledFor: scheduled,
+      dueDate: prazo,
+      status: isDone ? "DONE" : prazo < today ? "OVERDUE" : "PENDING",
+      sourceEntityType: "ConsumerUnit",
+      sourceEntityId: uc.id,
+      href: `/admin/unidades-consumidoras/${uc.id}/editar`,
+      mesReferencia: null,
+      anoReferencia: null,
+      consumerUnitId: uc.id,
+      consumerUnitLabel: `${formatCodigoUc(uc.codigoUc)} — ${uc.nome}`,
+      valor: null,
+      pagaInvestidor: false,
+    });
+  }
+
   // Antes do "marco zero" só aparecem DONE — esconde pendências/atrasos legados
   // mas preserva o histórico de tarefas concluídas (ex.: faturas do backup Lumi).
   const filtered = AGENDA_MIN_DATE
@@ -466,4 +505,5 @@ export const TASK_TYPE_LABEL: Record<AgendaTaskType, string> = {
   PAGAR_INVESTIDOR: "Pagar investidor",
   INFORMAR_LEITURA_RGE: "Informar leitura RGE",
   CONFERIR_PAGAMENTO_RGE: "Conferir pagamento RGE",
+  CADASTRAR_ACESSO_CONCESSIONARIA: "Cadastrar acesso à concessionária",
 };

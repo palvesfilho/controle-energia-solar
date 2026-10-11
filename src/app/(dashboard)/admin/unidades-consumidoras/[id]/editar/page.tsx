@@ -61,6 +61,7 @@ export default function EditarUCPage() {
   // antigo é obrigatório — ver `exigeCodigoUcAntigo`. Sem ela, uma UC velha
   // pareceria recém-cadastrada e cairia na dispensa por engano.
   const [createdAt, setCreatedAt] = useState<string | null>(null);
+  const [acessoPrazoEm, setAcessoPrazoEm] = useState<string | null>(null);
 
   const carregarUc = useCallback(() => {
     return fetch(`/api/consumer-units/${id}`)
@@ -73,6 +74,7 @@ export default function EditarUCPage() {
         setStatusChanges(uc.statusChanges ?? []);
         setDocumentos(uc as DocumentosDoCadastro);
         setCreatedAt(uc.createdAt ?? null);
+        setAcessoPrazoEm(uc.acessoPrazoEm ?? null);
         setInitialData({
           nome: uc.nome ?? "",
           // Exibe no padrão da concessionária; a API normaliza pra dígitos ao salvar.
@@ -279,6 +281,7 @@ export default function EditarUCPage() {
         <UcCredentialsForm
           consumerUnitId={id}
           defaultInstalacao={initialData.codigoUc}
+          prazoAcesso={acessoPrazoEm}
           onSyncComplete={() => setBillsRefreshKey((k) => k + 1)}
         />
       </div>

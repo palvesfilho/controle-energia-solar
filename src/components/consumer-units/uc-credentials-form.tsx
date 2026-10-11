@@ -8,8 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { KeyRound, RefreshCw, Trash2, Mail, Hash, Building2, Clock, Pencil, Eye, EyeOff, Lock, Copy } from "lucide-react";
+import { AlertTriangle, KeyRound, RefreshCw, Trash2, Mail, Hash, Building2, Clock, Pencil, Eye, EyeOff, Lock, Copy } from "lucide-react";
 import { formatCodigoUc } from "@/lib/uc-codigo";
+import { acessoPendente, prazoBR } from "@/lib/uc-acesso-prazo";
 
 interface Credential {
   id: string;
@@ -27,9 +28,11 @@ interface UcCredentialsFormProps {
   consumerUnitId: string;
   defaultInstalacao?: string;
   onSyncComplete?: () => void;
+  /** `ConsumerUnit.acessoPrazoEm`: dia-limite para cadastrar este acesso. */
+  prazoAcesso?: string | null;
 }
 
-export function UcCredentialsForm({ consumerUnitId, defaultInstalacao, onSyncComplete }: UcCredentialsFormProps) {
+export function UcCredentialsForm({ consumerUnitId, defaultInstalacao, onSyncComplete, prazoAcesso }: UcCredentialsFormProps) {
   const [credential, setCredential] = useState<Credential | null>(null);
   const [loadingCred, setLoadingCred] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -227,6 +230,9 @@ export function UcCredentialsForm({ consumerUnitId, defaultInstalacao, onSyncCom
     </Badge>
   ) : null;
 
+  // Só enquanto a credencial não existe (e depois de saber que não existe).
+  const pendente = loadingCred ? null : acessoPendente(prazoAcesso, !!credential);
+
   return (
     <Card>
       <CardHeader>
@@ -239,6 +245,27 @@ export function UcCredentialsForm({ consumerUnitId, defaultInstalacao, onSyncCom
         </div>
       </CardHeader>
       <CardContent>
+        {pendente && (
+          <div
+            className={`mb-4 flex items-start gap-2 rounded-md border p-3 text-sm ${
+              pendente.vencido
+                ? "border-red-300 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+                : "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300"
+            }`}
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              <b>Cadastro obrigatório até {prazoBR(pendente.prazo)}.</b>{" "}
+              {pendente.vencido
+                ? `O prazo venceu há ${-pendente.diasRestantes} ${pendente.diasRestantes === -1 ? "dia" : "dias"}.`
+                : pendente.diasRestantes === 0
+                  ? "Vence hoje."
+                  : `Faltam ${pendente.diasRestantes} ${pendente.diasRestantes === 1 ? "dia" : "dias"}.`}{" "}
+              O acesso que estava aqui era um preenchimento automático do navegador e foi apagado. Informe o email e a
+              senha do portal da concessionária desta UC.
+            </span>
+          </div>
+        )}
         {credential && !showForm && (
           <div className="space-y-5">
             <div className="rounded-lg border bg-muted/30 p-4 space-y-3">

@@ -10,6 +10,7 @@ import {
   FileBarChart,
   Users,
   Gauge,
+  KeyRound,
   ShieldCheck,
   CheckCircle2,
   AlertCircle,
@@ -95,6 +96,10 @@ const TYPE_META: Record<AgendaTaskType, { icon: React.ElementType; tone: string 
   CONFERIR_PAGAMENTO_RGE: {
     icon: ShieldCheck,
     tone: "border-l-purple-500 bg-purple-50 dark:bg-purple-950/30",
+  },
+  CADASTRAR_ACESSO_CONCESSIONARIA: {
+    icon: KeyRound,
+    tone: "border-l-amber-500 bg-amber-50 dark:bg-amber-950/30",
   },
 };
 

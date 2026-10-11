@@ -584,7 +584,11 @@ model ConsumerUnit {
   // compensa primeiro a injeção própria; o restante consome créditos da usina do
   // rateio. Auto-marcado como true quando uma fatura chega com
   // energiaInjetadaMedidorKwh > 0.
-  temGeracaoPropria Boolean @default(false) @map("tem_geracao_propria")
+  temGeracaoPropria Boolean   @default(false) @map("tem_geracao_propria")
+  // Dia-limite para cadastrar o acesso à concessionária (CpflCredential). Nulo =
+  // sem cobrança. A pendência some sozinha quando a credencial existe — ver
+  // lib/uc-acesso-prazo.ts.
+  acessoPrazoEm     DateTime? @map("acesso_prazo_em")
 
   // Grupo A — cadastro contratual da UC (coexiste com `modalidade` que é GD, não tarifária)
   modalidadeTarifaria      String? @map("modalidade_tarifaria") // "Verde"|"Azul"|"Convencional"|"Branca"

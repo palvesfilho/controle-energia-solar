@@ -29,6 +29,7 @@ import { AvisoPrimeirasCompensacoes } from "@/components/consumer-units/aviso-pr
 import { UsinaDaUc, usinaExibida } from "@/components/consumer-units/usina-da-uc";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { VinculoUc } from "@/lib/uc-vinculo-rateio";
+import { prazoBR, rotuloAcessoPendente, type AcessoPendente } from "@/lib/uc-acesso-prazo";
 
 interface UCData {
   id: string;
@@ -49,6 +50,8 @@ interface UCData {
   vinculo: VinculoUc;
   /** Fase derivada das faturas — ver lib/uc-implantacao.ts. */
   implantacao: FaseImplantacao | null;
+  /** Acesso à concessionária com prazo para ser cadastrado — lib/uc-acesso-prazo.ts. */
+  acessoPendente: AcessoPendente | null;
 }
 
 type SortKey = "nome" | "codigoUc" | "usina" | "consumo" | "status" | "espera";
@@ -505,6 +508,16 @@ function UnidadesConsumidorasConteudo() {
                           {uc.implantacao?.aguardandoLiberacao && (
                             <Badge className="bg-emerald-600 hover:bg-emerald-700 text-[10px] px-1.5 py-0">
                               NOVA
+                            </Badge>
+                          )}
+                          {uc.acessoPendente && (
+                            <Badge
+                              className={`text-[10px] px-1.5 py-0 ${
+                                uc.acessoPendente.vencido ? "bg-red-600 hover:bg-red-700" : "bg-amber-500 hover:bg-amber-600"
+                              }`}
+                              title={`Cadastrar o acesso à concessionária desta UC até ${prazoBR(uc.acessoPendente.prazo)} (obrigatório)`}
+                            >
+                              {rotuloAcessoPendente(uc.acessoPendente)}
                             </Badge>
                           )}
                         </div>

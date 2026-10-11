@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 import { normalizeCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
 import { encrypt } from "@/lib/crypto";
+import { acessoPendente } from "@/lib/uc-acesso-prazo";
 import { normalizeConcessionaria } from "@/lib/concessionarias";
 import { SELECT_BILL_FASE, calcularFases } from "@/lib/uc-implantacao";
 import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
@@ -68,6 +69,7 @@ export async function GET(req: NextRequest) {
     include: {
       consumer: { select: { id: true, name: true } },
       plant: { select: { id: true, name: true } },
+      cpflCredential: { select: { id: true } },
     },
     orderBy: { nome: "asc" },
   });
@@ -87,10 +89,14 @@ export async function GET(req: NextRequest) {
   const vinculos = await vinculosPorRateio(units.map((u) => u.id));
 
   return NextResponse.json(
-    units.map((u) => ({
+    units.map(({ cpflCredential, ...u }) => ({
       ...u,
+      // Campos antigos, com senha em texto puro — a lista nunca os usou.
+      loginDistribuidora: undefined,
+      senhaDistribuidora: undefined,
       implantacao: fases.get(u.id) ?? null,
       vinculo: vinculos.get(u.id) ?? VINCULO_VAZIO,
+      acessoPendente: acessoPendente(u.acessoPrazoEm, !!cpflCredential),
     })),
   );
 }
