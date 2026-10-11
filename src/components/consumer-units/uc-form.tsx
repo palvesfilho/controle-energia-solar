@@ -862,6 +862,10 @@ export function UCForm({
                 <Label htmlFor="loginDistribuidora">Email do portal da concessionária</Label>
                 <Input
                   id="loginDistribuidora"
+                  // autoComplete: sem isto o navegador preenche sozinho com o login que o
+                  // operador usa NESTE sistema, e ele vai salvo como acesso da concessionária
+                  // (22 UCs ficaram com o login de um gestor assim).
+                  autoComplete="off"
                   value={form.loginDistribuidora}
                   onChange={(e) => update("loginDistribuidora", e.target.value)}
                 />
@@ -870,6 +874,7 @@ export function UCForm({
                 <Label htmlFor="senhaDistribuidora">Senha do portal</Label>
                 <PasswordInput
                   id="senhaDistribuidora"
+                  autoComplete="new-password"
                   value={form.senhaDistribuidora}
                   onChange={(e) => update("senhaDistribuidora", e.target.value)}
                 />

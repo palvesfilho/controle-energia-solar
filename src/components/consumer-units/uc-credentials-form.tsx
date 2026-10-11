@@ -379,6 +379,8 @@ export function UcCredentialsForm({ consumerUnitId, defaultInstalacao, onSyncCom
                 <Input
                   id="emailCpfl"
                   type="email"
+                  // Sem isto o navegador preenche com o login do operador neste sistema.
+                  autoComplete="off"
                   value={emailCpfl}
                   onChange={(e) => setEmailCpfl(e.target.value)}
                   placeholder="email@exemplo.com"
@@ -393,6 +395,7 @@ export function UcCredentialsForm({ consumerUnitId, defaultInstalacao, onSyncCom
                   <Input
                     id="senhaCpfl"
                     type={showPassword ? "text" : "password"}
+                    autoComplete="new-password"
                     value={senhaCpfl}
                     onChange={(e) => setSenhaCpfl(e.target.value)}
                     placeholder="********"
