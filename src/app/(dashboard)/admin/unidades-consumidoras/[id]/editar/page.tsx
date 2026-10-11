@@ -105,8 +105,9 @@ export default function EditarUCPage() {
           dataInicioContrato: uc.dataInicioContrato
             ? new Date(uc.dataInicioContrato).toISOString().slice(0, 10)
             : "",
-          loginDistribuidora: uc.loginDistribuidora ?? "",
-          senhaDistribuidora: uc.senhaDistribuidora ?? "",
+          // Na edição o acesso é do card "Status e acesso à concessionária".
+          loginDistribuidora: "",
+          senhaDistribuidora: "",
           temGeracaoPropria: !!uc.temGeracaoPropria,
         });
       })
@@ -125,7 +126,8 @@ export default function EditarUCPage() {
       const res = await fetch(`/api/consumer-units/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        // O acesso à concessionária é do card logo abaixo, não deste formulário.
+        body: JSON.stringify({ ...data, loginDistribuidora: undefined, senhaDistribuidora: undefined }),
       });
       if (res.ok) {
         // A API replica o código no cadastro Brasil Solar do mesmo cliente.
@@ -254,6 +256,7 @@ export default function EditarUCPage() {
         cancelHref="/admin/unidades-consumidoras"
         submitLabel="Salvar Alterações"
         createdAt={createdAt}
+        acessoNoCard
         // UC cadastrada pela fila do CRM guarda no `cpfCnpj` o documento de
         // quem ASSINOU a adesão; a legada guarda o titular da distribuidora,
         // que pela regra do Paulo não diz nada sobre quem se cobra.

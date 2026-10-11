@@ -213,6 +213,13 @@ interface Props {
    * "Cadastrar novo consumidor" já abrir preenchida.
    */
   contatoSugerido?: { email?: string | null; phone?: string | null };
+  /**
+   * A tela já mostra o card "Status e acesso à concessionária"
+   * (`UcCredentialsForm`) — é o caso da edição. O formulário então NÃO pergunta
+   * login e senha de novo: eram dois lugares para o mesmo acesso, e só o do
+   * card é lido pelo robô de faturas.
+   */
+  acessoNoCard?: boolean;
 }
 
 export function UCForm({
@@ -227,6 +234,7 @@ export function UCForm({
   regraRemuneracaoObrigatoria = false,
   documentoVeioDaAdesao = false,
   contatoSugerido,
+  acessoNoCard = false,
 }: Props) {
   const [novoConsumidorAberto, setNovoConsumidorAberto] = useState(false);
   const [form, setForm] = useState<UCFormData>(() => {
@@ -830,7 +838,7 @@ export function UCForm({
       {/* Acesso e Status */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Status e Acesso à Distribuidora</CardTitle>
+          <CardTitle className="text-base">{acessoNoCard ? "Status do Contrato" : "Status e Acesso à Concessionária"}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
@@ -847,23 +855,31 @@ export function UCForm({
               <option value="Cancelado">Cancelado</option>
             </select>
           </div>
-          <div />
-          <div className="space-y-2">
-            <Label htmlFor="loginDistribuidora">Login (Distribuidora)</Label>
-            <Input
-              id="loginDistribuidora"
-              value={form.loginDistribuidora}
-              onChange={(e) => update("loginDistribuidora", e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="senhaDistribuidora">Senha (Distribuidora)</Label>
-            <PasswordInput
-              id="senhaDistribuidora"
-              value={form.senhaDistribuidora}
-              onChange={(e) => update("senhaDistribuidora", e.target.value)}
-            />
-          </div>
+          {!acessoNoCard && (
+            <>
+              <div />
+              <div className="space-y-2">
+                <Label htmlFor="loginDistribuidora">Email do portal da concessionária</Label>
+                <Input
+                  id="loginDistribuidora"
+                  value={form.loginDistribuidora}
+                  onChange={(e) => update("loginDistribuidora", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="senhaDistribuidora">Senha do portal</Label>
+                <PasswordInput
+                  id="senhaDistribuidora"
+                  value={form.senhaDistribuidora}
+                  onChange={(e) => update("senhaDistribuidora", e.target.value)}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground md:col-span-2">
+                É o acesso que o robô usa para baixar as faturas. Opcional agora: dá para cadastrar ou trocar depois, na
+                tela da UC.
+              </p>
+            </>
+          )}
         </CardContent>
       </Card>
 

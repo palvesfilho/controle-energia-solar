@@ -4,6 +4,8 @@ import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole } from "@/lib/roles";
 import { normalizeCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
+import { encrypt } from "@/lib/crypto";
+import { normalizeConcessionaria } from "@/lib/concessionarias";
 import { SELECT_BILL_FASE, calcularFases } from "@/lib/uc-implantacao";
 import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
 import { VINCULO_VAZIO, vinculosPorRateio } from "@/lib/uc-vinculo-rateio";
@@ -183,11 +185,28 @@ export async function POST(req: NextRequest) {
       statusContrato: body.statusContrato || null,
       vigenciaCompensacao: body.vigenciaCompensacao || null,
       dataInicioContrato: body.dataInicioContrato ? new Date(body.dataInicioContrato) : null,
-      loginDistribuidora: body.loginDistribuidora || null,
-      senhaDistribuidora: body.senhaDistribuidora || null,
       temGeracaoPropria: !!body.temGeracaoPropria,
     },
   });
+
+  // Login e senha do formulário viram a CREDENCIAL da UC — a mesma do card
+  // "Status e acesso à concessionária", que é a que o robô de faturas lê. Antes
+  // iam para `loginDistribuidora`/`senhaDistribuidora`, campos que nada no
+  // sistema consulta: o acesso ficava digitado e a UC seguia sem sincronizar.
+  const login = typeof body.loginDistribuidora === "string" ? body.loginDistribuidora.trim() : "";
+  const senha = typeof body.senhaDistribuidora === "string" ? body.senhaDistribuidora : "";
+  if (login && senha) {
+    await prisma.cpflCredential.create({
+      data: {
+        consumerUnitId: unit.id,
+        emailCpfl: login,
+        senhaCpfl: encrypt(senha),
+        instalacao: unit.codigoUc,
+        distribuidora: normalizeConcessionaria(unit.distribuidora) ?? "RGE/CPFL",
+        statusSync: "PENDING",
+      },
+    });
+  }
 
   return NextResponse.json(unit, { status: 201 });
 }
