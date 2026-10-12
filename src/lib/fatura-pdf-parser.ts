@@ -398,6 +398,24 @@ export async function parseFaturaPdf(buffer: Uint8Array): Promise<ParsedFaturaPd
     }
   }
 
+  // (1c) Formato NOVO curto SEM o rótulo no texto: na fatura real o rótulo
+  // "Número da UC" é parte do desenho do formulário e não sai na extração — o
+  // número vem no fim da linha do titular, logo acima de "Próxima leitura"
+  // (CAUZZO JÚLIO DE CASTILHOS 10/2026: "PAULO ... 429.474.001-20" / "Próxima
+  // leitura 06/11/2026"). A âncora é essa vizinhança; o CPF do titular vem
+  // mascarado ("******.190-**") e em linha rotulada "CPF:", que fica de fora.
+  if (!codigoInstalacao) {
+    for (let i = 0; i < lines.length - 1; i++) {
+      if (/\bCPF\b/i.test(lines[i])) continue;
+      const m = lines[i].match(/(?<![\d.])(\d{3}\.\d{3}\.\d{3}-\d{2})\s*$/);
+      if (!m) continue;
+      if (/^\s*pr[oó]xima\s+leitura/i.test(lines[i + 1])) {
+        codigoInstalacao = onlyDigits(m[1]);
+        break;
+      }
+    }
+  }
+
   // (2) Formato ANTIGO ("Código da Instalação") — padrões observados:
   //  (a) "4003655398 Próxima leitura 20/04/2026" (pdfjs cluster Y junta label-ao-lado)
   //  (b) Número isolado em linha própria
