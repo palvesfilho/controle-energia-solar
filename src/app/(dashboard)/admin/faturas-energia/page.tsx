@@ -8,6 +8,8 @@ import { formatCodigoUc } from "@/lib/uc-codigo";
 import { useFiltroTabela, type Faceta } from "@/lib/filtro-tabela";
 import { ExportarTabela } from "@/components/ui/exportar-tabela";
 import { FiltroColuna } from "@/components/ui/filtro-coluna";
+import { pdfsSoltos, saiuDaArea } from "@/components/billing/upload-faturas-button";
+import { toast } from "sonner";
 
 const MESES_LABEL = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -183,7 +185,7 @@ export default function FaturasEnergiaVisaoGeralPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ano]);
 
-  async function handleUpload(files: FileList) {
+  async function handleUpload(files: FileList | File[]) {
     if (files.length === 0) return;
     setUploading(true);
     setUploadResults(null);
@@ -614,18 +616,43 @@ function UploadFaturasDialog({
   results: UploadResultItem[] | null;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onClose: () => void;
-  onSubmit: (files: FileList) => void;
+  onSubmit: (files: FileList | File[]) => void;
 }) {
+  const [arrastando, setArrastando] = useState(false);
+
   const onFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       onSubmit(e.target.files);
     }
   };
 
+  // Vale na janela INTEIRA: sem preventDefault o navegador abre o PDF solto.
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = uploading ? "none" : "copy";
+    if (!uploading) setArrastando(true);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setArrastando(false);
+    if (uploading) return;
+    const pdfs = pdfsSoltos(e);
+    if (pdfs.length === 0) {
+      toast.error("Solte apenas arquivos PDF.");
+      return;
+    }
+    onSubmit(pdfs);
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={uploading ? undefined : onClose}
+      onDragOver={onDragOver}
+      onDragLeave={(e) => {
+        if (saiuDaArea(e)) setArrastando(false);
+      }}
+      onDrop={onDrop}
     >
       <div
         className="flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-background shadow-xl"
@@ -651,7 +678,7 @@ function UploadFaturasDialog({
 
         <div className="flex-1 overflow-y-auto px-6 py-4">
         {!results && (
-          <label className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-10 text-center transition ${uploading ? "cursor-wait opacity-50" : "border-muted-foreground/30 hover:border-primary hover:bg-muted/30"}`}>
+          <label className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-10 text-center transition ${uploading ? "cursor-wait opacity-50" : arrastando ? "border-primary bg-primary/5" : "border-muted-foreground/30 hover:border-primary hover:bg-muted/30"}`}>
             <input
               ref={fileInputRef}
               type="file"
@@ -672,7 +699,9 @@ function UploadFaturasDialog({
             ) : (
               <>
                 <Upload className="mb-2 h-8 w-8 text-muted-foreground" />
-                <p className="text-sm font-medium">Clique para selecionar PDFs</p>
+                <p className="text-sm font-medium">
+                  {arrastando ? "Solte os PDFs aqui" : "Clique para selecionar PDFs"}
+                </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   ou arraste aqui (vários arquivos aceitos)
                 </p>

@@ -70,6 +70,22 @@ function tagDoErro(error: string | null): string {
   return "erro";
 }
 
+/**
+ * PDFs de um "soltar" na janela. Sem `preventDefault()` no dragover E no drop o
+ * navegador abre o arquivo solto no lugar da página — era o que acontecia: a
+ * janela dizia "ou arraste aqui" e ninguém tratava o evento.
+ */
+export function pdfsSoltos(e: React.DragEvent): File[] {
+  return Array.from(e.dataTransfer.files).filter(
+    (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
+  );
+}
+
+/** O dragleave dispara ao passar por cima de cada filho; só vale ao sair da janela. */
+export function saiuDaArea(e: React.DragEvent): boolean {
+  return !e.currentTarget.contains(e.relatedTarget as Node | null);
+}
+
 interface UploadFaturasButtonProps {
   /** Variantes visuais. "primary" = botão principal verde; "outline" = secundário discreto. */
   variant?: "primary" | "outline";
@@ -99,15 +115,36 @@ export function UploadFaturasButton({
   const [uploading, setUploading] = useState(false);
   const [rows, setRows] = useState<UploadRow[] | null>(null);
   const [soErros, setSoErros] = useState(false);
+  const [arrastando, setArrastando] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const close = () => {
     setOpen(false);
     setRows(null);
     setSoErros(false);
+    setArrastando(false);
   };
 
-  async function handleUpload(files: FileList) {
+  // Vale na janela INTEIRA (fundo escuro incluso): soltar fora do pontilhado
+  // também não pode abrir o PDF no navegador.
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = uploading ? "none" : "copy";
+    if (!uploading) setArrastando(true);
+  };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setArrastando(false);
+    if (uploading) return;
+    const pdfs = pdfsSoltos(e);
+    if (pdfs.length === 0) {
+      toast.error("Solte apenas arquivos PDF.");
+      return;
+    }
+    handleUpload(pdfs);
+  };
+
+  async function handleUpload(files: FileList | File[]) {
     if (files.length === 0) return;
     const lista = Array.from(files);
     setUploading(true);
@@ -263,6 +300,11 @@ export function UploadFaturasButton({
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           onClick={uploading ? undefined : close}
+          onDragOver={onDragOver}
+          onDragLeave={(e) => {
+            if (saiuDaArea(e)) setArrastando(false);
+          }}
+          onDrop={onDrop}
         >
           {/* max-h + flex-col: o miolo rola, cabeçalho e rodapé ficam presos. */}
           <div
@@ -349,7 +391,9 @@ export function UploadFaturasButton({
                     className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-10 text-center transition ${
                       uploading
                         ? "cursor-wait opacity-50"
-                        : "border-muted-foreground/30 hover:border-primary hover:bg-muted/30"
+                        : arrastando
+                          ? "border-primary bg-primary/5"
+                          : "border-muted-foreground/30 hover:border-primary hover:bg-muted/30"
                     }`}
                   >
                     <input
@@ -362,7 +406,9 @@ export function UploadFaturasButton({
                       className="hidden"
                     />
                     <Upload className="mb-2 h-8 w-8 text-muted-foreground" />
-                    <p className="text-sm font-medium">Clique para selecionar PDFs</p>
+                    <p className="text-sm font-medium">
+                      {arrastando ? "Solte os PDFs aqui" : "Clique para selecionar PDFs"}
+                    </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       ou arraste aqui (vários arquivos aceitos)
                     </p>
