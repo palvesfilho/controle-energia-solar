@@ -70,6 +70,8 @@ export interface FilaItem {
   data: string | null;
   valor: number | null;
   href: string;
+  /** Conta de energia a pagar: a linha abre a janela de pagamento aqui mesmo. */
+  pagarFaturaId?: string;
 }
 
 export interface Fila {
@@ -174,6 +176,7 @@ function semOrdem(itens: Array<FilaItem & { ordem: number }>): FilaItem[] {
     data: i.data,
     valor: i.valor,
     href: i.href,
+    pagarFaturaId: i.pagarFaturaId,
   }));
 }
 
@@ -311,6 +314,7 @@ export async function getPainelDoDia(): Promise<PainelDoDia> {
         data: formatDateOnlyBR(t.dueDate ?? t.scheduledFor),
         valor: t.valor ?? null,
         href: t.href ?? href,
+        pagarFaturaId: t.type === "PAGAR_FATURA" ? t.sourceEntityId : undefined,
         ordem: (t.dueDate ?? t.scheduledFor).getTime(),
       })),
     );

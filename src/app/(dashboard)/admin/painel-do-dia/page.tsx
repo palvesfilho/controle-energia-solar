@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
+import { BotaoPagarFatura } from "@/components/painel-do-dia/botao-pagar-fatura";
 import { cn } from "@/lib/utils";
 import { formatBRL } from "@/lib/formatters";
 import { parseDateOnlyISO } from "@/lib/date-only";
@@ -35,8 +36,9 @@ import {
  * Painel do Dia — entrada do módulo Associação.
  *
  * Pastas à esquerda (uma por fila, com contador), tabela completa da fila
- * escolhida à direita. Não tem ação própria: cada linha leva à tela onde o
- * trabalho é feito. Toda a regra mora em `lib/painel-do-dia.ts`.
+ * escolhida à direita. Cada linha leva à tela onde o trabalho é feito — menos
+ * a conta de energia, que abre aqui a mesma janela de pagamento da Agenda.
+ * Toda a regra mora em `lib/painel-do-dia.ts`.
  *
  * A fila e o filtro vivem na URL (`?fila=…&so=…`), então dá para mandar o link
  * de uma fila para alguém e o voltar do navegador funciona.
@@ -386,13 +388,17 @@ function LinhaFila({ item, acao }: { item: FilaItem; acao: string }) {
         {item.valor != null ? formatBRL(item.valor) : "—"}
       </td>
       <td className="px-3 py-2 text-right">
-        <Link
-          href={item.href}
-          className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/5"
-        >
-          {acao}
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
+        {item.pagarFaturaId ? (
+          <BotaoPagarFatura billId={item.pagarFaturaId} rotulo={acao} />
+        ) : (
+          <Link
+            href={item.href}
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/5"
+          >
+            {acao}
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        )}
       </td>
     </tr>
   );
