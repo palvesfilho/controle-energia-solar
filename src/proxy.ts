@@ -11,6 +11,8 @@ import {
 const PATH_SECTIONS: Array<[string, AdminSection]> = [
   ["/admin/usuarios", "usuarios"],
   ["/admin/agenda", "agenda"],
+  // Painel do Dia: mesma permissão da Agenda — é o resumo dela e das filas.
+  ["/admin/painel-do-dia", "agenda"],
   ["/admin/investidores", "investidores"],
   ["/admin/usinas", "investidores"],
   ["/admin/consumidores", "clientes"],

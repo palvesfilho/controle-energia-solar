@@ -35,6 +35,7 @@ import {
   Megaphone,
   KeyboardIcon,
   MessageSquareHeart,
+  ListChecks,
 } from "lucide-react";
 import { canAccessSection, type AdminSection } from "@/lib/roles";
 import { UserRole } from "@/types/next-auth";
@@ -78,6 +79,9 @@ export function detectAdminModule(pathname: string): "assoc" | "bs" {
 }
 
 export const adminNavItems: NavEntry[] = [
+  // Primeiro item de propósito: é a tela de entrada do módulo (o card da
+  // Associação no /portal aponta para cá). Indicadores vêm logo abaixo.
+  { kind: "leaf", module: "assoc", section: "agenda", title: "Painel do Dia", href: "/admin/painel-do-dia", icon: ListChecks },
   { kind: "leaf", module: "assoc", section: "dashboard", title: "Gestora de Energia", href: "/admin", icon: LayoutDashboard },
   { kind: "leaf", module: "assoc", section: "agenda", title: "Agenda da Semana", href: "/admin/agenda", icon: CalendarClock },
   // Folha única de propósito: quem usa é o pós-venda, que não enxerga o grupo

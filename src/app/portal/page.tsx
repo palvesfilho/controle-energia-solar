@@ -110,7 +110,9 @@ export default async function PortalPage() {
           <div className={`grid ${gridCols} gap-6`}>
             {acesso.assoc && (
               <CardModulo
-                href="/admin"
+                // Entra pelo Painel do Dia: quem opera precisa ver primeiro o
+                // que há para fazer; os indicadores ficam um clique abaixo.
+                href="/admin/painel-do-dia"
                 titulo="Associação de Energia"
                 subtitulo="Rede Brasil Solar"
                 descricao="Gestão de investidores, créditos, faturas e cobrança dos descontistas."
@@ -118,6 +120,7 @@ export default async function PortalPage() {
                 cor={brand.orange}
                 corAcento={brand.orangeLight}
                 itens={[
+                  "Painel do Dia",
                   "Gestora de Energia",
                   "Agenda da Semana",
                   "Investidores · Clientes",
