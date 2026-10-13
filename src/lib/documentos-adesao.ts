@@ -71,6 +71,17 @@ const TIPOS: {
 ];
 
 /**
+ * As duas colunas (caminho e nome do arquivo) de um tipo de documento, pela
+ * chave da ficha. Null = chave desconhecida. Usada pela troca manual do arquivo.
+ */
+export function colunasDoDocumento(
+  chave: string,
+): { rotulo: string; path: keyof DocumentosDoCadastro; nome: keyof DocumentosDoCadastro } | null {
+  const tipo = TIPOS.find((t) => t.chave === chave);
+  return tipo ? { rotulo: tipo.rotulo, path: tipo.path, nome: tipo.nome } : null;
+}
+
+/**
  * As sete fichas, sempre as sete — a vazia mostra o que falta.
  *
  * A autorização de acesso só existe em adesão assinada a partir de 21/08/2026;

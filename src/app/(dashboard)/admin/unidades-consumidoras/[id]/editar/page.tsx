@@ -271,6 +271,15 @@ export default function EditarUCPage() {
             fichas={fichasDosDocumentosSalvos(documentos)}
             adesaoIdCrm={documentos?.docsAdesaoIdCrm ?? null}
             copiadosEm={documentos?.docsCopiadosEm ?? null}
+            consumerUnitId={id}
+            // Recarrega SÓ os documentos: `carregarUc` repõe `initialData` e
+            // apagaria o que o operador já digitou no formulário sem salvar.
+            onTrocado={() => {
+              fetch(`/api/consumer-units/${id}`)
+                .then((res) => (res.ok ? res.json() : null))
+                .then((uc) => uc && setDocumentos(uc as DocumentosDoCadastro))
+                .catch(() => {});
+            }}
           />
         }
       />

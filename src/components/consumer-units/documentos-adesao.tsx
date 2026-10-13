@@ -14,6 +14,7 @@
  * Quem monta as fichas de cada caso é a tela; ver [[documentos-adesao]].
  */
 
+import { useRef, useState } from "react";
 import {
   FileSignature,
   FileText,
@@ -21,7 +22,9 @@ import {
   CreditCard,
   ScrollText,
   Plus,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -46,14 +49,55 @@ export function DocumentosAdesao({
   copiadosEm,
   signatarioNome,
   signatarioCpf,
+  consumerUnitId,
+  onTrocado,
 }: {
   fichas: FichaDocumento[];
   adesaoIdCrm?: number | null;
   copiadosEm?: string | null;
   signatarioNome?: string | null;
   signatarioCpf?: string | null;
+  /**
+   * UC já salva: liga o botão de trocar/anexar em cada ficha. Sem ele o painel
+   * é só leitura — é o caso do cadastro pela fila, em que o arquivo ainda está
+   * no CRM, e do investidor.
+   */
+  consumerUnitId?: string;
+  onTrocado?: () => void;
 }) {
   const preenchidas = fichas.filter((f) => f.href).length;
+  const input = useRef<HTMLInputElement>(null);
+  // A ficha que abriu o seletor de arquivo: um input só serve as sete.
+  const fichaEscolhida = useRef<FichaDocumento | null>(null);
+  const [enviando, setEnviando] = useState<string | null>(null);
+
+  async function enviar(ficha: FichaDocumento, arquivo: File) {
+    setEnviando(ficha.chave);
+    try {
+      const form = new FormData();
+      form.append("arquivo", arquivo);
+      // O cartão CNPJ tem rota própria, que confere o CNPJ e a data de emissão.
+      const rota =
+        ficha.chave === "cartao_cnpj" ? "cartao-cnpj" : `documentos/${ficha.chave}`;
+      const res = await fetch(`/api/consumer-units/${consumerUnitId}/${rota}`, {
+        method: "POST",
+        body: form,
+      });
+      const dados = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(dados.error ?? `HTTP ${res.status}`);
+      toast.success(
+        `${ficha.rotulo}: arquivo ${ficha.href ? "trocado" : "anexado"}` +
+          (dados.ucsAtualizadas > 1
+            ? ` em ${dados.ucsAtualizadas} UCs que usavam o mesmo arquivo.`
+            : "."),
+      );
+      onTrocado?.();
+    } catch (err) {
+      toast.error(`Falha ao enviar: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setEnviando(null);
+    }
+  }
 
   return (
     <Card>
@@ -67,6 +111,19 @@ export function DocumentosAdesao({
       </CardHeader>
 
       <CardContent className="flex flex-col gap-2 p-3">
+        {consumerUnitId && (
+          <input
+            ref={input}
+            type="file"
+            accept="application/pdf,image/jpeg,image/png"
+            className="hidden"
+            onChange={(e) => {
+              const arquivo = e.target.files?.[0];
+              e.target.value = "";
+              if (arquivo && fichaEscolhida.current) void enviar(fichaEscolhida.current, arquivo);
+            }}
+          />
+        )}
         {fichas.map((f) => {
           const Icone = ICONE[f.chave] ?? FileText;
           const vazia = !f.href;
@@ -111,7 +168,32 @@ export function DocumentosAdesao({
                   Ver
                 </a>
               ) : (
-                <span className="text-xs text-muted-foreground">—</span>
+                !consumerUnitId && <span className="text-xs text-muted-foreground">—</span>
+              )}
+
+              {consumerUnitId && (
+                <button
+                  type="button"
+                  disabled={enviando != null}
+                  title={
+                    vazia
+                      ? "Anexar um arquivo a esta ficha (PDF, JPG ou PNG)"
+                      : "Trocar por um arquivo mais novo (PDF, JPG ou PNG). O anterior não é apagado."
+                  }
+                  onClick={() => {
+                    fichaEscolhida.current = f;
+                    input.current?.click();
+                  }}
+                  className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 px-2.5")}
+                >
+                  {enviando === f.chave ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : vazia ? (
+                    "Anexar"
+                  ) : (
+                    "Trocar"
+                  )}
+                </button>
               )}
             </div>
           );
