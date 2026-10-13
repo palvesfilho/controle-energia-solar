@@ -23,8 +23,9 @@ model User {
 
   investor         Investor?
   uploads          Upload[]
-  acoesResponsavel AcaoRecomendada[] @relation("AcaoResponsavel")
-  acoesResolvidas  AcaoRecomendada[] @relation("AcaoResolvidaPor")
+  acoesResponsavel AcaoRecomendada[]    @relation("AcaoResponsavel")
+  acoesResolvidas  AcaoRecomendada[]    @relation("AcaoResolvidaPor")
+  contatosPosVenda BrasilSolarContato[]
 
   @@map("users")
 }
@@ -1202,6 +1203,7 @@ model BrasilSolarClient {
   inverterSamples    InverterSample[]
   monitoringPlans    BrasilSolarMonitoringPlan[]
   lancamentosManuais ManualGenerationEntry[]
+  contatos           BrasilSolarContato[]
 
   // Link opcional com dados existentes
   consumerId String? @map("consumer_id")
@@ -1373,6 +1375,9 @@ model BrasilSolarProprietario {
 
   // Campanhas de mensagens que chegaram a este cliente (caixa de avisos).
   campanhaEnvios CampanhaEnvio[]
+
+  // Contatos do pós-venda registrados em Ações Diárias.
+  contatos BrasilSolarContato[]
 
   @@index([nome])
   @@index([cpfCnpj])
@@ -1651,7 +1656,8 @@ model MonitoringAlert {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  client BrasilSolarClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client   BrasilSolarClient    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  contatos BrasilSolarContato[]
 
   @@index([status])
   @@index([tipo])
@@ -1660,6 +1666,42 @@ model MonitoringAlert {
   @@index([clientId, status])
   @@index([createdAt])
   @@map("monitoring_alerts")
+}
+
+/// Contato do pós-venda com o cliente, registrado em Ações Diárias.
+///
+/// É o histórico do que foi FEITO, não uma agenda: não guarda prazo nem data de
+/// retorno. A cadência de contatos ainda não foi definida (13/10/2026) e, sem
+/// operador, qualquer data criada aqui nasceria vencida.
+///
+/// Liga-se à USINA e/ou ao cliente, e não só ao cliente: a maior parte da frota
+/// monitorada ainda não tem `BrasilSolarProprietario` vinculado. `alertaId` é
+/// preenchido quando o contato tratou um alerta — é o que permite medir o tempo
+/// entre a usina parar e alguém falar com o cliente.
+model BrasilSolarContato {
+  id String @id @default(cuid())
+
+  clientId       String? @map("client_id")
+  proprietarioId String? @map("proprietario_id")
+  alertaId       String? @map("alerta_id")
+  userId         String? @map("user_id")
+
+  canal      String // LIGACAO | WHATSAPP | EMAIL | VISITA
+  resultado  String // RESOLVIDO | AGUARDANDO_CLIENTE | SEM_RESPOSTA | ENCAMINHADO_CAMPO | INFORMATIVO
+  observacao String? @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  client       BrasilSolarClient?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  proprietario BrasilSolarProprietario? @relation(fields: [proprietarioId], references: [id], onDelete: Cascade)
+  alerta       MonitoringAlert?         @relation(fields: [alertaId], references: [id], onDelete: SetNull)
+  user         User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, createdAt])
+  @@index([proprietarioId, createdAt])
+  @@index([alertaId])
+  @@index([createdAt])
+  @@map("brasil_solar_contatos")
 }
 
 // Configuração global de thresholds para detecção de alertas em usinas.

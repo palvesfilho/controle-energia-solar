@@ -36,6 +36,7 @@ import {
   KeyboardIcon,
   MessageSquareHeart,
   ListChecks,
+  ListTodo,
 } from "lucide-react";
 import { canAccessSection, type AdminSection } from "@/lib/roles";
 import { UserRole } from "@/types/next-auth";
@@ -162,6 +163,9 @@ export const adminNavItems: NavEntry[] = [
       { kind: "leaf", module: "assoc", section: "faturamento", title: "Fechamento Financeiro", href: "/admin/faturamento/fechamento-financeiro", icon: TrendingUp },
     ],
   },
+  // Primeiro item do módulo Brasil Solar, pelo mesmo motivo do Painel do Dia
+  // na Associação: é a tela de trabalho de quem opera o pós-venda.
+  { kind: "leaf", module: "bs", section: "brasilSolar", title: "Ações Diárias", href: "/admin/brasil-solar/acoes-diarias", icon: ListTodo },
   {
     kind: "group",
     module: "bs",
