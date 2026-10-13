@@ -15,7 +15,7 @@ import { getRangeTotal as solaredgeRangeTotal } from "@/lib/solaredge";
 import { getRangeTotal as growattRangeTotal } from "@/lib/growatt";
 import { getRelatorioParametros } from "@/lib/app-settings";
 import { ehDiaSemDado } from "@/lib/dia-sem-dado";
-import { formatCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
+import { formatCodigoUc, normalizeCodigoUc, whereCodigoUc } from "@/lib/uc-codigo";
 import {
   precoKwhSolar,
   TRIBUTOS_EFETIVOS_PADRAO,
@@ -1211,6 +1211,7 @@ export async function getProprietarioRelatorio(
       select: {
         id: true,
         codigoUc: true,
+        codigoUcAntigo: true,
         nome: true,
         distribuidora: true,
       },
@@ -1223,8 +1224,13 @@ export async function getProprietarioRelatorio(
   // Validação: a UC consultada precisa pertencer ao proprietário — pode ser
   // a UC titular (mesmo codigoUc) OU uma beneficiária ativa (autoconsumo
   // remoto com rateio).
+  // Titular casa também pelo código antigo, igual ao `whereCodigoUc` que a
+  // listagem usa: comparando só o código novo, o relatório aparecia na lista e
+  // o PDF recusava com "não pertence ao proprietário".
+  const codigoDoProprietario = normalizeCodigoUc(proprietario.codigoUc);
   const ehTitular =
-    proprietario.codigoUc != null && proprietario.codigoUc === uc.codigoUc;
+    codigoDoProprietario != null &&
+    (codigoDoProprietario === uc.codigoUc || codigoDoProprietario === uc.codigoUcAntigo);
   let ehBeneficiaria = false;
   if (!ehTitular) {
     const beneficiaria = await prisma.brasilSolarBeneficiaria.findFirst({
