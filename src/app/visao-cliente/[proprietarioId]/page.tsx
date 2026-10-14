@@ -119,6 +119,10 @@ export default async function VisaoClientePage({
           {/* Instalação do app: fica na barra de prévia, e não na faixa branca
               que o cliente vê, pra não confundir quem demonstra a tela. */}
           <InstallAppBotao />
+          {/* Mesmo tour do cliente, mas só pelo botão: aqui quem olha é o
+              pós-venda, e abrir sozinho atrapalharia o atendimento. Fica na
+              faixa porque no rodapé da página ninguém achava. */}
+          <TourPortalCliente autoIniciar={false} naBarra />
           <Link
             href={`/admin/brasil-solar/proprietarios/${prop.id}`}
             className="inline-flex items-center gap-1 opacity-90 hover:opacity-100"
@@ -158,9 +162,6 @@ export default async function VisaoClientePage({
           precoPlanoLabel={plano.precoPlanoLabel}
           ctaHref={plano.ctaHref}
         />
-        {/* Mesmo tour do cliente, mas só pelo botão: aqui quem olha é o
-            pós-venda, e abrir sozinho atrapalharia o atendimento. */}
-        <TourPortalCliente autoIniciar={false} />
       </main>
 
       {/* O Chrome só libera a instalação se houver service worker registrado.

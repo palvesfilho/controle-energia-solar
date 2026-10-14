@@ -125,9 +125,12 @@ function marcarVisto() {
 
 export function TourPortalCliente({
   autoIniciar = true,
+  naBarra = false,
 }: {
   /** false na Visão do cliente: o pós-venda abre pelo botão, nunca sozinho. */
   autoIniciar?: boolean;
+  /** Botão no estilo da faixa verde da Visão do cliente, em vez do rodapé. */
+  naBarra?: boolean;
 }) {
   const [passos, setPassos] = useState<Passo[] | null>(null);
   const [indice, setIndice] = useState(0);
@@ -199,16 +202,27 @@ export function TourPortalCliente({
 
   return (
     <>
-      <div className="mt-8 text-center">
+      {naBarra ? (
         <button
           type="button"
           onClick={iniciar}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-[#59604F] hover:underline"
+          className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[#1B5E54] hover:bg-white/90"
         >
-          <Compass className="h-3.5 w-3.5" style={{ color: brand.teal }} />
-          Ver o tour do portal
+          <Compass className="h-3.5 w-3.5" />
+          Ver o tour
         </button>
-      </div>
+      ) : (
+        <div className="mt-8 text-center">
+          <button
+            type="button"
+            onClick={iniciar}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-[#59604F] hover:underline"
+          >
+            <Compass className="h-3.5 w-3.5" style={{ color: brand.teal }} />
+            Ver o tour do portal
+          </button>
+        </div>
+      )}
 
       {passo && passos && (
         <>
