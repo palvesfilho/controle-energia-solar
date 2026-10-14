@@ -9,6 +9,7 @@ import {
   consultarFatura,
   parseBillData,
   InfosimplesApiError,
+  descreverErroInfosimples,
 } from "@/lib/infosimples";
 import { enrichBillFromPdfFallback, describeFallback } from "@/lib/infosimples-pdf-fallback";
 import { populateBillingFromBill } from "@/lib/billing-populate";
@@ -232,7 +233,7 @@ async function syncOne(alvo: SyncAlvo): Promise<SyncResultItem> {
   } catch (error) {
     const msg =
       error instanceof InfosimplesApiError
-        ? `${error.message} (code: ${error.code})`
+        ? descreverErroInfosimples(error)
         : error instanceof Error
           ? error.message
           : "Erro desconhecido";

@@ -130,6 +130,20 @@ export class InfosimplesApiError extends Error {
   }
 }
 
+/**
+ * Texto do erro para a tela e para `erroSync`. A frase do código é genérica
+ * ("A consulta não foi validada...") e quem explica o motivo é `errors`
+ * ("Não há suporte para seleção de faixa de tensão..."), então vão os dois.
+ */
+export function descreverErroInfosimples(error: InfosimplesApiError): string {
+  const base = `${error.message} (code: ${error.code})`;
+  const motivos = (error.errors ?? [])
+    .map((e) => String(e ?? "").trim())
+    // HTTP_500 e MISSING_TOKEN são marcas nossas, não explicação da Infosimples.
+    .filter((e) => e && e !== error.message && !/^(HTTP_\d+|MISSING_TOKEN)$/.test(e));
+  return motivos.length ? `${base} — ${[...new Set(motivos)].join(" ")}` : base;
+}
+
 export async function consultarFatura(
   params: InfosimplesRequest
 ): Promise<InfosimplesBillData[]> {

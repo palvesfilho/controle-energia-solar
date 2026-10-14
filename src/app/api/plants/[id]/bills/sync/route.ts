@@ -9,6 +9,7 @@ import {
   consultarFatura,
   parseBillData,
   InfosimplesApiError,
+  descreverErroInfosimples,
 } from "@/lib/infosimples";
 import { enrichBillFromPdfFallback, describeFallback } from "@/lib/infosimples-pdf-fallback";
 
@@ -168,7 +169,7 @@ export async function POST(
   } catch (error) {
     const errorMessage =
       error instanceof InfosimplesApiError
-        ? `${error.message} (code: ${error.code})`
+        ? descreverErroInfosimples(error)
         : error instanceof Error
           ? error.message
           : "Erro desconhecido na sincronização";
