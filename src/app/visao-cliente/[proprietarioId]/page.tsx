@@ -13,6 +13,7 @@ import {
 import { resolvePlanoPortal } from "@/lib/portal-cliente-plano";
 import { formatNomeSaudacao } from "@/lib/formatters";
 import { PortalClienteBody } from "@/components/brasil-solar/portal-cliente-body";
+import { TourPortalCliente } from "@/components/brasil-solar/tour-portal-cliente";
 import { PwaRegister } from "@/components/pwa/pwa-register";
 import { InstallAppBotao } from "@/components/pwa/install-app-botao";
 
@@ -157,6 +158,9 @@ export default async function VisaoClientePage({
           precoPlanoLabel={plano.precoPlanoLabel}
           ctaHref={plano.ctaHref}
         />
+        {/* Mesmo tour do cliente, mas só pelo botão: aqui quem olha é o
+            pós-venda, e abrir sozinho atrapalharia o atendimento. */}
+        <TourPortalCliente autoIniciar={false} />
       </main>
 
       {/* O Chrome só libera a instalação se houver service worker registrado.

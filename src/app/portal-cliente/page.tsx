@@ -14,6 +14,7 @@ import {
 import { resolvePlanoPortal } from "@/lib/portal-cliente-plano";
 import { formatNomeSaudacao } from "@/lib/formatters";
 import { PortalClienteBody } from "@/components/brasil-solar/portal-cliente-body";
+import { TourPortalCliente } from "@/components/brasil-solar/tour-portal-cliente";
 import { PwaRegister } from "@/components/pwa/pwa-register";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { PushNotificacoesCard } from "@/components/pwa/push-notificacoes-card";
@@ -125,6 +126,9 @@ export default async function PortalClientePage() {
         )}
 
         {prop && <PushNotificacoesCard />}
+
+        {/* Tour guiado: abre sozinho na primeira visita deste aparelho. */}
+        {prop && <TourPortalCliente />}
       </main>
 
       {/* PWA: registra o service worker e oferece a instalação na tela de

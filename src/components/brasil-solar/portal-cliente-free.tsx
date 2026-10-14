@@ -52,7 +52,7 @@ export function PortalClienteFree({
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_320px] lg:items-start">
       {/* Coluna de dados livres: geração diária + geração mensal empilhadas */}
-      <div className="space-y-4 min-w-0">
+      <div className="space-y-4 min-w-0" data-tour="geracao">
         <GeracaoDiariaCard
           curvaInicial={data.curvaDia}
           statusInicial={data.statusMonitoramento}
@@ -81,7 +81,7 @@ function UpgradePanel({
   ctaHref: string | null;
 }) {
   return (
-    <aside className="lg:sticky lg:top-6">
+    <aside className="lg:sticky lg:top-6" data-tour="plano-completo">
       <div
         className="rounded-2xl border p-5"
         style={{

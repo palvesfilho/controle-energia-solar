@@ -27,7 +27,10 @@ export function InstallPrompt() {
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 px-4 pb-4 pointer-events-none">
-      <div className="pointer-events-auto mx-auto max-w-md rounded-2xl bg-white shadow-lg ring-1 ring-black/5 p-4">
+      <div
+        data-tour="instalar"
+        className="pointer-events-auto mx-auto max-w-md rounded-2xl bg-white shadow-lg ring-1 ring-black/5 p-4"
+      >
         <div className="flex items-start gap-3">
           <div
             className="h-10 w-10 shrink-0 rounded-xl flex items-center justify-center"

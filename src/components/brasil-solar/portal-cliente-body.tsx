@@ -85,6 +85,8 @@ export function PortalClienteBody({
             </div>
           )}
 
+      {/* Os `data-tour` são os alvos do tour guiado (`TourPortalCliente`). */}
+      <section data-tour="usinas">
       <h2 className="text-sm font-semibold text-[#8A938D] uppercase tracking-wide mt-8 mb-3">
         Minhas usinas ({usinas.length})
       </h2>
@@ -113,14 +115,15 @@ export function PortalClienteBody({
           <p className="text-sm text-[#8A938D]">Nenhuma usina vinculada ainda.</p>
         )}
       </div>
+      </section>
 
       {planoCompleto && (
-        <>
+        <section data-tour="relatorios">
           <h2 className="text-sm font-semibold text-[#8A938D] uppercase tracking-wide mt-8 mb-3">
             Meus relatórios
           </h2>
           <PortalClienteRelatorios proprietarioId={relatoriosProprietarioId} />
-        </>
+        </section>
       )}
     </>
   );
@@ -137,14 +140,20 @@ function AcessoBadge({
   // — no modelo free×pago não estar no plano pago é o estado normal, não um erro.
   if (!planoCompleto) {
     return (
-      <div className="mt-5 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium bg-[#EDF4F1] text-[#1B5E54]">
+      <div
+        data-tour="acesso"
+        className="mt-5 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium bg-[#EDF4F1] text-[#1B5E54]"
+      >
         <Sparkles className="h-4 w-4" />
         Plano grátis · geração básica
       </div>
     );
   }
   return (
-    <div className="mt-5 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium bg-emerald-50 text-emerald-700">
+    <div
+      data-tour="acesso"
+      className="mt-5 inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium bg-emerald-50 text-emerald-700"
+    >
       <ShieldCheck className="h-4 w-4" />
       {acesso?.vigenteAte
         ? `Acesso ativo até ${acesso.vigenteAte.toLocaleDateString("pt-BR")}`

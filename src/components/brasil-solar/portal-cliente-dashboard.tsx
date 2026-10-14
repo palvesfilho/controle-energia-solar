@@ -88,7 +88,7 @@ export function PortalClienteDashboard({
   return (
     <div className="space-y-5">
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" data-tour="numeros">
         <Kpi
           rail={ORANGE}
           icon={<Zap className="h-4 w-4" style={{ color: ORANGE_DEEP }} />}
@@ -119,21 +119,25 @@ export function PortalClienteDashboard({
         />
       </div>
 
-      {/* 1º — Geração diária: curva intradiária (kW × hora) do dia escolhido
-          (padrão: hoje), com indicador online/offline e seletor de data. */}
-      <GeracaoDiariaCard
-        curvaInicial={data.curvaDia}
-        statusInicial={data.statusMonitoramento}
-        hojeYmd={data.hojeYmd}
-        proprietarioId={proprietarioId}
-      />
+      {/* Os dois gráficos de geração ficam num bloco só: é o alvo de um passo
+          do tour guiado. */}
+      <div className="space-y-5" data-tour="geracao">
+        {/* 1º — Geração diária: curva intradiária (kW × hora) do dia escolhido
+            (padrão: hoje), com indicador online/offline e seletor de data. */}
+        <GeracaoDiariaCard
+          curvaInicial={data.curvaDia}
+          statusInicial={data.statusMonitoramento}
+          hojeYmd={data.hojeYmd}
+          proprietarioId={proprietarioId}
+        />
 
-      {/* 2º — Geração Mensal: ano inteiro (barra por mês) ou mês (barra por dia). */}
-      <GeracaoMensalCard
-        serieInicial={data.serieMensal}
-        anosDisponiveis={data.anosDisponiveis}
-        proprietarioId={proprietarioId}
-      />
+        {/* 2º — Geração Mensal: ano inteiro (barra por mês) ou mês (barra por dia). */}
+        <GeracaoMensalCard
+          serieInicial={data.serieMensal}
+          anosDisponiveis={data.anosDisponiveis}
+          proprietarioId={proprietarioId}
+        />
+      </div>
 
       {/* 3º — Geração × Consumo (mesmas cores do relatório do cliente) */}
       {data.porMes.some((m) => m.consumoKwh != null) && (

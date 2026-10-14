@@ -26,7 +26,7 @@ export function PushNotificacoesCard() {
   if (estado === "indisponivel") return null;
 
   return (
-    <div className="mt-6 rounded-2xl bg-white ring-1 ring-black/5 p-5">
+    <div className="mt-6 rounded-2xl bg-white ring-1 ring-black/5 p-5" data-tour="avisos">
       <div className="flex items-start gap-3">
         <div
           className="h-10 w-10 shrink-0 rounded-xl flex items-center justify-center"
