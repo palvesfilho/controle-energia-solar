@@ -13,8 +13,9 @@
  *   - Piso aquecido → por M²    (`dados_piso.area_total_m2` da proposta)
  *
  * O valor por unidade é configurado em Produtos do CRM. A inspeção completa
- * também é por painel (R$ 10, mínimo R$ 180 — Paulo, 28/10/2026). Ampliação e
- * demais produtos aceitam sem teto — o valor continua obrigatório.
+ * também é por painel (R$ 10, mínimo R$ 180 — Paulo, 28/10/2026), e a ampliação
+ * pelas placas dos itens de módulo da proposta avulsa. Demais produtos aceitam
+ * sem teto — o valor continua obrigatório.
  */
 
 import { prisma } from "@/lib/prisma";
@@ -44,6 +45,11 @@ export interface ExecucaoDaObra {
   } | null;
   /** Teto que vale no aceite. Null = sem teto (o valor segue obrigatório). */
   teto: number | null;
+  /**
+   * A venda que gerou a obra foi desfeita no gerador (perdida ou excluída).
+   * Só sinaliza: a decisão de recusar a obra é do gestor de obras.
+   */
+  vendaDesfeita: { em: Date; motivo: string | null } | null;
 }
 
 const SEM_VENDA = {
@@ -93,6 +99,8 @@ export async function execucaoDasObras(obraIds: string[]): Promise<Map<string, E
       numeroProposta: true,
       qtdExecucao: true,
       unidadeExecucao: true,
+      excluidaNoCrmEm: true,
+      motivoExclusaoCrm: true,
     },
   });
   const produtos = await prisma.crmProdutoDestino.findMany({
@@ -125,6 +133,7 @@ export async function execucaoDasObras(obraIds: string[]): Promise<Map<string, E
         aguardandoAdmin: false,
         autorizado,
         teto: autorizado?.valor ?? null,
+        vendaDesfeita: null,
       });
       continue;
     }
@@ -158,6 +167,9 @@ export async function execucaoDasObras(obraIds: string[]): Promise<Map<string, E
       aguardandoAdmin: projetoGrande && !autorizado,
       autorizado,
       teto: autorizado ? autorizado.valor : projetoGrande ? null : tetoCalculado,
+      vendaDesfeita: v.excluidaNoCrmEm
+        ? { em: v.excluidaNoCrmEm, motivo: v.motivoExclusaoCrm }
+        : null,
     });
   }
   return resultado;

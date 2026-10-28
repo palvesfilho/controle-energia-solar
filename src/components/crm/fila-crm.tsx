@@ -76,6 +76,7 @@ interface ItemFila {
 const MOTIVO_EXCLUSAO_VENDA: Record<string, string> = {
   PROPOSTA_EXCLUIDA: "a proposta foi excluída no gerador de propostas",
   ADESAO_EXCLUIDA: "a adesão foi excluída no gerador de propostas",
+  VENDA_PERDIDA: "a venda foi marcada como perdida no gerador de propostas",
 };
 
 const TEXTOS: Record<
@@ -477,7 +478,10 @@ export function FilaCrm({ modulo }: { modulo: ModuloCrm }) {
                               <OctagonAlert className="mt-0.5 h-4 w-4 shrink-0" />
                               <span>
                                 <strong className="font-bold uppercase tracking-wide">
-                                  Excluída no CRM em {formatarData(item.excluidaNoCrmEm)}
+                                  {item.motivoExclusaoCrm === "VENDA_PERDIDA"
+                                    ? "Venda perdida no CRM"
+                                    : "Excluída no CRM"}{" "}
+                                  em {formatarData(item.excluidaNoCrmEm)}
                                 </strong>
                                 {" — "}
                                 {MOTIVO_EXCLUSAO_VENDA[item.motivoExclusaoCrm ?? ""] ??

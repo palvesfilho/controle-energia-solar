@@ -120,7 +120,14 @@ export interface ResultadoSync {
 /** `envelopes_assinatura.status` de quem assinou no ClickSign. */
 const ENVELOPE_ASSINADO = "assinado";
 
-export type MotivoExclusaoCrm = "PROPOSTA_EXCLUIDA" | "ADESAO_EXCLUIDA" | "UC_RETIRADA_DA_ADESAO";
+// VENDA_PERDIDA: a proposta existe, mas foi ganha e depois marcada como
+// perdida no gerador (caso IC-0242, 28/10/2026). O negócio foi desfeito do
+// mesmo jeito que numa exclusão — a obra daqui não deve seguir sem conferir.
+export type MotivoExclusaoCrm =
+  | "PROPOSTA_EXCLUIDA"
+  | "ADESAO_EXCLUIDA"
+  | "UC_RETIRADA_DA_ADESAO"
+  | "VENDA_PERDIDA";
 
 /** Cria as linhas do de-para que ainda não existem. Nunca sobrescreve edição. */
 export async function garantirDeParaPadrao(): Promise<number> {
@@ -680,15 +687,21 @@ async function marcarExcluidasNoCrm(ctx: {
     select: { id: true, propostaIdCrm: true, situacao: true },
   });
   if (vendasNaoLidas.length > 0) {
-    const aindaExistem = new Set(
-      (await listarPropostasPorIds(vendasNaoLidas.map((v) => v.propostaIdCrm))).map((p) => p.id),
+    const statusNoCrm = new Map(
+      (await listarPropostasPorIds(vendasNaoLidas.map((v) => v.propostaIdCrm))).map((p) => [
+        p.id,
+        p.status_negocio,
+      ]),
     );
     const propostasComAdesao = new Set(
       adesoes.map((a) => a.proposta_id).filter((id): id is number => id != null),
     );
     for (const v of vendasNaoLidas) {
       let motivo: MotivoExclusaoCrm | null = null;
-      if (!aindaExistem.has(v.propostaIdCrm)) motivo = "PROPOSTA_EXCLUIDA";
+      if (!statusNoCrm.has(v.propostaIdCrm)) motivo = "PROPOSTA_EXCLUIDA";
+      // Foi ganha e virou perdida: só "perdida" explícita conta. Voltar para
+      // "em negociação" não desfaz o negócio por si só.
+      else if (statusNoCrm.get(v.propostaIdCrm) === "perdida") motivo = "VENDA_PERDIDA";
       // Só estava aqui por causa da adesão assinada; a adesão sumiu e a venda
       // não fechou — sobra uma linha sem motivo de existir.
       else if (v.situacao === "ASSINADA_SEM_VENDA" && !propostasComAdesao.has(v.propostaIdCrm))
@@ -696,7 +709,11 @@ async function marcarExcluidasNoCrm(ctx: {
       if (!motivo) continue;
       await prisma.crmVendaImportada.update({
         where: { id: v.id },
-        data: { excluidaNoCrmEm: agora, motivoExclusaoCrm: motivo },
+        data: {
+          excluidaNoCrmEm: agora,
+          motivoExclusaoCrm: motivo,
+          ...(motivo === "VENDA_PERDIDA" ? { statusNegocio: "perdida" } : {}),
+        },
       });
       resultado.vendasExcluidasNoCrm += 1;
     }

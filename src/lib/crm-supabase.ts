@@ -150,6 +150,8 @@ export interface PropostaCrm {
   area_piso_m2?: unknown;
   /** Painéis reais da inspeção (`dados_inspecao.quantidade_paineis`). */
   paineis_inspecao?: unknown;
+  /** Itens da proposta avulsa (`dados_avulsos.itens`) — na ampliação, as placas vêm aqui. */
+  itens_avulsos?: unknown;
 }
 
 export interface DadosDescontoFaturaCrm {
@@ -179,7 +181,8 @@ const COLUNAS_PROPOSTA =
   // Quantidades para o teto de execução da obra (lib/execucao-obra.ts).
   "qtd_modulos:dados_snapshot->sistema_projetado->qtd_modulos," +
   "area_piso_m2:dados_snapshot->dados_piso->area_total_m2," +
-  "paineis_inspecao:dados_snapshot->dados_inspecao->quantidade_paineis";
+  "paineis_inspecao:dados_snapshot->dados_inspecao->quantidade_paineis," +
+  "itens_avulsos:dados_snapshot->dados_avulsos->itens";
 
 /** Desconto combinado na proposta, já normalizado. */
 export interface DescontoDaProposta {

@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ClipboardCheck, Check, X, Search, ShieldCheck } from "lucide-react";
+import { ClipboardCheck, Check, X, Search, ShieldCheck, OctagonAlert } from "lucide-react";
 import { matchBusca } from "@/lib/busca";
 import { ROTULO_UNIDADE, type UnidadeExecucao } from "@/lib/execucao-obra-regras";
 
@@ -34,6 +34,8 @@ interface ObraPendente {
       em: string | null;
     } | null;
     teto: number | null;
+    /** A venda foi desfeita no gerador (perdida ou excluída) depois de gerar a obra. */
+    vendaDesfeita: { em: string; motivo: string | null } | null;
   } | null;
   /** Quem está vendo é admin e pode definir o máximo desta obra. */
   podeAutorizar?: boolean;
@@ -130,6 +132,21 @@ function lerValor(texto: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+const VENDA_DESFEITA: Record<string, { titulo: string; texto: string }> = {
+  VENDA_PERDIDA: {
+    titulo: "Venda perdida",
+    texto: "No gerador de propostas, esta venda foi marcada como perdida depois de ganha.",
+  },
+  PROPOSTA_EXCLUIDA: {
+    titulo: "Venda excluída",
+    texto: "No gerador de propostas, a proposta desta obra foi excluída.",
+  },
+  ADESAO_EXCLUIDA: {
+    titulo: "Venda excluída",
+    texto: "No gerador de propostas, a adesão desta obra foi excluída.",
+  },
+};
+
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString("pt-BR");
@@ -202,7 +219,11 @@ export default function AprovacaoObrasPage() {
     }
   }
 
-  const filtered = obras.filter((o) => matchBusca(search, [o.nome, o.cliente, o.local]));
+  // Venda desfeita no gerador vai para o topo: é a que o gestor precisa ver
+  // antes de mandar equipe. `sort` é estável, o resto mantém a ordem da API.
+  const filtered = obras
+    .filter((o) => matchBusca(search, [o.nome, o.cliente, o.local]))
+    .sort((a, b) => Number(!!b.execucao?.vendaDesfeita) - Number(!!a.execucao?.vendaDesfeita));
 
   return (
     <div className="space-y-6 p-6">
@@ -253,14 +274,41 @@ export default function AprovacaoObrasPage() {
             const acimaDoTeto = valor != null && teto != null && valor > teto;
             const aguardandoAdmin = exec?.aguardandoAdmin ?? false;
             const unidade = exec?.unidade ? ROTULO_UNIDADE[exec.unidade] : null;
+            const desfeita = exec?.vendaDesfeita ?? null;
+            const textoDesfeita = desfeita
+              ? (VENDA_DESFEITA[desfeita.motivo ?? ""] ?? VENDA_DESFEITA.PROPOSTA_EXCLUIDA)
+              : null;
             return (
-            <Card key={obra.id}>
+            <Card
+              key={obra.id}
+              className={desfeita ? "border-2 border-red-600 bg-red-50/60 dark:bg-red-950/30" : undefined}
+            >
               <CardContent className="space-y-3 p-4">
+                {desfeita && textoDesfeita && (
+                  <div
+                    role="alert"
+                    className="flex items-start gap-2 rounded-md bg-red-600 px-3 py-2 text-sm text-white"
+                  >
+                    <OctagonAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>
+                      <strong className="font-bold uppercase tracking-wide">
+                        {textoDesfeita.titulo} em {formatDate(desfeita.em)}
+                      </strong>
+                      {" — "}
+                      {textoDesfeita.texto} Confirme com o vendedor antes de mandar a equipe;
+                      se o negócio foi mesmo desfeito, recuse a obra.
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center gap-2">
                       <h3 className="truncate font-semibold">{obra.nome}</h3>
-                      <Badge variant="outline">Pendente</Badge>
+                      {desfeita ? (
+                        <Badge variant="destructive">{textoDesfeita?.titulo}</Badge>
+                      ) : (
+                        <Badge variant="outline">Pendente</Badge>
+                      )}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {obra.cliente && <span>Cliente: {obra.cliente}</span>}
