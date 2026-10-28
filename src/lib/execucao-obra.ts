@@ -13,7 +13,7 @@
  *   - Piso aquecido → por M²    (`dados_piso.area_total_m2` da proposta)
  *
  * O valor por unidade é configurado em Produtos do CRM. A inspeção completa
- * vai ter fórmula própria (pendente com o Paulo); até lá ela, a ampliação e os
+ * também é por painel (R$ 10, mínimo R$ 180 — Paulo, 28/10/2026). Ampliação e
  * demais produtos aceitam sem teto — o valor continua obrigatório.
  */
 
