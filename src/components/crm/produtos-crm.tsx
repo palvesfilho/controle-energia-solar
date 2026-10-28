@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Settings2, Search, Save } from "lucide-react";
 import { matchBusca } from "@/lib/busca";
+import { ROTULO_UNIDADE, UNIDADE_EXECUCAO_POR_PRODUTO } from "@/lib/execucao-obra-regras";
 
 interface ProdutoDestino {
   id: string;
@@ -25,6 +26,9 @@ interface ProdutoDestino {
   tipoObra: string | null;
   destinoGestao: string;
   ativo: boolean;
+  valorExecucaoUnitario: number | null;
+  valorExecucaoMinimo: number | null;
+  qtdMaxTetoAutomatico: number | null;
 }
 
 const DESTINOS: { valor: string; rotulo: string }[] = [
@@ -84,6 +88,13 @@ export function ProdutosCrm() {
           tipoObra: produto.tipoObra,
           destinoGestao: produto.destinoGestao,
           ativo: produto.ativo,
+          ...(UNIDADE_EXECUCAO_POR_PRODUTO[produto.codigoProduto]
+            ? {
+                valorExecucaoUnitario: produto.valorExecucaoUnitario,
+                valorExecucaoMinimo: produto.valorExecucaoMinimo,
+                qtdMaxTetoAutomatico: produto.qtdMaxTetoAutomatico,
+              }
+            : {}),
         }),
       });
       const dados = await res.json();
@@ -186,6 +197,63 @@ export function ProdutosCrm() {
                         </option>
                       ))}
                     </select>
+
+                    {UNIDADE_EXECUCAO_POR_PRODUTO[produto.codigoProduto] && (
+                      <label
+                        className="flex items-center gap-1 text-sm text-muted-foreground"
+                        title="Teto do que se paga à equipe pela execução: quantidade vendida × este valor. Vazio = sem teto."
+                      >
+                        Execução R$
+                        <Input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          className="h-9 w-24"
+                          placeholder="sem teto"
+                          value={produto.valorExecucaoUnitario ?? ""}
+                          onChange={(e) =>
+                            alterar(produto.codigoProduto, {
+                              valorExecucaoUnitario:
+                                e.target.value === "" ? null : Number(e.target.value),
+                            })
+                          }
+                        />
+                        / {ROTULO_UNIDADE[UNIDADE_EXECUCAO_POR_PRODUTO[produto.codigoProduto]].singular}
+                        <span className="ml-2">mín. R$</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          className="h-9 w-24"
+                          placeholder="—"
+                          title="O teto nunca fica abaixo deste valor, mesmo em obra pequena. Vazio = sem mínimo."
+                          value={produto.valorExecucaoMinimo ?? ""}
+                          onChange={(e) =>
+                            alterar(produto.codigoProduto, {
+                              valorExecucaoMinimo:
+                                e.target.value === "" ? null : Number(e.target.value),
+                            })
+                          }
+                        />
+                        <span className="ml-2">até</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="1"
+                          className="h-9 w-20"
+                          placeholder="∞"
+                          title="Acima desta quantidade o projeto é negociado à parte: o administrador define o máximo na obra. Vazio = sem limite."
+                          value={produto.qtdMaxTetoAutomatico ?? ""}
+                          onChange={(e) =>
+                            alterar(produto.codigoProduto, {
+                              qtdMaxTetoAutomatico:
+                                e.target.value === "" ? null : Number(e.target.value),
+                            })
+                          }
+                        />
+                        {ROTULO_UNIDADE[UNIDADE_EXECUCAO_POR_PRODUTO[produto.codigoProduto]].plural}
+                      </label>
+                    )}
 
                     <Button
                       size="sm"

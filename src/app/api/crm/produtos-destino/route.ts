@@ -49,6 +49,27 @@ export async function PATCH(req: NextRequest) {
       { status: 400 },
     );
   }
+  // Vazio = sem teto / sem mínimo. Zero ou negativo é erro de digitação.
+  function lerValorPositivo(bruto: unknown): number | null | undefined | "invalido" {
+    if (bruto === undefined) return undefined;
+    if (bruto === null || bruto === "") return null;
+    const n = Number(bruto);
+    return Number.isFinite(n) && n > 0 ? n : "invalido";
+  }
+  const valorExecucaoUnitario = lerValorPositivo(body.valorExecucaoUnitario);
+  const valorExecucaoMinimo = lerValorPositivo(body.valorExecucaoMinimo);
+  const qtdMaxTetoAutomatico = lerValorPositivo(body.qtdMaxTetoAutomatico);
+  if (
+    valorExecucaoUnitario === "invalido" ||
+    valorExecucaoMinimo === "invalido" ||
+    qtdMaxTetoAutomatico === "invalido"
+  ) {
+    return NextResponse.json(
+      { error: "Valores de execução devem ser maiores que zero (ou vazios)." },
+      { status: 400 },
+    );
+  }
+
   if (!DESTINOS.has(destinoGestao)) {
     return NextResponse.json(
       { error: "destinoGestao deve ser NENHUM, ADESAO, USINA_UC ou MONITORAMENTO." },
@@ -65,6 +86,9 @@ export async function PATCH(req: NextRequest) {
       tipoObra: geraObra ? tipoObra : null,
       destinoGestao,
       ativo: body.ativo === undefined ? true : Boolean(body.ativo),
+      valorExecucaoUnitario: valorExecucaoUnitario ?? null,
+      valorExecucaoMinimo: valorExecucaoMinimo ?? null,
+      qtdMaxTetoAutomatico: qtdMaxTetoAutomatico ?? null,
     },
     update: {
       geraObra,
@@ -72,6 +96,9 @@ export async function PATCH(req: NextRequest) {
       destinoGestao,
       ...(body.nomeProduto ? { nomeProduto: String(body.nomeProduto) } : {}),
       ...(body.ativo === undefined ? {} : { ativo: Boolean(body.ativo) }),
+      ...(valorExecucaoUnitario === undefined ? {} : { valorExecucaoUnitario }),
+      ...(valorExecucaoMinimo === undefined ? {} : { valorExecucaoMinimo }),
+      ...(qtdMaxTetoAutomatico === undefined ? {} : { qtdMaxTetoAutomatico }),
     },
   });
 

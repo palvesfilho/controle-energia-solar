@@ -2,8 +2,9 @@
 import { getServerSession } from "@/lib/auth-compat";
 import { authOptions } from "@/lib/auth-options";
 import { prisma } from "@/lib/prisma";
-import { canAccessSection } from "@/lib/roles";
+import { canAccessSection, isAdminRole } from "@/lib/roles";
 import { parseDateOnly } from "@/lib/obra-calendario";
+import { execucaoDasObras } from "@/lib/execucao-obra";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -30,6 +31,14 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { createdAt: "desc" },
     });
+    // Na fila de aprovação o gestor precisa do teto de execução para aceitar.
+    if (where.aprovacao === "PENDENTE") {
+      const execucao = await execucaoDasObras(obras.map((o) => o.id));
+      const podeAutorizar = isAdminRole(session.user.role);
+      return NextResponse.json(
+        obras.map((o) => ({ ...o, execucao: execucao.get(o.id) ?? null, podeAutorizar })),
+      );
+    }
     return NextResponse.json(obras);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

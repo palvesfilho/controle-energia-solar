@@ -31,6 +31,7 @@ import {
   type EnvelopeAssinaturaCrm,
   type PropostaCrm,
 } from "@/lib/crm-supabase";
+import { quantidadeExecucao } from "@/lib/execucao-obra-regras";
 
 export type TipoObra = "INSTALACAO" | "MANUTENCAO";
 export type DestinoGestao = "NENHUM" | "ADESAO" | "USINA_UC" | "MONITORAMENTO";
@@ -288,6 +289,8 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
     // dela são o mesmo negócio repartido por unidade.
     const desconto = descontoDaProposta(proposta);
 
+    const execucao = quantidadeExecucao(codigoProduto, proposta);
+
     const regra = deParaPorCodigo.get(codigoProduto);
     const geraObra = ehVendaGanha && (regra?.ativo ?? false) && regra!.geraObra;
     const destinoGestao = (regra?.ativo ? regra.destinoGestao : "NENHUM") as DestinoGestao;
@@ -334,6 +337,8 @@ export async function sincronizarCrm(): Promise<ResultadoSync> {
         unidades.some((u) => u.mediaKwh != null)
           ? unidades.reduce((s, u) => s + (u.mediaKwh ?? 0), 0)
           : null,
+      qtdExecucao: execucao?.quantidade ?? null,
+      unidadeExecucao: execucao?.unidade ?? null,
     };
 
     const existente = await prisma.crmVendaImportada.findUnique({

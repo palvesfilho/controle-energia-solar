@@ -1816,6 +1816,23 @@ model Obra {
   documentoPdfGeradoEm   DateTime? @map("documento_pdf_gerado_em")
   conferenciaPdfGeradoEm DateTime? @map("conferencia_pdf_gerado_em")
 
+  // Valor que a equipe cobra pela execução — obrigatório no aceite. O teto
+  // (vendido × valor por unidade, ver lib/execucao-obra.ts) fica congelado
+  // aqui no momento do aceite: mudar o valor por unidade depois não reescreve
+  // o que já foi combinado. Teto null = obra aceita sem teto.
+  valorExecucao            Float?    @map("valor_execucao")
+  tetoExecucao             Float?    @map("teto_execucao")
+  valorExecucaoInformadoEm DateTime? @map("valor_execucao_informado_em")
+  valorExecucaoInformadoPor String?  @map("valor_execucao_informado_por")
+
+  // Máximo AUTORIZADO pelo admin antes do aceite: projeto grande (negociado à
+  // parte) ou acréscimo extraordinário. Substitui o teto calculado; o motivo
+  // é obrigatório. Ver app/api/obras/[id]/teto-execucao.
+  tetoExecucaoAutorizado       Float?    @map("teto_execucao_autorizado")
+  tetoExecucaoAutorizadoMotivo String?   @map("teto_execucao_autorizado_motivo")
+  tetoExecucaoAutorizadoPor    String?   @map("teto_execucao_autorizado_por")
+  tetoExecucaoAutorizadoEm     DateTime? @map("teto_execucao_autorizado_em")
+
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -2637,6 +2654,18 @@ model CrmProdutoDestino {
   // | MONITORAMENTO (plano de monitoramento pago)
   destinoGestao String @default("NENHUM") @map("destino_gestao")
 
+  // R$ por unidade de execução (placa na fotovoltaica, m² no piso) — teto do
+  // que se paga à equipe. Null = sem teto. Ver lib/execucao-obra.ts.
+  valorExecucaoUnitario Float? @map("valor_execucao_unitario")
+  // Piso do teto: obra pequena ainda paga a mobilização da equipe. Teto =
+  // maior entre este valor e quantidade × unitário (FV: R$ 1.000 até 10
+  // placas, R$ 100/placa acima — Paulo, 28/10/2026).
+  valorExecucaoMinimo   Float? @map("valor_execucao_minimo")
+  // Acima desta quantidade (placas / m²) o teto automático não vale: projeto
+  // grande é negociado à parte e o admin define o máximo na obra. Null = sem
+  // limite.
+  qtdMaxTetoAutomatico  Float? @map("qtd_max_teto_automatico")
+
   ativo     Boolean  @default(true)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -2681,6 +2710,12 @@ model CrmVendaImportada {
   // várias — o RESIDENCIAL MORADA DO LESTE tem 10).
   codigosUc      String? @map("codigos_uc")
   mediaMensalKwh Float?  @map("media_mensal_kwh")
+
+  // Quantidade vendida para o teto de execução da obra: placas (FV) ou m²
+  // (piso), lida do snapshot da proposta. Null quando o produto não tem teto
+  // por unidade ou a proposta não traz o número.
+  qtdExecucao     Float?  @map("qtd_execucao")
+  unidadeExecucao String? @map("unidade_execucao") // PLACA | M2
 
   // PENDENTE            — classificada, esperando ação nesta ponta
   // CONCLUIDA           — já virou obra/UC/usina aqui

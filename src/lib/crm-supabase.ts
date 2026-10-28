@@ -144,6 +144,10 @@ export interface PropostaCrm {
    * (medido em 15/08/2026). Quem lê a coluna acha que ninguém deu desconto.
    */
   dados_desconto_fatura: DadosDescontoFaturaCrm | null;
+  /** Placas vendidas (`sistema_projetado.qtd_modulos`) — só na fotovoltaica. */
+  qtd_modulos?: unknown;
+  /** Área total do piso aquecido (`dados_piso.area_total_m2`). */
+  area_piso_m2?: unknown;
 }
 
 export interface DadosDescontoFaturaCrm {
@@ -169,7 +173,10 @@ export interface DadosDescontoFaturaCrm {
 const COLUNAS_PROPOSTA =
   "id,numero,produto_id,cliente_id,vendedor_id,status_negocio,valor_investimento," +
   "fechado_em,data_fechamento,cidade_instalacao,concessionaria,teste,substituida_por_id," +
-  "dados_desconto_fatura:dados_snapshot->dados_desconto_fatura";
+  "dados_desconto_fatura:dados_snapshot->dados_desconto_fatura," +
+  // Quantidades para o teto de execução da obra (lib/execucao-obra.ts).
+  "qtd_modulos:dados_snapshot->sistema_projetado->qtd_modulos," +
+  "area_piso_m2:dados_snapshot->dados_piso->area_total_m2";
 
 /** Desconto combinado na proposta, já normalizado. */
 export interface DescontoDaProposta {

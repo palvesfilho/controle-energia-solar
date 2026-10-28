@@ -6,8 +6,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ClipboardCheck, Check, X, Search } from "lucide-react";
+import { ClipboardCheck, Check, X, Search, ShieldCheck } from "lucide-react";
 import { matchBusca } from "@/lib/busca";
+import { ROTULO_UNIDADE, type UnidadeExecucao } from "@/lib/execucao-obra-regras";
 
 interface ObraPendente {
   id: string;
@@ -16,6 +17,117 @@ interface ObraPendente {
   local: string | null;
   createdAt: string;
   brasilSolarProprietarioId: string | null;
+  execucao: {
+    numeroProposta: string | null;
+    quantidade: number | null;
+    unidade: UnidadeExecucao | null;
+    valorUnitario: number | null;
+    valorMinimo: number | null;
+    tetoPeloMinimo: boolean;
+    tetoCalculado: number | null;
+    limiteQtdAutomatico: number | null;
+    aguardandoAdmin: boolean;
+    autorizado: {
+      valor: number;
+      motivo: string | null;
+      por: string | null;
+      em: string | null;
+    } | null;
+    teto: number | null;
+  } | null;
+  /** Quem está vendo é admin e pode definir o máximo desta obra. */
+  podeAutorizar?: boolean;
+}
+
+/**
+ * Máximo AUTORIZADO pelo admin: projeto grande negociado à parte ou acréscimo
+ * extraordinário. Só aparece para o trio admin; o motivo é obrigatório.
+ */
+function AutorizarTeto({
+  obraId,
+  autorizadoAtual,
+  onSalvo,
+}: {
+  obraId: string;
+  autorizadoAtual: number | null;
+  onSalvo: () => void;
+}) {
+  const [valor, setValor] = useState("");
+  const [motivo, setMotivo] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  async function enviar(remover: boolean) {
+    const numero = lerValor(valor);
+    if (!remover && (numero == null || !motivo.trim())) {
+      toast.error("Informe o máximo autorizado e o motivo.");
+      return;
+    }
+    setSalvando(true);
+    try {
+      const res = await fetch(`/api/obras/${obraId}/teto-execucao`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(remover ? { valor: null } : { valor: numero, motivo }),
+      });
+      const dados = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(dados.error ?? `HTTP ${res.status}`);
+      toast.success(remover ? "Autorização removida." : "Máximo autorizado.");
+      setValor("");
+      setMotivo("");
+      onSalvo();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed p-3">
+      <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+        <ShieldCheck className="h-4 w-4" />
+        Admin — autorizar máximo
+      </div>
+      <Input
+        inputMode="decimal"
+        className="h-8 w-32"
+        placeholder="Máximo R$"
+        value={valor}
+        onChange={(e) => setValor(e.target.value)}
+      />
+      <Input
+        className="h-8 min-w-[16rem] flex-1"
+        placeholder="Motivo (ex.: projeto grande negociado, telhado de difícil acesso)"
+        value={motivo}
+        onChange={(e) => setMotivo(e.target.value)}
+      />
+      <Button size="sm" variant="secondary" disabled={salvando} onClick={() => enviar(false)}>
+        Autorizar
+      </Button>
+      {autorizadoAtual != null && (
+        <Button size="sm" variant="ghost" disabled={salvando} onClick={() => enviar(true)}>
+          Remover autorização
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function formatarReais(valor: number): string {
+  return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+/** "1.234,56" ou "1234.56" → número. Vazio ou inválido → null. */
+function lerValor(texto: string): number | null {
+  const limpo = texto.trim().replace(/\s|R\$/g, "");
+  if (!limpo) return null;
+  // Vírgula é decimal; sem vírgula, "1.500" é mil e quinhentos, não 1,5.
+  const normalizado =
+    limpo.includes(",") || /^\d{1,3}(\.\d{3})+$/.test(limpo)
+      ? limpo.replace(/\./g, "").replace(",", ".")
+      : limpo;
+  const n = Number(normalizado);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 function formatDate(iso: string): string {
@@ -28,6 +140,7 @@ export default function AprovacaoObrasPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [acting, setActing] = useState<string | null>(null);
+  const [valores, setValores] = useState<Record<string, string>>({});
 
   const carregar = useCallback(() => {
     setLoading(true);
@@ -62,11 +175,18 @@ export default function AprovacaoObrasPage() {
       const res = await fetch(`/api/obras/${obraId}/aprovacao`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ aprovacao }),
+        body: JSON.stringify({
+          aprovacao,
+          ...(aprovacao === "ACEITA" ? { valorExecucao: lerValor(valores[obraId] ?? "") } : {}),
+        }),
       });
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(text || `HTTP ${res.status}`);
+        let detail = text || `HTTP ${res.status}`;
+        try {
+          detail = JSON.parse(text).error ?? detail;
+        } catch {}
+        throw new Error(detail);
       }
       toast.success(
         aprovacao === "ACEITA"
@@ -93,7 +213,9 @@ export default function AprovacaoObrasPage() {
         <div>
           <h1 className="text-2xl font-bold">Aprovação de Obras</h1>
           <p className="text-sm text-muted-foreground">
-            Obras geradas automaticamente quando um novo proprietário é cadastrado. Aceite para enviar ao cronograma.
+            Obras geradas pelas vendas do gerador de propostas e pelo cadastro de proprietários.
+            Para aceitar, informe o valor que a equipe cobrou pela execução — ele não pode passar
+            do máximo da venda.
           </p>
         </div>
       </div>
@@ -124,9 +246,16 @@ export default function AprovacaoObrasPage() {
         </Card>
       ) : (
         <div className="grid gap-3">
-          {filtered.map((obra) => (
+          {filtered.map((obra) => {
+            const exec = obra.execucao;
+            const teto = exec?.teto ?? null;
+            const valor = lerValor(valores[obra.id] ?? "");
+            const acimaDoTeto = valor != null && teto != null && valor > teto;
+            const aguardandoAdmin = exec?.aguardandoAdmin ?? false;
+            const unidade = exec?.unidade ? ROTULO_UNIDADE[exec.unidade] : null;
+            return (
             <Card key={obra.id}>
-              <CardContent className="p-4">
+              <CardContent className="space-y-3 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center gap-2">
@@ -136,8 +265,67 @@ export default function AprovacaoObrasPage() {
                     <div className="text-xs text-muted-foreground">
                       {obra.cliente && <span>Cliente: {obra.cliente}</span>}
                       {obra.local && <span> · Local: {obra.local}</span>}
+                      {exec?.numeroProposta && <span> · Proposta {exec.numeroProposta}</span>}
                       <span> · Criada em {formatDate(obra.createdAt)}</span>
                     </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-end justify-between gap-3 border-t pt-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium" htmlFor={`valor-${obra.id}`}>
+                      Valor cobrado pela equipe (R$)
+                    </label>
+                    <Input
+                      id={`valor-${obra.id}`}
+                      inputMode="decimal"
+                      className={`h-9 w-40 ${acimaDoTeto ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                      placeholder="0,00"
+                      value={valores[obra.id] ?? ""}
+                      onChange={(e) =>
+                        setValores((prev) => ({ ...prev, [obra.id]: e.target.value }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {exec?.autorizado ? (
+                        <>
+                          Máximo autorizado:{" "}
+                          <strong className="text-foreground">
+                            {formatarReais(exec.autorizado.valor)}
+                          </strong>
+                          {exec.autorizado.por && <> por {exec.autorizado.por}</>}
+                          {exec.autorizado.motivo && <> — {exec.autorizado.motivo}</>}
+                          {exec.tetoCalculado != null && (
+                            <> (pela regra seria {formatarReais(exec.tetoCalculado)})</>
+                          )}
+                        </>
+                      ) : aguardandoAdmin && unidade ? (
+                        <span className="font-medium text-amber-700">
+                          Projeto grande ({exec!.quantidade!.toLocaleString("pt-BR")}{" "}
+                          {unidade.plural}, acima de{" "}
+                          {exec!.limiteQtdAutomatico!.toLocaleString("pt-BR")}): negociado à
+                          parte. Aguardando o administrador definir o máximo.
+                        </span>
+                      ) : teto != null && exec?.quantidade != null && unidade && exec.valorUnitario != null ? (
+                        <>
+                          Máximo: <strong className="text-foreground">{formatarReais(teto)}</strong>{" "}
+                          ({exec.quantidade.toLocaleString("pt-BR")}{" "}
+                          {exec.quantidade === 1 ? unidade.singular : unidade.plural}
+                          {exec.tetoPeloMinimo
+                            ? " — valor mínimo da obra"
+                            : ` × ${formatarReais(exec.valorUnitario)}`}
+                          )
+                        </>
+                      ) : (
+                        "Sem valor máximo definido para esta obra."
+                      )}
+                    </p>
+                    {acimaDoTeto && (
+                      <p className="text-xs font-medium text-red-600">
+                        Acima do máximo em {formatarReais(valor! - teto!)}. Negocie com a equipe
+                        ou peça ao administrador um máximo maior.
+                      </p>
+                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <Button
@@ -151,7 +339,14 @@ export default function AprovacaoObrasPage() {
                     </Button>
                     <Button
                       size="sm"
-                      disabled={acting === obra.id}
+                      disabled={acting === obra.id || valor == null || acimaDoTeto || aguardandoAdmin}
+                      title={
+                        aguardandoAdmin
+                          ? "Aguardando o administrador definir o máximo"
+                          : valor == null
+                            ? "Informe o valor cobrado pela equipe"
+                            : undefined
+                      }
                       onClick={() => decidir(obra.id, "ACEITA")}
                     >
                       <Check className="mr-1 h-4 w-4" />
@@ -159,9 +354,18 @@ export default function AprovacaoObrasPage() {
                     </Button>
                   </div>
                 </div>
+
+                {obra.podeAutorizar && (
+                  <AutorizarTeto
+                    obraId={obra.id}
+                    autorizadoAtual={exec?.autorizado?.valor ?? null}
+                    onSalvo={carregar}
+                  />
+                )}
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
