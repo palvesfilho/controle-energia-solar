@@ -117,14 +117,14 @@ const BENEFICIOS = [
   },
 ];
 
-// Relatório real de MAIO/2026 do cliente exemplo (OTHAVIO CECCIM MORALES),
+// Relatório real de OUTUBRO/2026 do cliente exemplo (OTHAVIO CECCIM MORALES),
 // gerado on-the-fly pela rota de PDF do proprietário. Requer sessão admin
 // (a página já é admin), então o iframe herda o cookie de sessão.
 const RELATORIO_EXEMPLO = {
   cliente: "Othávio Ceccim Morales",
-  mesLabel: "Maio / 2026",
+  mesLabel: "Outubro / 2026",
   pdfUrl:
-    "/api/brasil-solar/proprietarios/cmomq01bf1bsestgh127sgakj/relatorios/cmomq0ih61bshstgh3aj4u4in/pdf?ano=2026&mes=5",
+    "/api/brasil-solar/proprietarios/cmomq01bf1bsestgh127sgakj/relatorios/cmomq0ih61bshstgh3aj4u4in/pdf?ano=2026&mes=10",
 };
 
 type AdesaoForm = {
