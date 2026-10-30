@@ -35,18 +35,6 @@ type Etapa = {
 const ETAPAS: Etapa[] = [
   {
     n: 1,
-    titulo: "Conexão Wi-Fi da usina",
-    lead: "Conectamos o inversor da sua usina à internet para acompanhar a geração em tempo real.",
-    itens: [
-      "Configuração do inversor na rede Wi-Fi do local",
-      "Cadastro da usina na plataforma de monitoramento",
-      "Validação de que os dados de geração chegam corretamente",
-    ],
-    Icon: Wifi,
-    cls: "s1",
-  },
-  {
-    n: 2,
     titulo: "Visita técnica no local",
     lead: "Nossa equipe vai até a sua usina para conhecer a instalação de perto.",
     itens: [
@@ -55,10 +43,10 @@ const ETAPAS: Etapa[] = [
       "Registro fotográfico e checklist inicial do sistema",
     ],
     Icon: Wrench,
-    cls: "s2",
+    cls: "s1",
   },
   {
-    n: 3,
+    n: 2,
     titulo: "Inspeção completa",
     lead: "Análise detalhada de todo o sistema, garantindo segurança e máximo desempenho.",
     itens: [
@@ -67,11 +55,23 @@ const ETAPAS: Etapa[] = [
       "Diagnóstico de falhas e recomendações de correção",
     ],
     Icon: ClipboardCheck,
+    cls: "s2",
+  },
+  {
+    n: 3,
+    titulo: "Conexão Wi-Fi da usina",
+    lead: "Conectamos o inversor da sua usina à internet para acompanhar a geração em tempo real.",
+    itens: [
+      "Configuração do inversor na rede Wi-Fi do local",
+      "Cadastro da usina na plataforma de monitoramento",
+      "Validação de que os dados de geração chegam corretamente",
+    ],
+    Icon: Wifi,
     cls: "s3",
   },
   {
     n: 4,
-    titulo: "Acompanhamento de performance",
+    titulo: "Diagnóstico de performance",
     lead: "Passamos a monitorar a sua usina 24/7, acompanhando a geração e agindo em qualquer anomalia.",
     itens: [
       "Monitoramento contínuo da geração de energia",
