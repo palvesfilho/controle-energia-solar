@@ -1642,6 +1642,12 @@ export interface RelatorioAgregadoMonthRow {
   injetadaMedidorKwh: number | null;
   /** Da fatura da UC titular — saldo de créditos GD acumulado */
   saldoCreditosTitular: number | null;
+  /**
+   * Da fatura da UC titular (geradora) — consumo da rede. A geradora é
+   * compensada PRIMEIRO; só o que a injeção supera esse consumo sobra para as
+   * beneficiárias (regra do Paulo, 13/11/26).
+   */
+  consumoGeradoraKwh: number | null;
   /** Breakdown por UC beneficiária do mês */
   beneficiarias: RelatorioAgregadoBeneficiariaRow[];
   /**
@@ -2017,17 +2023,57 @@ export function avaliarSituacaoRateio(
   const poucaInjecao =
     fracaoInjetada != null && fracaoInjetada < INJECAO_MINIMA_FRACAO;
 
-  if (recentesSemCredito.length > 0) {
+  // Regra do Paulo (13/11/26): a unidade geradora é compensada PRIMEIRO; só o
+  // que a injeção supera o consumo dela vai para as beneficiárias.
+  /** Números do mês, todos lidos (inversor + fatura da geradora), nunca estimados. */
+  const numerosDoMes = (m: RelatorioAgregadoMonthRow): string => {
+    const partes: string[] = [];
+    if ((m.geracaoInversorKwh ?? 0) > 0)
+      partes.push(`a usina gerou ${fmtKwh(m.geracaoInversorKwh!)}`);
+    if (m.injetadaMedidorKwh != null)
+      partes.push(
+        `${partes.length ? "" : "a usina "}injetou ${fmtKwh(m.injetadaMedidorKwh)} na rede`,
+      );
+    if (m.consumoGeradoraKwh != null)
+      partes.push(
+        `a unidade geradora consumiu ${fmtKwh(m.consumoGeradoraKwh)} da rede`,
+      );
+    return `em ${rotuloMes(m.ano, m.mes)} ${listar(partes)}`;
+  };
+  // Mês em que a fatura PROVA que sobrou energia (injeção > consumo da
+  // geradora) e mesmo assim nada chegou: aí a regra acima não explica, e a
+  // causa é outra (rateio/concessionária). Sinalizar, não esconder.
+  const sobraNaoChegou = recentesSemCredito.filter(
+    (m) =>
+      m.injetadaMedidorKwh != null &&
+      m.consumoGeradoraKwh != null &&
+      m.injetadaMedidorKwh > m.consumoGeradoraKwh,
+  );
+  const semExcedente = recentesSemCredito.filter(
+    (m) => !sobraNaoChegou.includes(m),
+  );
+  const maiuscula = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+  if (sobraNaoChegou.length > 0) {
     itens.push({
       tema: "USINA",
       nivel: "ACAO",
-      titulo: "A usina gerou, mas os créditos não chegaram às unidades",
+      titulo: "Sobrou energia da unidade geradora, mas os créditos não chegaram às beneficiárias",
       texto:
-        `Em ${recentesSemCredito.length} dos últimos ${recentes.length} meses (${listar(recentesSemCredito.map((m) => rotuloMes(m.ano, m.mes)))}) a usina registrou geração e nenhuma unidade beneficiária teve energia compensada. ` +
-        (poucaInjecao
-          ? `No período, apenas ${(fracaoInjetada! * 100).toFixed(0)}% da energia gerada foi injetada na rede — o restante foi consumido na própria unidade geradora, e energia consumida na hora não vira crédito. `
-          : "A energia foi injetada na rede, mas não foi distribuída às beneficiárias. ") +
-        "As causas mais comuns são rateio não cadastrado ou desatualizado junto à concessionária. Vamos verificar o cadastro do rateio e regularizar.",
+        `A energia gerada é usada primeiro para atender o consumo da própria unidade geradora, e só o que sobra é enviado às beneficiárias. ` +
+        `${maiuscula(listar(sobraNaoChegou.map(numerosDoMes)))}: houve sobra, e mesmo assim nenhuma unidade beneficiária recebeu créditos. ` +
+        "Vamos verificar o rateio cadastrado junto à concessionária e o faturamento desses meses.",
+    });
+  } else if (semExcedente.length > 0) {
+    itens.push({
+      tema: "USINA",
+      nivel: "ACAO",
+      titulo: "A geração não foi suficiente para enviar créditos às unidades beneficiárias",
+      texto:
+        `Em ${semExcedente.length} dos últimos ${recentes.length} meses (${listar(semExcedente.map((m) => rotuloMes(m.ano, m.mes)))}) a usina gerou energia, mas nenhuma unidade beneficiária recebeu créditos. ` +
+        "A energia gerada é usada primeiro para atender o consumo da própria unidade geradora, e só o que sobra é enviado às beneficiárias. " +
+        `${maiuscula(semExcedente.map(numerosDoMes).join("; "))}. ` +
+        "Ou seja, a geração não foi suficiente nem para cobrir o consumo da unidade geradora, então não houve excedente para distribuir.",
     });
   } else if (poucaInjecao) {
     itens.push({
@@ -2046,11 +2092,30 @@ export function avaliarSituacaoRateio(
   );
   if (coberturaPct != null && consumoMedioTotalKwh != null && compensadoMedioTotalKwh != null) {
     const base = `Nos últimos ${janela.length} meses, as ${ucs.length} unidades consumiram em média ${fmtKwh(consumoMedioTotalKwh)}/mês e tiveram ${fmtKwh(compensadoMedioTotalKwh)}/mês compensados por créditos (cobertura de ${coberturaPct.toFixed(0)}%).`;
-    const energiaDisponivel = injetadaMediaKwh ?? geracaoMediaKwh;
+    // O que SOBRA para as beneficiárias = injeção − consumo da geradora (ela é
+    // compensada primeiro). Antes comparava a injeção inteira com o consumo das
+    // beneficiárias e podia dizer "energia suficiente" sem ter sobrado nada.
+    // Só meses com os dois números da fatura da geradora entram.
+    const mesesGeradora = janela.filter(
+      (m) => m.injetadaMedidorKwh != null && m.consumoGeradoraKwh != null,
+    );
+    const injetadaGeradoraMedia = media(mesesGeradora.map((m) => m.injetadaMedidorKwh!));
+    const consumoGeradoraMedio = media(mesesGeradora.map((m) => m.consumoGeradoraKwh!));
+    const sobraMediaKwh = media(
+      mesesGeradora.map((m) => Math.max(0, m.injetadaMedidorKwh! - m.consumoGeradoraKwh!)),
+    );
     // Distingue as duas causas: energia insuficiente × energia suficiente que
     // não chegou. A recomendação é oposta em cada caso.
     const usinaCurta =
-      energiaDisponivel != null && energiaDisponivel < consumoMedioTotalKwh * 0.95;
+      sobraMediaKwh != null
+        ? sobraMediaKwh < consumoMedioTotalKwh * 0.95
+        : // Sem o consumo da geradora: só dá pra afirmar "curta" quando nem a
+          // injeção inteira cobriria as beneficiárias.
+          injetadaMediaKwh != null && injetadaMediaKwh < consumoMedioTotalKwh * 0.95;
+    const textoSobra =
+      sobraMediaKwh != null
+        ? `A usina injetou em média ${fmtKwh(injetadaGeradoraMedia!)}/mês na rede e a unidade geradora, que é atendida primeiro, consumiu ${fmtKwh(consumoGeradoraMedio!)}/mês da rede. Sobraram em média ${fmtKwh(sobraMediaKwh)}/mês para as beneficiárias, que consomem ${fmtKwh(consumoMedioTotalKwh)}/mês`
+        : null;
     if (coberturaPct < RATEIO_COBERTURA_DEFICIT * 100) {
       itens.push({
         tema: "ATENDIMENTO",
@@ -2064,9 +2129,11 @@ export function avaliarSituacaoRateio(
           (causaJaExplicada
             ? "Esse é o efeito, na conta das unidades, do ponto apontado acima."
             : usinaCurta
-            ? `A energia disponível da usina (${fmtKwh(energiaDisponivel!)}/mês${injetadaMediaKwh != null ? " injetados na rede" : " gerados"}) já é menor que o consumo do grupo: a diferença não se resolve só com rateio. Vale avaliar uma ampliação da usina com a nossa equipe técnica.`
-            : energiaDisponivel != null
-              ? `A usina disponibilizou ${fmtKwh(energiaDisponivel)}/mês — energia suficiente para o grupo. A diferença está na distribuição dos créditos entre as unidades ou no faturamento da concessionária.`
+            ? textoSobra
+              ? `${textoSobra}: a diferença não se resolve só com rateio. Vale avaliar uma ampliação da usina com a nossa equipe técnica.`
+              : `A usina injetou em média ${fmtKwh(injetadaMediaKwh!)}/mês na rede, menos que o consumo das beneficiárias, e ainda precisa atender primeiro a unidade geradora: a diferença não se resolve só com rateio. Vale avaliar uma ampliação da usina com a nossa equipe técnica.`
+            : textoSobra
+              ? `${textoSobra} — energia suficiente para elas. A diferença está na distribuição dos créditos entre as unidades ou no faturamento da concessionária.`
               : "Enquanto essa diferença existir, parte do consumo continua sendo paga à concessionária."),
       });
     } else if (coberturaPct < 100) {
@@ -2234,9 +2301,12 @@ export function avaliarSituacaoRateio(
   const item = (tema: SituacaoRateioItem["tema"]) =>
     itens.find((i) => i.tema === tema);
   let resumo: string;
-  if (item("USINA")?.nivel === "ACAO") {
+  if (item("USINA")?.nivel === "ACAO" && sobraNaoChegou.length > 0) {
     resumo =
-      "A energia gerada não está chegando às unidades — precisamos regularizar o rateio junto à concessionária.";
+      "Sobrou energia da unidade geradora, mas os créditos não chegaram às beneficiárias — vamos verificar o rateio junto à concessionária.";
+  } else if (item("USINA")?.nivel === "ACAO") {
+    resumo =
+      "A geração da usina não foi suficiente para cobrir a unidade geradora, por isso as unidades beneficiárias ficaram sem créditos.";
   } else if (item("ATENDIMENTO")?.nivel === "ACAO") {
     resumo = `Os créditos cobriram parte do consumo do grupo${deficitMensalKwh != null ? `: faltaram cerca de ${fmtKwh(deficitMensalKwh)}/mês` : ""}.`;
   } else if (item("DISTRIBUICAO")?.nivel === "ACAO") {
@@ -2572,6 +2642,7 @@ export async function getProprietarioRelatorioAgregado(
       geracaoManualKwh,
       injetadaMedidorKwh: billTitular?.energiaInjetadaMedidorKwh ?? null,
       saldoCreditosTitular: billTitular?.saldoCreditos ?? null,
+      consumoGeradoraKwh: billTitular?.consumoKwh ?? null,
       beneficiarias: beneficiariasRows,
       temFaturaBeneficiaria: billsBenef.length > 0,
       inversoresErros,

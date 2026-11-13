@@ -35,6 +35,7 @@ export type AcaoComercialTipo =
   | "AMPLIACAO"
   | "RATEIO_EXCEDENTE"
   | "REVISAO_RATEIO"
+  | "SEM_EXCEDENTE_GERADORA"
   | "REGULARIZAR_RATEIO"
   | "VISTORIA"
   | "LIMPEZA"
@@ -346,14 +347,26 @@ function oportunidadesDoRateio(
   const origem = "Grupo (rateio)";
 
   for (const item of situacao.itens) {
-    if (item.tema === "USINA" && item.nivel === "ACAO") {
+    if (item.tema === "USINA" && item.nivel === "ACAO" && item.titulo.startsWith("Sobrou energia")) {
+      // Fatura da geradora prova sobra e nada chegou: aí sim é rateio/concessionária.
       ops.push({
         tipo: "REGULARIZAR_RATEIO",
         prioridade: "ALTA",
         titulo: "Regularizar o rateio junto à concessionária",
         evidencia: item.texto,
         acao:
-          "A energia gerada não está chegando às unidades. Abrir protocolo na concessionária e comunicar o cliente antes que ele perceba pela fatura.",
+          "Sobrou energia da geradora e não chegou às beneficiárias. Conferir o rateio cadastrado, abrir protocolo na concessionária e comunicar o cliente.",
+        numeros: [],
+        origem,
+      });
+    } else if (item.tema === "USINA" && item.nivel === "ACAO") {
+      ops.push({
+        tipo: "SEM_EXCEDENTE_GERADORA",
+        prioridade: "ALTA",
+        titulo: "Usina não cobre nem a unidade geradora — beneficiárias sem crédito",
+        evidencia: item.texto,
+        acao:
+          "A geração não cobriu o consumo da unidade geradora, então não sobrou excedente para as beneficiárias. Comunicar o cliente e levar à engenharia a lacuna em kWh/mês para avaliar ampliação.",
         numeros: [
           ...(situacao.geracaoMediaKwh != null
             ? [{ label: "Geração média", valor: `${fmtKwh(situacao.geracaoMediaKwh)}/mês` }]
