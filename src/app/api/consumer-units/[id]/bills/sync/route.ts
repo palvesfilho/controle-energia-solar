@@ -13,6 +13,7 @@ import {
 } from "@/lib/infosimples";
 import { enrichBillFromPdfFallback, describeFallback } from "@/lib/infosimples-pdf-fallback";
 import { syncInvestorPayablesFromBill } from "@/lib/investor-payables";
+import { populateBillingFromBill } from "@/lib/billing-populate";
 
 async function persistPdf(
   consumerUnitId: string,
@@ -148,6 +149,12 @@ export async function POST(
           syncedAt: new Date(),
         },
       });
+      // Preenche ConsumerUnitBilling (aba "Valores da Cobrança"), igual ao
+      // "Sincronizar todas" e ao upload. Sem isto a fatura sincronizada por
+      // aqui ficava SEM valor de cobrança — calado (caso TAMARA VOLCATO 10/26).
+      await populateBillingFromBill(upserted.id).catch((e) =>
+        console.error("[consumer-units bills sync] populateBillingFromBill falhou:", e),
+      );
       await syncInvestorPayablesFromBill(upserted.id).catch((e) =>
         console.error("[consumer-units bills sync] syncInvestorPayablesFromBill falhou:", e),
       );
