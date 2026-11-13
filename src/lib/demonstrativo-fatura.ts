@@ -29,6 +29,12 @@ export interface DemonstrativoFaturaData {
     nome: string;
     cnpj: string | null;
     endereco: string | null;
+    /**
+     * O endereço já quebrado nas linhas do cabeçalho do PDF, na ordem pedida
+     * pelo Paulo em 13/11/2026: rua + número + complemento · bairro · cidade.
+     * Linha que não existe no cadastro some — nunca é inventada.
+     */
+    enderecoLinhas: string[];
     unidadeConsumidora: string;
   };
   fatura: {
@@ -88,10 +94,16 @@ function gerar12Meses(
   bills: { mesReferencia: number; anoReferencia: number; consumoKwh: number | null }[],
   mesRef: number,
   anoRef: number,
+  impresso: Map<string, number> = new Map(),
 ): { m: string; consumo: number }[] {
-  const map = new Map(
-    bills.map((b) => [`${b.anoReferencia}-${b.mesReferencia}`, b.consumoKwh ?? 0]),
-  );
+  // A fatura gravada manda; o painel impresso só preenche o mês que falta
+  // (ou que está gravado sem consumo).
+  const map = new Map(impresso);
+  for (const b of bills) {
+    if ((b.consumoKwh ?? 0) > 0 || !map.has(`${b.anoReferencia}-${b.mesReferencia}`)) {
+      map.set(`${b.anoReferencia}-${b.mesReferencia}`, b.consumoKwh ?? 0);
+    }
+  }
   const out: { m: string; consumo: number }[] = [];
   for (let i = 11; i >= 0; i--) {
     let m = mesRef - i;
@@ -102,6 +114,35 @@ function gerar12Meses(
     }
     const consumo = map.get(`${a}-${m}`) ?? 0;
     out.push({ m: mesLabelHistorico(m, a), consumo: Math.round(consumo) });
+  }
+  return out;
+}
+
+const MES_SIGLA: Record<string, number> = {
+  JAN: 1, FEV: 2, MAR: 3, ABR: 4, MAI: 5, JUN: 6, JUL: 7, AGO: 8, SET: 9, OUT: 10, NOV: 11, DEZ: 12,
+};
+
+/**
+ * Lê o painel "histórico de consumo" gravado da fatura (`[{ mesAno: "OUT/26",
+ * consumoKwh, dias }]`) num mapa "ano-mês" → kWh. Entrada que não se entende
+ * (mês ilegível, kWh nulo) é ignorada — nunca vira zero inventado.
+ */
+function lerHistoricoImpresso(json: string | null): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!json) return out;
+  let itens: unknown;
+  try {
+    itens = JSON.parse(json);
+  } catch {
+    return out;
+  }
+  if (!Array.isArray(itens)) return out;
+  for (const it of itens as { mesAno?: unknown; consumoKwh?: unknown }[]) {
+    const m = String(it?.mesAno ?? "").toUpperCase().match(/^([A-Z]{3})\W*(\d{2})$/);
+    const mes = m ? MES_SIGLA[m[1]] : undefined;
+    const kwh = typeof it?.consumoKwh === "number" && Number.isFinite(it.consumoKwh) ? it.consumoKwh : null;
+    if (!m || !mes || kwh === null) continue;
+    out.set(`${2000 + Number(m[2])}-${mes}`, kwh);
   }
   return out;
 }
@@ -157,6 +198,24 @@ export async function loadDemonstrativoFaturaData(
       consumoKwh: true,
     },
   });
+
+  // 13/11/2026 — Histórico IMPRESSO na fatura da RGE (painel de 12-13 meses),
+  // gravado em `ConsumerBill.historicoConsumo` pelo leitor (Infosimples ou PDF).
+  // Completa SÓ os meses sem fatura no banco: UC que entrou há pouco tinha o
+  // gráfico quase vazio (44 de 95 UCs cobradas) com o dado já em casa. Não é
+  // estimativa — é o número que a concessionária imprimiu.
+  // Fonte: a fatura mais recente até o mês cobrado que traga o painel; se não
+  // houver, a primeira depois dele (o painel dela também cobre o mês cobrado).
+  const refCobranca = billing.ano * 12 + billing.mes;
+  const comPainel = await prisma.consumerBill.findMany({
+    where: { consumerUnitId: uc.id, historicoConsumo: { not: null } },
+    select: { anoReferencia: true, mesReferencia: true, historicoConsumo: true },
+  });
+  const ordem = (b: { anoReferencia: number; mesReferencia: number }) => b.anoReferencia * 12 + b.mesReferencia;
+  const painel =
+    comPainel.filter((b) => ordem(b) <= refCobranca).sort((a, b) => ordem(b) - ordem(a))[0] ??
+    comPainel.filter((b) => ordem(b) > refCobranca).sort((a, b) => ordem(a) - ordem(b))[0];
+  const historicoImpresso = lerHistoricoImpresso(painel?.historicoConsumo ?? null);
 
   // Acumulados (R$ e kWh)
   const acumulados = await computarAcumulados(uc.id, { ano: billing.ano, mes: billing.mes });
@@ -225,7 +284,7 @@ export async function loadDemonstrativoFaturaData(
         titulo: "Boleto RGE",
         valor: valorTotalRge,
         vencimento: fmtDateBR(billMes.vencimento),
-        observacao: "consumo residual",
+        observacao: "Taxas mínimas obrigatórias, impostos e iluminação pública",
         codigoBarras: billMes.codigoBarras,
         codigoBarrasPng: png,
       });
@@ -280,11 +339,41 @@ export async function loadDemonstrativoFaturaData(
   const enderecoConsumer = consumer?.endereco?.trim() || null;
   const endereco = enderecoUc ?? enderecoConsumer;
 
+  // Linhas do cabeçalho. A UC não tem campo de BAIRRO; ele vem do termo de
+  // adesão importado do CRM (mesma UC). Se a UC não tem rua, o termo do CRM
+  // fornece o endereço inteiro; sem nenhum dos dois, cai no texto livre do
+  // cliente numa linha só.
+  const crmEnd = await prisma.crmUcImportada.findFirst({
+    where: { consumerUnitId: uc.id },
+    orderBy: { ultimaLeituraEm: "desc" },
+    select: { logradouro: true, numero: true, complemento: true, bairro: true, cidade: true },
+  });
+  const limpa = (v: string | null | undefined) => v?.trim() || null;
+  const ruaLinha = (rua: string | null, num: string | null, compl: string | null) =>
+    rua ? [rua, num, compl].filter(Boolean).join(", ") : null;
+  const daUc = !!limpa(uc.logradouro);
+  const enderecoLinhas = (
+    daUc
+      ? [
+          ruaLinha(limpa(uc.logradouro), limpa(uc.numero), limpa(uc.complemento)),
+          limpa(crmEnd?.bairro),
+          limpa(uc.cidade) ?? limpa(crmEnd?.cidade),
+        ]
+      : limpa(crmEnd?.logradouro)
+        ? [
+            ruaLinha(limpa(crmEnd?.logradouro), limpa(crmEnd?.numero), limpa(crmEnd?.complemento)),
+            limpa(crmEnd?.bairro),
+            limpa(crmEnd?.cidade),
+          ]
+        : [enderecoConsumer]
+  ).filter((l): l is string => !!l);
+
   return {
     cliente: {
       nome: (consumer?.name ?? uc.nome).toUpperCase(),
       cnpj: uc.cpfCnpj ?? consumer?.cpfCnpj ?? null,
       endereco,
+      enderecoLinhas,
       unidadeConsumidora: uc.codigoUc,
     },
     fatura: {
@@ -329,7 +418,7 @@ export async function loadDemonstrativoFaturaData(
       custoKwhConcessionaria: tarifaBruta,
       custoKwhObs: "Tarifa bruta de referência",
     },
-    historico12Meses: gerar12Meses(billsHistorico, billing.mes, billing.ano),
+    historico12Meses: gerar12Meses(billsHistorico, billing.mes, billing.ano, historicoImpresso),
     boletos,
     regraRemuneracao: uc.regraRemuneracao,
   };

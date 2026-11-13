@@ -79,7 +79,8 @@ const s = StyleSheet.create({
   // sem SVG, evita problemas de viewBox no @react-pdf/renderer).
   topStripeWrap: {
     flexDirection: "row",
-    height: 8,
+    // 13/11/2026: 8 → 24pt (+200%), teste do Paulo.
+    height: 24,
     marginLeft: -PAGE_PAD_H,
     marginRight: -PAGE_PAD_H,
     marginTop: -PAGE_PAD_T,
@@ -93,7 +94,7 @@ const s = StyleSheet.create({
   topbar: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
     paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: C.line,
@@ -105,7 +106,8 @@ const s = StyleSheet.create({
   // 96pt de largura: a folha A4 tem 595pt e o timbre não pode competir com o
   // nome do cliente à esquerda. A altura sai da proporção do arquivo — chutar
   // um valor aqui esticaria o logotipo.
-  brandLogo: { width: 96, height: 96 / LOGO_EMPRESA_RATIO, marginBottom: 3 },
+  // 13/11/2026: 96pt → 67pt (−30%), a pedido do Paulo.
+  brandLogo: { width: 67, height: 67 / LOGO_EMPRESA_RATIO },
   brandNome: { fontSize: 9, fontFamily: "Helvetica-Bold", color: C.teal800 },
   brandSub: { fontSize: 6.5, color: C.muted, marginTop: 1 },
 
@@ -117,14 +119,15 @@ const s = StyleSheet.create({
     marginBottom: 8,
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    // Topo, não centro: os rótulos EMISSÃO / VENCIMENTO / A PAGAR ficam na
+    // mesma linha (pedido do Paulo em 13/11/2026).
+    alignItems: "flex-start",
   },
-  heroLeft: { flexDirection: "column" },
+  heroDatas: { flexDirection: "row", gap: 22 },
+  heroDataCol: { alignItems: "flex-start" },
+  heroPagar: { flexDirection: "column", alignItems: "flex-end" },
   heroLbl: { color: "rgba(255,255,255,0.78)", fontSize: 7, letterSpacing: 1, fontFamily: "Helvetica-Bold" },
   heroAmount: { color: C.white, fontSize: 22, fontFamily: "Helvetica-Bold", marginTop: 3 },
-  heroRight: { flexDirection: "row", gap: 18 },
-  heroRightCol: { alignItems: "flex-end" },
-  heroRightVal: { color: C.white, fontSize: 10, fontFamily: "Helvetica-Bold", marginTop: 1 },
 
   // Strip band (UC, mês, bandeira, desconto)
   stripband: {
@@ -174,8 +177,9 @@ const s = StyleSheet.create({
     justifyContent: "space-between",
   },
   cardLbl: { fontSize: 6, fontFamily: "Helvetica-Bold", letterSpacing: 0.3, lineHeight: 1.15 },
-  cardVal: { fontSize: 13, fontFamily: "Helvetica-Bold", marginTop: 4 },
-  cardSub: { fontSize: 6.5, marginTop: 2, opacity: 0.85 },
+  // 13/11/2026: valor dos cards do Resumo do Mês à direita (teste do Paulo).
+  cardVal: { fontSize: 13, fontFamily: "Helvetica-Bold", marginTop: 4, textAlign: "right" },
+  cardSub: { fontSize: 6.5, marginTop: 2, opacity: 0.85, textAlign: "right" },
 
   // Split (energia + chart)
   split: { flexDirection: "row", gap: 10, marginTop: 6, marginBottom: 8 },
@@ -217,7 +221,8 @@ const s = StyleSheet.create({
   chartLegendTxt: { fontSize: 7, color: C.ink2 },
 
   // Boletos
-  boletoWrap: { flexDirection: "column", gap: 6 },
+  // 13/11/2026: respiro entre o título "Pagamentos do período" e o 1º boleto.
+  boletoWrap: { flexDirection: "column", gap: 6, marginTop: 5 },
   boletoBase: {
     borderWidth: 1,
     borderRadius: 6,
@@ -273,24 +278,14 @@ const s = StyleSheet.create({
   },
   alertStrong: { fontFamily: "Helvetica-Bold", color: C.alertInkStrong },
 
-  // Footer
-  footer: {
-    marginTop: "auto",
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: C.line,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    fontSize: 6.5,
-    color: C.muted,
-  },
 });
 
 // ─── Gráfico de barras horizontais (SVG @react-pdf) ───
 function BarChart({ data }: { data: { m: string; consumo: number }[] }) {
   const W = 320;
-  const padL = 38;
-  const padR = 42;
+  // Fonte 10 no viewBox ≈ 8pt no papel (o SVG é reduzido a ~80% na coluna).
+  const padL = 46;
+  const padR = 40;
   const padT = 14;
   const padB = 6;
   // Altura dinâmica: barras crescem pra ocupar o card mesmo quando há poucas
@@ -307,8 +302,11 @@ function BarChart({ data }: { data: { m: string; consumo: number }[] }) {
   const innerH = n * rowH + (n - 1) * gap;
   const H = padT + innerH + padB;
 
+  // 13/11/2026 — a escala era arredondada para múltiplos de 2.000 kWh, então
+  // uma casa de ~500 kWh usava ~20% da largura. Agora o maior mês ocupa a
+  // largura útil inteira (as guias não têm rótulo, a escala não aparece).
   const maxV = Math.max(...data.map((d) => d.consumo), 1);
-  const xMax = Math.max(Math.ceil(maxV / 2000) * 2000, 2000);
+  const xMax = maxV;
   const x = (v: number) => padL + (v / xMax) * innerW;
 
   return (
@@ -335,10 +333,10 @@ function BarChart({ data }: { data: { m: string; consumo: number }[] }) {
           <React.Fragment key={d.m}>
             <SvgText
               x={padL - 4}
-              y={by + rowH / 2 + 2.5}
+              y={by + rowH / 2 + 3.5}
               textAnchor="end"
               fill={isLast ? C.ink : C.ink2}
-              style={{ fontSize: 6.5, fontFamily: isLast ? "Helvetica-Bold" : "Helvetica" }}
+              style={{ fontSize: 10, fontFamily: isLast ? "Helvetica-Bold" : "Helvetica" }}
             >
               {d.m}
             </SvgText>
@@ -352,10 +350,10 @@ function BarChart({ data }: { data: { m: string; consumo: number }[] }) {
             />
             <SvgText
               x={x(d.consumo) + 3}
-              y={by + rowH / 2 + 2.5}
+              y={by + rowH / 2 + 3.5}
               textAnchor="start"
               fill={isLast ? C.orange2 : C.ink2}
-              style={{ fontSize: 6.5, fontFamily: isLast ? "Helvetica-Bold" : "Helvetica" }}
+              style={{ fontSize: 10, fontFamily: isLast ? "Helvetica-Bold" : "Helvetica" }}
             >
               {d.consumo.toLocaleString("pt-BR")}
             </SvgText>
@@ -420,7 +418,11 @@ export function DemonstrativoFaturaPdf({ data }: { data: DemonstrativoFaturaData
           <View style={{ flex: 1 }}>
             <Text style={s.clienteNome}>{data.cliente.nome}</Text>
             {data.cliente.cnpj ? <Text style={s.clienteSub}>CPF/CNPJ {formatCpfCnpj(data.cliente.cnpj)}</Text> : null}
-            {data.cliente.endereco ? <Text style={s.clienteSub}>{data.cliente.endereco}</Text> : null}
+            {/* 13/11/2026: nome · CPF/CNPJ · rua+nº+compl. · bairro · cidade,
+                uma por linha, à esquerda e centralizado na altura da marca. */}
+            {data.cliente.enderecoLinhas.map((l, i) => (
+              <Text key={i} style={s.clienteSub}>{l}</Text>
+            ))}
           </View>
           <View style={s.brandWrap}>
             {/* 🎨 A marca no timbre, desde 06/09/2026 — o mesmo logotipo da
@@ -428,31 +430,39 @@ export function DemonstrativoFaturaPdf({ data }: { data: DemonstrativoFaturaData
                 depois abre o link reconhecer o documento.
                 ⚠️ `null` quando o arquivo não está no `public/` do deploy: o
                 cabeçalho cai no nome em texto em vez de derrubar o PDF. */}
-            {/* eslint-disable-next-line jsx-a11y/alt-text --
-                este `Image` e o do @react-pdf/renderer, que desenha no PDF e
-                nao aceita `alt`; a regra pensa que e um <img> de pagina. */}
-            {logo ? <Image src={logo} style={s.brandLogo} /> : null}
-            <Text style={s.brandNome}>{nomeRemetente()}</Text>
-            <Text style={s.brandSub}>{descricaoNegocio()}</Text>
-            <Text style={s.brandSub}>{emailSuporte()}</Text>
+            {/* 13/11/2026 — Paulo: o timbre é SÓ a marca. Nome, descrição e
+                email saíram do cabeçalho; o texto só volta se o logotipo
+                faltar no deploy, para o PDF não sair sem identificação. */}
+            {logo ? (
+              // eslint-disable-next-line jsx-a11y/alt-text -- este `Image` é o do @react-pdf/renderer, que desenha no PDF e não aceita `alt`
+              <Image src={logo} style={s.brandLogo} />
+            ) : (
+              <>
+                <Text style={s.brandNome}>{nomeRemetente()}</Text>
+                <Text style={s.brandSub}>{descricaoNegocio()}</Text>
+                <Text style={s.brandSub}>{emailSuporte()}</Text>
+              </>
+            )}
           </View>
         </View>
 
         {/* HERO */}
+        {/* 13/11/2026 — Paulo: a ordem da tarja é EMISSÃO → VENCIMENTO → A PAGAR,
+            da esquerda para a direita. */}
         <View style={s.hero}>
-          <View style={s.heroLeft}>
+          <View style={s.heroDatas}>
+            <View style={s.heroDataCol}>
+              <Text style={s.heroLbl}>EMISSÃO</Text>
+              <Text style={s.heroAmount}>{data.fatura.emissao}</Text>
+            </View>
+            <View style={s.heroDataCol}>
+              <Text style={s.heroLbl}>VENCIMENTO</Text>
+              <Text style={s.heroAmount}>{data.pagamento.vencimento}</Text>
+            </View>
+          </View>
+          <View style={s.heroPagar}>
             <Text style={s.heroLbl}>A PAGAR · ASSOCIAÇÃO DE ENERGIA BRASIL SOLAR</Text>
             <Text style={s.heroAmount}>{fmtBRL(data.pagamento.valorAPagar)}</Text>
-          </View>
-          <View style={s.heroRight}>
-            <View style={s.heroRightCol}>
-              <Text style={s.heroLbl}>VENCIMENTO</Text>
-              <Text style={s.heroRightVal}>{data.pagamento.vencimento}</Text>
-            </View>
-            <View style={s.heroRightCol}>
-              <Text style={s.heroLbl}>EMISSÃO</Text>
-              <Text style={s.heroRightVal}>{data.fatura.emissao}</Text>
-            </View>
           </View>
         </View>
 
@@ -601,14 +611,8 @@ export function DemonstrativoFaturaPdf({ data }: { data: DemonstrativoFaturaData
           </Text>
         </View>
 
-        {/* FOOTER */}
-        <View style={s.footer}>
-          <Text>{nomeRemetente()} · {emailSuporte()}</Text>
-          <Text>
-            Demonstrativo {formatCodigoUc(data.cliente.unidadeConsumidora)} · {data.fatura.mesReferencia} · Emitido{" "}
-            {data.fatura.emissao}
-          </Text>
-        </View>
+        {/* 13/11/2026 — Paulo: o demonstrativo é de UMA página; o rodapé
+            (nome · email · "Demonstrativo UC · mês · emitido") saiu. */}
       </Page>
     </Document>
   );
