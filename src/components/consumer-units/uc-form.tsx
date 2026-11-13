@@ -151,6 +151,7 @@ export const REGRAS_REMUNERACAO: { value: string; label: string; calcula: boolea
 export const REGRAS_VENCIMENTO: { value: string; label: string }[] = [
   { value: "DIA_FIXO_MES", label: "Dia fixo do mês" },
   { value: "TRES_DIAS_ANTES_VENC", label: "3 dias antes do vencimento da fatura" },
+  { value: "MESMA_DATA_CONCESSIONARIA", label: "Mesma data da concessionária" },
 ];
 
 // Percentuais são exibidos como inteiro (80 = 80%) e armazenados como decimal (0.80).

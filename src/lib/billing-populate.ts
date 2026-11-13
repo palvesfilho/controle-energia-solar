@@ -36,6 +36,8 @@ export interface PopulateResult {
  *
  * - DIA_FIXO_MES: dia `valorVencimento` do mês SEGUINTE ao de referência da bill.
  * - TRES_DIAS_ANTES_VENC: `bill.vencimento` − 3 dias.
+ * - MESMA_DATA_CONCESSIONARIA: `bill.vencimento` — a cobrança vence no mesmo
+ *   dia do boleto da distribuidora.
  */
 function computarVencimento(
   regra: string | null,
@@ -56,6 +58,9 @@ function computarVencimento(
     const d = new Date(billVencimento);
     d.setDate(d.getDate() - 3);
     return d;
+  }
+  if (regra === "MESMA_DATA_CONCESSIONARIA") {
+    return billVencimento ? new Date(billVencimento) : null;
   }
   return null;
 }
