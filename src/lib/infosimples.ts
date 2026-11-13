@@ -758,6 +758,17 @@ function parseEncargos(
   };
 
   for (const it of outros) scan(it.descricao, it.valor_total);
+  // OCR deslocado na seção CRÉDITOS / DEVOLUÇÕES: o rótulo cai no `valor_total`
+  // e o valor vira a `descricao` da linha seguinte (CATTO AP 02 10/2026:
+  // {"valor_total":"Ajuste Saldo"}, {"descricao":"48,95-"}). Sem isto o ajuste
+  // de saldo some calado e a cobrança sai menor.
+  for (let i = 0; i + 1 < outros.length; i++) {
+    const rotulo = outros[i].valor_total;
+    const prox = outros[i + 1];
+    if (parseNum(rotulo) == null && prox.valor_total == null && parseNum(prox.descricao) != null) {
+      scan(rotulo, prox.descricao);
+    }
+  }
   for (const it of items) scan(it.descricao, it.valor_total);
 
   return out;
