@@ -232,7 +232,9 @@ const s = StyleSheet.create({
   boletoAssoc: { borderColor: C.teal500, backgroundColor: C.teal50 },
   boletoRge: { borderColor: C.orange, backgroundColor: C.boletoRgeBg },
   boletoRow1: { flexDirection: "row", justifyContent: "space-between", marginBottom: 3 },
-  boletoWho: { fontSize: 6.5, fontFamily: "Helvetica-Bold", letterSpacing: 0.5 },
+  // 14/11/2026: +20% (6,5 → 7,8) a pedido do Paulo, para o cliente achar
+  // de cara qual boleto é qual.
+  boletoWho: { fontSize: 7.8, fontFamily: "Helvetica-Bold", letterSpacing: 0.5 },
   boletoWhoAssoc: { color: C.teal800 },
   boletoWhoRge: { color: C.orange2 },
   boletoAmount: { fontSize: 11, fontFamily: "Helvetica-Bold" },
@@ -606,8 +608,9 @@ export function DemonstrativoFaturaPdf({ data }: { data: DemonstrativoFaturaData
         {/* ALERTA */}
         <View style={s.alert}>
           <Text>
-            <Text style={s.alertStrong}>Atenção:</Text> Pague em dia esta fatura e garanta seus benefícios e
-            evite a incidência de encargos conforme contrato.
+            <Text style={s.alertStrong}>Atenção:</Text> Pague em dia esta fatura para garantir seus
+            benefícios, evitando a incidência de multas e juros conforme contrato, bem como sua
+            negativação.
           </Text>
         </View>
 

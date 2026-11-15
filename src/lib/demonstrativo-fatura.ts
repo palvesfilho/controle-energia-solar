@@ -234,13 +234,20 @@ export async function loadDemonstrativoFaturaData(
   //   economiaMensal = valorEconomia
   const valorTotalRge = billMes?.valorTotal ?? billing.valorFatura ?? 0;
   const valorCompensado = billing.valorCompensado ?? 0;
-  const custoEnergiaComDesconto = billing.valorCobranca ?? 0;
+  // Card "Custo com desconto" = o que o cliente PAGA no mês, somando tudo.
+  // Pedido do Paulo (14/11/2026): na PERCENTUAL_SOBRE_COMPENSADO o cliente paga
+  // DOIS boletos (RGE + Associação) e o card mostrava só o nosso — parecia que
+  // o custo do mês era só esse. Na FAT_UNICA o nosso boleto JÁ inclui a conta
+  // da RGE (repasse do valorTotal), então ali não se soma de novo.
+  const clientePagaRgeDireto = uc.regraRemuneracao === "PERCENTUAL_SOBRE_COMPENSADO";
+  const custoEnergiaComDesconto =
+    (billing.valorCobranca ?? 0) + (clientePagaRgeDireto ? valorTotalRge : 0);
   // Regras com multiplicador de exibição (ex.: DIMARZARI) mostram o "sem
   // desconto" como um múltiplo da própria cobrança; as demais somam
   // fatura da RGE + créditos. Não afeta o valor a pagar.
   const semDesconto = resolverCustoSemDesconto(
     uc.regraRemuneracao,
-    custoEnergiaComDesconto,
+    billing.valorCobranca ?? 0,
     valorTotalRge + valorCompensado,
     billing.valorEconomia ?? 0,
   );
@@ -397,7 +404,9 @@ export async function loadDemonstrativoFaturaData(
       },
       custoEnergiaComDesconto: {
         valor: custoEnergiaComDesconto,
-        obs: `Aplicado em ${MES_LABEL_CURTO[billing.mes - 1]}/${String(billing.ano).slice(-2)}`,
+        obs: clientePagaRgeDireto
+          ? "Boleto RGE + boleto da Associação"
+          : `Aplicado em ${MES_LABEL_CURTO[billing.mes - 1]}/${String(billing.ano).slice(-2)}`,
       },
       economiaMensal: {
         valor: economiaMensal,
