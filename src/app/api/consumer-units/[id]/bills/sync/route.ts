@@ -12,6 +12,7 @@ import {
   descreverErroInfosimples,
 } from "@/lib/infosimples";
 import { enrichBillFromPdfFallback, describeFallback } from "@/lib/infosimples-pdf-fallback";
+import { conferirEGravar } from "@/lib/fatura-conferencia";
 import { syncInvestorPayablesFromBill } from "@/lib/investor-payables";
 import { populateBillingFromBill } from "@/lib/billing-populate";
 
@@ -149,6 +150,11 @@ export async function POST(
           syncedAt: new Date(),
         },
       });
+      // 🔒 DUPLA CONFERÊNCIA — Infosimples × PDF. Divergência trava a cobrança
+      // (lib/fatura-conferencia.ts). Falhar aqui NÃO pode derrubar a sync.
+      await conferirEGravar(upserted.id).catch((e) =>
+        console.error("[consumer-units bills sync] conferirEGravar falhou:", e),
+      );
       // Preenche ConsumerUnitBilling (aba "Valores da Cobrança"), igual ao
       // "Sincronizar todas" e ao upload. Sem isto a fatura sincronizada por
       // aqui ficava SEM valor de cobrança — calado (caso TAMARA VOLCATO 10/26).

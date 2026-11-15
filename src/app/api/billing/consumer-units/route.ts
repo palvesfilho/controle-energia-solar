@@ -6,6 +6,7 @@ import { isAdminRole } from "@/lib/roles";
 import { SEM_UC_BRASIL_SOLAR } from "@/lib/uc-origem";
 import { ucsQueJaCompensaram } from "@/lib/uc-trava-faturamento";
 import { contatosDasUcs, travaContatoAtiva } from "@/lib/uc-trava-contato";
+import { STATUS_TRAVA_CONFERENCIA } from "@/lib/fatura-conferencia";
 
 /**
  * GET /api/billing/consumer-units?ano=2026&mes=4  → lista do mês
@@ -69,11 +70,24 @@ export async function GET(req: NextRequest) {
     prisma.consumerUnitBilling.findMany({ where: { ano, mes } }),
     prisma.consumerBill.findMany({
       where: { anoReferencia: ano, mesReferencia: mes },
-      select: { consumerUnitId: true },
+      select: {
+        id: true,
+        consumerUnitId: true,
+        pdfUrl: true,
+        conferenciaStatus: true,
+        conferenciaDivergencias: true,
+        conferenciaLiberadaPor: true,
+        conferenciaLiberadaEm: true,
+      },
     }),
   ]);
 
   const billingByUc = new Map(billings.map((b) => [b.consumerUnitId, b]));
+  const faturaByUc = new Map(
+    consumerBills
+      .filter((b) => !!b.consumerUnitId)
+      .map((b) => [b.consumerUnitId as string, b]),
+  );
   const ucsComFatura = new Set(
     consumerBills
       .map((b) => b.consumerUnitId)
@@ -99,6 +113,30 @@ export async function GET(req: NextRequest) {
     status: billingByUc.get(u.id)?.status ?? "PENDENTE",
     faturaDistribuidoraDisponivel: ucsComFatura.has(u.id),
     emImplantacao: !jaCompensaram.has(u.id),
+    // 🔒 DUPLA CONFERÊNCIA (lib/fatura-conferencia.ts) — a recusa dura mora no
+    // servidor; aqui a tela mostra O QUE divergiu e deixa o operador escolher.
+    conferencia: (() => {
+      const f = faturaByUc.get(u.id);
+      if (!f?.conferenciaStatus) return null;
+      const det = f.conferenciaDivergencias
+        ? (JSON.parse(f.conferenciaDivergencias) as {
+            divergencias?: unknown[];
+            erro?: string | null;
+          })
+        : null;
+      return {
+        billId: f.id,
+        pdfUrl: f.pdfUrl,
+        status: f.conferenciaStatus,
+        trava: STATUS_TRAVA_CONFERENCIA.includes(
+          f.conferenciaStatus as (typeof STATUS_TRAVA_CONFERENCIA)[number],
+        ),
+        divergencias: det?.divergencias ?? [],
+        erro: det?.erro ?? null,
+        liberadaPor: f.conferenciaLiberadaPor,
+        liberadaEm: f.conferenciaLiberadaEm,
+      };
+    })(),
     contato: (() => {
       const c = contatos.get(u.id);
       return {

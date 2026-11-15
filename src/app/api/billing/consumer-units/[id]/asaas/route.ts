@@ -6,6 +6,7 @@ import { isAdminRole } from "@/lib/roles";
 import { AsaasError, deletePayment, getPayment, type AsaasBillingType } from "@/lib/asaas";
 import { emitBillingToAsaas } from "@/lib/billing-asaas";
 import { SKIP_SEM_COMPENSACAO } from "@/lib/uc-trava-faturamento";
+import { SKIP_FATURA_DIVERGENTE } from "@/lib/fatura-conferencia";
 import { transitionPayablesFromBilling } from "@/lib/investor-payables";
 import {
   computeParentStatusFromInstallments,
@@ -214,7 +215,9 @@ export async function POST(req: NextRequest, ctx: RouteCtx) {
     // regra de negócio (409), não falha do Asaas. Sem isto a trava sairia como
     // 502 e mandaria o operador procurar problema no gateway.
     const status =
-      result.skipped === "already_sent" || result.skipped === SKIP_SEM_COMPENSACAO
+      result.skipped === "already_sent" ||
+      result.skipped === SKIP_SEM_COMPENSACAO ||
+      result.skipped === SKIP_FATURA_DIVERGENTE
         ? 409
         : result.error
         ? 502

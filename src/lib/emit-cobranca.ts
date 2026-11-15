@@ -28,6 +28,11 @@ import {
   ucJaCompensou,
 } from "@/lib/uc-trava-faturamento";
 import {
+  MENSAGEM_FATURA_DIVERGENTE,
+  SKIP_FATURA_DIVERGENTE,
+  cobrancaTravadaPorConferencia,
+} from "@/lib/fatura-conferencia";
+import {
   SKIP_SEM_CONTATO,
   avaliarContato,
   contatoDaUc,
@@ -83,6 +88,17 @@ export async function emitirCobrancaComDemonstrativo(
       billingId,
       skipped: SKIP_SEM_COMPENSACAO,
       error: MENSAGEM_SEM_COMPENSACAO,
+    };
+  }
+
+  // 🔒 DUPLA CONFERÊNCIA — mesmo motivo de repetir: a frase chega inteira ao
+  // operador antes de qualquer ida ao Asaas (lib/fatura-conferencia.ts).
+  if (await cobrancaTravadaPorConferencia(billingId)) {
+    return {
+      ok: false,
+      billingId,
+      skipped: SKIP_FATURA_DIVERGENTE,
+      error: MENSAGEM_FATURA_DIVERGENTE,
     };
   }
 

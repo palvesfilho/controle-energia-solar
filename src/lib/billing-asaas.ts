@@ -21,6 +21,11 @@ import {
   ucJaCompensou,
 } from "@/lib/uc-trava-faturamento";
 import {
+  MENSAGEM_FATURA_DIVERGENTE,
+  SKIP_FATURA_DIVERGENTE,
+  cobrancaTravadaPorConferencia,
+} from "@/lib/fatura-conferencia";
+import {
   SKIP_SEM_CONTATO,
   avaliarContato,
   montarContato,
@@ -152,6 +157,18 @@ export async function emitBillingToAsaas(
       ok: false,
       skipped: SKIP_SEM_COMPENSACAO,
       error: MENSAGEM_SEM_COMPENSACAO,
+    };
+  }
+
+  // 🔒 DUPLA CONFERÊNCIA — a fatura da distribuidora tem divergência entre a
+  // leitura da Infosimples e o PDF (lib/fatura-conferencia.ts). Cobrar com um
+  // número que duas leituras não confirmam é arriscar cobrar errado do cliente.
+  if (await cobrancaTravadaPorConferencia(billingId)) {
+    return {
+      billingId,
+      ok: false,
+      skipped: SKIP_FATURA_DIVERGENTE,
+      error: MENSAGEM_FATURA_DIVERGENTE,
     };
   }
 

@@ -1050,6 +1050,15 @@ model ConsumerBill {
   rawJson       String?  @map("raw_json") // Resposta completa da API
   syncedAt      DateTime @default(now()) @map("synced_at")
 
+  // DUPLA CONFERÊNCIA Infosimples × PDF (lib/fatura-conferencia.ts).
+  // CONFERIDA | DIVERGENTE | ERRO_PDF | CORRIGIDA | LIBERADA | null (nunca conferida).
+  // DIVERGENTE e ERRO_PDF TRAVAM a cobrança até o operador escolher o valor certo.
+  conferenciaStatus       String?   @map("conferencia_status")
+  conferenciaDivergencias String?   @map("conferencia_divergencias") // JSON { divergencias, erro, valoresPdf }
+  conferenciaEm           DateTime? @map("conferencia_em")
+  conferenciaLiberadaPor  String?   @map("conferencia_liberada_por")
+  conferenciaLiberadaEm   DateTime? @map("conferencia_liberada_em")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

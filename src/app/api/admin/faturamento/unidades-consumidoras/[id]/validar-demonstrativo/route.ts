@@ -15,6 +15,10 @@ import {
   MENSAGEM_SEM_COMPENSACAO,
   ucJaCompensou,
 } from "@/lib/uc-trava-faturamento";
+import {
+  MENSAGEM_FATURA_DIVERGENTE,
+  cobrancaTravadaPorConferencia,
+} from "@/lib/fatura-conferencia";
 import { avaliarContato, contatoDaUc } from "@/lib/uc-trava-contato";
 
 interface RouteCtx {
@@ -46,6 +50,11 @@ export async function POST(_req: NextRequest, ctx: RouteCtx) {
   // prometer uma cobrança que o Asaas depois recusa.
   if (!(await ucJaCompensou(billing.consumerUnitId))) {
     return NextResponse.json({ error: MENSAGEM_SEM_COMPENSACAO }, { status: 409 });
+  }
+  // 🔒 DUPLA CONFERÊNCIA — validar acende "Realizar Cobrança"; com a fatura
+  // divergente (Infosimples × PDF) a emissão recusaria depois.
+  if (await cobrancaTravadaPorConferencia(id)) {
+    return NextResponse.json({ error: MENSAGEM_FATURA_DIVERGENTE }, { status: 409 });
   }
   // 🔒 TRAVA DE CONTATO — mesmo raciocínio: validar acende o botão de cobrar,
   // e cobrar dispara email + WhatsApp. Sem contato cadastrado, o botão acenderia

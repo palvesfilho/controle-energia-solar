@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { FileText, FileBarChart2, Filter, Search, Send, Receipt, X, XCircle, CheckCircle2, Plug, Hourglass, Mail, MessageCircle, UserX, RefreshCw } from "lucide-react";
+import { FileText, FileBarChart2, Filter, Search, Send, Receipt, X, XCircle, CheckCircle2, Plug, Hourglass, Mail, MessageCircle, UserX, RefreshCw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { formatMonthYear, formatBRL } from "@/lib/formatters";
 import {
@@ -72,6 +72,43 @@ interface Row {
    * aqui a tela desabilita o botão em vez de deixar clicar e falhar.
    */
   emImplantacao: boolean;
+  /**
+   * 🔒 Dupla conferência da fatura da distribuidora (Infosimples × PDF) —
+   * lib/fatura-conferencia.ts. `trava` = DIVERGENTE ou ERRO_PDF: o servidor
+   * recusa validar e emitir até o operador escolher o valor certo.
+   * null = fatura nunca conferida (upload manual / legado).
+   */
+  conferencia: {
+    billId: string;
+    pdfUrl: string | null;
+    status: string;
+    trava: boolean;
+    divergencias: {
+      campo: string;
+      rotulo: string;
+      tipo: "brl" | "kwh" | "data";
+      infosimples: number | string | null;
+      pdf: number | string | null;
+    }[];
+    erro: string | null;
+    liberadaPor: string | null;
+    liberadaEm: string | null;
+  } | null;
+}
+
+/** Valor de um campo conferido, como o operador lê na fatura. */
+function formatValorConferido(
+  v: number | string | null,
+  tipo: "brl" | "kwh" | "data",
+): string {
+  if (v == null) return "não veio";
+  if (tipo === "data") {
+    const [a, m, d] = String(v).slice(0, 10).split("-");
+    return `${d}/${m}/${a}`;
+  }
+  const n = Number(v);
+  if (tipo === "kwh") return `${n.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kWh`;
+  return formatBRL(n);
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -108,6 +145,18 @@ const FACETAS: Faceta<Row>[] = [
     chave: "consumidor",
     label: "Consumidor",
     valor: (r) => r.consumerUnit.consumer?.name,
+  },
+  {
+    chave: "conferencia",
+    label: "Conferência da fatura",
+    valor: (r) =>
+      !r.conferencia
+        ? "Não conferida"
+        : r.conferencia.trava
+          ? "Divergente"
+          : r.conferencia.status === "CONFERIDA"
+            ? "Conferida"
+            : "Liberada pelo operador",
   },
   {
     chave: "contato",
@@ -352,6 +401,47 @@ export default function FaturamentoUCMesPage() {
     () => rows.filter((r) => r.contato.pendencia),
     [rows],
   );
+
+  /**
+   * 🔒 Faturas travadas pela dupla conferência (Infosimples × PDF).
+   * Mesma regra do aviso de contato: conta sobre TODAS as linhas do mês, não
+   * sobre o filtro — filtrar a tela não resolve a divergência.
+   */
+  const faturasDivergentes = useMemo(
+    () => rows.filter((r) => r.conferencia?.trava),
+    [rows],
+  );
+  const [conferindoId, setConferindoId] = useState<string | null>(null);
+  const resolverConferencia = async (
+    billId: string,
+    acao: "USAR_PDF" | "MANTER_INFOSIMPLES" | "RECONFERIR",
+  ) => {
+    setConferindoId(billId);
+    try {
+      const res = await fetch(`/api/admin/faturamento/conferencia-fatura/${billId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ acao }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(j.error ?? "Não foi possível resolver a conferência");
+        return;
+      }
+      toast.success(
+        acao === "USAR_PDF"
+          ? "Valores do PDF gravados e cobrança recalculada"
+          : acao === "MANTER_INFOSIMPLES"
+            ? "Fatura liberada mantendo a leitura da Infosimples"
+            : j.status === "CONFERIDA"
+              ? "Conferida: Infosimples e PDF agora batem"
+              : "Conferência refeita — a divergência continua",
+      );
+      await recarregar();
+    } finally {
+      setConferindoId(null);
+    }
+  };
 
   const handleOpen = async (consumerUnitId: string) => {
     if (!parsed) return;
@@ -727,6 +817,128 @@ export default function FaturamentoUCMesPage() {
         </Card>
       )}
 
+      {/* 🔒 DUPLA CONFERÊNCIA — fatura com divergência entre a leitura da
+          Infosimples e o PDF da distribuidora. A cobrança fica TRAVADA até o
+          operador escolher o valor certo (lib/fatura-conferencia.ts). */}
+      {faturasDivergentes.length > 0 && (
+        <Card id="faturas-divergentes" className="border-red-300 dark:border-red-900">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <ShieldAlert className="h-5 w-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+                  {faturasDivergentes.length}{" "}
+                  {faturasDivergentes.length === 1
+                    ? "fatura com divergência entre a Infosimples e o PDF"
+                    : "faturas com divergência entre a Infosimples e o PDF"}{" "}
+                  — a cobrança está bloqueada
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Cada fatura é lida duas vezes: pelo texto da Infosimples e pelo PDF original da
+                  distribuidora. Quando as leituras não batem, a cobrança só sai depois que alguém
+                  conferir no PDF e escolher o valor certo. Em caso de dúvida, abra a fatura.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-3 max-h-[28rem] overflow-y-auto">
+              {faturasDivergentes.map((r) => {
+                const c = r.conferencia!;
+                const ocupado = conferindoId === c.billId;
+                return (
+                  <div key={c.billId} className="rounded border p-3 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm">
+                        <span className="font-mono text-xs mr-2">
+                          {formatCodigoUc(r.consumerUnit.codigoUc)}
+                        </span>
+                        <span className="font-medium">{r.consumerUnit.nome}</span>
+                        {r.billing?.asaasChargeId && (
+                          <span className="ml-2 text-xs text-amber-700 dark:text-amber-300">
+                            (cobrança já emitida — confira o boleto)
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {c.pdfUrl && (
+                          <a
+                            href={c.pdfUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 text-xs font-medium"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                            Abrir PDF da fatura
+                          </a>
+                        )}
+                        {c.status === "DIVERGENTE" && (
+                          <button
+                            type="button"
+                            disabled={ocupado}
+                            onClick={() => resolverConferencia(c.billId, "USAR_PDF")}
+                            title="Grava os valores lidos do PDF nos campos divergentes e recalcula a cobrança"
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 text-xs font-medium disabled:opacity-50"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Usar valores do PDF
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={ocupado}
+                          onClick={() => resolverConferencia(c.billId, "MANTER_INFOSIMPLES")}
+                          title="Conferi no PDF: os valores gravados (Infosimples) estão certos"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-200 text-slate-800 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 text-xs font-medium disabled:opacity-50"
+                        >
+                          Manter Infosimples
+                        </button>
+                        <button
+                          type="button"
+                          disabled={ocupado}
+                          onClick={() => resolverConferencia(c.billId, "RECONFERIR")}
+                          title="Ler o PDF de novo e comparar"
+                          className="inline-flex items-center rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40"
+                        >
+                          <RefreshCw className={`h-3.5 w-3.5 ${ocupado ? "animate-spin" : ""}`} />
+                        </button>
+                      </div>
+                    </div>
+                    {c.status === "ERRO_PDF" ? (
+                      <p className="text-xs text-red-700 dark:text-red-300">
+                        Não foi possível ler o PDF: {c.erro ?? "motivo desconhecido"}. Confira a
+                        fatura manualmente antes de liberar.
+                      </p>
+                    ) : (
+                      <table className="w-full text-xs" data-tabela={`divergencias-${c.billId}`}>
+                        <thead>
+                          <tr className="text-left text-muted-foreground">
+                            <th className="py-1 font-medium">Campo</th>
+                            <th className="py-1 font-medium text-right">Infosimples (gravado)</th>
+                            <th className="py-1 font-medium text-right">PDF</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {c.divergencias.map((d) => (
+                            <tr key={d.campo} className="border-t">
+                              <td className="py-1">{d.rotulo}</td>
+                              <td className="py-1 text-right tabular-nums">
+                                {formatValorConferido(d.infosimples, d.tipo)}
+                              </td>
+                              <td className="py-1 text-right tabular-nums font-medium text-red-700 dark:text-red-300">
+                                {formatValorConferido(d.pdf, d.tipo)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {filtroAtivo && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-medium text-blue-700 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300">
@@ -930,6 +1142,10 @@ export default function FaturamentoUCMesPage() {
                       r.contato.bloqueia &&
                       !r.billing?.asaasChargeId &&
                       (r.billing != null || r.faturaDistribuidoraDisponivel);
+                    // 🔒 Dupla conferência. Mesma regra: cobrança já emitida fica
+                    // de fora (o aviso no painel de cima continua aparecendo).
+                    const travadoPorConferencia =
+                      !!r.conferencia?.trava && !r.billing?.asaasChargeId;
                     // Visualizar vale nos dois caminhos: mesmo travada, o
                     // operador precisa poder abrir o rascunho pra entender.
                     const botaoVisualizar = r.billing ? (
@@ -1015,6 +1231,21 @@ export default function FaturamentoUCMesPage() {
                                   <Hourglass className="h-3.5 w-3.5" />
                                   Em implantação — sem compensação
                                 </span>
+                              </>
+                            ) : travadoPorConferencia ? (
+                              /* 0a. TRAVA DE CONFERÊNCIA — Infosimples × PDF não
+                                 batem. O botão leva ao painel com os valores
+                                 lado a lado, onde o operador escolhe o certo. */
+                              <>
+                                {botaoVisualizar}
+                                <a
+                                  href="#faturas-divergentes"
+                                  title="A leitura da Infosimples e o PDF da fatura não batem. Confira no painel acima e escolha o valor certo para liberar a cobrança."
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-900/40 transition-colors text-xs font-medium"
+                                >
+                                  <ShieldAlert className="h-3.5 w-3.5" />
+                                  Fatura divergente — conferir
+                                </a>
                               </>
                             ) : travadoPorContato ? (
                               /* 0b. TRAVA DE CONTATO — falta email e/ou celular.

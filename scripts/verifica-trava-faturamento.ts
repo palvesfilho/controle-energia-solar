@@ -66,6 +66,51 @@ const ALVOS: Alvo[] = [
       "e a tela onde a cobranca acontece — a UC travada tem que ficar visivelmente travada",
     exige: ["emImplantacao", "travadoPorImplantacao"],
   },
+
+  // 🔒 DUPLA CONFERÊNCIA (14/11/2026) — fatura com divergência entre a leitura
+  // da Infosimples e o PDF não pode ser cobrada. Ver lib/fatura-conferencia.ts.
+  {
+    arquivo: "src/lib/fatura-conferencia.ts",
+    porque: "e o modulo da dupla conferencia — compara Infosimples x PDF e define quem trava",
+    exige: ["conferirEGravar", "cobrancaTravadaPorConferencia", "STATUS_TRAVA_CONFERENCIA"],
+  },
+  {
+    arquivo: "src/lib/billing-asaas.ts",
+    porque: "ponto UNICO de emissao — fatura divergente nao pode virar boleto",
+    exige: ["cobrancaTravadaPorConferencia", "SKIP_FATURA_DIVERGENTE"],
+  },
+  {
+    arquivo: "src/lib/emit-cobranca.ts",
+    porque: "pipeline do demonstrativo — a recusa da conferencia chega antes do Asaas",
+    exige: ["cobrancaTravadaPorConferencia", "MENSAGEM_FATURA_DIVERGENTE"],
+  },
+  {
+    arquivo:
+      "src/app/api/admin/faturamento/unidades-consumidoras/[id]/validar-demonstrativo/route.ts",
+    porque: "validar acende 'Realizar Cobranca' — nao pode acender com fatura divergente",
+    exige: ["cobrancaTravadaPorConferencia"],
+  },
+  {
+    arquivo: "src/app/api/admin/faturas-energia/sync-all/route.ts",
+    porque: "'Sincronizar todas' grava a fatura da Infosimples — sem conferir, ninguem compara com o PDF",
+    exige: ["conferirEGravar"],
+  },
+  {
+    arquivo: "src/app/api/consumer-units/[id]/bills/sync/route.ts",
+    porque: "sincronizar UMA UC grava a fatura da Infosimples — sem conferir, ninguem compara com o PDF",
+    exige: ["conferirEGravar"],
+  },
+  {
+    arquivo: "src/app/api/billing/consumer-units/route.ts",
+    porque: "alimenta a tela do mes — sem `conferencia` o operador nao ve o que divergiu",
+    exige: ["STATUS_TRAVA_CONFERENCIA", "conferencia"],
+  },
+  {
+    arquivo:
+      "src/app/(dashboard)/admin/faturamento/unidades-consumidoras/[mes]/page.tsx",
+    porque: "tela de cobranca — fatura divergente tem que aparecer travada e com os valores lado a lado",
+    exige: ["travadoPorConferencia", "faturasDivergentes"],
+  },
 ];
 
 /**

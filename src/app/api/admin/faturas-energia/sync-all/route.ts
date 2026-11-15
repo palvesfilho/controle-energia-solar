@@ -12,6 +12,7 @@ import {
   descreverErroInfosimples,
 } from "@/lib/infosimples";
 import { enrichBillFromPdfFallback, describeFallback } from "@/lib/infosimples-pdf-fallback";
+import { conferirEGravar } from "@/lib/fatura-conferencia";
 import { populateBillingFromBill } from "@/lib/billing-populate";
 import { syncInvestorPayablesFromBill } from "@/lib/investor-payables";
 
@@ -203,6 +204,12 @@ async function syncOne(alvo: SyncAlvo): Promise<SyncResultItem> {
           syncedAt: new Date(),
         },
       });
+      // 🔒 DUPLA CONFERÊNCIA — Infosimples × PDF. Divergência trava a cobrança
+      // (lib/fatura-conferencia.ts). Falhar aqui NÃO pode derrubar a sync: o
+      // resultado vira ERRO_PDF na próxima conferência, que também trava.
+      await conferirEGravar(upserted.id).catch((e) =>
+        console.error("[sync-all] conferirEGravar falhou:", e),
+      );
       // Preenche ConsumerUnitBilling (campos da aba "Valores da Cobrança")
       await populateBillingFromBill(upserted.id).catch((e) =>
         console.error("[sync-all] populateBillingFromBill falhou:", e),
