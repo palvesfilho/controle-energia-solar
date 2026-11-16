@@ -88,7 +88,8 @@ function mesLabelHistorico(mes: number, ano: number): string {
 /**
  * Histórico dos 12 meses (mais antigo → mais recente) terminando em
  * (mesRef/anoRef). Sempre 12 entradas — meses sem fatura aparecem com
- * consumo 0 (linha em branco no gráfico).
+ * consumo 0 — exceto os da ponta esquerda, antes do 1º consumo conhecido,
+ * que são cortados.
  */
 function gerar12Meses(
   bills: { mesReferencia: number; anoReferencia: number; consumoKwh: number | null }[],
@@ -115,6 +116,11 @@ function gerar12Meses(
     const consumo = map.get(`${a}-${m}`) ?? 0;
     out.push({ m: mesLabelHistorico(m, a), consumo: Math.round(consumo) });
   }
+  // 16/11/2026 (Paulo) — meses ANTES do primeiro consumo conhecido (UC que
+  // entrou há pouco, sem fatura nem painel impresso) apareciam como "0" e
+  // pareciam consumo zero. Corta só a ponta da esquerda; o mês cobrado fica
+  // sempre. O gráfico já se ajusta a menos linhas.
+  while (out.length > 1 && out[0].consumo <= 0) out.shift();
   return out;
 }
 
@@ -220,10 +226,15 @@ export async function loadDemonstrativoFaturaData(
   // Acumulados (R$ e kWh)
   const acumulados = await computarAcumulados(uc.id, { ano: billing.ano, mes: billing.mes });
 
-  // Crédito recebido em kWh no MÊS (TE + TUSD em módulo)
+  // Crédito recebido em kWh no MÊS. A RGE imprime a MESMA energia duas vezes
+  // (linha TE e linha TUSD, mesmos kWh, tarifas diferentes) — somar dobrava o
+  // crédito (TAMARA 10/26: 1.108 em vez de 554). Vale o maior dos dois.
   const creditoMesKwh = billMes
-    ? Math.abs(billMes.injetadaOucTeKwh ?? 0) + Math.abs(billMes.injetadaOucTusdKwh ?? 0)
+    ? Math.max(Math.abs(billMes.injetadaOucTeKwh ?? 0), Math.abs(billMes.injetadaOucTusdKwh ?? 0))
     : 0;
+
+  // Saldo de créditos impresso na fatura da RGE (kWh, com 3 casas).
+  const saldoRgeKwh = billMes?.saldoCreditos ?? billMes?.saldoInstalacaoKwh ?? null;
 
   // Tarifa bruta (R$/kWh) — TE + TUSD (sem desconto)
   const tarifaBruta = billMes ? (billMes.tarifaTE ?? 0) + (billMes.tarifaTUSD ?? 0) : 0;
@@ -422,8 +433,11 @@ export async function loadDemonstrativoFaturaData(
       consumoObs: "Medido pela concessionária",
       creditoTotalRecebidoKwh: Math.round(creditoMesKwh),
       creditoRecebidoObs: "Da usina alocada",
-      creditoTotalAcumuladoKwh: Math.round(acumulados.creditoKwh),
-      creditoAcumuladoObs: "Da usina alocada",
+      // 16/11/2026 (Paulo) — "acumulado" é o SALDO de créditos que a RGE
+      // imprime na fatura (TAMARA 10/26: 899,368 kWh), não a soma do que
+      // entrou desde o contrato. Sem saldo na fatura, cai na soma antiga.
+      creditoTotalAcumuladoKwh: saldoRgeKwh ?? Math.round(acumulados.creditoKwh),
+      creditoAcumuladoObs: saldoRgeKwh != null ? "Saldo na concessionária" : "Da usina alocada",
       custoKwhConcessionaria: tarifaBruta,
       custoKwhObs: "Tarifa bruta de referência",
     },

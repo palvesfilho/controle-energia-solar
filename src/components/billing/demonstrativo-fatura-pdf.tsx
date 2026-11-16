@@ -60,6 +60,10 @@ const fmtBRL = (v: number): string =>
 const fmtKwh = (v: number): string =>
   `${v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} kWh`;
 
+// Saldo de créditos: mesmas 3 casas que a RGE imprime (899,368 kWh).
+const fmtKwhSaldo = (v: number): string =>
+  `${v.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} kWh`;
+
 const fmtTarifa = (v: number): string =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 3 });
 
@@ -569,7 +573,7 @@ export function DemonstrativoFaturaPdf({ data }: { data: DemonstrativoFaturaData
               <View style={s.stat}>
                 <Text style={s.statLbl}>CRÉDITO TOTAL ACUMULADO</Text>
                 <View style={s.statRow}>
-                  <Text style={s.statVal}>{fmtKwh(data.energia.creditoTotalAcumuladoKwh)}</Text>
+                  <Text style={s.statVal}>{fmtKwhSaldo(data.energia.creditoTotalAcumuladoKwh)}</Text>
                   <Text style={s.statSub}>{data.energia.creditoAcumuladoObs}</Text>
                 </View>
               </View>

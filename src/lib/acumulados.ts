@@ -94,7 +94,8 @@ export async function computarAcumulados(
   });
 
   // Energia compensada vem do ConsumerBill (não está em ConsumerUnitBilling).
-  // Soma injetadaOucTeKwh + injetadaOucTusdKwh (em módulo) por mês.
+  // Por mês: o maior entre injetadaOucTeKwh e injetadaOucTusdKwh (em módulo) —
+  // são a mesma energia impressa em duas linhas.
   const bills = await prisma.consumerBill.findMany({
     where: {
       consumerUnitId,
@@ -135,7 +136,8 @@ export async function computarAcumulados(
     if (codigo > ateCodigo) continue;
     const te = b.injetadaOucTeKwh != null ? Math.abs(b.injetadaOucTeKwh) : 0;
     const tusd = b.injetadaOucTusdKwh != null ? Math.abs(b.injetadaOucTusdKwh) : 0;
-    creditoKwh += te + tusd;
+    // TE e TUSD são a MESMA energia em duas linhas da fatura — somar dobrava.
+    creditoKwh += Math.max(te, tusd);
   }
 
   return {
