@@ -92,8 +92,30 @@ model Investor {
   payables    InvestorPayable[]
   settlements InvestorSettlement[]
   debits      InvestorDebit[]
+  arquivos    InvestorDocument[]
 
   @@map("investors")
+}
+
+// Arquivos anexados À MÃO no cadastro do investidor (contrato, CNH/RG,
+// comprovante de endereço...). Vários por investidor e vários do mesmo tipo —
+// um investidor pode ter contrato + aditivo. Não confundir com as colunas
+// `doc_*` acima, que são a papelada copiada da adesão do CRM.
+model InvestorDocument {
+  id           String   @id @default(cuid())
+  investorId   String   @map("investor_id")
+  tipo         String // CONTRATO | IDENTIDADE | COMPROVANTE_ENDERECO | CARTAO_CNPJ | CONTRATO_SOCIAL | OUTROS
+  descricao    String?
+  url          String
+  fileName     String   @map("file_name")
+  size         Int?
+  uploadedById String?  @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  investor Investor @relation(fields: [investorId], references: [id], onDelete: Cascade)
+
+  @@index([investorId])
+  @@map("investor_documents")
 }
 
 model Plant {

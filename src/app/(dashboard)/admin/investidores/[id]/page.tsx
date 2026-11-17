@@ -32,6 +32,7 @@ import {
 import { formatCodigoUc } from "@/lib/uc-codigo";
 import { formatCpfCnpj } from "@/lib/documento";
 import { DocumentosAdesao } from "@/components/consumer-units/documentos-adesao";
+import { InvestidorArquivos } from "@/components/investors/investidor-arquivos";
 import {
   fichasDosDocumentosSalvos,
   type DocumentosDoCadastro,
@@ -368,6 +369,8 @@ export default function DetalhesInvestidorPage() {
           copiadosEm={investor.docsCopiadosEm ?? null}
         />
       </div>
+
+      <InvestidorArquivos investorId={investor.id} />
 
       <Card>
         <CardHeader className="pb-3">

@@ -1,4 +1,9 @@
 "use client";
+import {
+  InvestidorArquivos,
+  enviarArquivosInvestidor,
+  type ArquivoPendente,
+} from "@/components/investors/investidor-arquivos";
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -139,6 +144,7 @@ function NovoInvestidorConteudo() {
   const crmUcId = params.get("crmUc");
   const [loading, setLoading] = useState(false);
   const [crm, setCrm] = useState<UcDoCrm | null>(null);
+  const [arquivos, setArquivos] = useState<ArquivoPendente[]>([]);
 
   // Proprietario de usina vindo da fila do CRM: o cadastro chega preenchido
   // com o que foi ASSINADO no termo, em vez de redigitado.
@@ -197,6 +203,17 @@ function NovoInvestidorConteudo() {
     // investidor. Se a copia falhar, o vinculo NAO e desfeito -- o aviso diz
     // o que faltou, e o botao pode ser usado de novo.
     const investorId: string | undefined = criado?.investor?.id;
+
+    // Arquivos anexados na tela: só agora existe investidor para recebê-los.
+    // Falha aqui não desfaz o cadastro — o aviso diz o que faltou, e dá para
+    // anexar de novo na ficha do investidor.
+    if (investorId && arquivos.length > 0) {
+      const r = await enviarArquivosInvestidor(investorId, arquivos);
+      if (r.enviados) toast.success(`${r.enviados} arquivo(s) anexado(s) ao investidor.`);
+      if (r.falhas.length) {
+        toast.warning(`Arquivos não anexados (anexe na ficha do investidor): ${r.falhas.join(" · ")}`);
+      }
+    }
     if (crmUcId && investorId) {
       try {
         const v = await fetch(`/api/crm/ucs/${crmUcId}/vincular`, {
@@ -313,6 +330,8 @@ function NovoInvestidorConteudo() {
             </div>
           </CardContent>
         </Card>
+
+        <InvestidorArquivos pendentes={arquivos} onPendentesChange={setArquivos} />
 
         <div className="flex justify-end gap-2">
           <Link
