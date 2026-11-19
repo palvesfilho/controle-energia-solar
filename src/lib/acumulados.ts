@@ -5,6 +5,16 @@
  *
  * Usado pelo demonstrativo de cobrança (cards "Economia Total Acumulada" e
  * "Crédito Total Acumulado") e por qualquer outro relatório histórico.
+ *
+ * 🔀 **Economia em R$ tem DUAS fontes** (19/11/2026, decisão do Paulo):
+ *  - meses ANTES de dez/2026 → `EconomiaHistoricaLumi` (o que o cliente viu no
+ *    Lumi, sistema usado antes da migração);
+ *  - meses a partir de dez/2026 → `ConsumerUnitBilling.valorEconomia`.
+ * Só vale para UC que tem histórico do Lumi. UC sem nenhuma linha do Lumi
+ * continua somando as cobranças do sistema em todos os meses — senão quem
+ * nunca passou pelo Lumi ficaria com acumulado zerado.
+ * O cálculo do sistema e o do Lumi divergem (prévia de 19/11: Lumi R$ 29,7 mil
+ * acima nos mesmos meses), por isso NÃO se somam no mesmo mês: um ou outro.
  */
 import { prisma } from "@/lib/prisma";
 
@@ -29,6 +39,10 @@ export interface AcumuladoResultado {
  * Ex.: { ano:2026, mes:5 } → 202605.
  */
 const codigoMes = (ano: number, mes: number) => ano * 100 + mes;
+
+/** Primeiro mês em que a economia vem do sistema e não mais do Lumi. */
+export const CORTE_LUMI = { ano: 2026, mes: 12 } as const;
+const CORTE_LUMI_CODIGO = codigoMes(CORTE_LUMI.ano, CORTE_LUMI.mes);
 
 /**
  * Decide o "marco zero" do contrato:
@@ -112,6 +126,13 @@ export async function computarAcumulados(
     },
   });
 
+  // Histórico do Lumi (antes do corte). Ver o cabeçalho do arquivo.
+  const lumi = await prisma.economiaHistoricaLumi.findMany({
+    where: { consumerUnitId },
+    select: { ano: true, mes: true, valorEconomia: true },
+  });
+  const temLumi = lumi.length > 0;
+
   const marcoCodigo = marcoZero ? codigoMes(marcoZero.ano, marcoZero.mes) : 0;
 
   let economiaR$ = 0;
@@ -119,8 +140,20 @@ export async function computarAcumulados(
   let mesesContados = 0;
   let menorCodigo = Infinity;
 
+  // O Lumi NÃO passa pelo marco zero do contrato: se o Lumi cobrou o mês, a
+  // relação já existia — e o número é o que o cliente já viu.
+  for (const l of lumi) {
+    const codigo = codigoMes(l.ano, l.mes);
+    if (codigo >= CORTE_LUMI_CODIGO) continue;
+    if (codigo > ateCodigo) continue;
+    if (l.valorEconomia > 0) economiaR$ += l.valorEconomia;
+    mesesContados += 1;
+    if (codigo < menorCodigo) menorCodigo = codigo;
+  }
+
   for (const b of billings) {
     const codigo = codigoMes(b.ano, b.mes);
+    if (temLumi && codigo < CORTE_LUMI_CODIGO) continue;
     if (codigo < marcoCodigo) continue;
     if (codigo > ateCodigo) continue;
     if (b.valorEconomia != null && b.valorEconomia > 0) {

@@ -671,10 +671,41 @@ model ConsumerUnit {
   brasilSolarBeneficiarias BrasilSolarBeneficiaria[]
   statusChanges            ConsumerUnitStatusChange[]
   faturasNaoEmitidas       FaturaNaoEmitida[]
+  economiaHistoricaLumi    EconomiaHistoricaLumi[]
 
   @@index([consumerId])
   @@index([plantId])
   @@map("consumer_units")
+}
+
+// Economia mensal herdada do Lumi (sistema usado ANTES da migração para cá).
+// 19/11/2026 (Paulo): até nov/2026 a economia que vale é a do Lumi — é a que o
+// cliente viu nos relatórios de lá; a partir de dez/2026 vale a calculada aqui
+// (ConsumerUnitBilling.valorEconomia). Tabela SEPARADA de propósito: as
+// cobranças já gravadas têm boleto/pagamento/status ligados e não são
+// sobrescritas. Quem soma as duas fontes é `lib/acumulados.ts`.
+// Alimentada por scripts/importar-economia-lumi.ts (idempotente por UC+mês).
+model EconomiaHistoricaLumi {
+  id             String       @id @default(cuid())
+  consumerUnitId String       @map("consumer_unit_id")
+  consumerUnit   ConsumerUnit @relation(fields: [consumerUnitId], references: [id], onDelete: Cascade)
+
+  ano Int
+  mes Int
+
+  valorEconomia Float  @map("valor_economia") // "Economia do Consumidor (R$)" do Lumi
+  valorDevido   Float? @map("valor_devido") // "Valor devido (R$)" do Lumi — só referência
+
+  // Como veio no Lumi, para rastrear (o código pode ser o antigo da RGE)
+  codigoUcLumi  String  @map("codigo_uc_lumi")
+  nomeUcLumi    String? @map("nome_uc_lumi")
+  arquivoOrigem String? @map("arquivo_origem")
+
+  importadoEm DateTime @default(now()) @map("importado_em")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([consumerUnitId, ano, mes])
+  @@map("economia_historica_lumi")
 }
 
 // Gêmea de PlantStatusChange, para a UC. Mesmo formato de propósito: as duas
@@ -1851,10 +1882,10 @@ model Obra {
   // (vendido × valor por unidade, ver lib/execucao-obra.ts) fica congelado
   // aqui no momento do aceite: mudar o valor por unidade depois não reescreve
   // o que já foi combinado. Teto null = obra aceita sem teto.
-  valorExecucao            Float?    @map("valor_execucao")
-  tetoExecucao             Float?    @map("teto_execucao")
-  valorExecucaoInformadoEm DateTime? @map("valor_execucao_informado_em")
-  valorExecucaoInformadoPor String?  @map("valor_execucao_informado_por")
+  valorExecucao             Float?    @map("valor_execucao")
+  tetoExecucao              Float?    @map("teto_execucao")
+  valorExecucaoInformadoEm  DateTime? @map("valor_execucao_informado_em")
+  valorExecucaoInformadoPor String?   @map("valor_execucao_informado_por")
 
   // Máximo AUTORIZADO pelo admin antes do aceite: projeto grande (negociado à
   // parte) ou acréscimo extraordinário. Substitui o teto calculado; o motivo
